@@ -200,6 +200,7 @@ export class RushHud {
     if (!me.alive) return { text: `Dazed: back on your feet at your gate in ${Math.max(1, Math.ceil(me.combatant.respawnTimer))}`, tone: 'foe' };
     if (r.phase === 'kickoff') return { text: r.overtime ? 'Golden relic: the next goal wins' : 'Kickoff: the Sun Relic waits on the pedestal', tone: r.overtime ? 'contested' : '' };
     const h = relic.holder;
+    if (h === me && r.shotOnTarget(me, me.aim)) return { text: 'On target! Left click to shoot it through their gate', tone: 'contested' };
     if (h === me) return { text: 'You have the relic! Run it through their gate, or left click to pass where you aim', tone: 'order' };
     if (h && h.team === me.team) return { text: `${h.name} has the relic: get open, and press F to call for the pass`, tone: 'order' };
     if (h) return { text: `${h.name} has the relic: stun or knock them back to make them drop it`, tone: 'chaos' };
@@ -234,7 +235,8 @@ export class RushHud {
       this.goalShow = RUSH.celebrate - 0.4;
     }
     this.goalShow = Math.max(0, this.goalShow - dt);
-    if (this.wasKickoff && r.phase === 'play') this.rushShow = 0.9;
+    // (not after the first kickoff: the match card already called it, and outlasting the card it would flash up again)
+    if (this.wasKickoff && r.phase === 'play') this.rushShow = this.introLeft > 0 ? 0 : 0.9;
     this.wasKickoff = r.phase === 'kickoff';
     this.rushShow = Math.max(0, this.rushShow - dt);
     this.dip(dt);
