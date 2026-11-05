@@ -794,7 +794,7 @@ export class Sim {
     }
   }
 
-  teleport(u: Unit, x: number, z: number, yaw?: number): void {
+  teleport(u: Unit, x: number, z: number, yaw?: number, quiet = false): void {
     const fromX = u.x;
     const fromZ = u.z;
     if (u.body.teleport) u.body.teleport(x, z, yaw);
@@ -804,7 +804,7 @@ export class Sim {
       if (yaw !== undefined) u.body.yaw = yaw;
     }
     u.body.y = this.terrain.groundAt(x, z);
-    this.emit({ type: 'teleport', unit: u, fromX, fromZ });
+    this.emit(quiet ? { type: 'teleport', unit: u, fromX, fromZ, quiet } : { type: 'teleport', unit: u, fromX, fromZ });
   }
 
   // -------------------------------------------------------------------------

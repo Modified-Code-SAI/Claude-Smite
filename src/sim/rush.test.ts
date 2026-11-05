@@ -139,10 +139,15 @@ describe('Relic Rush', () => {
     expect(rush.lastGoal?.assist).toBe(b);
     expect(rush.lines.get(b)!.assists).toBe(1);
     expect(rush.phase).toBe('goal');
+    const moves: { unit: Unit; quiet?: boolean }[] = [];
+    sim.listeners.push((e) => e.type === 'teleport' && moves.push(e));
     run(sim, rush, RUSH.celebrate + 0.1);
     expect(rush.phase).toBe('kickoff');
     expect(rush.relic.phase).toBe('center');
     expect(a.z).toBeCloseTo(RUSH.kickoff.order[0]!.z, 1);
+    // the reset happens under the HUD's dip to dark, so it raises no teleport flashes
+    expect(moves.map((m) => m.unit)).toContain(a);
+    expect(moves.every((m) => m.quiet)).toBe(true);
   });
 
   it('a low throw through the gate scores; a lob over it does not', () => {
