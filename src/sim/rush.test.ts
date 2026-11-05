@@ -139,10 +139,15 @@ describe('Relic Rush', () => {
     expect(rush.lastGoal?.assist).toBe(b);
     expect(rush.lines.get(b)!.assists).toBe(1);
     expect(rush.phase).toBe('goal');
+    const moves: { unit: Unit; quiet?: boolean }[] = [];
+    sim.listeners.push((e) => e.type === 'teleport' && moves.push(e));
     run(sim, rush, RUSH.celebrate + 0.1);
     expect(rush.phase).toBe('kickoff');
     expect(rush.relic.phase).toBe('center');
     expect(a.z).toBeCloseTo(RUSH.kickoff.order[0]!.z, 1);
+    // the reset happens under the HUD's dip to dark, so it raises no teleport flashes
+    expect(moves.map((m) => m.unit)).toContain(a);
+    expect(moves.every((m) => m.quiet)).toBe(true);
   });
 
   it('a low throw through the gate scores; a lob over it does not', () => {
@@ -413,5 +418,76 @@ describe('Relic Rush: the Playmaker tree', () => {
     run(sim, rush, 2, () => rush.holder !== null);
     expect(rush.holder).toBe(b);
     expect(b.combatant.moveSpeed / before).toBeGreaterThan(1.2);
+  });
+});
+
+describe('Relic Rush: calling for the pass', () => {
+  it('a call shows for a moment, can not be spammed, and ends when the caller gets the relic', () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    const b = god(sim, odin, 'order', 1);
+    rush.begin([a, b]);
+    // not during the kickoff
+    expect(rush.call(b)).toBe(false);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(a, 0, 1.6);
+    sim.teleport(b, 8, 1.6);
+    run(sim, rush, 0.3);
+    expect(rush.holder).toBe(a);
+    // the carrier has nobody to call to
+    expect(rush.call(a)).toBe(false);
+    expect(rush.call(b)).toBe(true);
+    expect(rush.call(b)).toBe(false);
+    run(sim, rush, 0.5);
+    expect(rush.calledAgo(b)).toBeCloseTo(0.5, 1);
+    expect(rush.throwRelic(a, { x: b.x, z: b.z })).toBe(true);
+    run(sim, rush, 2, () => rush.holder !== null);
+    expect(rush.holder).toBe(b);
+    expect(rush.calledAgo(b)).toBeNull();
+    // and a call times out on its own
+    expect(rush.call(a)).toBe(true);
+    run(sim, rush, RUSH.call.time + 0.1);
+    expect(rush.calledAgo(a)).toBeNull();
+  });
+
+  it("a guest sees the host's calls", () => {
+    const host = match();
+    const guest = match();
+    const hg = [god(host.sim, zeus, 'order', 0), god(host.sim, odin, 'order', 1)];
+    const gg = [god(guest.sim, zeus, 'order', 0), god(guest.sim, odin, 'order', 1)];
+    host.rush.begin(hg);
+    guest.rush.join(gg);
+    run(host.sim, host.rush, RUSH.countdown + 0.1);
+    expect(host.rush.call(hg[1]!)).toBe(true);
+    run(host.sim, host.rush, 0.4);
+    guest.rush.applyNet(JSON.parse(JSON.stringify(host.rush.netState())));
+    expect(guest.rush.calledAgo(gg[1]!)).toBeCloseTo(0.4, 1);
+    expect(guest.rush.calledAgo(gg[0]!)).toBeNull();
+  });
+
+  it('a bot carrier passes to a teammate who calls, and an open bot calls to a carrier who is not a bot', () => {
+    const { sim, rush } = match();
+    const coach = new RushCoach(sim, rush);
+    const bot = god(sim, zeus, 'order', 0);
+    const me = god(sim, odin, 'order', 1);
+    const foe = god(sim, thor, 'chaos', 0);
+    bot.brain = new RushBot(sim, bot, rush, coach, null);
+    rush.begin([bot, me, foe]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(bot, 0, 1.6);
+    sim.teleport(foe, 25, 25);
+    run(sim, rush, 0.4, () => rush.holder === bot);
+    expect(rush.holder).toBe(bot);
+    // the player, off to the side and behind: a bot wouldn't choose this pass alone
+    sim.teleport(me, -9, 6);
+    run(sim, rush, 0.5);
+    expect(rush.holder).toBe(bot);
+    expect(rush.call(me)).toBe(true);
+    run(sim, rush, 2, () => rush.holder === me);
+    expect(rush.holder).toBe(me);
+    expect(rush.lines.get(bot)!.passes).toBe(1);
+    // now the player carries: the bot runs ahead and, once open, calls for it
+    run(sim, rush, 6, () => rush.calledAgo(bot) !== null);
+    expect(rush.calledAgo(bot)).not.toBeNull();
   });
 });

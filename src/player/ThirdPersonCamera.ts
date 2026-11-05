@@ -12,6 +12,13 @@ export class ThirdPersonCamera {
   height = 2.9;
   /** Small right shoulder offset; Smite keeps the god near screen center. */
   shoulder = 0.0;
+  /** How much further back the camera sits (1 for a god; the Jötunn's giant is larger); see setScale. */
+  private scale = 1;
+  /** How much higher the focus sits, and how far right of the body the camera looks past it (a giant would hide the view). */
+  private lift = 1;
+  private side = 0;
+  /** How far ahead the camera looks (a giant's own feet should stay above the skill bar). */
+  private ahead = 1;
   private current = new THREE.Vector3();
   private currentDistance = 7.2;
   private initialized = false;
@@ -23,6 +30,20 @@ export class ThirdPersonCamera {
     private readonly player: PlayerController,
     private readonly collision: CollisionWorld,
   ) {}
+
+  /**
+   * Moves the camera out for a larger body (see `scale`), at once: it is for a
+   * new round's start. `lift` raises the focus, `side` looks past the right
+   * shoulder and `ahead` sets how far ahead it looks.
+   */
+  setScale(k: number, lift = k, side = 0, ahead = k): void {
+    this.scale = k;
+    this.lift = lift;
+    this.side = side;
+    this.ahead = ahead;
+    this.currentDistance = this.distance * k;
+    this.initialized = false;
+  }
 
   zoom(steps: number): void {
     this.distance = THREE.MathUtils.clamp(this.distance + steps * 0.6, 4.5, 11);
@@ -37,7 +58,11 @@ export class ThirdPersonCamera {
     const target = p.model.root.position;
     const yaw = p.yaw;
     const pitch = p.pitch;
-    const focus = new THREE.Vector3(target.x, target.y + this.height, target.z);
+    const k = this.scale;
+    const focus = new THREE.Vector3(target.x, target.y + this.height * this.lift, target.z);
+    // a giant sits left of center so the way ahead stays in view
+    focus.x += Math.cos(yaw) * this.side;
+    focus.z -= Math.sin(yaw) * this.side;
     // direction from focus to camera
     const dir = new THREE.Vector3(
       Math.sin(yaw) * Math.cos(pitch),
@@ -45,8 +70,9 @@ export class ThirdPersonCamera {
       Math.cos(yaw) * Math.cos(pitch),
     );
     // looking up brings the camera in so the ground doesn't swallow it
-    let dist = this.distance * THREE.MathUtils.clamp(0.75 + pitch * 0.5, 0.6, 1.2);
-    const hit = this.collision.raycast(focus.x, focus.y, focus.z, dir.x, dir.y, dir.z, dist, 0.35);
+    let dist = this.distance * k * THREE.MathUtils.clamp(0.75 + pitch * 0.5, 0.6, 1.2);
+    // a giant's camera rides over the columns and walls: only the ground stops it
+    const hit = this.collision.raycast(focus.x, focus.y, focus.z, dir.x, dir.y, dir.z, dist, 0.35, k <= 1);
     dist = Math.max(0.6, hit);
     // pull in fast, ease back out
     const rate = dist < this.currentDistance ? 30 : 4;
@@ -54,15 +80,15 @@ export class ThirdPersonCamera {
     const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
     const desired = focus.clone().addScaledVector(dir, this.currentDistance).addScaledVector(right, this.shoulder);
     // Snap on the first frame and after teleports instead of swooping across the map.
-    if (!this.initialized || this.current.distanceToSquared(desired) > 25) {
+    if (!this.initialized || this.current.distanceToSquared(desired) > 25 * k * k) {
       this.current.copy(desired);
       this.initialized = true;
     }
     this.current.lerp(desired, 1 - Math.exp(-dt * 25));
     this.camera.position.copy(this.current);
     // aim point: ahead of the god, so the god sits a bit below screen center
-    const aim = focus.clone().addScaledVector(new THREE.Vector3(-dir.x, 0, -dir.z).normalize(), 6);
-    aim.y = focus.y - 0.4 - Math.sin(pitch) * 4;
+    const aim = focus.clone().addScaledVector(new THREE.Vector3(-dir.x, 0, -dir.z).normalize(), 6 * this.ahead);
+    aim.y = focus.y - 0.4 * k - Math.sin(pitch) * 4 * k;
     this.camera.lookAt(aim);
     if (this.shake > 0) {
       // trauma-style shake: squared so small knocks stay subtle, smooth

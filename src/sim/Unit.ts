@@ -220,6 +220,8 @@ export interface Flash {
   life: number;
   /** A warning: the shape is struck when the flash ends (an attack winding up). */
   warn?: boolean;
+  /** What a warning winds up: the skill id, or 'basic'. */
+  act?: string;
 }
 
 export type SimEvent =
@@ -232,7 +234,8 @@ export type SimEvent =
   | { type: 'respawn'; unit: Unit }
   | { type: 'levelUp'; unit: Unit; level: number }
   | { type: 'reward'; unit: Unit; xp: number; favor: number }
-  | { type: 'teleport'; unit: Unit; fromX: number; fromZ: number }
+  /** `quiet`: a move the mode hides itself (Relic Rush's kickoff reset), so no flash or sound. */
+  | { type: 'teleport'; unit: Unit; fromX: number; fromZ: number; quiet?: boolean }
   | { type: 'recall'; unit: Unit; state: 'start' | 'cancel' | 'done' };
 
 export function nextEntityId(): number {

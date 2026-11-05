@@ -14,7 +14,7 @@ export interface GodPalette {
   /** Hot core / highlight color. */
   core: number;
   /** Signature effect layered on top of the shared ones. */
-  element?: 'lightning' | 'runes' | 'smoke' | 'sand';
+  element?: 'lightning' | 'runes' | 'smoke' | 'sand' | 'frost';
 }
 
 const PALETTES: Record<string, GodPalette> = {
@@ -23,6 +23,8 @@ const PALETTES: Record<string, GodPalette> = {
   odin: { cloth: 0x3a3f4a, trim: 0xd8a23a, glow: 0xffc955, vfx: 0xffa62a, core: 0xfff1c4, element: 'runes' },
   loki: { cloth: 0x1f5a2a, trim: 0xb8b04a, glow: 0x7dff6a, vfx: 0x3dff7a, core: 0xdcffe2, element: 'smoke' },
   anubis: { cloth: 0x18130e, trim: 0xe0b04a, glow: 0xffa040, vfx: 0xff7a1a, core: 0xffe3a6, element: 'sand' },
+  // the frost giant of the Jötunn mode
+  jotunn: { cloth: 0x4e3c30, trim: 0x9a7444, glow: 0x66e0ff, vfx: 0x4fcfff, core: 0xeafcff, element: 'frost' },
 };
 
 const FALLBACK: GodPalette = { cloth: 0x444444, trim: 0xc0a060, glow: 0xffffff, vfx: 0xffd27a, core: 0xffffff };

@@ -5,6 +5,7 @@
  */
 
 import { GODS } from '../game/gods';
+import { jotunn } from '../game/gods/jotunn';
 import { paletteFor } from '../combat/palette';
 import type { AudioEngine } from './AudioEngine';
 import { hashSeed } from './dsp';
@@ -36,7 +37,8 @@ export function jobs(): Job[] {
   const rest: Job[] = [];
   for (const [name, recipe] of Object.entries(SOUNDS)) (name.startsWith('ui.') ? first : rest).push({ name, recipe });
   for (const [name, recipe] of Object.entries(INSTRUMENTS)) first.push({ name, recipe });
-  for (const g of GODS) {
+  // (the Jötunn's giant is played in its mode only, but its sounds are baked with everyone's)
+  for (const g of [...GODS, jotunn]) {
     for (const s of g.skills) {
       const ss = skillSound(s.id);
       for (const part of PARTS) {

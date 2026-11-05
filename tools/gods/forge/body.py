@@ -86,9 +86,11 @@ def bulk(b: 'Body', factors: dict[str, float | tuple[float, float, float]]) -> N
     b.normals[:] = vertex_normals(b.verts, b.faces)
 
 
-def build(shape: mh.Shape, height: float) -> Body:
+def build(shape: mh.Shape, height: float, deform=None) -> Body:
     base = mh.base_mesh()
     V = mh.morph(shape)
+    if deform is not None:
+        V = deform(V)
     faces, uv_faces = base.groups['body']
     used = np.unique(faces)
     lo, hi = V[used, 1].min(), V[used, 1].max()
@@ -99,3 +101,41 @@ def build(shape: mh.Shape, height: float) -> Body:
     rig = rigmod.fit(mh.joints(V), s, offset)
     joints, weights = rigmod.skin_weights(len(V), rig)
     return Body(shape, Vm, faces, uv_faces, base.uvs, vertex_normals(Vm, faces), joints, weights, rig, J, s, offset)
+
+
+# a limb segment, its far joint, and the bones that move with its far end
+_CHAINS = {
+    'upper_arm': ('DEF-upper_arm', 'DEF-forearm', ('upper_arm', 'forearm', 'hand', 'f_', 'thumb')),
+    'forearm': ('DEF-forearm', 'DEF-hand', ('forearm', 'hand', 'f_', 'thumb')),
+    'thigh': ('DEF-thigh', 'DEF-shin', ('thigh', 'shin', 'foot', 'toe')),
+    'shin': ('DEF-shin', 'DEF-foot', ('shin', 'foot', 'toe')),
+}
+
+
+def limb_stretch(b: Body, factors: dict[str, float]):
+    """A deformation of the MakeHuman mesh (its own space) that scales limb segments' lengths,
+    for proportions its modifiers can't reach (a giant's long arms and short legs). Everything
+    past a segment moves rigidly with its end; joint helpers move with the skin around them,
+    so the rig fitted afterwards follows."""
+    from scipy.spatial import cKDTree
+    used = b.used
+    D = np.zeros((len(b.verts), len(b.rig.names)), dtype=np.float32)
+    np.put_along_axis(D, b.joints.astype(np.int64), b.weights, axis=1)
+    tree = cKDTree(b.verts[used])
+
+    def fn(V: np.ndarray) -> np.ndarray:
+        Vm = V * b.scale + b.offset
+        _, nn = tree.query(Vm)
+        near = used[nn]
+        disp = np.zeros_like(Vm)
+        for seg, k in factors.items():
+            a, c, members = _CHAINS[seg]
+            for side in ('.L', '.R'):
+                A, C = b.rig.head(a + side), b.rig.head(c + side)
+                cols = [i for i, n in enumerate(b.rig.names) if n.endswith(side) and any(m in n for m in members)]
+                m = np.clip(D[near][:, cols].sum(axis=1), 0, 1)
+                d = C - A
+                t = np.clip(((Vm - A) @ d) / (d @ d), 0, 1)
+                disp += (m * t * (k - 1))[:, None] * d
+        return (Vm + disp - b.offset) / b.scale
+    return fn

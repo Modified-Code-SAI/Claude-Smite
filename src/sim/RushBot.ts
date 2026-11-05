@@ -91,6 +91,8 @@ export interface RushBotOptions {
 export class RushBot implements Brain {
   private decide = 0;
   private passCheck = 0;
+  private callCheck = 0;
+  private lastCall = -99;
   /** The order this bot spends tree points, chosen once the line-up is known (see plan). */
   private build: string[] | null = null;
   /** Which flank this bot runs when leading the attack. */
@@ -140,6 +142,7 @@ export class RushBot implements Brain {
     const goal = this.goalFor(role);
     this.walkTo(goal, role === 'goalie' || role === 'guard' ? 1.2 : 0.4);
     this.fight(dt, role);
+    this.maybeCall(dt);
   }
 
   // -------------------------------------------------------------------------
@@ -252,7 +255,7 @@ export class RushBot implements Brain {
     this.passCheck -= dt;
     if (this.passCheck <= 0 && this.sim.time - rush.relic.since > RUSH.relic.holdMin) {
       this.passCheck = 0.2;
-      if (this.tryShot(gate, toGate) || this.tryPass(gate, toGate)) return;
+      if (this.tryShot(gate, toGate) || this.answerCall() || this.tryPass(gate, toGate)) return;
     }
     // run at the gate's mouth, steering around defenders in the way
     const aim = this.mouth(gate);
@@ -312,9 +315,8 @@ export class RushBot implements Brain {
     return rush.throwRelic(u, target);
   }
 
-  /** Whether an enemy stands near the low ends of a throw from this bot to `to`. */
-  private onLine(e: Unit, to: Point, width: number): boolean {
-    const { u } = this;
+  /** Whether an enemy stands near the low ends of a throw to `to` (from this bot, or from `u`). */
+  private onLine(e: Unit, to: Point, width: number, u: Point = this.u): boolean {
     const dx = to.x - u.x;
     const dz = to.z - u.z;
     const len = hypot(dx, dz) || 1;
@@ -325,6 +327,43 @@ export class RushBot implements Brain {
     const p = along / len;
     const low = len < 9 || p < 0.25 || p > 0.75;
     return low && side < width + e.radius;
+  }
+
+  /** A teammate called for the pass: throw it to them (leading their run) unless an enemy stands on the line. */
+  private answerCall(): boolean {
+    const { u, rush } = this;
+    let best: { at: Point; ago: number } | null = null;
+    for (const t of this.allies()) {
+      const ago = rush.calledAgo(t);
+      if (ago === null || t.forced) continue;
+      const guess = Rush.flightTime(dist(u, t), u.combatant.sport('throwSpeed'));
+      const at = clampToPitch(t.x + t.vx * guess, t.z + t.vz * guess, 1.5);
+      const d = dist(u, at);
+      if (d < RUSH.relic.minThrow || d > Rush.maxThrow(u)) continue;
+      if (this.enemies().some((e) => this.onLine(e, at, 0.9) || dist(e, at) < 3)) continue;
+      // the latest call wins
+      if (!best || ago < best.ago) best = { at, ago };
+    }
+    return !!best && rush.throwRelic(u, best.at);
+  }
+
+  /**
+   * Off the relic while a teammate who isn't a bot carries it (the player, or
+   * a friend online): call for the pass when open and ahead of them.
+   */
+  private maybeCall(dt: number): void {
+    const { u, rush } = this;
+    this.callCheck -= dt;
+    if (this.callCheck > 0) return;
+    this.callCheck = 0.5;
+    const h = rush.holder;
+    if (!h || h.team !== u.team || h === u || h.brain instanceof RushBot || rush.calledAgo(u) !== null) return;
+    if (this.sim.time - this.lastCall < 4) return;
+    const gate = RUSH.gates[other(u.team as Side)];
+    const d = dist(u, h);
+    const ahead = dist(h, gate) - dist(u, gate);
+    const open = !this.nearestEnemy(u, 5) && !this.enemies().some((e) => this.onLine(e, u, 1, h));
+    if (open && ahead > 2 && d > RUSH.relic.minThrow + 2 && d < Rush.maxThrow(h) - 1 && rush.call(u)) this.lastCall = this.sim.time;
   }
 
   /** Pass to the most open teammate when pressed, or long to a runner well ahead. */

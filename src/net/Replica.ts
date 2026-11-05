@@ -191,7 +191,7 @@ export class HostSync {
     this.events = [];
     const p = sim.projectiles.filter((x) => x.alive).map(encProjectile);
     const z = sim.zones.map((x) => [x.id, x.owner.id, encCast(x.cast), x.x, x.z, x.radius, x.ticks, x.interval, x.timer, x.follow, x.range, x.age, x.duration]);
-    const f = sim.flashes.map((x) => (x.warn ? [x.id, x.owner.id, x.shape, x.age, x.life, 1] : [x.id, x.owner.id, x.shape, x.age, x.life]));
+    const f = sim.flashes.map((x) => (x.warn ? [x.id, x.owner.id, x.shape, x.age, x.life, x.act ?? 1] : [x.id, x.owner.id, x.shape, x.age, x.life]));
     const m = this.match.netState();
     const b: [number, number][] = [];
     for (const [s, t] of this.match.netTargets?.() ?? []) b.push([s.id, t.id]);
@@ -354,6 +354,14 @@ export class GuestSync {
   private selfId = 0;
   /** Called when the host moves this player to another unit (a mode's rotation). */
   onSelf: ((u: Unit) => void) | null = null;
+  /**
+   * Units the host walks from this player's intent (the Jötunn's giant): drawn
+   * from snapshots like everyone else's even while this player controls one,
+   * and with the host's loadout.
+   */
+  steered: ((u: Unit) => boolean) | null = null;
+  /** The roster's units by host id, kept when the host takes one out, so it comes back as the same unit. */
+  private readonly rosterUnits = new Map<number, Unit>();
   /** Whether the first snapshot (with the roster's ids) has arrived. */
   get live(): boolean {
     return this.selfId !== 0;
@@ -434,6 +442,7 @@ export class GuestSync {
       const u = this.roster.structures.get(key);
       if (u) this.byId.set(id, u);
     }
+    for (const [id, u] of this.byId) this.rosterUnits.set(id, u);
     for (const [id, u] of this.byId) if (u === this.self) this.selfId = id;
   }
 
@@ -464,14 +473,15 @@ export class GuestSync {
       f[F.yaw] = a.f[F.yaw]! + dy * k;
     }
     const c = u.combatant;
-    if (u !== this.self) {
+    if (u !== this.self || this.steered?.(u)) {
       u.body.x = f[F.x]!;
       u.body.y = f[F.y]!;
       u.body.z = f[F.z]!;
       u.body.yaw = f[F.yaw]!;
       u.vx = f[F.vx]!;
       u.vz = f[F.vz]!;
-    } else this.selfPlace = { x: f[F.x]!, y: f[F.y]!, z: f[F.z]! };
+    }
+    if (u === this.self) this.selfPlace = { x: f[F.x]!, y: f[F.y]!, z: f[F.z]! };
     c.health = f[F.hp]!;
     c.mana = f[F.mana]!;
     c.alive = f[F.alive] === 1;
@@ -491,7 +501,8 @@ export class GuestSync {
     for (const [id, d] of s.d) {
       const u = this.byId.get(id);
       if (!u) continue;
-      u.combatant.applyNet(d.c, u !== this.self);
+      // a player's own build is theirs, except on a unit the mode runs (the giant's shrine ultimates)
+      u.combatant.applyNet(d.c, u !== this.self || !!this.steered?.(u));
       u.marks.clear();
       for (const [k, stacks, until] of d.m) u.marks.set(k, { stacks, remaining: until - s.time });
       if (d.l !== undefined) u.lifetime = d.l - s.time;
@@ -528,8 +539,9 @@ export class GuestSync {
     if (this.byId.has(n.id)) return;
     const at = { x: n.x, z: n.z, yaw: n.yaw };
     const o = n.o;
-    let u: Unit | null = null;
-    switch (o.f) {
+    // a roster unit the host took out and put back (a god sitting a round out) is the same unit again
+    let u: Unit | null = this.rosterUnits.get(n.id) ?? null;
+    if (!u) switch (o.f) {
       case 'minion':
         u = minionUnit(this.base, n.team, o.type as MinionType, at, { wave: o.wave, empowered: o.empowered });
         break;
@@ -563,7 +575,7 @@ export class GuestSync {
     u.body.z = n.z;
     u.body.yaw = n.yaw;
     this.byId.set(n.id, u);
-    this.sim.add(u);
+    if (!this.sim.units.includes(u)) this.sim.add(u);
     this.match.netAdded?.(u);
   }
 
@@ -634,13 +646,14 @@ export class GuestSync {
   private syncFlashes(s: Snapshot): void {
     const seen = new Set<number>();
     for (const r of s.f) {
-      const [id, ownerId, shape, age, life, warn] = r as [number, number, FlashShape, number, number, number?];
+      const [id, ownerId, shape, age, life, warn] = r as [number, number, FlashShape, number, number, (number | string)?];
       const owner = this.byId.get(ownerId);
       if (!owner) continue;
       seen.add(id);
       if (this.flashes.has(id)) continue;
       const f: Flash = { id, shape, owner, age, life };
       if (warn) f.warn = true;
+      if (typeof warn === 'string') f.act = warn;
       this.flashes.set(id, f);
       this.sim.flashes.push(f);
     }

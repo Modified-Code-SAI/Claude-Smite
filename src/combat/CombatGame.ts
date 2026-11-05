@@ -47,6 +47,9 @@ import { rushRoster, type RushSlot } from '../net/rushRoster';
 import { descentRoster, type DescentSlot } from '../net/descentRoster';
 import type { Descent } from '../sim/Descent';
 import { DescentMode } from './DescentMode';
+import { JOTUNN, type Jotunn } from '../sim/Jotunn';
+import { GIANT_CAMERA, JotunnMode, type JotunnRole } from './JotunnMode';
+import type { Fire } from '../scene/Effects';
 
 
 const CAST_MESSAGES: Partial<Record<CastError | 'forced', string>> = {
@@ -60,7 +63,11 @@ const CAST_MESSAGES: Partial<Record<CastError | 'forced', string>> = {
 export interface CombatDeps {
   world: World;
   /** 'conquest' plays a full match against bots; 'clash' a 3v3 fight over the temple plaza; 'arena' is the training ground. */
-  mode?: 'arena' | 'conquest' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent';
+  mode?: 'arena' | 'conquest' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent' | 'jotunn';
+  /** Jötunn alone: who plays the giant (everyone in turn by default). */
+  role?: JotunnRole;
+  /** Pulls the camera back and up (1 for a god; the Jötunn's is larger). */
+  cameraScale?: (k: number, lift?: number, side?: number, ahead?: number) => void;
   /** Temple Duel: the rival god's id; anything else (or the player's own god) picks one at random. */
   rival?: string;
   /** Underworld Descent alone: bots on the player's team (default on), and a bot team descending against it. */
@@ -94,6 +101,10 @@ const openGround = (c: SimTerrain): SimTerrain => ({ groundAt: (x, z) => c.groun
 export class CombatGame implements Updatable {
   readonly sim: Sim;
   player!: Unit;
+  /** The local player's own god: the same as `player` except while the Jötunn hands them the giant. */
+  ownGod!: Unit;
+  /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls. */
+  onCue: ((name: 'step', at: { x: number; y: number; z: number }, k: number) => void) | null = null;
   bot: Unit | null = null;
   readonly match: Match | null = null;
   private readonly matchHud: MatchHud | null = null;
@@ -110,6 +121,9 @@ export class CombatGame implements Updatable {
   /** Underworld Descent's rules, and the mode around them (bots, view, HUD, online play). */
   descent: Descent | null = null;
   private descentMode: DescentMode | null = null;
+  /** Jötunn's rules, and the mode around them (bots, the giant's view, HUD, driving the giant). */
+  jotunn: Jotunn | null = null;
+  private jotunnMode: JotunnMode | null = null;
   private ringShown = 0;
   private difficultyApplied = false;
   /** The plaza's edge, glowing in the color of whoever holds it. */
@@ -153,7 +167,7 @@ export class CombatGame implements Updatable {
     // Relic Rush's pitch ends at a circle around the temple
     const terrain: SimTerrain = conquest && !onConquestMap ? openGround(world.collision) : rush ? pitchTerrain(world.collision) : world.collision;
     this.groundAt = (x, z) => terrain.groundAt(x, z);
-    const net = conquest || rush || deps.mode === 'descent' ? deps.net : undefined;
+    const net = conquest || rush || deps.mode === 'descent' || deps.mode === 'jotunn' ? deps.net : undefined;
     const slots = net && conquest ? roster(net.players) : null;
     const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random) : null;
     // Underworld Descent: co-op, or a shared descent (online versus, or a bot team against yours alone)
@@ -168,7 +182,10 @@ export class CombatGame implements Updatable {
     const siege = deps.mode === 'siege';
     const duel = deps.mode === 'duel';
     const descent = deps.mode === 'descent';
-    const spawn = conquest
+    const jotunn = deps.mode === 'jotunn';
+    const spawn = jotunn
+      ? JOTUNN.godSpawns[0]!
+      : conquest
       ? spawnPoint(myTeam, mySlot?.spot ?? 1)
       : rush
         ? RUSH.homes[myTeam][mySlot?.spot ?? 1]!
@@ -177,6 +194,8 @@ export class CombatGame implements Updatable {
       ? conquestBases()
       : rush
         ? { order: { ...RUSH.bases.order }, chaos: { ...RUSH.bases.chaos } }
+        : jotunn
+          ? { order: { ...JOTUNN.bases.order }, chaos: { ...JOTUNN.bases.chaos } }
         : descent
           ? // no fountain in the underworld: the bases sit far outside every chamber
             { order: { x: 0, z: 900, radius: 1 }, chaos: { x: 0, z: -900, radius: 1 } }
@@ -225,20 +244,27 @@ export class CombatGame implements Updatable {
     this.shapeDecal.mesh.visible = this.rangeDecal.mesh.visible = false;
     world.vfx.add(this.shapeDecal.mesh, this.rangeDecal.mesh);
 
-    if (conquest || clash || siege || duel || rush || descent) player.spawn(spawn.x, spawn.z, spawn.yaw);
+    if (conquest || clash || siege || duel || rush || descent || jotunn) player.spawn(spawn.x, spawn.z, spawn.yaw);
     const mine = godById(mySlot?.god ?? myDescent?.god ?? deps.god ?? 'zeus') ?? GODS[0]!;
     this.player = godUnit(mine, myTeam, { x: spawn.x, z: spawn.z, yaw: spawn.yaw }, this.body);
+    this.ownGod = this.player;
     this.sim.add(this.player);
     // the Conquest map builds and places its own Tower, Phoenix and Titan models
     // the map dims a buff altar's crystal while its Warden is down (when the map supports it)
     const content = (world as unknown as { content?: { setCampActive?: (id: string, active: boolean) => void } }).content;
     if (content?.setCampActive) this.setCampActive = content.setCampActive.bind(content);
     const placed = (world as unknown as { content?: { structures?: Map<string, StructureModel> } }).content?.structures;
-    this.views = new UnitViews(this.player, player.model, (u) => {
-      if (!placed || !this.match) return undefined;
-      for (const [id, s] of this.match.structures) if (s === u) return placed.get(id);
-      return undefined;
-    });
+    this.views = new UnitViews(
+      this.player,
+      player.model,
+      (u) => {
+        if (this.jotunnMode) return this.jotunnMode.view.structureFor(u);
+        if (!placed || !this.match) return undefined;
+        for (const [id, s] of this.match.structures) if (s === u) return placed.get(id);
+        return undefined;
+      },
+      (u) => this.jotunnMode?.view.viewFor(u),
+    );
     this.views.camera = deps.camera;
     world.actors.add(this.views.group);
     this.setPlayerModel(mine.id);
@@ -246,7 +272,7 @@ export class CombatGame implements Updatable {
     this.hud = new CombatHud(this.player, deps.camera, (u, out) => this.views.headOf(u, out));
     this.coach = new Coach(this.player, () => this.menu.isOpen, !duel, rush);
     this.menu = new LoadoutMenu(
-      conquest || clash || siege || duel || rush || descent
+      conquest || clash || siege || duel || rush || descent || jotunn
         ? { combatant: () => this.player.combatant, gods: GODS, onClose: () => undefined }
         : {
             combatant: () => this.player.combatant,
@@ -298,6 +324,12 @@ export class CombatGame implements Updatable {
 
     if (descent) {
       this.startDescent(net, descentSlots!, net ? net.mode === 'versus' : !!deps.rivals);
+      this.sim.drainEvents();
+      return;
+    }
+
+    if (jotunn) {
+      this.startJotunn(net);
       this.sim.drainEvents();
       return;
     }
@@ -393,12 +425,57 @@ export class CombatGame implements Updatable {
       camera: this.deps.camera,
       burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
       shake: this.deps.shake,
+      swing: (u) => this.views.swing(u),
     });
+    // nobody dies here: a god knocked out lies dazed where it fell (no soul pillar) until it stands up at its gate
+    this.views.dazes = true;
+    this.vfx.soulPillars = false;
     this.rushMode = mode;
     this.rush = mode.rush;
     this.netHost = mode.host;
     this.netGuest = mode.guest;
-    this.hud.toast('Carry the Sun Relic through their gate. Left click passes it; stun the carrier to knock it loose. Press K to spend your skill points.');
+    this.hud.toast('Carry the Sun Relic through their gate. Left click passes it; stun the carrier to knock it loose. F calls for the pass. Press K to spend your skill points.');
+  }
+
+  /** Jötunn: one frost giant against four gods, round by round, everyone (you too) taking a turn as the giant. */
+  private startJotunn(net: CombatDeps['net']): void {
+    const world = this.deps.world;
+    const d = this.deps.difficulty ?? 'normal';
+    this.jotunnMode = new JotunnMode({
+      sim: this.sim,
+      player: this.player,
+      ctrl: this.deps.player,
+      input: this.deps.input,
+      role: this.deps.role ?? 'rotate',
+      vfx: world.vfx,
+      groundAt: this.groundAt,
+      fires: (world.content as unknown as { fires?: Fire[] }).fires ?? [],
+      burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
+      shake: this.deps.shake,
+      control: (u, giant) => this.control(u, giant),
+      toast: (t) => this.hud.toast(t),
+      reaction: d === 'easy' ? 0.55 : d === 'hard' ? 0.18 : undefined,
+      net,
+      cue: (name, at, k) => this.onCue?.(name, at, k),
+    });
+    this.jotunn = this.jotunnMode.mode;
+    this.netHost = this.jotunnMode.host;
+    this.netGuest = this.jotunnMode.guest;
+  }
+
+  /** Jötunn: the local player takes another unit (the giant for their round, then their god again). */
+  private control(u: Unit, giant: boolean): void {
+    const cam = GIANT_CAMERA;
+    if (giant) this.deps.cameraScale?.(cam.scale, cam.lift, cam.side, cam.ahead);
+    else this.deps.cameraScale?.(1);
+    this.deps.player.model.root.visible = !giant;
+    if (giant && this.menu.isOpen) this.menu.close();
+    if (u === this.player) return;
+    this.cancelPreview();
+    this.player = u;
+    this.views.setPlayer(u, this.deps.player.model);
+    this.hud.setPlayer(u);
+    this.menu?.refresh();
   }
 
   /** Temple Duel: the player against one bot god, round by round, inside a closing ring of fire. */
@@ -429,6 +506,7 @@ export class CombatGame implements Updatable {
     this.difficultyApplied = true;
     const d = this.deps.difficulty ?? 'normal';
     if (d === 'normal' || this.deps.net) return;
+    if (this.jotunn) return;
     // a shared descent has rival gods to make harder or easier; co-op only monsters, so the team changes instead
     const perks = difficultyPerks(d, !!this.siege || (!!this.descent && !this.descent.versus));
     for (const u of this.sim.units) {
@@ -566,7 +644,7 @@ export class CombatGame implements Updatable {
   prime(): () => void {
     this.views.prime(this.sim.units);
     // (lane minions only march in Conquest)
-    const restore = [this.vfx.prime(), this.status.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : []), ...(this.descentMode ? [this.descentMode.view.prime()] : [])];
+    const restore = [this.vfx.prime(), this.status.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : []), ...(this.descentMode ? [this.descentMode.view.prime()] : []), ...(this.jotunnMode ? [this.jotunnMode.prime()] : [])];
     return () => {
       for (const r of restore) r();
     };
@@ -578,13 +656,15 @@ export class CombatGame implements Updatable {
   update(dt: number): void {
     if (!this.difficultyApplied) this.applyDifficulty();
     // after a Titan falls the world keeps moving a few seconds, then freezes behind the end screen
-    if (this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner || this.descent?.over) this.endTimer += dt;
+    if (this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner || this.descent?.over || this.jotunn?.phase === 'done') this.endTimer += dt;
     if (this.netGuest) {
       this.netGuest.basic = this.basicHeld;
       this.views.beforeStep(this.sim.units);
       this.netGuest.step(dt);
       this.rushMode?.step(dt);
       this.descentMode?.step(dt);
+      this.jotunnMode?.step(dt);
+      this.jotunnMode?.afterStep();
       this.views.afterStep(this.sim.units);
     } else if (this.netHost && !this.netHost.started) this.netHost.wait(dt);
     else if (this.endTimer < 4) {
@@ -596,7 +676,9 @@ export class CombatGame implements Updatable {
       this.duel?.step(dt);
       this.rushMode?.step(dt);
       this.descentMode?.step(dt);
+      this.jotunnMode?.step(dt);
       this.sim.step(dt);
+      this.jotunnMode?.afterStep();
       this.netHost?.afterStep(dt);
       this.views.afterStep(this.sim.units);
     }
@@ -611,7 +693,7 @@ export class CombatGame implements Updatable {
     this.deps.player.movement = {
       speed: this.sim.moveSpeed(this.player),
       // a kickoff countdown holds everyone on their marks
-      canMove: this.sim.canMove(this.player) && !this.rushMode?.frozen,
+      canMove: this.sim.canMove(this.player) && !this.rushMode?.frozen && !this.jotunnMode?.piloting,
     };
   }
 
@@ -627,7 +709,8 @@ export class CombatGame implements Updatable {
     this.updateAim();
     this.updateReticle();
 
-    if (input.wasPressed('KeyK')) this.toggleMenu();
+    // the giant has no skill trees to grow
+    if (input.wasPressed('KeyK') && !this.jotunnMode?.piloting) this.toggleMenu();
     if (this.siege?.offer) {
       const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
       if (pick >= 0) this.takeBoon(pick);
@@ -643,7 +726,7 @@ export class CombatGame implements Updatable {
     if (this.menu.isOpen && input.wasPressed('Escape')) this.menu.close();
 
     this.basicHeld = false;
-    if (!this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over) this.handleCombatInput();
+    if (!this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && this.jotunn?.phase !== 'done') this.handleCombatInput();
     this.netGuest?.syncBuild();
 
     for (const e of this.sim.drainEvents()) {
@@ -653,6 +736,7 @@ export class CombatGame implements Updatable {
       this.matchHud?.onEvent(e);
       this.clashHud?.onEvent(e);
       this.descentMode?.hud.onEvent(e);
+      this.jotunnMode?.onEvent(e);
       this.feel(e);
       if ((e.type === 'levelUp' || e.type === 'reward' || e.type === 'recall') && e.unit === this.player) this.menu.refresh();
     }
@@ -664,6 +748,7 @@ export class CombatGame implements Updatable {
     this.duelHud?.frame();
     this.rushMode?.frame(dt, time);
     this.descentMode?.frame(dt, time);
+    this.jotunnMode?.frame(dt, time);
     if (this.plazaRing && this.duel) {
       // the ring is rebuilt only when it has moved half a meter, not every frame
       const r = Math.round(this.duel.ring * 2) / 2;
@@ -702,7 +787,8 @@ export class CombatGame implements Updatable {
     this.updatePreview();
     this.hud.setPreview(this.preview?.slot ?? null);
     this.hud.frame(this.sim.units, dt);
-    this.coach.frame(dt);
+    // (the tips are about your god, not the giant you drive)
+    if (!this.jotunnMode?.piloting) this.coach.frame(dt);
     const inBase = this.player.combatant.inBase;
     if (inBase !== this.wasInBase) {
       this.wasInBase = inBase;
@@ -726,7 +812,7 @@ export class CombatGame implements Updatable {
     const input = this.deps.input;
     const u = this.player;
 
-    if (input.wasPressed('KeyB')) {
+    if (input.wasPressed('KeyB') && !this.jotunnMode?.piloting) {
       if (this.netGuest) {
         if (u.alive && u.recall <= 0 && !u.combatant.inBase) {
           this.netGuest.recall();
@@ -737,6 +823,7 @@ export class CombatGame implements Updatable {
 
     // a Relic Rush carrier can't fight: their click throws the relic instead
     const carrying = this.rushMode?.carrying ?? false;
+    if (this.rushMode && !carrying && input.wasPressed('KeyF')) this.rushMode.call();
     if (carrying) {
       this.cancelPreview();
       if (input.wasPressed('Mouse0') && input.locked) this.rushMode!.throw();
@@ -1023,7 +1110,7 @@ export class CombatGame implements Updatable {
     next.combatant.gainFavor(old.combatant.favor);
     this.sim.remove(old);
     this.sim.add(next);
-    this.player = next;
+    this.player = this.ownGod = next;
     this.setPlayerModel(id);
     this.hud.setPlayer(next);
     return null;

@@ -171,6 +171,22 @@ describe('Jötunn', () => {
     expect(part('wristL').targetable || part('wristR').targetable).toBe(false);
   });
 
+  it('a slam comes down with the fist on the side of its mark, the wrist just short of it', () => {
+    for (const side of [1, -1]) {
+      const { mode, sim, run, g } = setup();
+      run(JOTUNN.countdown + 0.1);
+      const f = g.forward;
+      const right = { x: -f.z, z: f.x };
+      g.aim.x = g.x + f.x * 6 + right.x * 2 * side;
+      g.aim.z = g.z + f.z * 6 + right.z * 2 * side;
+      expect(sim.cast(g, 2)).toBeNull();
+      run(1);
+      expect(mode.planted?.part).toBe(side > 0 ? 'wristR' : 'wristL');
+      const d = Math.hypot(mode.planted!.x - g.x, mode.planted!.z - g.z);
+      expect(d).toBeCloseTo(Math.hypot(6, 2) - JOTUNN.wristShort, 1);
+    }
+  });
+
   it('breaking the back rune silences the giant', () => {
     const { mode, sim, run, part, g } = setup();
     run(JOTUNN.countdown + 0.1);

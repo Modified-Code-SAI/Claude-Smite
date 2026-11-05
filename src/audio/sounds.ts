@@ -9,6 +9,7 @@ import {
   chime, chirp, choir, clang, debris, filter, fire, impact, knock, layer, puff, roar, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
 } from './gestures';
 import { CREATURE_SOUNDS } from './creatures';
+import { JOTUNN_SOUNDS } from './jotunnSounds';
 import { VOICE_SOUNDS } from './voices';
 
 export interface Recipe {
@@ -122,8 +123,37 @@ export const SOUNDS: Record<string, Recipe> = {
   // Relic Rush: a pass whistling off, a clean catch, the relic knocked loose with a ring
   'relic.throw': { variants: 2, peak: 0.55, make: (r) => layer([whoosh(r, 0.5, 500, 2600, { q: 1.2, peak: 0.35, gain: 1.1 }), 1], [shimmer(r, 0.7, 880, { rise: 1.5, peak: 0.3 }), 0.5, 0.03]) },
   'relic.catch': { variants: 2, peak: 0.5, make: (r) => layer([chime(r, 0.6, 1318.5), 1], [knock(r, 0.05, 1800), 0.6], [shimmer(r, 0.5, 1046.5, { rise: 1.2, peak: 0.1 }), 0.4]) },
+  // a teammate calls for the pass: two quick rising notes, like a whistle
+  'relic.call': { variants: 2, peak: 0.45, make: (r) => layer([chime(r, 0.28, 1174.7), 0.8], [chime(r, 0.34, 1568), 0.95, 0.09]) },
   // a Captain keeps the relic through a hit: a bright deflecting ring
   'relic.shrug': { variants: 2, peak: 0.6, make: (r) => layer([clang(r, 0.8, 880, { decay: 0.45, gain: 0.5 }), 1], [shimmer(r, 0.6, 1318.5, { rise: 1.4, peak: 0.2 }), 0.6, 0.02], [thump(r, 0.25, 160, 60, { click: 0.4 }), 0.6]) },
+  // a goal: the gate's gong, a bright major chord swelling up behind it, and glitter rising off the relic
+  'relic.goal': {
+    peak: 0.9,
+    make: (r) =>
+      layer(
+        [clang(r, 3, 196, { decay: 2.4, bright: 0.6, gain: 0.8 }), 1],
+        [thump(r, 0.9, 80, 32, { click: 0.5, noise: 0.5, drive: 2 }), 0.9],
+        [choir(r, 2.6, 261.6, { env: (t) => ahr(t, 0.15, 0.9, 1.4) }), 0.5, 0.08],
+        [choir(r, 2.5, 329.6, { env: (t) => ahr(t, 0.18, 0.8, 1.4) }), 0.4, 0.12],
+        [choir(r, 2.4, 392, { env: (t) => ahr(t, 0.2, 0.8, 1.3) }), 0.4, 0.16],
+        [shimmer(r, 2.2, 784, { rise: 1.8, peak: 0.35 }), 0.7, 0.1],
+      ),
+  },
+  // a god dazed in Relic Rush: a bonk, then a little ring of stars
+  'god.daze': {
+    variants: 2,
+    peak: 0.75,
+    make: (r) =>
+      layer(
+        [thump(r, 0.35, 150, 55, { click: 0.6, noise: 0.4, drive: 1.5 }), 0.7],
+        [knock(r, 0.08, 900), 0.5],
+        [chime(r, 0.3, 2093), 1, 0.12],
+        [chime(r, 0.3, 1760), 0.95, 0.22],
+        [chime(r, 0.3, 2349.3), 0.9, 0.32],
+        [chime(r, 0.45, 1975.5), 0.85, 0.42],
+      ),
+  },
   'relic.fumble': { variants: 2, peak: 0.7, make: (r) => layer([clang(r, 0.9, 660, { decay: 0.55, gain: 0.6 }), 1], [thump(r, 0.3, 120, 50, { click: 0.3 }), 0.8], [whoosh(r, 0.3, 2000, 700, { q: 1 }), 0.4, 0.04]) },
   // the big kill moments (multi-kills, shutdowns, streaks): a close thunderclap under a rising chorus and a bell
   // your ultimate: the world drops away under a rising surge of power
@@ -171,6 +201,9 @@ export const SOUNDS: Record<string, Recipe> = {
 
   // -- camps, bosses and minion waves (creatures.ts)
   ...CREATURE_SOUNDS,
+
+  // -- the Jötunn: its steps, voice, weak points and braziers (jotunnSounds.ts)
+  ...JOTUNN_SOUNDS,
 };
 
 // ---------------------------------------------------------------------------

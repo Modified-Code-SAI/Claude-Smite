@@ -40,6 +40,8 @@ export const JOTUNN = {
   kneel: 7,
   /** How long a slam's hand stays planted (wrist exposed, giant rooted). */
   plant: 2.5,
+  /** How far short of the slam's mark (toward the giant) the planted wrist sits. */
+  wristShort: 2.2,
   /** One broken knee slows the giant this much until it grows back. */
   limp: 0.3,
   runeSilence: 4,
@@ -79,9 +81,11 @@ export interface PartDef {
   name: string;
   health: number;
   radius: number;
-  /** Where it sits on the giant: meters to its right and ahead of its center. */
+  /** Where it sits on the giant: meters to its right and ahead of its center, standing. */
   right: number;
   fwd: number;
+  /** Where it sits mid-stride, if that differs. */
+  walk?: { right: number; fwd: number };
   /** Height of the spot above the ground, for views and aiming. */
   height: number;
   /** How much of each blow it passes on to the giant's Might. */
@@ -93,12 +97,13 @@ export interface PartDef {
 }
 
 export const PARTS: Record<PartId, PartDef> = {
-  kneeL: { name: 'Left Knee', health: 3500, radius: 1, right: -1.35, fwd: 0.55, height: 5.4, mult: 1, shatter: 0.015, regrow: 12 },
-  kneeR: { name: 'Right Knee', health: 3500, radius: 1, right: 1.35, fwd: 0.55, height: 5.4, mult: 1, shatter: 0.015, regrow: 12 },
-  rune: { name: 'Back Rune', health: 4000, radius: 1.25, right: 0, fwd: -1.75, height: 11.5, mult: 1, shatter: 0.03, regrow: 25 },
-  wristL: { name: 'Left Wrist', health: 1500, radius: 1.1, right: -2.2, fwd: 4, height: 0.8, mult: 1.5, shatter: 0.03, regrow: 0 },
-  wristR: { name: 'Right Wrist', health: 1500, radius: 1.1, right: 2.2, fwd: 4, height: 0.8, mult: 1.5, shatter: 0.03, regrow: 0 },
-  crown: { name: 'Crown', health: 1e6, radius: 1.5, right: 0, fwd: 2.8, height: 8.5, mult: 2, shatter: 0, regrow: 0 },
+  // measured on the model: it stands with its club leg back and strides with its knees square
+  kneeL: { name: 'Left Knee', health: 3500, radius: 1, right: -1.5, fwd: 2.9, walk: { right: -1.4, fwd: 1 }, height: 5.2, mult: 1, shatter: 0.015, regrow: 12 },
+  kneeR: { name: 'Right Knee', health: 3500, radius: 1, right: 4, fwd: -1.5, walk: { right: 1.1, fwd: 1.1 }, height: 5.2, mult: 1, shatter: 0.015, regrow: 12 },
+  rune: { name: 'Back Rune', health: 4000, radius: 1.25, right: -0.6, fwd: -1.9, walk: { right: -0.2, fwd: -0.5 }, height: 12, mult: 1, shatter: 0.03, regrow: 25 },
+  wristL: { name: 'Left Wrist', health: 1500, radius: 1.1, right: -2.2, fwd: 4, height: 3, mult: 1.5, shatter: 0.03, regrow: 0 },
+  wristR: { name: 'Right Wrist', health: 1500, radius: 1.1, right: 2.2, fwd: 4, height: 3, mult: 1.5, shatter: 0.03, regrow: 0 },
+  crown: { name: 'Crown', health: 1e6, radius: 1.5, right: 0.7, fwd: 3.5, height: 8.5, mult: 2, shatter: 0, regrow: 0 },
 };
 
 export const PART_IDS = Object.keys(PARTS) as PartId[];
@@ -142,6 +147,24 @@ export interface JotunnPlayer {
 
 export type JotunnPhase = 'countdown' | 'fight' | 'over' | 'done';
 
+/** The round's state as guests get it (Jotunn.netState). */
+export interface JotunnNet {
+  r: number;
+  p: JotunnPhase;
+  t: number;
+  l: 'giant' | 'gods' | null;
+  k: number;
+  /** The planted wrist: part, x, z, seconds left; 0 when none. */
+  pl: ['wristL' | 'wristR', number, number, number] | 0;
+  g: [PartId, number][];
+  c: number;
+  /** Each shrine's claim, whether a god holds it (1), and seconds dormant. */
+  s: [number, number, number][];
+  w: number[];
+  /** Each player's round as the giant: braziers, seconds, won (1); 0 before it. */
+  gr: ([number, number, number] | 0)[];
+}
+
 /** What starts a round's bots, so the rules don't depend on how they play. */
 export interface JotunnBrains {
   giant(mode: Jotunn): Brain;
@@ -174,7 +197,9 @@ export class Jotunn {
   onRound: ((giant: JotunnPlayer) => void) | null = null;
   private readonly brains: JotunnBrains | null;
   private readonly bonus: Partial<Record<StatKey, number>> = {};
-  private nextHand: 'wristL' | 'wristR' = 'wristR';
+  /** 0 standing, 1 striding: moves the weak points between the two stances. */
+  private stride = 0;
+  private readonly last = { x: 0, z: 0 };
   private readonly might: number;
   private readonly club: number;
 
@@ -248,6 +273,50 @@ export class Jotunn {
     this.startRound(1);
   }
 
+  /** The round's state for online guests (NetMatch): sent whole with every snapshot, so it stays small. */
+  netState(): JotunnNet {
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+    const pl = this.planted;
+    return {
+      r: this.round,
+      p: this.phase,
+      t: r1(this.timer),
+      l: this.lastRound,
+      k: r1(this.kneeling),
+      pl: pl ? [pl.part, r1(pl.x), r1(pl.z), r1(pl.left)] : 0,
+      g: [...this.regrow].map(([id, t]) => [id, r1(t)]),
+      c: this.claims,
+      s: this.shrines.map((x) => [Math.round(x.progress * 100) / 100, x.contested ? 1 : 0, r1(x.dormant)]),
+      w: this.players.map((x) => x.wins),
+      gr: this.players.map((x) => (x.giantRound ? [x.giantRound.braziers, Math.round(x.giantRound.time), x.giantRound.won ? 1 : 0] : 0)),
+    };
+  }
+
+  /** A guest's copy takes the host's state; a new round starts here too (onRound), so the game hands out the giant. */
+  applyNet(state: unknown): void {
+    const n = state as JotunnNet;
+    const fresh = n.r !== this.round;
+    this.round = n.r;
+    this.phase = n.p;
+    this.timer = n.t;
+    this.lastRound = n.l;
+    this.kneeling = n.k;
+    this.planted = n.pl ? { part: n.pl[0], x: n.pl[1], z: n.pl[2], left: n.pl[3] } : null;
+    this.regrow.clear();
+    for (const [id, t] of n.g) this.regrow.set(id, t);
+    this.claims = n.c;
+    n.s.forEach(([progress, contested, dormant], i) => {
+      const x = this.shrines[i];
+      if (x) Object.assign(x, { progress, contested: contested === 1, dormant });
+    });
+    this.players.forEach((x, i) => {
+      x.wins = n.w[i] ?? x.wins;
+      const gr = n.gr[i];
+      x.giantRound = gr ? { braziers: gr[0], time: gr[1], won: gr[2] === 1 } : null;
+    });
+    if (fresh && this.round > 0) this.onRound?.(this.giantPlayer);
+  }
+
   private on(e: SimEvent): void {
     if (this.phase === 'done') return;
     // a slam that lands leaves its fist planted where it struck
@@ -314,7 +383,7 @@ export class Jotunn {
     if (this.phase === 'countdown') {
       this.timer -= dt;
       this.hold();
-      this.placeParts();
+      this.placeParts(dt);
       if (this.timer <= 0) {
         this.phase = 'fight';
         this.timer = 0;
@@ -323,7 +392,7 @@ export class Jotunn {
     }
     if (this.phase === 'over') {
       this.timer -= dt;
-      this.placeParts();
+      this.placeParts(dt);
       if (this.timer <= 0) {
         if (this.round >= this.rounds) this.phase = 'done';
         else this.startRound(this.round + 1);
@@ -338,7 +407,7 @@ export class Jotunn {
     this.setBonus('damageBonus', this.fury + this.claims * JOTUNN.shrineDamage);
     const limping = this.kneeling <= 0 && (!this.parts.get('kneeL')!.alive || !this.parts.get('kneeR')!.alive);
     this.setBonus('bonusMoveSpeed', limping ? -JOTUNN.limp : 0);
-    this.placeParts();
+    this.placeParts(dt);
     if (!this.giant.alive) this.endRound('gods');
     else if (JOTUNN.braziers.length - this.braziersLeft >= JOTUNN.braziersToWin) this.endRound('giant');
   }
@@ -372,9 +441,17 @@ export class Jotunn {
     else c.health = c.stats.maxHealth;
   }
 
+  /** The fist lands on the mark with the hand on that side; the wrist sits a little short of it, toward the giant. */
   private plant(x: number, z: number): void {
-    const part = this.nextHand;
-    this.nextHand = part === 'wristR' ? 'wristL' : 'wristR';
+    const g = this.giant;
+    const f = g.forward;
+    const part = (x - g.x) * -f.z + (z - g.z) * f.x >= 0 ? 'wristR' : 'wristL';
+    const d = hypot(x - g.x, z - g.z);
+    if (d > 0.01) {
+      const back = Math.min(JOTUNN.wristShort, d);
+      x -= ((x - g.x) / d) * back;
+      z -= ((z - g.z) / d) * back;
+    }
     const wrist = this.parts.get(part)!;
     if (!wrist.alive) wrist.combatant.respawn();
     this.planted = { part, x, z, left: JOTUNN.plant };
@@ -382,13 +459,21 @@ export class Jotunn {
   }
 
   /** Each weak point follows the body; the ones not exposed right now can't be hit. */
-  private placeParts(): void {
+  private placeParts(dt = 0): void {
     const g = this.giant;
     const f = g.forward;
+    // how fast it walks, eased like the model blends its stride (a jump to a new round's spot is not a stride)
+    const speed = dt > 0 ? hypot(g.x - this.last.x, g.z - this.last.z) / dt : 0;
+    this.stride = dt > 0 && speed < 30 ? this.stride + (Math.min(1, speed) - this.stride) * Math.min(1, dt * 5) : 0;
+    this.last.x = g.x;
+    this.last.z = g.z;
     for (const [id, p] of this.parts) {
       const def = PARTS[id];
-      let x = g.x + -f.z * def.right + f.x * def.fwd;
-      let z = g.z + f.x * def.right + f.z * def.fwd;
+      const k = def.walk ? this.stride : 0;
+      const right = def.right + ((def.walk?.right ?? 0) - def.right) * k;
+      const fwd = def.fwd + ((def.walk?.fwd ?? 0) - def.fwd) * k;
+      let x = g.x + -f.z * right + f.x * fwd;
+      let z = g.z + f.x * right + f.z * fwd;
       let exposed = g.alive && this.phase !== 'countdown';
       if (id === 'crown') exposed &&= this.kneeling > 0;
       if (id === 'wristL' || id === 'wristR') {

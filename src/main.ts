@@ -3,8 +3,9 @@ import './style.css';
 import { Input } from './core/Input';
 import { Loop } from './core/Loop';
 import { GodModel } from './actors/GodModel';
-import { preloadGodAssets } from './actors/gods/assets';
+import { GOD_IDS, loadGodAsset, preloadGodAssets } from './actors/gods/assets';
 import { Showcase } from './dev/Showcase';
+import { GiantShowcase } from './dev/GiantShowcase';
 import { PlayerController } from './player/PlayerController';
 import { ThirdPersonCamera } from './player/ThirdPersonCamera';
 import { grading, PostFX } from './render/PostFX';
@@ -20,6 +21,7 @@ import { TextureLibrary } from './scene/Materials';
 import { mapFromUrl, World } from './scene/World';
 import { Hud } from './ui/Hud';
 import { CombatGame } from './combat/CombatGame';
+import { parseRole } from './combat/JotunnMode';
 import { monsterWarmup } from './combat/MonsterViews';
 import { GODS, godById } from './game/gods';
 import { parseDifficulty } from './game/difficulty';
@@ -60,7 +62,7 @@ async function main(): Promise<void> {
   const baked = bakeAll(audio);
   (window as unknown as { __audio: unknown }).__audio = { audio, music, herald, baked };
   // Links with ?map= (and automated captures) skip the title screen.
-  const skipMenu = params.has('map') || params.has('capture') || params.has('showcase') || params.has('stage');
+  const skipMenu = params.has('map') || params.has('capture') || params.has('showcase') || params.has('giant') || params.has('stage');
   const rendering = createRenderer(document.body);
   const graphics = rendering.then((r) => {
     const gpu = gpuName(r.renderer);
@@ -69,7 +71,7 @@ async function main(): Promise<void> {
   // a normal launch opens on the home page and the intro trailer; the title
   // screen (and its hymn) follow once the trailer ends or is skipped
   const chosen: Promise<StartChoice> = skipMenu
-    ? Promise.resolve({ mode: (['clash', 'siege', 'duel', 'rush', 'descent'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined, allies: params.get('allies') !== '0', rivals: params.get('rivals') === '1' })
+    ? Promise.resolve({ mode: (['clash', 'siege', 'duel', 'rush', 'descent', 'jotunn'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined, allies: params.get('allies') !== '0', rivals: params.get('rivals') === '1' })
     : playIntro(audio).then(() => {
         music.play('hymn');
         return showStartMenu(GODS, graphics);
@@ -163,6 +165,8 @@ async function main(): Promise<void> {
     // Odin's Einherjar (summons are drawn on the fallback god's body, in their own colors)
     models.add(new GodModel('zeus', 'einherjar').root);
     if (mode === 'conquest' || mode === 'siege' || mode === 'descent') for (const root of monsterWarmup()) models.add(root);
+    // the frost giant's model loads only for its own mode
+    if (mode === 'jotunn') await loadGodAsset('jotunn');
     world.actors.add(models);
     await prepareShaders(world, post, 0.85, 0.86);
     return { world, post, models };
@@ -189,10 +193,13 @@ async function main(): Promise<void> {
   applySensitivity(sensitivity);
   player.spawn(world.spawn.x, world.spawn.z, world.spawn.yaw);
   const follow = new ThirdPersonCamera(camera, player, world.collision);
+  // models only one mode uses (the Jötunn) load on demand
+  for (const id of (params.get('showcase') ?? '').split(',')) if (id && !(GOD_IDS as readonly string[]).includes(id)) await loadGodAsset(id);
   const showcase = params.has('showcase')
     ? new Showcase(params, world.actors, world.spawn, (x, z) => world.collision.groundAt(x, z), camera)
     : null;
-  if (showcase) {
+  const giant = params.has('giant') ? await GiantShowcase.create(params, world.actors, world.spawn, (x, z) => world.collision.groundAt(x, z), camera) : null;
+  if (showcase || giant) {
     god.root.visible = false;
     follow.update = () => {};
   }
@@ -222,7 +229,7 @@ async function main(): Promise<void> {
   const loop = new Loop();
   loop.addFixed(player);
   // Conquest plays a full match against bots; the arena is the training ground
-  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, shake: (a) => follow.addShake(a) });
+  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, shake: (a) => follow.addShake(a), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
   void baked;
   // `?stage`: the trailer's film set (tools/trailer)
@@ -280,6 +287,7 @@ async function main(): Promise<void> {
     combat.frame(dt, loop.alpha, loop.time);
     gameAudio.frame(dt);
     showcase?.update(dt);
+    giant?.update(dt);
     stage?.update(dt);
     follow.update(dt);
     perf.mark(1);
@@ -324,7 +332,7 @@ async function main(): Promise<void> {
   };
 
   // Hooks for automated screenshots and for gameplay code during development.
-  const debug = { stage, perf, pipelines, grading, combat, audio, music, herald, world, player, camera, follow, renderer, post, setQuality: applyQuality, isWebGPU, capture, resume: () => renderer.setAnimationLoop(frame) };
+  const debug = { giant, stage, perf, pipelines, grading, combat, audio, music, herald, world, player, camera, follow, renderer, post, setQuality: applyQuality, isWebGPU, capture, resume: () => renderer.setAnimationLoop(frame) };
   (window as unknown as { __game: typeof debug }).__game = debug;
 }
 

@@ -41,6 +41,18 @@ export interface RushDeps {
   /** A burst of light and sparks (CombatVfx.burst). */
   burst: (p: GodPalette, x: number, y: number, z: number, power: number) => void;
   shake?: (amount: number) => void;
+  /** Plays a god's throwing arm (the basic-attack swing). */
+  swing?: (u: Unit) => void;
+}
+
+/** A teammate's call for the pass, placed over their head on screen. */
+export interface RushCall {
+  x: number;
+  y: number;
+  name: string;
+  mine: boolean;
+  /** 0 just called .. 1 about to fade. */
+  age: number;
 }
 
 /**
@@ -59,6 +71,8 @@ export class RushMode {
   private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, goals: 0, phase: '' as string };
   private readonly v = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
+  private readonly toHead = new THREE.Vector3();
+  private lastThrower: Unit | null = null;
 
   constructor(private readonly deps: RushDeps) {
     const { sim, player, slots, net } = deps;
@@ -99,6 +113,7 @@ export class RushMode {
         host.onAct = (u, msg) => {
           const a = msg.a as [number, number] | undefined;
           if (msg.k === 'throw' && a) rush.throwRelic(u, { x: a[0], z: a[1] });
+          else if (msg.k === 'call') rush.call(u);
         };
         host.bind(rush, roster);
         this.host = host;
@@ -129,6 +144,12 @@ export class RushMode {
     else this.rush.throwRelic(me, me.aim);
   }
 
+  /** The local player calls for the pass (F): shown to teammates, and a bot carrier throws it to them. */
+  call(): void {
+    if (this.guest) this.guest.act({ k: 'call' });
+    else this.rush.call(this.deps.player);
+  }
+
   /** The fixed step, before the simulation's: the rules run on the host (or alone); a guest's copy keeps a thrown relic flying between snapshots. */
   step(dt: number): void {
     if (this.guest) this.rush.follow(dt);
@@ -138,7 +159,9 @@ export class RushMode {
   frame(dt: number, time: number): void {
     this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time);
     this.beats();
+    this.throws();
     this.hud.pointer(this.pointer());
+    this.hud.calls(this.callouts());
     this.hud.frame(dt);
   }
 
@@ -171,6 +194,39 @@ export class RushMode {
     }
     if (r.phase === 'play' && seen.phase === 'kickoff' && at) burst(GOLD, at.x, at.y, at.z, 0.9);
     this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, goals: r.goalCount, phase: r.phase };
+  }
+
+  /** A new throw swings its thrower's arm (on every end: the relic's state says who threw). */
+  private throws(): void {
+    const r = this.rush.relic;
+    const thrower = r.phase === 'flying' ? r.thrower : null;
+    if (thrower && thrower !== this.lastThrower) {
+      thrower.sinceAction = 0;
+      this.deps.swing?.(thrower);
+    }
+    this.lastThrower = thrower;
+  }
+
+  /** Teammates calling for the pass (and the player's own call), over their heads on screen. */
+  private callouts(): RushCall[] {
+    const out: RushCall[] = [];
+    const me = this.deps.player;
+    const cam = this.deps.camera;
+    cam.getWorldDirection(this.fwd);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    for (const g of this.rush.team(me.team as Side)) {
+      const ago = this.rush.calledAgo(g);
+      if (ago === null || !g.alive) continue;
+      const head = this.deps.headOf(g, this.v);
+      if (!head) continue;
+      head.y += 0.9;
+      if (this.fwd.dot(this.toHead.copy(head).sub(cam.position)) < 0) continue;
+      const p = head.project(cam);
+      if (Math.abs(p.x) > 1.05 || Math.abs(p.y) > 1.05) continue;
+      out.push({ x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h, name: g === me ? 'You' : g.name, mine: g === me, age: ago / RUSH.call.time });
+    }
+    return out;
   }
 
   /**

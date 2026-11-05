@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, color, float, fract, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalView,
+  abs, attribute, color, float, fract, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
   positionLocal, positionView, pow, saturate, select, sin, smoothstep, time, uv, vec3,
 } from '../../render/tsl';
 
@@ -28,6 +28,10 @@ export interface GodPalette {
   glow: number;
   eye: number;
   gem: number;
+  /** Tip color of fur (default: the fur lightened warm). */
+  furTip?: number;
+  /** Frost-rimed skin with icy shading instead of warm flesh (the Jötunn). */
+  frost?: boolean;
 }
 
 const PALETTES: Record<string, GodPalette> = {
@@ -55,6 +59,12 @@ const PALETTES: Record<string, GodPalette> = {
     skin: 0x2a2018, skinDeep: 0x0c0806, gold: 0xf2b84a, steel: 0x2a3e8a, cloth: 0xe6dac0, clothDeep: 0x8a7a5a,
     cloth2: 0x1c3f9a, leather: 0x3a2412, hair: 0x14100c, hairTip: 0x2a2018, fur: 0x1e1712, glow: 0xffa040,
     eye: 0xffb050, gem: 0x2fd0c0,
+  },
+  // the frost giant: glacier-blue skin, old bronze, black iron, dark bear fur frosted at the tips
+  jotunn: {
+    skin: 0x6c90c2, skinDeep: 0x16295a, gold: 0x9a7444, steel: 0x4e5560, cloth: 0x4a3a2e, clothDeep: 0x1e1610,
+    cloth2: 0x4e3c30, leather: 0x4a3222, hair: 0xb8c6d8, hairTip: 0xf4f8ff, fur: 0x231c19, glow: 0x66e0ff,
+    eye: 0x9ff0ff, gem: 0x8fdcff, furTip: 0x5c6470, frost: true,
   },
 };
 
@@ -154,6 +164,36 @@ function skinMaterial(p: GodPalette): THREE.Material {
   m.roughnessNode = float(0.5).add(crease.mul(0.15)).sub(ridge.mul(0.12)).add(mx_noise_float(positionLocal.mul(90)).mul(0.06)).sub(lips.mul(0.2));
   // a little warm back-scatter at grazing angles
   m.emissiveNode = color(p.skinDeep).mul(rim().mul(0.18));
+  return m;
+}
+
+/**
+ * A frost giant's hide: glacier-blue skin, deep blue in the creases, a rime
+ * of frost crusting the ridges and the surfaces that face the sky, with
+ * pinpoint glints in it, and an icy rim light instead of warm back-scatter.
+ */
+function frostSkinMaterial(p: GodPalette): THREE.Material {
+  const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.6, sheen: 0.5, sheenRoughness: 0.45, sheenColor: new THREE.Color(0xc8ecff) });
+  const d = data();
+  const crease = d.x;
+  const ridge = d.y;
+  const lips = d.z;
+  const socket = d.w;
+  const mottle = mx_fractal_noise_float(positionLocal.mul(9), 3).mul(0.5).add(0.5);
+  const fine = mx_noise_float(positionLocal.mul(160)).mul(0.035);
+  const base = mix(color(p.skin), color(p.skinDeep), crease.mul(0.85).add(mottle.mul(0.18)));
+  // rime: patchy frost on the ridges and on top of the shoulders, arms and head
+  const up = saturate(normalLocal.y);
+  const patches = mx_fractal_noise_float(positionLocal.mul(16), 3).mul(0.5).add(0.5);
+  const frost = smoothstep(0.6, 0.9, ridge.mul(0.9).add(up.mul(0.45)).add(patches.mul(0.35)).sub(crease.mul(0.7))).mul(float(1).sub(lips));
+  const lit = base.mul(float(1).add(ridge.mul(0.25))).add(fine);
+  const frosted = mix(lit, color(0xdcecff), frost.mul(0.6));
+  const painted = mix(mix(frosted, color(p.skinDeep).mul(0.4), socket.mul(0.7)), color(p.skinDeep).mul(0.8), lips.mul(0.6));
+  m.colorNode = painted;
+  m.roughnessNode = mix(float(0.58).add(crease.mul(0.12)).sub(ridge.mul(0.1)), float(0.3), frost);
+  // ice glints in the frost, and a cold rim
+  const glint = smoothstep(0.88, 0.95, mx_noise_float(positionLocal.mul(420)).mul(0.5).add(0.5)).mul(frost);
+  m.emissiveNode = color(p.glow).mul(rim().mul(0.35)).add(color(0xe8f8ff).mul(glint.mul(0.9)));
   return m;
 }
 
@@ -263,7 +303,7 @@ function glowMaterial(c: number, strength = 6): THREE.Material {
   return m;
 }
 
-function eyeMaterial(c: number): THREE.Material {
+function eyeMaterial(c: number, glow = 1.4): THREE.Material {
   // a lit, wet eye: off-white sclera, a colored iris with a dark limbal ring and pupil,
   // and a faint godly glow in the iris only
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.03 });
@@ -277,7 +317,7 @@ function eyeMaterial(c: number): THREE.Material {
   col = mix(col, color(c).mul(0.15), limbal.mul(0.8));
   col = mix(col, color(0x050404), pupil);
   m.colorNode = col;
-  m.emissiveNode = color(c).mul(iris.mul(float(1).sub(pupil)).mul(fibers).mul(1.4));
+  m.emissiveNode = color(c).mul(iris.mul(float(1).sub(pupil)).mul(fibers).mul(glow));
   return m;
 }
 
@@ -301,7 +341,7 @@ export function godMaterials(id: string, variant?: string): Map<string, THREE.Ma
 function buildMaterials(id: string, variant?: string): Map<string, THREE.Material> {
   const p = paletteOf(id, variant);
   const m = new Map<string, THREE.Material>();
-  m.set('skin', skinMaterial(p));
+  m.set('skin', p.frost ? frostSkinMaterial(p) : skinMaterial(p));
   m.set('gold', metalMaterial(p.gold, 0xffe7a0, { engrave: true }));
   m.set('goldplain', metalMaterial(p.gold, 0xffe7a0));
   m.set('steel', metalMaterial(p.steel, p.gold, { engrave: true }));
@@ -311,9 +351,10 @@ function buildMaterials(id: string, variant?: string): Map<string, THREE.Materia
   m.set('leather', leatherMaterial(p.leather, p.gold));
   m.set('stripes', stripesMaterial(p.cloth2, p.gold));
   m.set('hair', hairMaterial(p.hair, p.hairTip));
-  m.set('fur', hairMaterial(p.fur, new THREE.Color(p.fur).lerp(new THREE.Color(0xffe8c8), 0.3).getHex()));
+  m.set('fur', hairMaterial(p.fur, p.furTip ?? new THREE.Color(p.fur).lerp(new THREE.Color(0xffe8c8), 0.3).getHex()));
   m.set('glow', glowMaterial(p.glow));
-  m.set('eye', eyeMaterial(p.eye));
+  // a frost giant's eyes burn cold, visible across the valley
+  m.set('eye', eyeMaterial(p.eye, p.frost ? 6 : 1.4));
   m.set('gem', gemMaterial(p.gem));
   m.set('default', new THREE.MeshStandardNodeMaterial({ color: 0x888888 }));
   for (const [name, mat] of m) {
