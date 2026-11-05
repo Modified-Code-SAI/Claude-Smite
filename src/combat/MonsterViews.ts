@@ -516,13 +516,14 @@ function bezier(out: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, c: THREE
     .addScaledVector(d, t * t * t);
 }
 
+let wyrmMats: ReturnType<typeof wyrmMaterials> | null = null;
+
 /**
- * A great golden serpent coiled on its hoard: overlapping gold scales with a
- * cream belly, turquoise crystal fins down its spine, a horned head with a
- * ruby set in its brow. It sways, lunges to bite, lifts its tail and whirls
- * for its sweep, and slumps onto its coils when slain.
+ * The Treasure Wyrm's scales and ivory, built once: a material made anew for
+ * each wyrm gets a shader of its own, so the boss would build one as it rose
+ * instead of reusing the one the loading warm-up drew.
  */
-function wyrm(): MonsterView {
+function wyrmMaterials() {
   const scales = new THREE.MeshPhysicalNodeMaterial({ metalness: 0.8, roughness: 0.3, clearcoat: 0.5, clearcoatRoughness: 0.3 });
   // object space: the coils move every frame, and world-space scales would slide across them
   const cell = mx_worley_noise_float(positionGeometry.mul(3.2));
@@ -532,10 +533,21 @@ function wyrm(): MonsterView {
   scales.colorNode = mix(gold, vec3(0.95, 0.86, 0.62), belly.mul(0.85));
   scales.roughnessNode = float(0.22).add(rim.mul(0.3)).add(belly.mul(0.3));
   scales.metalnessNode = float(0.9).sub(belly.mul(0.6));
+  const ivory = new THREE.MeshStandardNodeMaterial({ color: 0xf2e6c8, roughness: 0.4 });
+  return { scales, ivory };
+}
+
+/**
+ * A great golden serpent coiled on its hoard: overlapping gold scales with a
+ * cream belly, turquoise crystal fins down its spine, a horned head with a
+ * ruby set in its brow. It sways, lunges to bite, lifts its tail and whirls
+ * for its sweep, and slumps onto its coils when slain.
+ */
+function wyrm(): MonsterView {
+  const { scales, ivory } = (wyrmMats ??= wyrmMaterials());
   const fin = glow(0x2fe8d0, 2.6);
   const finHot = glow(0x8ffff0, 4);
   const ruby = glow(0xff2a4a, 5);
-  const ivory = new THREE.MeshStandardNodeMaterial({ color: 0xf2e6c8, roughness: 0.4 });
 
   const root = new THREE.Group();
   const body = pivot(root, 0, 0, 0);
