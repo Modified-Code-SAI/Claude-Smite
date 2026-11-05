@@ -17,6 +17,7 @@ import { angleBetween, MELEE_ARC, Sim, type BaseZone, type SimTerrain } from '..
 import { isStructure, Unit, WORLD_SCALE, type Body, type Point, type SimEvent } from '../sim/Unit';
 import { CombatHud } from '../ui/CombatHud';
 import { LoadoutMenu } from '../ui/LoadoutMenu';
+import { BuildBook } from '../game/builds';
 import { MatchHud } from '../ui/MatchHud';
 import { GroundDecal, type DecalShape } from './GroundDecal';
 import { paletteFor } from './palette';
@@ -147,6 +148,8 @@ export class CombatGame implements Updatable {
   private readonly hud: CombatHud;
   private readonly coach: Coach;
   private readonly menu: LoadoutMenu;
+  /** The player's saved builds: the one in use spends new points, and the last bar comes back next match. */
+  private readonly builds: BuildBook;
   private readonly body: Body;
   private readonly bases: Record<'order' | 'chaos', BaseZone>;
   private preview: { slot: number; code: string } | null = null;
@@ -260,6 +263,9 @@ export class CombatGame implements Updatable {
     this.player = godUnit(mine, myTeam, { x: spawn.x, z: spawn.z, yaw: spawn.yaw }, this.body);
     this.ownGod = this.player;
     this.sim.add(this.player);
+    // Underworld Descent deals the skills, and Relic Rush's Playmaker tree is spent by hand
+    this.builds = new BuildBook({ skills: !descent, follow: !rush });
+    this.builds.restoreBar(this.player.combatant);
     // the Conquest map builds and places its own Tower, Phoenix and Titan models
     // the map dims a buff altar's crystal while its Warden is down (when the map supports it)
     const content = (world as unknown as { content?: { setCampActive?: (id: string, active: boolean) => void } }).content;
@@ -284,10 +290,11 @@ export class CombatGame implements Updatable {
     this.coach = new Coach(this.player, () => this.menu.isOpen, !duel, rush, () => this.hasAllies());
     this.menu = new LoadoutMenu(
       conquest || clash || siege || duel || rush || descent || jotunn
-        ? { combatant: () => this.player.combatant, gods: GODS, onClose: () => undefined }
+        ? { combatant: () => this.player.combatant, gods: GODS, builds: this.builds, onClose: () => undefined }
         : {
             combatant: () => this.player.combatant,
             gods: GODS,
+            builds: this.builds,
             switchGod: (id) => this.switchGod(id),
             practiceLevel: (lvl) => this.practiceLevel(lvl),
             practiceFavor: () => {
@@ -774,6 +781,7 @@ export class CombatGame implements Updatable {
       this.cancelPreview();
     }
     if (this.inFight) this.handleCombatInput();
+    this.followBuild();
     this.netGuest?.syncBuild();
 
     for (const e of this.sim.drainEvents()) {
@@ -1205,9 +1213,24 @@ export class CombatGame implements Updatable {
     this.sim.remove(old);
     this.sim.add(next);
     this.player = this.ownGod = next;
+    this.builds.restoreBar(next.combatant);
     this.setPlayerModel(id);
     this.hud.setPlayer(next);
     return null;
+  }
+
+  /** New points go along the build in use (the player's own god, even while driving the Jötunn), with a word on what was learned. */
+  private followBuild(): void {
+    const c = this.ownGod.combatant;
+    const before = c.unspentPoints > 0 ? { ...c.allocation } : null;
+    const how = this.builds.follow(c);
+    if (!how) return;
+    this.menu.refresh();
+    if (c !== this.player.combatant) return;
+    const name = this.builds.active(c.god)?.name ?? 'Build';
+    const learned = before ? Object.entries(c.allocation).filter(([id, r]) => r > (before[id] ?? 0)) : [];
+    const one = learned.length === 1 ? c.trees.node.get(learned[0]![0])?.node : undefined;
+    this.hud.toast(how === 'setup' ? `${name} set up` : one ? `${name}: ${one.name} ${c.allocation[one.id]}/${one.maxRank}` : `${name}: ${learned.length} talents learned`);
   }
 
   private practiceLevel(level: number): void {

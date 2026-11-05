@@ -15,6 +15,13 @@ describe('coach tips', () => {
     expect(pickTip({ ...v, menuOpen: true }, new Set())).toBeNull();
   });
 
+  it('suggests a build when points pile up, but not where points are spent by hand', () => {
+    const v = { ...base, unspentPoints: 3 };
+    expect(pickTip(v, new Set(['points']))?.id).toBe('builds');
+    expect(pickTip({ ...v, unspentPoints: 2 }, new Set(['points']))).toBeNull();
+    expect(pickTip({ ...v, sport: true }, new Set(['points', 'sport']))).toBeNull();
+  });
+
   it('death comes first, then the ultimate, then low health', () => {
     expect(pickTip({ ...base, alive: false, unspentPoints: 2 }, new Set())?.id).toBe('death');
     expect(pickTip({ ...base, ultReady: true, healthPct: 0.1 }, new Set())?.id).toBe('ult');

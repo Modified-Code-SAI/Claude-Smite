@@ -1,3 +1,4 @@
+import { MAX_SAVED, type BuildBook } from '../game/builds';
 import type { Combatant } from '../game/combatant';
 import { SLOT_COUNT, SLOT_KEYS, ULTIMATE_SLOT, type LoadoutError } from '../game/loadout';
 import { MAX_LEVEL, MAX_TREE_POINTS, ranked } from '../game/progression';
@@ -33,6 +34,8 @@ export interface LoadoutMenuHooks {
   /** Practice shortcuts, only on the training ground. */
   practiceLevel?(level: number): void;
   practiceFavor?(): void;
+  /** The player's saved builds (absent where there is nothing to plan). */
+  builds?: BuildBook;
   onClose(): void;
 }
 
@@ -49,6 +52,8 @@ export class LoadoutMenu {
   private readonly tip: HTMLDivElement;
   private selectedSlot = 0;
   private message = '';
+  /** A build was taken or saved: the message reads as good news, not an error. */
+  private good = false;
   private open_ = false;
   /** The data-tip key under the mouse, so a re-render can keep its tooltip up. */
   private hovered: string | null = null;
@@ -103,7 +108,24 @@ export class LoadoutMenu {
 
   private say(err: string | null): void {
     this.message = err ? (ERRORS[err as keyof typeof ERRORS] ?? err) : '';
+    this.good = false;
     this.render();
+  }
+
+  private tell(text: string): void {
+    this.message = text;
+    this.good = true;
+    this.render();
+  }
+
+  /** A talent learned, refunded or reset by hand: the build in use stops steering the points. */
+  private byHand(err: string | null): void {
+    const c = this.hooks.combatant();
+    const book = this.hooks.builds;
+    const b = book?.rules.follow ? book.active(c.god) : null;
+    if (err || !b) return this.say(err);
+    book!.use(c, null);
+    this.tell(`Spending by hand now. Pick ${b.name} again to follow it.`);
   }
 
   private onClick(e: MouseEvent, right: boolean): void {
@@ -113,16 +135,36 @@ export class LoadoutMenu {
     const v = el.dataset.v ?? '';
     switch (el.dataset.act) {
       case 'node':
-        return this.say(right ? c.deallocate(v) : c.allocate(v));
+        return this.byHand(right ? c.deallocate(v) : c.allocate(v));
       case 'reset':
-        return this.say(c.resetTrees(v || undefined));
+        return this.byHand(c.resetTrees(v || undefined));
       case 'slot':
         if (right) return;
         this.selectedSlot = Number(v);
         return this.say(null);
-      case 'skill':
+      case 'skill': {
         if (right) return;
-        return this.say(c.swap(this.selectedSlot, v));
+        const err = c.swap(this.selectedSlot, v);
+        if (!err) this.hooks.builds?.rememberBar(c);
+        return this.say(err);
+      }
+      case 'build': {
+        if (right) return;
+        const book = this.hooks.builds;
+        if (!book) return;
+        const r = book.use(c, v || null);
+        const b = book.active(c.god);
+        return this.tell(!b ? 'Spending points by hand.' : r === 'field' ? `New points follow ${b.name}. Its skills and respec wait for the fountain.` : `${b.name} is set up.`);
+      }
+      case 'save': {
+        const b = this.hooks.builds?.save(c);
+        if (!b) return this.say(`Only ${MAX_SAVED} builds per god. Remove one first.`);
+        return this.tell(`Saved as ${b.name}. New points follow it.`);
+      }
+      case 'unsave':
+        e.stopPropagation();
+        this.hooks.builds?.remove(c.god, v);
+        return this.say(null);
       case 'god':
         return this.say(this.hooks.switchGod?.(v) ?? null);
       case 'level':
@@ -154,6 +196,7 @@ export class LoadoutMenu {
             .join('')}</div>` : '<div class="lm-gods"></div>'}
           <button class="lm-close" data-act="close" aria-label="Close">&times;</button>
         </header>
+        ${this.buildsHtml(c)}
         <div class="lm-trees${c.treeList.length > 3 ? ' four' : ''}">${c.treeList.map((t, i) => this.treeHtml(c, t, i)).join('')}</div>
         <div class="lm-foot">
           <div class="lm-points">
@@ -162,7 +205,8 @@ export class LoadoutMenu {
             <span class="lm-left${c.unspentPoints ? ' glow' : ''}"><b>${c.unspentPoints}</b> to spend</span>
             <span class="lm-base ${base ? 'yes' : 'no'}">${base ? 'At the fountain' : 'In the field: learn only'}</span>
           </div>
-          <div class="lm-msg">${this.message}</div>
+          ${this.followHtml(c)}
+          <div class="lm-msg${this.good ? ' good' : ''}">${this.message}</div>
           <div class="lm-actions">
             ${this.hooks.practiceLevel ? `<span class="lm-practice">Practice
               <button data-act="level" data-v="${Math.min(MAX_LEVEL, c.level + 1)}">+1 level</button>
@@ -184,6 +228,39 @@ export class LoadoutMenu {
         </div>
       </div>`;
     this.showTip(this.hovered ? this.host.querySelector<HTMLElement>(`[data-tip="${this.hovered}"]`) : null);
+  }
+
+  /** The row of builds under the header: ready-made ones per tree, the player's own, saving, and spending by hand. */
+  private buildsHtml(c: Combatant): string {
+    const book = this.hooks.builds;
+    if (!book) return '';
+    if (!book.rules.follow) return `<div class="lm-builds"><h3>Builds</h3><span class="lm-build-note">Builds rest in this mode: spend your points by hand to try its own tree.</span></div>`;
+    const g = c.god;
+    const active = book.active(g);
+    const chips = book.list(g).map((b) => {
+      const ready = b.id.startsWith('tree:');
+      const accent = TREE_ACCENTS[b.trees[0] ?? 0] ?? TREE_ACCENTS[0];
+      return `<button class="lm-build${ready ? ' ready' : ' mine'}${active?.id === b.id ? ' on' : ''}" style="--accent:${accent}" data-act="build" data-v="${b.id}" data-tip="b:${b.id}">
+        <i class="lm-build-gem"></i><span>${b.name}</span>${ready ? '' : `<span class="lm-unsave" data-act="unsave" data-v="${b.id}" title="Remove this build">&times;</span>`}
+      </button>`;
+    });
+    return `<div class="lm-builds">
+      <h3>Builds</h3>
+      <div class="lm-build-list">
+        ${chips.join('')}
+        <button class="lm-build hand${active ? '' : ' on'}" data-act="build" data-v="" data-tip="b:">By hand</button>
+        <button class="lm-build save" data-act="save" ${book.canSave(g) && pointsSpent(c.allocation) ? '' : 'disabled'} title="${book.canSave(g) ? 'Save your skills and points as a build' : `Up to ${MAX_SAVED} builds per god`}">+ Save current</button>
+      </div>
+    </div>`;
+  }
+
+  /** In the footer: which build the points follow, if any. */
+  private followHtml(c: Combatant): string {
+    const book = this.hooks.builds;
+    const active = book?.rules.follow ? book.active(c.god) : null;
+    if (!book || !active) return '';
+    const waiting = book.waiting(c.god);
+    return `<span class="lm-follow" title="${waiting ? 'Its skills and respec are set up when you reach the fountain' : 'New points go along this build'}">Following <b>${active.name}</b>${waiting ? ' <em>full setup at the fountain</em>' : ''}</span>`;
   }
 
   private treeHtml(c: Combatant, tree: SkillTree, index: number): string {
@@ -251,6 +328,35 @@ export class LoadoutMenu {
     </button>`;
   }
 
+  private buildTip(c: Combatant, id: string): string {
+    const book = this.hooks.builds;
+    if (!book) return '';
+    const g = c.god;
+    if (!id) {
+      return [
+        '<div class="lm-tip-name">By hand</div>',
+        '<div class="lm-tip-desc">Spend every point yourself. Learning or refunding a talent by hand switches to this too.</div>',
+      ].join('');
+    }
+    const b = book.list(g).find((x) => x.id === id);
+    if (!b) return '';
+    const ready = b.id.startsWith('tree:');
+    const tree = (i: number | undefined) => (i === undefined ? '' : (g.trees[i]?.name ?? ''));
+    const planned = Object.values(b.ranks).reduce((a, r) => a + r, 0);
+    const path = ready
+      ? `Straight up ${tree(b.trees[0])} to its keystone, then into ${tree(b.trees[1])}.`
+      : `${planned} planned point${planned === 1 ? '' : 's'}, most in ${tree(b.trees[0])}${b.trees.length > 1 ? `, then ${b.trees.slice(1).map(tree).join(' and ')}` : ''}. Points past the plan go on up ${tree(b.trees[0])}.`;
+    const skills = book.rules.skills ? b.loadout.map((s) => g.skills.find((k) => k.id === s)?.name).filter(Boolean).join(' &middot; ') : '';
+    const on = book.active(g)?.id === b.id;
+    return [
+      `<div class="lm-tip-name">${b.name}</div>`,
+      `<div class="lm-tip-rank">${ready ? 'Ready-made build' : 'Your build'}</div>`,
+      `<div class="lm-tip-desc">${path}</div>`,
+      skills ? `<div class="lm-tip-skills">${skills}</div>` : '',
+      `<div class="lm-tip-hint">${on ? 'In use: new points follow it' : c.inBase ? 'Click to use it: your points are refunded and spent along it' : 'Click to use it: new points follow it now, the rest at the fountain'}</div>`,
+    ].join('');
+  }
+
   private showTip(el: HTMLElement | null): void {
     const key = el?.dataset.tip;
     const html = key ? this.tipHtml(key) : '';
@@ -273,6 +379,7 @@ export class LoadoutMenu {
   private tipHtml(key: string): string {
     const c = this.hooks.combatant();
     const id = key.slice(2);
+    if (key.startsWith('b:')) return this.buildTip(c, id);
     if (key.startsWith('n:')) {
       const entry = c.trees.node.get(id);
       if (!entry) return '';
