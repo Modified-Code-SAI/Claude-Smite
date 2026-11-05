@@ -367,17 +367,24 @@ class Pillar {
     this.group.add(this.beam);
   }
 
-  start(p: GodPalette, x: number, y: number, z: number): void {
+  /** Its height and width: 1 for a fallen god's column (soul fire erupting is short and wide). */
+  private size = 1;
+  private width = 1;
+
+  start(p: GodPalette, x: number, y: number, z: number, size = 1, width = 1): void {
     this.group.position.set(x, y, z);
     this.values.main.setHex(p.vfx);
     this.values.hot.setHex(p.core);
     this.values.age = 0;
+    this.size = size;
+    this.width = width;
   }
 
   update(dt: number): boolean {
     const k = (this.values.age += dt);
     const rise = 1 - Math.exp(-k * 5);
-    this.beam.scale.set(0.5 + 0.9 * (1 - rise) + 0.3, 2 + rise * 30, 0.5 + 0.9 * (1 - rise) + 0.3);
+    const w = (0.5 + 0.9 * (1 - rise) + 0.3) * this.width;
+    this.beam.scale.set(w, (2 + rise * 30) * this.size, w);
     return k < PILLAR_LIFE;
   }
 }
@@ -728,6 +735,13 @@ export class CombatVfx {
     }
   }
 
+  /** A column of light rising from the ground (a god's fall is size 1, width 1). */
+  pillar(p: GodPalette, x: number, z: number, size = 1, width = 1): void {
+    const c = this.pillarPool.take();
+    c.start(p, x, this.ground(x, z), z, size, width);
+    this.pillars.push(c);
+  }
+
   burst(p: GodPalette, x: number, y: number, z: number, power = 1): void {
     const b = this.burstPool.take();
     b.start(p, this.tmp.set(x, y, z), power, this.ground(x, z));
@@ -782,11 +796,7 @@ export class CombatVfx {
       }
       case 'death': {
         const k = e.unit.kind;
-        if (k === 'god') {
-          const p = this.pillarPool.take();
-          p.start(paletteOf(e.unit), e.unit.x, this.ground(e.unit.x, e.unit.z), e.unit.z);
-          this.pillars.push(p);
-        }
+        if (k === 'god') this.pillar(paletteOf(e.unit), e.unit.x, e.unit.z);
         const power = k === 'minion' ? 0.6 : isStructure(e.unit) || e.unit.radius > 2 ? 4 : k === 'monster' ? (e.unit.tag.endsWith('warden') ? 2.6 : 0.9) : 1.8;
         this.burst(monsterPalette(e.unit), e.unit.x, e.unit.body.y + (isStructure(e.unit) ? 4 : 1.2), e.unit.z, power);
         // a buff leaves its Warden in a flare and settles on the god who took it

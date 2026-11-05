@@ -357,7 +357,56 @@ const SIEGE: Song = {
   },
 };
 
-export const SONGS = { hymn: HYMN, dawn: DAWN, battle: BATTLE, siege: SIEGE } as const;
+/**
+ * Underworld Descent: slow and cavernous. D minor leaning on its flat second
+ * (Eb), low strings and a tolling bell while the team explores, a heartbeat on
+ * the frame drum, and drums, low brass and a mourning horn once the dead rise.
+ */
+const ABYSS: Song = {
+  bpm: 78,
+  beats: 4,
+  chords: ['Dm', 'Dm', 'Eb', 'Eb', 'Dm', 'Dm', 'Bb', 'A', 'Gm', 'Gm', 'Eb', 'Eb', 'Dm', 'Bb', 'Asus', 'A'],
+  write(bar, loop, ch, out) {
+    // -- base: a low drone, a tolling bell, a slow harp falling like water, and the heartbeat
+    if (bar % 2 === 0) {
+      for (const n of ch) out.push({ inst: 'mus.pad.lo', midi: n, beat: 0, dur: 8, gain: 0.3, layer: 'base' });
+      out.push({ inst: 'mus.bass', midi: ch[0]! - 12, beat: 0, dur: 8, gain: 0.4, layer: 'base' });
+      if (loop >= 1) out.push({ inst: 'mus.choir', midi: ch[0]! + 12, beat: 0, dur: 8, gain: 0.14, layer: 'base' });
+    }
+    if (bar % 4 === 0) out.push({ inst: 'mus.bell', midi: ch[0]! + 24, beat: 0, gain: 0.18, layer: 'base' });
+    const fall = [ch[2]! + 12, ch[1]! + 12, ch[0]! + 12, ch[2]!];
+    fall.forEach((n, i) => out.push({ inst: 'mus.harp', midi: n, beat: i, gain: 0.18 - i * 0.02, layer: 'base', pan: i % 2 ? 0.4 : -0.4 }));
+    out.push({ inst: 'mus.frame', beat: 0, gain: 0.3, layer: 'base' }, { inst: 'mus.frame', beat: 0.6, gain: 0.2, layer: 'base' });
+
+    // -- battle: heavy drums, the strings' grinding ostinato, low brass and the high choir
+    const drums: [number, number, string][] = [[0, 0.85, 'mus.taiko'], [1, 0.4, 'mus.taiko.hi'], [1.5, 0.55, 'mus.taiko'], [2, 0.75, 'mus.taiko'], [3, 0.45, 'mus.taiko.hi'], [3.5, 0.6, 'mus.taiko']];
+    for (const [b, g, inst] of drums) out.push({ inst, beat: b, gain: g, layer: 'battle' });
+    if (bar % 4 === 3) for (const b of [3.25, 3.5, 3.75]) out.push({ inst: 'mus.taiko.hi', beat: b, gain: 0.4, layer: 'battle' });
+    // root, flat second, root, fifth: the grinding half step is the underworld's
+    const grind = [ch[0]!, ch[0]! + 1, ch[0]!, ch[2]!, ch[0]!, ch[0]! + 1, ch[1]!, ch[0]!];
+    grind.forEach((n, i) => out.push({ inst: 'mus.stac', midi: n, beat: i * 0.5, gain: i % 2 ? 0.24 : 0.34, layer: 'battle', pan: -0.25 }));
+    if (bar % 2 === 0) {
+      for (const n of ch) out.push({ inst: 'mus.horn.lo', midi: n, beat: 0, dur: 2, gain: 0.26, layer: 'battle' });
+      for (const n of up(ch, 12)) out.push({ inst: 'mus.choir.hi', midi: n, beat: 0, dur: 8, gain: 0.12, layer: 'battle' });
+    }
+    // the mourning horn over the second half
+    const lament: Record<number, [number, number, number][]> = {
+      8: [[62, 0, 2], [63, 2, 2]],
+      9: [[62, 0, 3], [60, 3, 1]],
+      10: [[58, 0, 2], [55, 2, 2]],
+      11: [[58, 0, 4]],
+      12: [[62, 0, 1.5], [65, 1.5, 0.5], [63, 2, 2]],
+      13: [[62, 0, 2], [58, 2, 2]],
+      14: [[57, 0, 4]],
+      15: [[61, 0, 4]],
+    };
+    for (const [m, b, d] of lament[bar] ?? []) out.push({ inst: 'mus.horn', midi: m, beat: b, dur: d, gain: 0.32, layer: 'battle' });
+    if (bar === 15) out.push({ inst: 'mus.swell', beat: 4 - (1.8 * ABYSS.bpm) / 60, gain: 0.5, layer: 'battle' });
+    if (bar === 0) out.push({ inst: 'mus.crash', beat: 0, gain: 0.3, layer: 'battle' });
+  },
+};
+
+export const SONGS = { hymn: HYMN, dawn: DAWN, battle: BATTLE, siege: SIEGE, abyss: ABYSS } as const;
 export type SongName = keyof typeof SONGS;
 
 // ---------------------------------------------------------------------------

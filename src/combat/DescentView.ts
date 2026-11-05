@@ -82,7 +82,8 @@ export class DescentView {
       const c = DEPTH_COLORS[DEPTHS[r.depth]!.palette];
       this.door.setColors(c.glow, 0xffffff);
       this.door.values.opacity = this.open * (0.75 + Math.sin(time * 4) * 0.25);
-      this.door.place({ type: 'ring', radius: DESCENT.exitRadius, width: 0.5 }, door.x, door.z, 0, 0.1);
+      // drawn a little in front of the threshold, so the ring never climbs the rock behind the veil
+      this.door.place({ type: 'ring', radius: DESCENT.exitRadius - 0.4, width: 0.5 }, door.x, door.z + 1.2, 0, 0.1);
     }
 
     // soul fire: a circle that fills until it erupts
@@ -95,7 +96,11 @@ export class DescentView {
       d.place({ type: 'circle', radius: e.r }, e.x, e.z, 0, 0.09);
     });
     for (let i = r.eruptions.length; i < this.eruptions.length; i++) this.eruptions[i]!.mesh.visible = false;
-    for (const e of r.landed.splice(0)) this.vfx.burst(this.burst, e.x, 0.4, e.z, 1.3);
+    // each landing: a column of soul fire bursting from the ground
+    for (const e of r.landed.splice(0)) {
+      this.vfx.pillar(this.burst, e.x, e.z, 0.3, 1.3);
+      this.vfx.burst(this.burst, e.x, 0.4, e.z, 1.3);
+    }
 
     // a ring under each downed god that fills as it is raised
     let k = 0;
