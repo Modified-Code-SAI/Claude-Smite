@@ -543,6 +543,44 @@ describe('Underworld Descent: the run', () => {
     expect(guest.intro).toBe(0);
   });
 
+  it("brings a boss's adds down with it and holds the chamber a moment before the reward; a guest copy holds too", () => {
+    const { sim, run, team } = setup([zeus, thor, odin], 1, 5);
+    for (const g of team.slice(1)) g.brain = new DescentBot(sim, g, run);
+    const jump = run as unknown as { chamber: number; nextChamber(): void };
+    jump.chamber = DESCENT.bossEvery - 1;
+    jump.nextChamber();
+    step(sim, run, DESCENT.enterTime + DESCENT.bossIntro + 0.2);
+    const boss = run.boss!;
+    // under both thresholds: it calls up both lots of adds
+    boss.combatant.health = boss.combatant.stats.maxHealth * 0.3;
+    step(sim, run, 0.5);
+    const adds = run.monsters.filter((m) => m.alive && m !== boss && m !== run.gilded).length;
+    expect(adds).toBeGreaterThan(5);
+    const kills = run.kills;
+    expect(run.fall).toBe(0);
+    sim.strike(team[0]!, boss, 1e9, 'true');
+    step(sim, run, 0.1);
+    expect(run.fall).toBeGreaterThan(DESCENT.bossFall - 0.2);
+    expect(run.monsters.filter((m) => m.alive && m !== run.gilded)).toHaveLength(0);
+    expect(run.kills).toBe(kills + 1 + adds);
+    expect(run.phase).toBe('fight');
+    const guest = new Descent(new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(1)), zeus);
+    guest.applyNet(run.netState());
+    expect(guest.fall).toBeCloseTo(run.fall, 1);
+    // the team holds and watches it go down; then the reward comes
+    const at = team.map((g) => ({ x: g.x, z: g.z }));
+    step(sim, run, DESCENT.bossFall - 0.3);
+    expect(run.phase).toBe('fight');
+    team.slice(1).forEach((g, i) => expect(Math.hypot(g.x - at[i + 1]!.x, g.z - at[i + 1]!.z)).toBeLessThan(0.01));
+    step(sim, run, 0.4);
+    expect(run.fall).toBe(0);
+    expect(run.phase).toBe('reward');
+    guest.follow(1);
+    expect(guest.fall).toBeLessThan(DESCENT.bossFall - 0.9);
+    guest.applyNet(run.netState());
+    expect(guest.fall).toBe(0);
+  });
+
   it('wins the run when the last boss falls', () => {
     const { sim, run, team } = setup([zeus], 1);
     for (let n = 1; n <= 15 && !run.over; n++) {
@@ -575,7 +613,8 @@ describe('Underworld Descent: the run', () => {
         sim.step(1 / 30);
         sim.drainEvents();
         fighting = run.phase === 'fight' ? fighting + 1 / 30 : 0;
-        expect(fighting).toBeLessThan(240);
+        // a chamber falls to bots in well under four minutes; the Ossuary King, the last and biggest boss, takes them two to four
+        expect(fighting).toBeLessThan(run.chamber === DESCENT.chambers ? 360 : 240);
       }
       expect(run.over).toBe(true);
       expect(run.cleared).toBeGreaterThanOrEqual(3);

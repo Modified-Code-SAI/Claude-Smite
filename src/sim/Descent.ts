@@ -57,6 +57,11 @@ export const DESCENT = {
    * it and its name comes up): no monster or bot acts, and no soul fire falls.
    */
   bossIntro: 2.6,
+  /**
+   * Seconds a boss chamber holds after its boss falls, before the reward (the
+   * camera watches it go down): the adds it called crumble with it.
+   */
+  bossFall: 2.4,
   /** Champion's Obol: a whole-team wipe is undone this many times (it can be won as a reward). */
   obols: 0,
   /** A shared descent (team versus). */
@@ -633,6 +638,9 @@ export class Descent {
   private bossAddsCalled = 0;
   /** Seconds left of a boss's entrance (see DESCENT.bossIntro). */
   private introLeft = 0;
+  /** Seconds left of a boss's fall (see DESCENT.bossFall), and the god its retinue falls to. */
+  private fallLeft = 0;
+  private fallBy: Unit | null = null;
   /** Seconds left on the Champion's spoils, and the team that took them. */
   spoils = 0;
   spoilsTeam: Side = 'order';
@@ -690,6 +698,11 @@ export class Descent {
   /** Seconds left of a boss's entrance, while its chamber holds still (0 the rest of the time). */
   get intro(): number {
     return this.introLeft;
+  }
+
+  /** Seconds left of a boss's fall, while the chamber holds before its reward (0 the rest of the time). */
+  get fall(): number {
+    return this.fallLeft;
   }
 
   /** The chamber the team is in (or about to enter). */
@@ -787,7 +800,13 @@ export class Descent {
         if (this.versus) this.score(side, (type ? SOULS[type] : 1) + (u === this.champion ? DESCENT.versus.champion : 0));
       }
     }
-    if (u === this.boss) this.bossBy = side;
+    if (u === this.boss) {
+      this.bossBy = side;
+      this.fallLeft = DESCENT.bossFall;
+      const by = e.killer?.owner ?? e.killer;
+      this.fallBy = by && this.gods.includes(by) ? by : (this.gods.find((g) => !side || this.sideOf(g) === side) ?? null);
+      this.eruptions.length = 0;
+    }
     if (u === this.champion) this.claimSpoils(side);
     if (u === this.gilded) {
       this.gilded = null;
@@ -859,7 +878,8 @@ export class Descent {
     this.stepRevives(dt);
     if (this.checkWipe()) return;
     if (this.introLeft > 0) this.introLeft = Math.max(0, this.introLeft - dt);
-    else {
+    if (this.fallLeft > 0) this.stepFall(dt);
+    if (this.introLeft <= 0 && this.fallLeft <= 0) {
       this.stepEruptions(dt);
       this.stepKing(dt);
     }
@@ -907,7 +927,19 @@ export class Descent {
     this.waveTimer += dt;
     const left = this.monsters.filter((m) => m !== this.gilded).length;
     if (this.wave < this.waves.length && (left <= this.waveSize * DESCENT.nextWave.left || this.waveTimer >= DESCENT.nextWave.after)) this.spawnWave();
-    else if (this.wave >= this.waves.length && this.monsters.length === 0) this.clearChamber();
+    else if (this.wave >= this.waves.length && this.monsters.length === 0 && this.fallLeft <= 0) this.clearChamber();
+  }
+
+  /**
+   * A boss gone down: whatever it called up crumbles with it (any that are
+   * still climbing out of the floor as soon as they can be struck), credited
+   * to the god who felled it, while the chamber holds for its fall.
+   */
+  private stepFall(dt: number): void {
+    this.fallLeft = Math.max(0, this.fallLeft - dt);
+    const by = this.fallBy;
+    if (!by) return;
+    for (const m of this.monsters) if (m.alive && m !== this.gilded) this.sim.strike(by, m, 1e9, 'true');
   }
 
   /** A boss calls its adds as it weakens. */
@@ -924,6 +956,8 @@ export class Descent {
   private startFight(): void {
     this.phase = 'fight';
     this.introLeft = this.current.kind === 'boss' ? DESCENT.bossIntro : 0;
+    this.fallLeft = 0;
+    this.fallBy = null;
     this.waves = chamberWaves(this.current, this.gods.length);
     this.wave = 0;
     this.champion = null;
@@ -1476,6 +1510,7 @@ export class Descent {
       b: this.boons.map((b) => b.id),
       ...(this.relics.held.length || this.relics.procs.length ? { rl: this.relics.netState(sideCode) } : {}),
       ...(this.introLeft > 0 ? { it: r2(this.introLeft) } : {}),
+      ...(this.fallLeft > 0 ? { fl: r2(this.fallLeft) } : {}),
       l: this.learned,
       h: [...this.humans].map(gi),
       ...(this.versus
@@ -1505,6 +1540,7 @@ export class Descent {
     this.time = s.tm;
     if (s.pl && s.c > 0) this.plan[s.c - 1] = { n: s.c, layout: s.pl[0], kind: s.pl[1] };
     this.introLeft = s.it ?? 0;
+    this.fallLeft = s.fl ?? 0;
     this.kills = s.k;
     this.obols = s.o;
     this.obolUsed = s.ou;
@@ -1602,6 +1638,7 @@ export class Descent {
     this.timer = Math.max(0, this.timer - dt);
     this.spoils = Math.max(0, this.spoils - dt);
     this.introLeft = Math.max(0, this.introLeft - dt);
+    this.fallLeft = Math.max(0, this.fallLeft - dt);
     for (const e of this.eruptions) e.left = Math.max(0, e.left - dt);
   }
 }
@@ -1642,6 +1679,8 @@ export interface DescentNet {
   rl?: RelicNet;
   /** Seconds left of a boss's entrance (left out the rest of the time). */
   it?: number;
+  /** Seconds left of a boss's fall (left out the rest of the time). */
+  fl?: number;
   l: [number, number, number, string][];
   h: number[];
   /** A shared descent's score and team choices (teams as 'o' and 'c'). */
