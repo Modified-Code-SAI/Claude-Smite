@@ -494,8 +494,11 @@ export class RelicView {
     this.set(null, 0, 0, 0);
   }
 
-  /** `at` is the relic (or null when none is up); `progress` 0..1 fills the ring in `claimColor`. */
-  set(at: { x: number; z: number } | null, radius: number, progress: number, t: number, claimColor = 0xffffff, claimCore = 0xffffff): void {
+  /**
+   * `at` is the relic (or null when none is up); `progress` 0..1 fills the ring in `claimColor`.
+   * `beam` raises the column's foot off the ground and thins it (a relic carried overhead).
+   */
+  set(at: { x: number; z: number } | null, radius: number, progress: number, t: number, claimColor = 0xffffff, claimCore = 0xffffff, beam: { lift: number; width: number } = { lift: 0, width: 1 }): void {
     // rise and sink over a quarter second rather than popping
     this.shown = at ? Math.min(1, this.shown + 0.08) : Math.max(0, this.shown - 0.08);
     const k = this.shown;
@@ -519,8 +522,10 @@ export class RelicView {
     this.fill.values.opacity = k * (step > 0 ? 0.85 : 0);
     // the column stays at the bright early part of a pillar's life, flickering a little
     this.beamValues.age = k > 0 ? 0.25 + 0.1 * Math.sin(t * 7) + (1 - k) * 1.35 : PILLAR_LIFE;
-    this.beam.position.set(x, y, z);
-    this.beam.scale.set(0.9 + 0.12 * Math.sin(t * 2.3), 26, 0.9 + 0.12 * Math.sin(t * 2.3));
+    this.beam.position.set(x, y + beam.lift, z);
+    const w = (0.9 + 0.12 * Math.sin(t * 2.3)) * beam.width;
+    this.beam.scale.set(w, 26, w);
+    this.beam.visible = w > 0;
     this.moteValues.radius = radius * 0.8;
     this.moteValues.fade = k;
     this.motes.position.set(x, y, z);

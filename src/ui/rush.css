@@ -1,0 +1,6 @@
+.rush-clock { min-width: 78px; font-size: 20px; font-weight: 700; text-align: center; letter-spacing: 0.06em; color: #ffe9b8; text-shadow: 0 2px 4px #000; }
+.rush-clock.late { color: #ffb070; animation: clash-pulse 0.5s ease-in-out infinite alternate; }
+.rush-clock.gold { font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: #ffd34a; text-shadow: 0 0 12px rgba(255, 200, 80, 0.85), 0 2px 4px #000; }
+.rush .clash-state { white-space: nowrap; }
+.rush .duel-big small { display: block; margin-top: 6px; font-size: clamp(14px, 1.8vw, 22px); letter-spacing: 0.08em; text-transform: none; color: #f2e6cc; }
+@media (max-width: 700px) { .rush .clash-state { white-space: normal; width: 86vw; text-align: center; } }

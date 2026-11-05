@@ -69,7 +69,7 @@ async function main(): Promise<void> {
   // a normal launch opens on the home page and the intro trailer; the title
   // screen (and its hymn) follow once the trailer ends or is skipped
   const chosen: Promise<StartChoice> = skipMenu
-    ? Promise.resolve({ mode: (['clash', 'siege', 'duel'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined })
+    ? Promise.resolve({ mode: (['clash', 'siege', 'duel', 'rush'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined })
     : playIntro(audio).then(() => {
         music.play('hymn');
         return showStartMenu(GODS, graphics);
