@@ -147,6 +147,24 @@ export interface JotunnPlayer {
 
 export type JotunnPhase = 'countdown' | 'fight' | 'over' | 'done';
 
+/** The round's state as guests get it (Jotunn.netState). */
+export interface JotunnNet {
+  r: number;
+  p: JotunnPhase;
+  t: number;
+  l: 'giant' | 'gods' | null;
+  k: number;
+  /** The planted wrist: part, x, z, seconds left; 0 when none. */
+  pl: ['wristL' | 'wristR', number, number, number] | 0;
+  g: [PartId, number][];
+  c: number;
+  /** Each shrine's claim, whether a god holds it (1), and seconds dormant. */
+  s: [number, number, number][];
+  w: number[];
+  /** Each player's round as the giant: braziers, seconds, won (1); 0 before it. */
+  gr: ([number, number, number] | 0)[];
+}
+
 /** What starts a round's bots, so the rules don't depend on how they play. */
 export interface JotunnBrains {
   giant(mode: Jotunn): Brain;
@@ -253,6 +271,50 @@ export class Jotunn {
 
   begin(): void {
     this.startRound(1);
+  }
+
+  /** The round's state for online guests (NetMatch): sent whole with every snapshot, so it stays small. */
+  netState(): JotunnNet {
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+    const pl = this.planted;
+    return {
+      r: this.round,
+      p: this.phase,
+      t: r1(this.timer),
+      l: this.lastRound,
+      k: r1(this.kneeling),
+      pl: pl ? [pl.part, r1(pl.x), r1(pl.z), r1(pl.left)] : 0,
+      g: [...this.regrow].map(([id, t]) => [id, r1(t)]),
+      c: this.claims,
+      s: this.shrines.map((x) => [Math.round(x.progress * 100) / 100, x.contested ? 1 : 0, r1(x.dormant)]),
+      w: this.players.map((x) => x.wins),
+      gr: this.players.map((x) => (x.giantRound ? [x.giantRound.braziers, Math.round(x.giantRound.time), x.giantRound.won ? 1 : 0] : 0)),
+    };
+  }
+
+  /** A guest's copy takes the host's state; a new round starts here too (onRound), so the game hands out the giant. */
+  applyNet(state: unknown): void {
+    const n = state as JotunnNet;
+    const fresh = n.r !== this.round;
+    this.round = n.r;
+    this.phase = n.p;
+    this.timer = n.t;
+    this.lastRound = n.l;
+    this.kneeling = n.k;
+    this.planted = n.pl ? { part: n.pl[0], x: n.pl[1], z: n.pl[2], left: n.pl[3] } : null;
+    this.regrow.clear();
+    for (const [id, t] of n.g) this.regrow.set(id, t);
+    this.claims = n.c;
+    n.s.forEach(([progress, contested, dormant], i) => {
+      const x = this.shrines[i];
+      if (x) Object.assign(x, { progress, contested: contested === 1, dormant });
+    });
+    this.players.forEach((x, i) => {
+      x.wins = n.w[i] ?? x.wins;
+      const gr = n.gr[i];
+      x.giantRound = gr ? { braziers: gr[0], time: gr[1], won: gr[2] === 1 } : null;
+    });
+    if (fresh && this.round > 0) this.onRound?.(this.giantPlayer);
   }
 
   private on(e: SimEvent): void {
