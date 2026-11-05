@@ -151,6 +151,23 @@ export class FireBatch {
     for (const c of [flames, embers]) c.at.needsUpdate = c.state.needsUpdate = true;
   }
 
+  /** Copies every fire's colors again, after a map recolors its fires (a new underworld depth). */
+  recolor(): void {
+    if (!this.flames || !this.embers) return;
+    const n = this.fires.length;
+    for (const s of this.group.children as THREE.Sprite[]) {
+      const g = s.geometry;
+      for (const name of ['fireLow', 'fireHigh', 'fireEmber'] as const) {
+        const c = g.getAttribute(name) as THREE.InstancedBufferAttribute | undefined;
+        if (!c) continue;
+        const per = c.count / n;
+        const pick = name === 'fireLow' ? (f: Fire) => f.low : name === 'fireHigh' ? (f: Fire) => f.high : (f: Fire) => f.ember;
+        for (let k = 0; k < c.count; k++) pick(this.fires[Math.floor(k / per)]!).toArray(c.array, k * 3);
+        c.needsUpdate = true;
+      }
+    }
+  }
+
   /**
    * Takes in the fires made since the last build. Fires are all made while
    * the map loads, so this runs once; the old geometries are left to the

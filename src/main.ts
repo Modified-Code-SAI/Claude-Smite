@@ -69,7 +69,7 @@ async function main(): Promise<void> {
   // a normal launch opens on the home page and the intro trailer; the title
   // screen (and its hymn) follow once the trailer ends or is skipped
   const chosen: Promise<StartChoice> = skipMenu
-    ? Promise.resolve({ mode: (['clash', 'siege', 'duel', 'rush'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined })
+    ? Promise.resolve({ mode: (['clash', 'siege', 'duel', 'rush', 'descent'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined })
     : playIntro(audio).then(() => {
         music.play('hymn');
         return showStartMenu(GODS, graphics);
@@ -137,7 +137,7 @@ async function main(): Promise<void> {
    * jungle's in Conquest), so pressing Play only has the little that is left to do.
    */
   const prepare = async (mode: GameMode) => {
-    hud.progress(0.6, mode === 'conquest' ? 'Raising the battlefield…' : 'Raising the temple…');
+    hud.progress(0.6, mode === 'conquest' ? 'Raising the battlefield…' : mode === 'descent' ? 'Opening the underworld…' : 'Raising the temple…');
     // a guess behind the title screen may still be building
     const build = () => World.create(textures, camera, mapOf(mode));
     const world = await (building = building.then(build, build));
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
     }
     // Odin's Einherjar (summons are drawn on the fallback god's body, in their own colors)
     models.add(new GodModel('zeus', 'einherjar').root);
-    if (mode === 'conquest' || mode === 'siege') for (const root of monsterWarmup()) models.add(root);
+    if (mode === 'conquest' || mode === 'siege' || mode === 'descent') for (const root of monsterWarmup()) models.add(root);
     world.actors.add(models);
     await prepareShaders(world, post, 0.85, 0.86);
     return { world, post, models };

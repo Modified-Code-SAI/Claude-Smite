@@ -1,0 +1,33 @@
+.descent-where { display: flex; align-items: baseline; gap: 12px; white-space: nowrap; }
+.descent-where b { font-size: 16px; color: #ffe08a; letter-spacing: 0.08em; text-shadow: 0 2px 4px #000; }
+.descent-where span { font-size: 14px; opacity: 0.85; }
+.descent-where em { font-style: normal; font-size: 13px; color: #9ff0ff; text-shadow: 0 0 8px rgba(120, 220, 255, 0.8); }
+.descent .clash-state b.down { color: #ff9a86; }
+.descent-curses { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); display: none; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 92vw; }
+.descent-curses.show { display: flex; }
+.descent-curses span { padding: 2px 10px; font-size: 12px; color: #e6c6ff; background: rgba(30, 6, 36, 0.72); border-radius: 4px; box-shadow: 0 0 0 1px rgba(190, 90, 255, 0.55); text-shadow: 0 1px 2px #000; white-space: nowrap; }
+.descent-curses span b { color: #d18cff; letter-spacing: 0.05em; text-transform: uppercase; }
+.descent-curses span.next { animation: clash-pulse 0.9s ease-in-out infinite alternate; }
+.descent-card { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 6px; opacity: 0; transition: opacity 0.6s; text-align: center; text-shadow: 0 4px 22px rgba(0, 0, 0, 0.95), 0 0 2px #000; }
+.descent-card.show { opacity: 1; animation: descent-card-in 1.2s ease-out; }
+@keyframes descent-card-in { from { opacity: 0; letter-spacing: 0.4em; } to { opacity: 1; } }
+.descent-card-depth { font-size: 14px; letter-spacing: 0.3em; text-transform: uppercase; color: #e8cf98; opacity: 0.85; }
+.descent-card-name { font-size: clamp(34px, 6vw, 68px); letter-spacing: 0.12em; color: #ffe9b8; }
+.descent-card[data-kind='boss'] .descent-card-name { color: #ff9a76; }
+.descent-card-kind { font: 15px system-ui, sans-serif; color: #f2e6cc; margin-top: 4px; padding: 10px 48px 0; border-top: 1px solid; border-image: linear-gradient(90deg, transparent, rgba(231, 194, 122, 0.85), transparent) 1; }
+.descent-card-kind b { font-family: 'Cinzel', Georgia, serif; color: #ffe08a; margin-right: 8px; letter-spacing: 0.06em; }
+.descent-cards { top: 118px; }
+.descent-reward em { font-style: normal; font: 600 12px system-ui, sans-serif; color: #9fd4ff; }
+.descent-reward.voted { border-color: #9fd4ff; box-shadow: 0 0 16px rgba(110, 180, 255, 0.55); }
+.descent-reward.skill b { color: #9ff0ff; }
+.descent-reward.heal b { color: #a8ffb8; }
+.descent-reward.obol b { color: #ffd36a; }
+.descent-reward.points b { color: #ffc4f0; }
+.descent-skill { padding-left: 86px; min-height: 64px; }
+.descent-skill .descent-icon { position: absolute; left: 38px; top: 10px; width: 40px; height: 40px; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 1px rgba(231, 194, 122, 0.55); }
+.descent-skill .descent-icon svg { width: 100%; height: 100%; display: block; }
+.descent-fade { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 0.7s ease-in; }
+.descent-fade.show { opacity: 1; transition: opacity 0.35s ease-out; }
+.ch-death.downed .ch-death-title { font-size: 0; }
+.ch-death.downed .ch-death-title::after { content: 'Downed'; font-size: 54px; }
+.ch-death.downed::after { content: 'Hold on: an ally standing over you raises you'; font-size: 16px; color: #f2e6cc; letter-spacing: 0.06em; }

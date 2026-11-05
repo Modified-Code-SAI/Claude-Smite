@@ -394,7 +394,8 @@ export class CombatHud {
     }
     this.slots.forEach((slot, i) => {
       const rank = c.skillRankInSlot(i);
-      const locked = rank <= 0;
+      const sealed = c.sealed.has(i);
+      const locked = rank <= 0 || sealed;
       const cd = c.cooldownOf(i);
       const total = Math.max(0.01, c.resolveCooldown(i));
       const cost = locked ? 0 : c.resolveCost(i);
@@ -415,7 +416,7 @@ export class CombatHud {
       setStyle(slot.cd, 'background', cd > 0 ? `conic-gradient(rgba(5,5,10,0.78) ${((cd / total) * 360).toFixed(1)}deg, transparent 0)` : 'none');
       setText(slot.cdText, cd > 0 ? (cd >= 1 ? String(Math.ceil(cd)) : cd.toFixed(1)) : '');
       setText(slot.cost, locked ? '' : String(Math.round(cost)));
-      setText(slot.lock, locked ? `Lv ${i === ULTIMATE_SLOT ? 5 : 1}` : '');
+      setText(slot.lock, sealed ? 'Sealed' : locked ? `Lv ${i === ULTIMATE_SLOT ? 5 : 1}` : '');
       // skills a tree gave extra charges show a pip per charge
       const ch = c.chargesOf(i);
       setHtml(slot.charges, ch.max > 1 && !locked ? '<i class="on"></i>'.repeat(ch.ready) + '<i></i>'.repeat(ch.max - ch.ready) : '');
@@ -432,8 +433,10 @@ export class CombatHud {
     setStyle(this.recallFill, 'width', percent(1 - p.recall / RECALL_TIME));
 
     this.death.classList.toggle('show', !c.alive);
+    // a downed god (Underworld Descent) waits for an ally to raise it
+    this.death.classList.toggle('downed', !c.alive && p.downed);
     // a duel's fallen god waits for the next round instead of a timer
-    const timed = Number.isFinite(c.respawnTimer);
+    const timed = Number.isFinite(c.respawnTimer) && c.respawnTimer < 1e6;
     this.deathLine.style.visibility = timed ? '' : 'hidden';
     if (!c.alive && timed) setText(this.deathTimer, `${Math.ceil(c.respawnTimer)}s`);
 
