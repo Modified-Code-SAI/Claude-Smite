@@ -44,6 +44,7 @@ import { Coach } from '../ui/Coach';
 import { pitchTerrain, RUSH, type Rush } from '../sim/Rush';
 import { RushMode } from './RushMode';
 import { rushRoster, type RushSlot } from '../net/rushRoster';
+import { descentRoster, type DescentSlot } from '../net/descentRoster';
 import type { Descent } from '../sim/Descent';
 import { DescentMode } from './DescentMode';
 
@@ -62,6 +63,9 @@ export interface CombatDeps {
   mode?: 'arena' | 'conquest' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent';
   /** Temple Duel: the rival god's id; anything else (or the player's own god) picks one at random. */
   rival?: string;
+  /** Underworld Descent alone: bots on the player's team (default on), and a bot team descending against it. */
+  allies?: boolean;
+  rivals?: boolean;
   /** The player's god (defaults to Zeus). */
   god?: string;
   input: Input;
@@ -152,8 +156,14 @@ export class CombatGame implements Updatable {
     const net = conquest || rush || deps.mode === 'descent' ? deps.net : undefined;
     const slots = net && conquest ? roster(net.players) : null;
     const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random) : null;
+    // Underworld Descent: co-op, or a shared descent (online versus, or a bot team against yours alone)
+    const descentSlots =
+      deps.mode === 'descent'
+        ? descentRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random, net ? { versus: net.mode === 'versus', bots: net.bots } : { versus: !!deps.rivals, bots: { order: deps.allies !== false } })
+        : null;
     const mySlot = slots?.find((s) => s.player === net!.me) ?? rushSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
-    const myTeam = mySlot?.team ?? 'order';
+    const myDescent = descentSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
+    const myTeam = mySlot?.team ?? myDescent?.team ?? 'order';
     const clash = deps.mode === 'clash';
     const siege = deps.mode === 'siege';
     const duel = deps.mode === 'duel';
@@ -216,7 +226,7 @@ export class CombatGame implements Updatable {
     world.vfx.add(this.shapeDecal.mesh, this.rangeDecal.mesh);
 
     if (conquest || clash || siege || duel || rush || descent) player.spawn(spawn.x, spawn.z, spawn.yaw);
-    const mine = godById(mySlot?.god ?? deps.god ?? 'zeus') ?? GODS[0]!;
+    const mine = godById(mySlot?.god ?? myDescent?.god ?? deps.god ?? 'zeus') ?? GODS[0]!;
     this.player = godUnit(mine, myTeam, { x: spawn.x, z: spawn.z, yaw: spawn.yaw }, this.body);
     this.sim.add(this.player);
     // the Conquest map builds and places its own Tower, Phoenix and Titan models
@@ -287,7 +297,7 @@ export class CombatGame implements Updatable {
     }
 
     if (descent) {
-      this.startDescent(mine, net);
+      this.startDescent(net, descentSlots!, net ? net.mode === 'versus' : !!deps.rivals);
       this.sim.drainEvents();
       return;
     }
@@ -419,7 +429,8 @@ export class CombatGame implements Updatable {
     this.difficultyApplied = true;
     const d = this.deps.difficulty ?? 'normal';
     if (d === 'normal' || this.deps.net) return;
-    const perks = difficultyPerks(d, !!this.siege || !!this.descent);
+    // a shared descent has rival gods to make harder or easier; co-op only monsters, so the team changes instead
+    const perks = difficultyPerks(d, !!this.siege || (!!this.descent && !this.descent.versus));
     for (const u of this.sim.units) {
       if (u.kind !== 'god' || u.team === 'neutral') continue;
       const set = u.team === this.player.team ? perks.team : perks.foe;
@@ -445,11 +456,12 @@ export class CombatGame implements Updatable {
    * to three) go down through fifteen chambers, voting on a reward after each
    * and drafting new skills.
    */
-  private startDescent(mine: GodDef, net: CombatDeps['net']): void {
+  private startDescent(net: CombatDeps['net'], slots: DescentSlot[], versus: boolean): void {
     const mode = new DescentMode({
       sim: this.sim,
       player: this.player,
-      god: mine.id,
+      slots,
+      versus,
       ctrl: this.deps.player,
       net,
       world: this.deps.world,
@@ -463,7 +475,7 @@ export class CombatGame implements Updatable {
     this.netHost = mode.host;
     this.netGuest = mode.guest;
     this.warmup(this.deps.world.actors);
-    this.hud.toast('Clear each chamber, then walk into the north gate. Press K to spend your skill points.');
+    this.hud.toast(versus ? 'Every kill pays your team souls, rival gods included. Most souls at the bottom wins. Press K to spend your skill points.' : 'Clear each chamber, then walk into the north gate. Press K to spend your skill points.');
   }
 
   /** Temple Siege: the player and two bot allies hold the plaza against endless monster waves. */
@@ -640,6 +652,7 @@ export class CombatGame implements Updatable {
       this.hud.onEvent(e);
       this.matchHud?.onEvent(e);
       this.clashHud?.onEvent(e);
+      this.descentMode?.hud.onEvent(e);
       this.feel(e);
       if ((e.type === 'levelUp' || e.type === 'reward' || e.type === 'recall') && e.unit === this.player) this.menu.refresh();
     }

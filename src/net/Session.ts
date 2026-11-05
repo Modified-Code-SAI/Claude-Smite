@@ -63,6 +63,8 @@ export class NetSession {
   game = 'conquest';
   /** Most players the lobby takes (host only). */
   cap = TEAM_SIZE;
+  /** Whether bots fill each team's empty spots (modes that let a team choose: Underworld Descent). */
+  bots: Record<Side, boolean> = { order: true, chaos: true };
 
   private constructor(
     readonly role: 'host' | 'guest',
@@ -165,11 +167,20 @@ export class NetSession {
     else this.send('host', { t: 'team', team });
   }
 
+  /** Turn bot teammates on or off for a team: the host for any team, a guest for their own. */
+  setBots(team: Side, on: boolean): void {
+    if (this.started) return;
+    if (this.isHost) {
+      this.bots[team] = on;
+      this.changed();
+    } else if (this.self()?.team === team) this.send('host', { t: 'bots', team, on });
+  }
+
   /** Host: start the match for everyone in the lobby. */
   start(): void {
     if (!this.isHost || this.started) return;
     this.started = true;
-    this.broadcast({ t: 'start', mode: this.mode, game: this.game, players: this.players });
+    this.broadcast({ t: 'start', mode: this.mode, game: this.game, players: this.players, bots: this.bots });
     this.onStart();
   }
 
@@ -227,10 +238,19 @@ export class NetSession {
       case 'team':
         if (this.isHost && !this.started && this.mode === 'versus') this.update(from, { team: msg.team as Side });
         return;
+      case 'bots': {
+        // a player may only speak for their own team
+        const team = msg.team === 'chaos' ? 'chaos' : 'order';
+        if (!this.isHost || this.started || this.players.find((p) => p.id === from)?.team !== team) return;
+        this.bots[team] = msg.on !== false;
+        this.changed();
+        return;
+      }
       case 'lobby':
         this.mode = msg.mode as NetMode;
         this.game = (msg.game as string | undefined) ?? 'conquest';
         this.players = msg.players as NetPlayer[];
+        this.bots = readBots(msg.bots);
         this.onLobby();
         return;
       case 'start':
@@ -238,6 +258,7 @@ export class NetSession {
         this.mode = msg.mode as NetMode;
         this.game = (msg.game as string | undefined) ?? 'conquest';
         this.players = msg.players as NetPlayer[];
+        this.bots = readBots(msg.bots);
         this.started = true;
         this.onStart();
         return;
@@ -255,7 +276,7 @@ export class NetSession {
   }
 
   private changed(): void {
-    this.broadcast({ t: 'lobby', mode: this.mode, game: this.game, players: this.players });
+    this.broadcast({ t: 'lobby', mode: this.mode, game: this.game, players: this.players, bots: this.bots });
     this.onLobby();
   }
 
@@ -267,6 +288,11 @@ export class NetSession {
     }
     this.onLeave(id);
   }
+}
+
+function readBots(v: unknown): Record<Side, boolean> {
+  const b = (v ?? {}) as Partial<Record<Side, unknown>>;
+  return { order: b.order !== false, chaos: b.chaos !== false };
 }
 
 function describe(type: string): string {

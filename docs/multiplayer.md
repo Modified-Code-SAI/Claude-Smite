@@ -38,6 +38,8 @@ Relic Rush (`src/combat/RushMode.ts`) is a small example: both ends build six go
 
 Underworld Descent (`src/combat/DescentMode.ts`) is the co-op example: up to four friends, bots fill the team to three (`src/net/descentRoster.ts`). `Descent` is the `NetMatch`; its monsters travel with `origin: { f: 'mode', kind: 'descent' }` and the guest rebuilds them in `netSpawn`. Votes and skill picks go `act({ k: 'vote' | 'draft', i })`. A guest keeps its own loadout, so the host's state lists the skills each god learned and the guest learns them too (its own pick is learned at once). `src/net/descentnet.test.ts` mirrors a run from host to guest.
 
+Its versus lobby is a shared descent: two teams of up to three in the same chambers, scored in souls (`DESCENT.versus` and `SOULS` in `src/sim/Descent.ts`). Teams may be uneven. Each team chooses whether bots fill its empty spots: `NetSession.bots`, set with `setBots(team, on)` (the host for any team, a guest only for its own) and shown in the lobby when the mode's host option has `bots: true`. A team with no humans is always three bots. The smaller team gets lasting damage perks and its souls count per head (`Descent.soulRate`); `vs` in `DescentNet` carries the score, the teams voting on the current offer and which team took each boon.
+
 ## Testing locally
 
 ```sh

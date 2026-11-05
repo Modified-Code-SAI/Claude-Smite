@@ -13,6 +13,8 @@ export interface NetHostOption {
   text: string;
   /** Most players in the lobby. */
   cap: number;
+  /** Each team chooses whether bots fill its empty spots (otherwise they always do). */
+  bots?: boolean;
 }
 
 /** What the lobby needs to know about a game mode. */
