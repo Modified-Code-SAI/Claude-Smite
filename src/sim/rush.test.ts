@@ -167,6 +167,39 @@ describe('Relic Rush', () => {
     expect(rush.lastGoal?.kind).toBe('shot');
   });
 
+  it('the throw preview calls a shot on target exactly when the throw would score', () => {
+    const gz = RUSH.gates.chaos.z;
+    const calls: string[] = [];
+    let wrong = 0;
+    let onTarget = 0;
+    for (const [x, z] of [[0, -6], [0, -12], [0, -18], [-7, -13], [8, -16], [3, -21], [0, 4]] as const) {
+      for (const aim of [{ x: 0, z: gz }, { x: 2.6, z: gz }, { x: -3.6, z: gz }, { x: 0, z: gz - 9 }, { x: 0, z: gz + 3 }, { x: 9, z: gz }]) {
+        const { sim, rush } = match();
+        const a = god(sim, loki, 'order', 0);
+        rush.begin([a]);
+        run(sim, rush, RUSH.countdown + 0.1);
+        sim.teleport(a, x, z);
+        Object.assign(rush.relic, { phase: 'loose', x, z });
+        run(sim, rush, 0.4);
+        expect(rush.holder).toBe(a);
+        const called = rush.shotOnTarget(a, aim);
+        expect(rush.throwRelic(a, aim)).toBe(true);
+        run(sim, rush, 3, () => rush.phase !== 'play');
+        const scored = rush.score.order === 1;
+        if (called) onTarget++;
+        if (called !== scored) {
+          wrong++;
+          calls.push(`from ${x},${z} at ${aim.x},${aim.z}: called ${called}, scored ${scored}`);
+        }
+      }
+    }
+    expect(calls).toEqual([]);
+    expect(wrong).toBe(0);
+    // the grid has both kinds of throw in it
+    expect(onTarget).toBeGreaterThan(5);
+    expect(onTarget).toBeLessThan(36);
+  });
+
   it('first to five wins; a tie at the end of the clock goes to golden-relic overtime', () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);

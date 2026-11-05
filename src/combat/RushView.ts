@@ -241,6 +241,8 @@ export class RushView {
   private readonly edge: GroundDecal;
   private readonly preview: GroundDecal;
   private previewAt = '';
+  /** Whether the preview shows a shot on target (its colors are only set when that changes). */
+  private previewShot = false;
   private readonly head = new THREE.Vector3();
   /** Where the relic was drawn last frame, so a catch glides instead of snapping. */
   private readonly drawn = new THREE.Vector3();
@@ -402,27 +404,32 @@ export class RushView {
     const width = r.phase === 'held' ? (mine ? 0 : 0.34) : r.phase === 'flying' ? 0.5 : 0.4;
     this.locator.set(at, r.phase === 'held' ? 1.2 : 1.6, team ? 1 : 0, t, tone.main, tone.core, { lift, width });
 
-    // a gate glows harder while the relic is coming at it
+    // the local carrier sees where a throw would land, lit up blue when it would go in as a shot
+    const carrying = r.phase === 'held' && r.holder === me && rush.phase === 'play';
+    const shot = carrying && rush.shotOnTarget(me, me.aim);
+    // a gate glows harder while the relic is coming at it, and flares when your shot is lined up on it
     for (const v of this.veils) {
       const g = RUSH.gates[v.side];
       const attacker = r.phase === 'held' && r.holder && r.holder.team !== v.side ? r.holder : null;
       const near = attacker ? Math.max(0, 1 - Math.hypot(attacker.x - g.x, attacker.z - g.z) / 18) : 0;
-      v.values.glow = 0.8 + near * 1.4 + (rush.phase === 'goal' && rush.lastGoal?.team !== v.side ? 1.2 + Math.sin(t * 14) * 0.6 : 0);
+      v.values.glow = 0.8 + near * 1.4 + (rush.phase === 'goal' && rush.lastGoal?.team !== v.side ? 1.2 + Math.sin(t * 14) * 0.6 : 0) + (shot && v.side !== me.team ? 0.9 + Math.sin(t * 12) * 0.35 : 0);
       v.floor.values.opacity = 0.55 + near * 0.4;
     }
     this.edge.values.opacity = 0.4 + 0.12 * Math.sin(t * 1.3);
 
-    // the local carrier sees where a throw would land
-    const carrying = r.phase === 'held' && r.holder === me && rush.phase === 'play';
     this.preview.mesh.visible = carrying;
     if (carrying) {
+      if (shot !== this.previewShot) {
+        this.previewShot = shot;
+        this.preview.setColors(shot ? ALLY.main : GOLD.main, shot ? ALLY.core : GOLD.core);
+      }
       const to = rush.throwTarget(me, me.aim);
       const key = `${to.x.toFixed(1)},${to.z.toFixed(1)}`;
       if (key !== this.previewAt) {
         this.previewAt = key;
         this.preview.place({ type: 'circle', radius: R.catchReach + 0.6 }, to.x, to.z, 0, 0.1);
       }
-      this.preview.values.opacity = 0.75;
+      this.preview.values.opacity = shot ? 0.85 + Math.sin(t * 12) * 0.15 : 0.75;
     }
   }
 }

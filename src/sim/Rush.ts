@@ -379,6 +379,26 @@ export class Rush {
     return clampToPitch(u.x + (dx / d) * len, u.z + (dz / d) * len, 1.2);
   }
 
+  /**
+   * Whether a throw toward `at` would pass low through the enemy's gate, so
+   * score as a shot unless somebody cuts it off. Follows the same arc as
+   * `throwRelic` (the carrier's throw preview lights up for it).
+   */
+  shotOnTarget(u: Unit, at: Point): boolean {
+    const R = RUSH.relic;
+    const to = this.throwTarget(u, at);
+    const d = hypot(to.x - u.x, to.z - u.z);
+    const arc = { h0: R.carryHeight, arc: 0.8 + d * 0.14 };
+    const foe = other(u.team as Side);
+    const steps = Math.max(8, Math.ceil(d / 0.25));
+    for (let i = 1; i <= steps; i++) {
+      const p = i / steps;
+      if (Rush.flightHeight(arc, p) > R.shotHeight) continue;
+      if (inGate(foe, u.x + (to.x - u.x) * p, u.z + (to.z - u.z) * p, RUSH.shotHalfWidth)) return true;
+    }
+    return false;
+  }
+
   /** How long a throw of this length flies (`faster`: the thrower's Bullet Pass). */
   static flightTime(dist: number, faster = 0): number {
     return 0.2 + dist / (RUSH.relic.speed * (1 + faster));
