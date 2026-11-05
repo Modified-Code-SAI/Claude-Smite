@@ -11,7 +11,7 @@ import { Scoreboard } from '../sim/Scoreboard';
 import type { Sim } from '../sim/Sim';
 import type { SimEvent, Unit } from '../sim/Unit';
 import { DescentHud } from '../ui/DescentHud';
-import { DescentView } from './DescentView';
+import { DescentView, type DescentViewOptions } from './DescentView';
 import type { CombatVfx } from './Vfx';
 
 export interface DescentDeps {
@@ -32,8 +32,8 @@ export interface DescentDeps {
   learned: () => void;
   /** Adds camera shake (0..1 trauma). */
   shake?: (amount: number) => void;
-  /** A run of souls reached the player (`k` counts up the run). */
-  absorbed?: (k: number) => void;
+  /** A moment with its own sound (see DescentViewOptions.cue). */
+  cue?: DescentViewOptions['cue'];
 }
 
 /**
@@ -97,7 +97,7 @@ export class DescentMode {
     const board = new Scoreboard(sim);
     board.track(this.gods);
     this.hud = new DescentHud(run, player, (i) => this.pick(i), board);
-    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, { team: run.sideOf(player), me: player, shake: deps.shake, absorbed: deps.absorbed });
+    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, { team: run.sideOf(player), me: player, shake: deps.shake, cue: deps.cue });
   }
 
   /** Votes for a reward, or drafts a skill (from its key or a click on its card). */

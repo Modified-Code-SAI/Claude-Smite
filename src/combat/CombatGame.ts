@@ -47,6 +47,7 @@ import { rushRoster, type RushSlot } from '../net/rushRoster';
 import { descentRoster, type DescentSlot } from '../net/descentRoster';
 import type { Descent } from '../sim/Descent';
 import { DescentMode } from './DescentMode';
+import type { DescentCue } from './DescentView';
 import { JOTUNN, type Jotunn } from '../sim/Jotunn';
 import { GIANT_CAMERA, JotunnMode, type JotunnRole } from './JotunnMode';
 import type { Fire } from '../scene/Effects';
@@ -103,8 +104,8 @@ export class CombatGame implements Updatable {
   player!: Unit;
   /** The local player's own god: the same as `player` except while the Jötunn hands them the giant. */
   ownGod!: Unit;
-  /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls, souls reaching the player in Underworld Descent. */
-  onCue: ((name: 'step' | 'soul', at: { x: number; y: number; z: number }, k: number) => void) | null = null;
+  /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls; souls reaching the player and the dead climbing out of the floor in Underworld Descent. */
+  onCue: ((name: 'step' | DescentCue, at: { x: number; y: number; z: number }, k: number) => void) | null = null;
   bot: Unit | null = null;
   readonly match: Match | null = null;
   private readonly matchHud: MatchHud | null = null;
@@ -548,10 +549,11 @@ export class CombatGame implements Updatable {
       toast: (t, tone) => this.hud.toast(t, tone),
       learned: () => this.menu.refresh(),
       shake: this.deps.shake,
-      absorbed: (k) => this.onCue?.('soul', { x: this.player.x, y: this.player.body.y + 1.2, z: this.player.z }, k),
+      cue: (name, at, k) => this.onCue?.(name, at, k),
     });
     this.descentMode = mode;
     this.descent = mode.run;
+    this.views.emergeMonsters = true;
     this.netHost = mode.host;
     this.netGuest = mode.guest;
     this.warmup(this.deps.world.actors);
