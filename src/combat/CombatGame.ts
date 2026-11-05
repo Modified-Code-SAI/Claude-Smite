@@ -8,6 +8,7 @@ import type { GodDef } from '../game/types';
 import { SLOT_CODES, ULTIMATE_SLOT } from '../game/loadout';
 import { FAVOR_THRESHOLDS, XP_TABLE } from '../game/progression';
 import type { PlayerController } from '../player/PlayerController';
+import type { CameraShot } from '../player/ThirdPersonCamera';
 import type { World } from '../scene/World';
 import { GodBot, SummonBrain } from '../sim/Bot';
 import { dummyUnit, godUnit, summonUnit } from '../sim/factory';
@@ -72,6 +73,8 @@ export interface CombatDeps {
   role?: JotunnRole;
   /** Pulls the camera back and up (1 for a god; the Jötunn's is larger). */
   cameraScale?: (k: number, lift?: number, side?: number, ahead?: number) => void;
+  /** Lays a mode's camera shot over the follow camera (null hands it back). */
+  cameraShot?: (shot: CameraShot | null) => void;
   /** Temple Duel: the rival god's id; anything else (or the player's own god) picks one at random. */
   rival?: string;
   /** Underworld Descent alone: bots on the player's team (default on), and a bot team descending against it. */
@@ -472,6 +475,7 @@ export class CombatGame implements Updatable {
       burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
       shake: this.deps.shake,
       swing: (u, kind) => this.views.swing(u, kind),
+      cameraShot: this.deps.cameraShot,
     });
     // nobody dies here: a god knocked out lies dazed where it fell (no soul pillar) until it stands up at its gate
     this.views.dazes = true;
