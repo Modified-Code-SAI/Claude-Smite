@@ -364,11 +364,14 @@ export class Combatant {
   // -------------------------------------------------------------------------
   // Skills
 
+  /** Slots that cannot be cast until the mode unseals them (Underworld Descent starts with a weak kit). */
+  readonly sealed = new Set<number>();
+
   canCast(slot: number): CastError | null {
     if (!this.alive) return 'dead';
     const skill = this.skillInSlot(slot);
     if (!skill) return 'emptySlot';
-    if (this.skillRankInSlot(slot) === 0) return 'locked';
+    if (this.sealed.has(slot) || this.skillRankInSlot(slot) === 0) return 'locked';
     const locks = this.cc.locks();
     if (locks.cast) return 'cc';
     if (locks.movementAbilities && skill.effects.some((e) => e.kind === 'movement')) return 'cc';
