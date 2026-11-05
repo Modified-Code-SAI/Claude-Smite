@@ -4,11 +4,11 @@ import { awardXp, gameXp, type Award } from './ascension';
 export interface ModeRecord {
   played: number;
   won: number;
-  /** Temple Siege: the most waves held. */
+  /** Temple Siege: the most waves held; Underworld Descent: the most chambers cleared. */
   best: number;
 }
 
-export type RecordMode = 'conquest' | 'clash' | 'siege' | 'duel' | 'rush';
+export type RecordMode = 'conquest' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent';
 
 const KEY = 'ascendant.records';
 /** Where the Siege best lived before records existed. */
@@ -47,8 +47,9 @@ export function addResult(mode: RecordMode, result: { won?: boolean; best?: numb
 
 /** One line for the mode's card on the start screen, or '' before the first game. */
 export function recordLine(mode: string): string {
-  if (mode !== 'conquest' && mode !== 'clash' && mode !== 'siege' && mode !== 'duel' && mode !== 'rush') return '';
+  if (mode !== 'conquest' && mode !== 'clash' && mode !== 'siege' && mode !== 'duel' && mode !== 'rush' && mode !== 'descent') return '';
   const r = getRecord(mode);
   if (mode === 'siege') return r.best ? `Best: ${r.best} ${r.best === 1 ? 'wave' : 'waves'}` : '';
+  if (mode === 'descent') return r.best ? `Deepest: chamber ${r.best}${r.won ? ` · ${r.won} ${r.won === 1 ? 'escape' : 'escapes'}` : ''}` : '';
   return r.played ? `${r.won} ${r.won === 1 ? 'win' : 'wins'} in ${r.played} ${r.played === 1 ? 'game' : 'games'}` : '';
 }

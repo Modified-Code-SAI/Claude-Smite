@@ -409,9 +409,11 @@ export class UnitViews {
     } else v.deathTime = -1;
     if (v.model) v.model.deathTime = v.deathTime;
 
+    // a downed god (Underworld Descent) lies where it fell until it is raised
+    const lying = u.downed && !u.alive;
     if (u === this.player) {
       // no sink: the camera follows this root through the respawn wait
-      v.root.visible = u.alive || v.deathTime < GOD_CORPSE;
+      v.root.visible = u.alive || lying || v.deathTime < GOD_CORPSE;
       v.root.position.y += v.lift;
       return;
     }
@@ -458,9 +460,9 @@ export class UnitViews {
       v.monster.animate(u, dt, v.deathTime, v.wobble);
       return;
     }
-    v.root.visible = !hidden && (u.alive || v.deathTime < (v.model ? GOD_CORPSE : 0.05));
+    v.root.visible = !hidden && (u.alive || lying || v.deathTime < (v.model ? GOD_CORPSE : 0.05));
     if (!v.model) return;
-    v.root.position.y -= godSink(v.deathTime);
+    if (!lying) v.root.position.y -= godSink(v.deathTime);
     const speed = hypot(u.vx, u.vz);
     if (speed > 0.1) {
       const sin = Math.sin(u.body.yaw);

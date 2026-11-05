@@ -1,0 +1,1031 @@
+import { hypot } from '../core/math';
+import { SLOT_COUNT, ULTIMATE_SLOT } from '../game/loadout';
+import { FAVOR_THRESHOLDS, favorPoints, XP_TABLE } from '../game/progression';
+import type { GodDef, SkillDef, StatKey } from '../game/types';
+import type { CampKind } from '../map/ConquestLayout';
+import { BOSS_CHAMBER, CHAMBERS, entranceSpot, exitSpot, obstaclesOf, steer, type ChamberDef, type Palette } from '../map/UnderworldLayout';
+import { monsterUnit, type MonsterType } from './factory';
+import { MonsterBrain, type CampState } from './Jungle';
+import { BOONS, CHAMPION, CURSES, type Boon, type Curse } from './Siege';
+import type { Sim } from './Sim';
+import type { Brain, SimEvent, Unit } from './Unit';
+
+/**
+ * Underworld Descent: a co-op run down through fifteen chambers of the
+ * underworld. Each chamber is a short fight (a monster pack, a trap room, an
+ * elite, a Champion, a treasure chase) and every fifth holds a boss. Clear one
+ * and the team votes on a reward: a boon for everyone, a new skill (each god
+ * drafts one of three), tree points, or healing. The gods start with one skill
+ * and unseal the rest through the run. Curses stack the deeper the team goes.
+ * A fallen god lies downed until an ally stands over them long enough to
+ * revive them; when every god is down at once, the run ends.
+ */
+export const DESCENT = {
+  chambers: 15,
+  bossEvery: 5,
+  startLevel: 2,
+  /** Seconds the chamber's name shows before its monsters rise. */
+  enterTime: 2.4,
+  /** Seconds the screen is black while the team goes down. */
+  fadeTime: 0.9,
+  revive: { range: 2.8, time: 3.2, health: 0.4 },
+  /** A god still down when the team leaves comes along with this much health. */
+  returnHealth: 0.3,
+  /** Seconds to vote on a reward, and to draft a skill. */
+  voteTime: 20,
+  draftTime: 20,
+  /** After the reward the exit gate opens; nobody walking in pulls the team down after this long. */
+  exitPull: 30,
+  exitRadius: 2.8,
+  /** The next wave of a chamber rises once this share of the last is left, or after this long. */
+  nextWave: { left: 0.3, after: 22 },
+  /** Trap rooms: soul fire erupts under the gods. Damage is a share of max health. */
+  eruption: { every: 2.8, warn: 1.25, radius: 3.2, damage: 0.15 },
+  /** Bosses call adds when they fall below these shares of their health. */
+  bossAdds: [0.66, 0.33],
+  /** Champion's Obol: a whole-team wipe is undone this many times (it can be won as a reward). */
+  obols: 0,
+} as const;
+
+export type ChamberKind = 'pack' | 'trap' | 'elite' | 'champion' | 'treasure' | 'boss';
+
+export interface ChamberPlan {
+  /** 1-based chamber number. */
+  n: number;
+  /** Index in CHAMBERS. */
+  layout: number;
+  kind: ChamberKind;
+}
+
+/** The three depths, five chambers each, lit in their own color. */
+export const DEPTHS: readonly { name: string; palette: Palette }[] = [
+  { name: 'The Ashen Depths', palette: 'ember' },
+  { name: 'The Drowned Halls', palette: 'soul' },
+  { name: 'The Abyss', palette: 'spirit' },
+];
+
+export const depthOf = (n: number): number => Math.min(DEPTHS.length - 1, Math.floor((Math.max(1, n) - 1) / DESCENT.bossEvery));
+
+export const KIND_NAMES: Record<ChamberKind, string> = {
+  pack: 'Monster pack',
+  trap: 'Trap room',
+  elite: 'Elite guardians',
+  champion: 'Champion',
+  treasure: 'Treasure hunt',
+  boss: 'Boss',
+};
+
+/** What each kind of chamber asks of the team, for the chamber card. */
+export const KIND_TEXT: Record<ChamberKind, string> = {
+  pack: 'Clear the chamber.',
+  trap: 'Soul fire erupts beneath you. Keep moving!',
+  elite: 'Wardens guard this chamber.',
+  champion: 'A Champion leads the dead. Its fall empowers your team.',
+  treasure: 'A Gilded Thornback hides here. Catch it for a second reward.',
+  boss: 'A great beast rules this chamber.',
+};
+
+/**
+ * The whole run's chambers, rolled up front: every depth visits four of the
+ * five normal chambers in a random order, then the boss arena.
+ */
+export function planRun(rng: () => number): ChamberPlan[] {
+  const out: ChamberPlan[] = [];
+  const normal = CHAMBERS.map((_, i) => i).filter((i) => i !== BOSS_CHAMBER);
+  let last = -1;
+  for (let depth = 0; depth < DESCENT.chambers / DESCENT.bossEvery; depth++) {
+    const order = shuffle(normal, rng);
+    // never the same hall twice in a row across a depth's edge
+    if (order[0] === last) order.push(order.shift()!);
+    let treasure = false;
+    for (let k = 0; k < DESCENT.bossEvery; k++) {
+      const n = depth * DESCENT.bossEvery + k + 1;
+      if (k === DESCENT.bossEvery - 1) {
+        out.push({ n, layout: BOSS_CHAMBER, kind: 'boss' });
+        continue;
+      }
+      const layout = order[k]!;
+      last = layout;
+      let kind: ChamberKind = 'pack';
+      if (n > 1) {
+        const r = rng();
+        if (n >= 3 && !treasure && r < 0.14) kind = 'treasure';
+        else if (r < 0.36) kind = 'trap';
+        else if (r < 0.58) kind = 'elite';
+        else if (n >= 3 && r < 0.78) kind = 'champion';
+        else kind = 'pack';
+        treasure ||= kind === 'treasure';
+      }
+      out.push({ n, layout, kind });
+    }
+  }
+  return out;
+}
+
+function shuffle<T>(list: readonly T[], rng: () => number): T[] {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
+
+/** How hard the underworld pushes back, tuned with bot-only runs (see descent.test.ts). */
+export const DESCENT_TUNING = {
+  /** Jungle minutes of growth per chamber (the jungle's growth stops at 20). */
+  minutes: 1.6,
+  /** From this chamber on, health and damage grow this much per chamber on top. */
+  scaleFrom: 6,
+  scalePer: 0.2,
+  /** And in the last depth this much more per chamber past the second boss, squared (the run's climax). */
+  lateRamp: 0.06,
+  /** The second boss (the Molten Colossus) comes in at this share of its health. */
+  secondBoss: 0.8,
+  /** Monster damage on top of the growth. */
+  power: 0.85,
+  /** Monster health on top of the growth. */
+  health: 2.5,
+  /** Bosses' health on top of `health` (the packs carry the length of a chamber; a boss shouldn't drag). */
+  bossHealth: 0.55,
+  /** How many monsters a pack brings, as a multiplier. */
+  count: 2,
+  /** XP and favor for kills and for each cleared chamber, as multipliers (the gods' growth). */
+  killXp: 0.45,
+  clearXp: 0.5,
+  favor: 1,
+};
+
+/** How grown a chamber's monsters are, in jungle minutes. */
+export const chamberMinutes = (n: number): number => (n - 1) * DESCENT_TUNING.minutes;
+/** Deeper still, monsters get tougher than the jungle's growth alone: health and damage. */
+export const chamberScale = (n: number): number => {
+  const t = DESCENT_TUNING;
+  const late = Math.max(0, n - 2 * DESCENT.bossEvery);
+  return 1 + Math.max(0, n - t.scaleFrom) * t.scalePer + late * late * t.lateRamp;
+};
+/** Monster health for a team of this many gods (tuned for three; bots fill a team up to three). */
+export const teamScale = (gods: number): number => 0.4 + 0.2 * Math.max(1, gods);
+/** How many monsters come for a team of this many gods. */
+export const teamCount = (gods: number): number => [0.5, 0.75, 1, 1.3][Math.min(4, Math.max(1, gods)) - 1]!;
+
+const isBossType = (t: string): boolean => t === 'treasureWyrm' || t === 'moltenColossus';
+
+/** The monsters of one chamber, wave by wave. */
+export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
+  const { n, kind } = plan;
+  const many = DESCENT_TUNING.count * teamCount(gods);
+  const pack = (k: number): MonsterType[] => {
+    const out: MonsterType[] = [];
+    const add = (t: MonsterType, count: number) => {
+      for (let i = 0; i < Math.round(count * k * many); i++) out.push(t);
+    };
+    add('thornback', Math.min(9, 3 + Math.floor(n * 0.6)));
+    add('thornSpitter', n >= 2 ? Math.min(4, Math.floor(n / 2)) : 0);
+    add('thornbackAlpha', Math.min(4, Math.floor((n - 1) / 3)));
+    return out;
+  };
+  // a big pack rises in two or three waves, the heavier monsters last
+  const split = (all: MonsterType[]): MonsterType[][] => {
+    if (all.length < 5) return [all];
+    const waves = all.length >= 10 ? 3 : 2;
+    const out: MonsterType[][] = [];
+    for (let w = 0, at = 0; w < waves; w++) {
+      const next = Math.round((all.length * (w + 1)) / waves);
+      out.push(all.slice(at, next));
+      at = next;
+    }
+    return out;
+  };
+  switch (kind) {
+    case 'pack':
+      return split(pack(1));
+    case 'trap':
+      return split(pack(0.6));
+    case 'elite': {
+      const wardens: MonsterType[] = Array(n >= 8 ? 2 : 1).fill('warden');
+      return [[...wardens, ...pack(0.45)], pack(0.3)].filter((w) => w.length);
+    }
+    case 'champion':
+      return [[(n >= 6 ? 'warden' : 'thornbackAlpha') as MonsterType, ...pack(0.5)], pack(0.3)].filter((w) => w.length);
+    case 'treasure':
+      return split(pack(0.7));
+    case 'boss':
+      return [[n % 10 === 5 ? 'treasureWyrm' : 'moltenColossus', ...(n >= 10 ? (['thornSpitter', 'thornSpitter'] as MonsterType[]) : [])]];
+  }
+}
+
+/** The adds a boss calls as it weakens. */
+function bossAdds(n: number): MonsterType[] {
+  const out: MonsterType[] = ['thornback', 'thornback', 'thornback', 'thornSpitter'];
+  if (n >= 10) out.push('thornbackAlpha', 'thornSpitter');
+  if (n >= 15) out.push('thornbackAlpha', 'thornback');
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Rewards and curses
+
+export type RewardKind = 'boon' | 'skill' | 'points' | 'heal' | 'obol';
+
+export interface Reward {
+  kind: RewardKind;
+  name: string;
+  text: string;
+  /** The boon a boon card gives. */
+  boon?: Boon;
+}
+
+/** Boons for the underworld: Siege's that make sense away from the plaza. */
+export const DESCENT_BOONS: readonly Boon[] = BOONS.filter((b) => !b.cleanse && !b.corruptScale);
+
+export const POINTS_REWARD = 2;
+
+const SKILL_REWARD: Reward = { kind: 'skill', name: 'Forgotten Rite', text: 'Each god learns a new skill: draft one of three' };
+const POINTS: Reward = { kind: 'points', name: 'Ancestral Insight', text: `+${POINTS_REWARD} skill tree points for every god` };
+const HEAL: Reward = { kind: 'heal', name: 'Waters of Lethe', text: 'Restore all health and mana, and the fallen rise' };
+const OBOL: Reward = { kind: 'obol', name: "Charon's Obol", text: 'The next time your whole team falls, everyone rises again' };
+
+/**
+ * Curses stack as the team goes deeper: one more at each of these chambers,
+ * announced while the team picks its reward in the chamber before.
+ */
+export const CURSE_AT: readonly number[] = [4, 7, 9, 12, 14];
+
+export interface DescentCurse extends Curse {
+  /** Monsters hit this much harder. */
+  power?: number;
+  /** Reviving a fallen god takes this many times as long. */
+  restless?: number;
+  /** Soul fire erupts in every chamber, not only trap rooms. */
+  ashfall?: boolean;
+}
+
+export const DESCENT_CURSES: readonly DescentCurse[] = [
+  ...CURSES.filter((c) => !c.respawn),
+  { id: 'wrath', name: 'Wrath of the Dead', text: 'Monsters hit 20% harder', power: 0.2 },
+  { id: 'restless', name: 'Restless Souls', text: 'Reviving a fallen god takes twice as long', restless: 2 },
+  { id: 'ashfall', name: 'Ashfall', text: 'Soul fire erupts in every chamber', ashfall: true },
+];
+
+// ---------------------------------------------------------------------------
+// Brains
+
+/**
+ * A Descent monster hunts the nearest god in its chamber; there is nowhere to
+ * leash back to. It reuses the jungle monster's fighting (windups, boss slams)
+ * with a camp that stays on its foe, and walks around columns and the pit.
+ */
+export class DescentMonsterBrain extends MonsterBrain {
+  private readonly at: [number, number];
+
+  constructor(
+    private readonly s: Sim,
+    private readonly self: Unit,
+    camp: CampState,
+    private readonly obstacles: readonly (readonly [number, number, number])[] = [],
+  ) {
+    super(s, self, camp);
+    this.at = camp.camp.at as unknown as [number, number];
+  }
+
+  override update(dt: number): void {
+    const u = this.self;
+    const camp = this.camp;
+    const foe = camp.foe;
+    if (!foe || !foe.alive || !foe.targetable || foe.stealth > 0 || hypot(foe.x - u.x, foe.z - u.z) > 18) {
+      let best: Unit | null = null;
+      let bd = 70;
+      for (const t of this.s.enemiesOf(u)) {
+        if ((t.kind !== 'god' && t.kind !== 'summon') || t.stealth > 0 || !t.targetable) continue;
+        const d = hypot(t.x - u.x, t.z - u.z);
+        if (d < bd) [bd, best] = [d, t];
+      }
+      // a monster whose foe is only far away keeps it rather than flip-flopping
+      if (best || !foe?.alive || !foe.targetable) camp.foe = best;
+    }
+    // the camp travels with the fight, so the jungle's leash never pulls it home
+    const t = camp.foe;
+    this.at[0] = t ? t.x : u.x;
+    this.at[1] = t ? t.z : u.z;
+    super.update(dt);
+    if (t && u.move && this.obstacles.length) {
+      const p = steer(this.obstacles, u.x, u.z, t.x, t.z, u.radius);
+      if (p.x !== t.x || p.z !== t.z) {
+        const dx = p.x - u.x;
+        const dz = p.z - u.z;
+        const d = Math.max(0.01, hypot(dx, dz));
+        u.move = { x: dx / d, z: dz / d };
+        u.body.yaw = Math.atan2(-dx, -dz);
+      }
+    }
+  }
+}
+
+/** The Gilded Thornback: never fights, runs from the gods around its chamber until caught or the chamber is cleared. */
+export class FleeBrain implements Brain {
+  private dir = 1;
+  constructor(
+    private readonly s: Sim,
+    private readonly u: Unit,
+    private readonly center: { x: number; z: number },
+    private readonly roam: number,
+  ) {}
+
+  update(): void {
+    const u = this.u;
+    u.move = null;
+    if (!u.alive) return;
+    let nx = 0;
+    let nz = 0;
+    let near = Infinity;
+    for (const t of this.s.enemiesOf(u)) {
+      if (t.kind !== 'god' || !t.alive) continue;
+      const d = hypot(t.x - u.x, t.z - u.z);
+      if (d < near) [near, nx, nz] = [d, t.x, t.z];
+    }
+    const rx = u.x - this.center.x;
+    const rz = u.z - this.center.z;
+    const r = Math.max(0.01, hypot(rx, rz));
+    let mx = (-rz / r) * this.dir + (rx / r) * (this.roam - r) * 0.15;
+    let mz = (rx / r) * this.dir + (rz / r) * (this.roam - r) * 0.15;
+    if (near < 12) {
+      const ax = (u.x - nx) / Math.max(0.01, near);
+      const az = (u.z - nz) / Math.max(0.01, near);
+      if (ax * mx + az * mz < -0.3) this.dir = -this.dir;
+      mx += ax * 2;
+      mz += az * 2;
+    }
+    const m = hypot(mx, mz);
+    if (m < 0.01) return;
+    u.move = { x: mx / m, z: mz / m };
+    u.body.yaw = Math.atan2(-mx, -mz);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The run
+
+export type DescentPhase = 'enter' | 'fight' | 'reward' | 'draft' | 'exit' | 'descend' | 'won' | 'lost';
+
+/** A pending eruption of soul fire: lands when `left` reaches 0. */
+export interface Eruption {
+  id: number;
+  x: number;
+  z: number;
+  r: number;
+  left: number;
+}
+
+/** A god's personal skill draft: which slot it fills and the three skills on offer. */
+export interface Draft {
+  slot: number;
+  options: SkillDef[];
+}
+
+const WARDEN_GLOWS = ['might', 'wisdom', 'swiftness', 'insight'] as const;
+
+export class Descent {
+  readonly plan: ChamberPlan[];
+  /** 1-based number of the chamber the team is in (0 before the first). */
+  chamber = 0;
+  phase: DescentPhase = 'enter';
+  /** Seconds left in the current phase, where it has a limit. */
+  timer: number = DESCENT.enterTime;
+  /** Run clock, seconds. */
+  time = 0;
+  /** The gods on the team, and which of them humans play (they vote; bots follow). */
+  readonly gods: Unit[] = [];
+  readonly humans = new Set<Unit>();
+  /** Monsters of the current chamber still standing, and the waves yet to rise. */
+  readonly monsters: Unit[] = [];
+  private waves: MonsterType[][] = [];
+  wave = 0;
+  private waveTimer = 0;
+  private waveSize = 0;
+  kills = 0;
+  readonly boons: Boon[] = [];
+  readonly curses: DescentCurse[] = [];
+  /** The curse joining the stack at the next chamber, shown during the reward. */
+  nextCurse: DescentCurse | null = null;
+  /** The three rewards on offer after a chamber, and each human's vote. */
+  offer: Reward[] | null = null;
+  readonly votes = new Map<Unit, number>();
+  /** Rewards still to be offered after this one (the Gilded Thornback's prize). */
+  bonusRewards = 0;
+  /** Each god's open skill draft. */
+  readonly drafts = new Map<Unit, Draft>();
+  /** Downed gods and how far along their revive is (0..1). */
+  readonly downed = new Map<Unit, number>();
+  obols: number = DESCENT.obols;
+  /** Set once an obol lifts the team (for the herald and HUD). */
+  obolUsed = 0;
+  readonly eruptions: Eruption[] = [];
+  private eruptIn = 0;
+  private nextEruption = 1;
+  /** This chamber's Champion while it stands, the Gilded Thornback while it runs, and the boss. */
+  champion: Unit | null = null;
+  gilded: Unit | null = null;
+  gildedFate: 'caught' | 'escaped' | null = null;
+  boss: Unit | null = null;
+  private bossAddsCalled = 0;
+  /** Seconds left on the Champion's spoils. */
+  spoils = 0;
+  /** Revives that need extra health after the sim respawns them. */
+  private readonly reviving = new Map<Unit, number>();
+
+  constructor(
+    private readonly sim: Sim,
+    /** The god whose shape monsters borrow (see factory.monsterUnit). */
+    private readonly base: GodDef,
+    plan?: ChamberPlan[],
+  ) {
+    this.plan = plan ?? planRun(sim.rng);
+    sim.listeners.push((e) => this.on(e));
+  }
+
+  /** The chamber the team is in (or about to enter). */
+  get current(): ChamberPlan {
+    return this.plan[Math.max(0, this.chamber - 1)]!;
+  }
+
+  get layout(): ChamberDef {
+    return CHAMBERS[this.current.layout]!;
+  }
+
+  get depth(): number {
+    return depthOf(Math.max(1, this.chamber));
+  }
+
+  /** Chambers fully cleared. */
+  get cleared(): number {
+    if (this.phase === 'won') return this.chamber;
+    return this.phase === 'enter' || this.phase === 'fight' || this.phase === 'lost' ? this.chamber - 1 : this.chamber;
+  }
+
+  get over(): boolean {
+    return this.phase === 'won' || this.phase === 'lost';
+  }
+
+  /** The sealed skill slots every god starts with: only the first skill and basic attacks to begin. */
+  static readonly SEALED: readonly number[] = [1, 2, ULTIMATE_SLOT];
+
+  /** Brings a god into the run: starting level, sealed slots, and its spot at the first gate. */
+  addGod(u: Unit, human: boolean): void {
+    this.gods.push(u);
+    if (human) this.humans.add(u);
+    const c = u.combatant;
+    c.gainXp(Math.max(0, XP_TABLE[DESCENT.startLevel - 1]! - c.xp));
+    for (const s of Descent.SEALED) c.sealed.add(s);
+    c.health = c.stats.maxHealth;
+    c.mana = c.stats.maxMana;
+  }
+
+  /** Puts the team at the first chamber's gate. Call once every god is added. */
+  begin(): void {
+    this.chamber = 1;
+    this.phase = 'enter';
+    this.timer = DESCENT.enterTime;
+    this.placeTeam();
+  }
+
+  // -------------------------------------------------------------------------
+  // Events
+
+  private on(e: SimEvent): void {
+    if (e.type === 'respawn' && this.reviving.has(e.unit)) {
+      const c = e.unit.combatant;
+      c.health = Math.max(1, c.stats.maxHealth * this.reviving.get(e.unit)!);
+      this.reviving.delete(e.unit);
+      return;
+    }
+    if (e.type !== 'death') return;
+    const u = e.unit;
+    if (u.kind === 'god' && this.gods.includes(u)) {
+      // no respawn timer in the underworld: only an ally (or leaving the chamber) brings a god back
+      u.combatant.respawnTimer = 1e9;
+      u.downed = true;
+      this.downed.set(u, 0);
+      return;
+    }
+    if (u.kind !== 'monster') return;
+    if (this.monsters.includes(u)) this.kills++;
+    if (u === this.champion) this.claimSpoils();
+    if (u === this.gilded) {
+      this.gilded = null;
+      this.gildedFate = 'caught';
+      this.bonusRewards++;
+    }
+  }
+
+  private claimSpoils(): void {
+    this.champion = null;
+    this.spoils = CHAMPION.time;
+    for (const g of this.gods) {
+      if (!g.alive) continue;
+      g.combatant.refreshTimedMod('damageBonus', CHAMPION.damage, CHAMPION.time);
+      g.combatant.heal(g.combatant.stats.maxHealth * CHAMPION.heal);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Step
+
+  step(dt: number): void {
+    if (this.over || this.chamber === 0) return;
+    this.time += dt;
+    this.spoils = Math.max(0, this.spoils - dt);
+    for (let i = this.monsters.length - 1; i >= 0; i--) if (!this.monsters[i]!.alive) this.monsters.splice(i, 1);
+    this.stepRevives(dt);
+    if (this.checkWipe()) return;
+    this.stepEruptions(dt);
+    switch (this.phase) {
+      case 'enter':
+        this.timer -= dt;
+        if (this.timer <= 0) this.startFight();
+        break;
+      case 'fight':
+        this.stepFight(dt);
+        break;
+      case 'reward':
+        this.timer -= dt;
+        if (this.timer <= 0 || this.allVoted()) this.resolveVote();
+        break;
+      case 'draft':
+        this.timer -= dt;
+        for (const [g, d] of this.drafts) if (!this.humans.has(g) || this.timer <= 0) this.draft(g, this.humans.has(g) ? 0 : Math.floor(this.sim.rng() * d.options.length));
+        if (this.drafts.size === 0) this.afterReward();
+        break;
+      case 'exit': {
+        this.timer -= dt;
+        const door = exitSpot(this.layout);
+        const walkers = this.humans.size ? [...this.humans] : this.gods;
+        const through = walkers.some((g) => g.alive && hypot(g.x - door.x, g.z - door.z) < DESCENT.exitRadius);
+        if (through || this.timer <= 0) {
+          this.phase = 'descend';
+          this.timer = DESCENT.fadeTime;
+        }
+        break;
+      }
+      case 'descend':
+        this.timer -= dt;
+        if (this.timer <= 0) this.nextChamber();
+        break;
+      default:
+        break;
+    }
+  }
+
+  private stepFight(dt: number): void {
+    if (this.gilded && this.monsters.every((m) => m === this.gilded)) this.escapeGilded();
+    this.stepBoss();
+    this.waveTimer += dt;
+    const left = this.monsters.filter((m) => m !== this.gilded).length;
+    if (this.wave < this.waves.length && (left <= this.waveSize * DESCENT.nextWave.left || this.waveTimer >= DESCENT.nextWave.after)) this.spawnWave();
+    else if (this.wave >= this.waves.length && this.monsters.length === 0) this.clearChamber();
+  }
+
+  /** A boss calls its adds as it weakens. */
+  private stepBoss(): void {
+    const b = this.boss;
+    if (!b || !b.alive) return;
+    const share = b.combatant.health / b.combatant.stats.maxHealth;
+    const due = DESCENT.bossAdds[this.bossAddsCalled];
+    if (due === undefined || share > due) return;
+    this.bossAddsCalled++;
+    this.spawn(bossAdds(this.chamber), 'adds');
+  }
+
+  private startFight(): void {
+    this.phase = 'fight';
+    this.waves = chamberWaves(this.current, this.gods.length);
+    this.wave = 0;
+    this.champion = null;
+    this.boss = null;
+    this.bossAddsCalled = 0;
+    this.gildedFate = null;
+    this.eruptIn = 3;
+    this.spawnWave();
+    if (this.current.kind === 'treasure') this.spawnGilded();
+  }
+
+  private spawnWave(): void {
+    const roster = this.waves[this.wave++]!;
+    this.waveTimer = 0;
+    this.waveSize = roster.length;
+    this.spawn(roster, `w${this.wave}`);
+  }
+
+  private spawn(roster0: MonsterType[], label: string): void {
+    const n = this.chamber;
+    const c = this.layout;
+    let roster = roster0;
+    const swarm = this.curses.find((k) => k.swarm)?.swarm;
+    if (swarm) {
+      const t = roster.filter((r) => r === 'thornback').length;
+      roster = [...Array<MonsterType>(Math.min(t * (swarm.count - 1), 14 - t)).fill('thornback'), ...roster];
+    }
+    const minutes = chamberMinutes(n);
+    const scale = chamberScale(n);
+    const team = teamScale(this.gods.length);
+    const kind = this.current.kind;
+    // the champion of a Champion chamber is the first monster of its first wave
+    const champ = kind === 'champion' && label === 'w1' ? 0 : -1;
+    roster.forEach((type, i) => {
+      const boss = isBossType(type);
+      const spot = boss ? [0, -c.extent * 0.35] : c.spawns[(i + this.wave * 3) % c.spawns.length]!;
+      const jx = boss ? 0 : (this.sim.rng() - 0.5) * 2.2;
+      const jz = boss ? 0 : (this.sim.rng() - 0.5) * 2.2;
+      const x = c.x + spot[0]! + jx;
+      const z = c.z + spot[1]! + jz;
+      const title = i === champ ? 'Champion' : boss && n === DESCENT.chambers ? 'Abyssal' : '';
+      const u = monsterUnit(this.base, type, { x, z, yaw: 0 }, minutes, title);
+      const cb = u.combatant;
+      let hp = scale * team * DESCENT_TUNING.health;
+      let power = scale * DESCENT_TUNING.power;
+      if (boss) hp *= DESCENT_TUNING.bossHealth;
+      if (boss && n === DESCENT.bossEvery) hp *= 0.7;
+      if (boss && n === 2 * DESCENT.bossEvery) hp *= DESCENT_TUNING.secondBoss;
+      if (boss && n === DESCENT.chambers) {
+        hp *= 1.5;
+        power *= 1.15;
+      }
+      if (i === champ) {
+        hp *= CHAMPION.health;
+        power *= CHAMPION.power;
+        this.champion = u;
+      }
+      for (const k of this.curses) {
+        if (k.swarm && type === 'thornback') hp *= k.swarm.health;
+        if (k.power) power *= 1 + k.power;
+      }
+      if (hp !== 1) cb.refreshTimedMod('maxHealth', cb.stats.maxHealth * (hp - 1), 1e9);
+      if (power !== 1) cb.refreshTimedMod('attackPower', cb.stats.attackPower * (power - 1), 1e9);
+      for (const k of this.curses) {
+        for (const [s, f] of Object.entries(k.scale ?? {}) as [StatKey, number][]) cb.refreshTimedMod(s, cb.stats[s] * f, 1e9);
+        for (const [s, v] of Object.entries(k.flat ?? {}) as [StatKey, number][]) cb.refreshTimedMod(s, v, 1e9);
+      }
+      cb.health = cb.stats.maxHealth;
+      if (u.bounty) u.bounty = { xp: u.bounty.xp * DESCENT_TUNING.killXp, favor: u.bounty.favor * DESCENT_TUNING.favor };
+      const campKind: CampKind = type === 'warden' ? WARDEN_GLOWS[(n + i) % 4]! : boss ? (type as CampKind) : 'small';
+      u.tag = `descent-${campKind}-${n}.${label}.${i}:${type}`;
+      u.home.x = x;
+      u.home.z = z;
+      const camp: CampState = { camp: { id: `descent:${n}:${label}:${i}`, kind: campKind, team: null, at: [x, z] }, members: [u], respawnAt: null, foe: null };
+      u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c));
+      if (boss) this.boss = u;
+      this.monsters.push(u);
+      this.sim.add(u);
+    });
+  }
+
+  private spawnGilded(): void {
+    const c = this.layout;
+    const spot = c.spawns[1]!;
+    const u = monsterUnit(this.base, 'gildedThornback', { x: c.x + spot[0]!, z: c.z + spot[1]!, yaw: 0 }, chamberMinutes(this.chamber));
+    u.combatant.refreshTimedMod('maxHealth', u.combatant.stats.maxHealth * (chamberScale(this.chamber) * teamScale(this.gods.length) - 1), 1e9);
+    u.combatant.health = u.combatant.stats.maxHealth;
+    u.tag = `descent-small-${this.chamber}.g:gildedThornback`;
+    u.brain = new FleeBrain(this.sim, u, { x: c.x, z: c.z }, Math.max(8, c.extent * 0.6));
+    this.gilded = u;
+    this.monsters.push(u);
+    this.sim.add(u);
+  }
+
+  private escapeGilded(): void {
+    if (!this.gilded) return;
+    const i = this.monsters.indexOf(this.gilded);
+    if (i >= 0) this.monsters.splice(i, 1);
+    this.sim.remove(this.gilded);
+    this.gilded = null;
+    this.gildedFate = 'escaped';
+  }
+
+  // -------------------------------------------------------------------------
+  // Clearing a chamber, and its reward
+
+  private clearChamber(): void {
+    this.eruptions.length = 0;
+    const n = this.chamber;
+    for (const g of this.gods) {
+      this.sim.reward(g, (170 + 50 * n) * DESCENT_TUNING.clearXp, (40 + 12 * n) * DESCENT_TUNING.favor);
+      if (g.alive) {
+        const c = g.combatant;
+        c.heal(c.stats.maxHealth * 0.2);
+        c.mana = Math.min(c.stats.maxMana, c.mana + c.stats.maxMana * 0.3);
+      }
+    }
+    if (n >= DESCENT.chambers) {
+      this.phase = 'won';
+      return;
+    }
+    this.nextCurse = CURSE_AT.includes(n + 1) ? this.rollCurse() : null;
+    this.offerReward();
+  }
+
+  private rollCurse(): DescentCurse | null {
+    const pool = DESCENT_CURSES.filter((c) => !this.curses.some((k) => k.id === c.id));
+    return pool.length ? pool[Math.floor(this.sim.rng() * pool.length)]! : null;
+  }
+
+  /** Whether any god still has a sealed skill slot to draft into. */
+  private get canLearn(): boolean {
+    return this.gods.some((g) => g.combatant.sealed.size > 0);
+  }
+
+  private offerReward(): void {
+    const rng = this.sim.rng;
+    const cards: Reward[] = [];
+    const hurt = this.gods.reduce((s, g) => s + (g.alive ? g.combatant.health / g.combatant.stats.maxHealth : 0), 0) / Math.max(1, this.gods.length);
+    if (this.canLearn && (this.chamber <= 2 || rng() < 0.75)) cards.push(SKILL_REWARD);
+    if ((this.downed.size > 0 || hurt < 0.55) && rng() < 0.85) cards.push(HEAL);
+    if (this.obols < 1 && this.chamber >= 3 && rng() < 0.12) cards.push(OBOL);
+    if (cards.length < 3 && rng() < 0.4) cards.push(POINTS);
+    const boons = shuffle(DESCENT_BOONS, rng);
+    while (cards.length < 3) {
+      const b = boons.pop()!;
+      cards.push({ kind: 'boon', name: b.name, text: b.text, boon: b });
+    }
+    this.offer = shuffle(cards, rng);
+    this.votes.clear();
+    this.phase = 'reward';
+    this.timer = DESCENT.voteTime;
+    // with nobody to vote, the bots take what a team would usually want
+    if (this.humans.size === 0) this.resolveVote(this.botChoice());
+  }
+
+  private botChoice(): number {
+    const o = this.offer!;
+    const order: RewardKind[] = this.downed.size ? ['heal', 'skill', 'obol', 'boon', 'points'] : ['skill', 'obol', 'boon', 'points', 'heal'];
+    for (const k of order) {
+      const i = o.findIndex((r) => r.kind === k);
+      if (i >= 0) return i;
+    }
+    return 0;
+  }
+
+  private allVoted(): boolean {
+    for (const h of this.humans) if (!this.votes.has(h)) return false;
+    return this.humans.size > 0;
+  }
+
+  /** A human's vote for one of the offered rewards (they can change it until the vote closes). */
+  vote(god: Unit, i: number): boolean {
+    if (this.phase !== 'reward' || !this.offer?.[i] || !this.gods.includes(god)) return false;
+    this.votes.set(god, i);
+    return true;
+  }
+
+  /** How many votes each card has. */
+  tally(): number[] {
+    const t = (this.offer ?? []).map(() => 0);
+    for (const v of this.votes.values()) t[v] = (t[v] ?? 0) + 1;
+    return t;
+  }
+
+  /** The most votes wins; a tie goes to the card voted first among the tied (no votes: the first card). */
+  private resolveVote(pick?: number): void {
+    const offer = this.offer;
+    if (!offer) return;
+    let i = pick ?? 0;
+    if (pick === undefined) {
+      const t = this.tally();
+      const top = Math.max(...t);
+      if (top > 0) i = [...this.votes.values()].find((v) => t[v] === top) ?? 0;
+    }
+    this.offer = null;
+    this.votes.clear();
+    this.take(offer[i]!);
+  }
+
+  /** The chosen reward takes effect for the whole team. */
+  private take(r: Reward): void {
+    this.lastReward = r;
+    switch (r.kind) {
+      case 'boon': {
+        const b = r.boon!;
+        this.boons.push(b);
+        for (const g of this.gods) for (const [k, v] of Object.entries(b.stats ?? {}) as [StatKey, number][]) g.combatant.addPerk(k, v);
+        break;
+      }
+      case 'points':
+        for (const g of this.gods) grantTreePoints(g, POINTS_REWARD);
+        break;
+      case 'heal':
+        for (const g of this.gods) {
+          if (!g.alive) this.revive(g, 1);
+          else {
+            const c = g.combatant;
+            c.health = c.stats.maxHealth;
+            c.mana = c.stats.maxMana;
+          }
+        }
+        break;
+      case 'obol':
+        this.obols++;
+        break;
+      case 'skill':
+        for (const g of this.gods) {
+          const d = draftFor(g, this.sim.rng);
+          if (d) this.drafts.set(g, d);
+        }
+        if (this.drafts.size) {
+          this.phase = 'draft';
+          this.timer = DESCENT.draftTime;
+          return;
+        }
+        break;
+    }
+    this.afterReward();
+  }
+
+  /** The reward the team took last, for the HUD's toast. */
+  lastReward: Reward | null = null;
+
+  /** A god takes one of its drafted skills into its next sealed slot. */
+  draft(god: Unit, i: number): SkillDef | null {
+    const d = this.drafts.get(god);
+    const skill = d?.options[i];
+    if (!d || !skill) return null;
+    this.drafts.delete(god);
+    learnSkill(god, d.slot, skill);
+    return skill;
+  }
+
+  private afterReward(): void {
+    // the Gilded Thornback's prize: another reward straight after
+    if (this.bonusRewards > 0) {
+      this.bonusRewards--;
+      this.offerReward();
+      return;
+    }
+    this.phase = 'exit';
+    this.timer = DESCENT.exitPull;
+  }
+
+  // -------------------------------------------------------------------------
+  // Moving down
+
+  private nextChamber(): void {
+    if (this.nextCurse) this.curses.push(this.nextCurse);
+    this.nextCurse = null;
+    this.chamber++;
+    this.phase = 'enter';
+    this.timer = DESCENT.enterTime;
+    this.placeTeam();
+  }
+
+  /** Every god to the current chamber's gate; the fallen come along. */
+  private placeTeam(): void {
+    const c = this.layout;
+    this.gods.forEach((g, i) => {
+      const at = entranceSpot(c, i, this.gods.length);
+      g.home.x = at.x;
+      g.home.z = at.z;
+      g.home.yaw = at.yaw;
+      if (!g.alive) this.revive(g, DESCENT.returnHealth);
+      else this.sim.teleport(g, at.x, at.z, at.yaw);
+      g.combatant.cc.reset();
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Revives and wipes
+
+  /** Seconds a revive takes with every curse counted. */
+  get reviveTime(): number {
+    return this.curses.reduce<number>((t, k) => t * (k.restless ?? 1), DESCENT.revive.time);
+  }
+
+  private stepRevives(dt: number): void {
+    for (const [g, p] of this.downed) {
+      let helpers = 0;
+      for (const a of this.gods) {
+        if (a === g || !a.alive) continue;
+        if (hypot(a.x - g.x, a.z - g.z) <= DESCENT.revive.range + a.radius) helpers++;
+      }
+      const next = helpers ? p + (dt * (1 + 0.5 * (helpers - 1))) / this.reviveTime : Math.max(0, p - dt * 0.25);
+      if (next >= 1) this.revive(g, DESCENT.revive.health);
+      else this.downed.set(g, next);
+    }
+  }
+
+  /** Brings a downed god back where it lies (or at its home spot), with this share of its health. */
+  revive(g: Unit, health: number): void {
+    // a death the sim has yet to notice: it lands in `downed` on the next step
+    if (g.alive || g.wasAlive) return;
+    this.downed.delete(g);
+    g.downed = false;
+    if (this.phase !== 'descend' && this.phase !== 'enter') {
+      g.home.x = g.x;
+      g.home.z = g.z;
+      g.home.yaw = g.body.yaw;
+    }
+    this.reviving.set(g, health);
+    g.combatant.respawnTimer = 0;
+  }
+
+  /** Every god down at once ends the run, unless an obol lifts them. */
+  private checkWipe(): boolean {
+    if (!this.gods.length || !this.gods.every((g) => this.downed.has(g))) return false;
+    if (this.obols > 0) {
+      this.obols--;
+      this.obolUsed++;
+      for (const g of this.gods) this.revive(g, 0.5);
+      return false;
+    }
+    this.phase = 'lost';
+    this.offer = null;
+    this.drafts.clear();
+    return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Soul fire
+
+  /** Whether soul fire erupts in the current chamber. */
+  get erupting(): boolean {
+    return this.phase === 'fight' && (this.current.kind === 'trap' || this.curses.some((k) => k.ashfall));
+  }
+
+  private stepEruptions(dt: number): void {
+    for (let i = this.eruptions.length - 1; i >= 0; i--) {
+      const e = this.eruptions[i]!;
+      e.left -= dt;
+      if (e.left > 0) continue;
+      this.eruptions.splice(i, 1);
+      this.land(e);
+    }
+    if (!this.erupting) return;
+    this.eruptIn -= dt;
+    if (this.eruptIn > 0) return;
+    // ashfall in a chamber that isn't a trap room is gentler
+    const trap = this.current.kind === 'trap';
+    this.eruptIn = DESCENT.eruption.every * (trap ? 1 : 1.8);
+    const c = this.layout;
+    const rng = this.sim.rng;
+    for (const g of this.gods) {
+      if (!g.alive) continue;
+      // aimed a little ahead of where the god is going, so standing still or walking straight both get caught
+      this.erupt(g.x + g.vx * 0.6 + (rng() - 0.5) * 1.5, g.z + g.vz * 0.6 + (rng() - 0.5) * 1.5);
+    }
+    if (trap) {
+      for (let k = 0; k < 2; k++) {
+        const s = c.spawns[Math.floor(rng() * c.spawns.length)]!;
+        this.erupt(c.x + s[0]! + (rng() - 0.5) * 6, c.z + s[1]! + (rng() - 0.5) * 6);
+      }
+    }
+  }
+
+  private erupt(x: number, z: number): void {
+    this.eruptions.push({ id: this.nextEruption++, x, z, r: DESCENT.eruption.radius, left: DESCENT.eruption.warn });
+  }
+
+  /** An eruption lands: every god inside takes a share of its health. */
+  private land(e: Eruption): void {
+    this.landed.push(e);
+    for (const g of this.gods) {
+      if (!g.alive || g.untargetable > 0 || hypot(g.x - e.x, g.z - e.z) > e.r + g.radius) continue;
+      const c = g.combatant;
+      const amount = c.stats.maxHealth * DESCENT.eruption.damage * (1 - Math.min(0.9, c.stats.damageReduction));
+      c.takeDamage(amount);
+      this.sim.inject({ type: 'damage', target: g, source: null, amount, crit: false, ability: true });
+    }
+  }
+
+  /** Eruptions that landed since the view last took them (for the burst effect). */
+  readonly landed: Eruption[] = [];
+}
+
+/** Favor enough for this many more tree points (each god's points come from levels and favor). */
+export function grantTreePoints(g: Unit, points: number): void {
+  const c = g.combatant;
+  const have = favorPoints(c.favor);
+  const goal = Math.min(FAVOR_THRESHOLDS.length, have + points);
+  if (goal > have) c.gainFavor(FAVOR_THRESHOLDS[goal - 1]! - c.favor);
+}
+
+/** Three skills a god could learn into its next sealed slot (ultimates for the ultimate slot). */
+export function draftFor(g: Unit, rng: () => number): Draft | null {
+  const c = g.combatant;
+  const slot = [...c.sealed].sort((a, b) => a - b)[0];
+  if (slot === undefined) return null;
+  const known = new Set(c.loadout.filter((_, i) => !c.sealed.has(i)));
+  const pool = c.god.skills.filter((s) => !known.has(s.id) && (slot === ULTIMATE_SLOT ? s.kind === 'ultimate' : s.kind === 'regular'));
+  const options = shuffle(pool, rng).slice(0, 3);
+  return options.length ? { slot, options } : null;
+}
+
+/** Puts a skill into a sealed slot and unseals it; a sealed slot already holding it gives it up. */
+export function learnSkill(g: Unit, slot: number, skill: SkillDef): void {
+  const c = g.combatant;
+  const next = [...c.loadout] as string[];
+  const was = next.indexOf(skill.id);
+  if (was >= 0 && was !== slot) next[was] = next[slot]!;
+  next[slot] = skill.id;
+  c.setBuild(next, c.allocation);
+  c.sealed.delete(slot);
+}
+
+/** Every slot of a god's bar, so a test can check none is ever left empty. */
+export const ALL_SLOTS = Array.from({ length: SLOT_COUNT }, (_, i) => i);

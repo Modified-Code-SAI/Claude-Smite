@@ -39,6 +39,8 @@ export interface BotOptions {
   recall?: boolean;
   /** Targets besides gods worth spending skills on (the Jötunn's weak points). */
   castOn?: (target: Unit) => boolean;
+  /** False for modes with no fountain to fall back to: the bot fights on when low. */
+  retreat?: boolean;
 }
 
 /**
@@ -78,7 +80,7 @@ export class GodBot implements Brain {
 
     // back off earlier when the fight is lopsided
     const odds = this.odds();
-    if (hp < 0.25 || (hp < 0.4 && odds < 0)) this.retreating = true;
+    if (this.options.retreat !== false && (hp < 0.25 || (hp < 0.4 && odds < 0))) this.retreating = true;
     if (this.retreating) {
       if (hp > 0.95 || c.inBase && hp > 0.9) this.retreating = false;
       else {

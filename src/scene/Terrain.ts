@@ -18,6 +18,8 @@ export interface TerrainDef {
   height(x: number, z: number): number;
   /** Splat weights at a point, each 0..1: dirt, paved, damp, macro variation. */
   mask(x: number, z: number): readonly [number, number, number, number];
+  /** The map's own ground material, in place of grass, dirt, paving and rock (it reads `terrain.mask`). */
+  material?(terrain: Terrain, textures: TextureLibrary): THREE.Material;
 }
 
 /** Grid cells per side of one terrain tile. */
@@ -51,7 +53,7 @@ export class Terrain {
   static async create(textures: TextureLibrary, def: TerrainDef): Promise<Terrain> {
     const terrain = new Terrain(def, await generateHeights(def), await generateMask(def));
     const geometry = await terrain.buildGeometry();
-    const material = terrain.buildMaterial(textures);
+    const material = def.material?.(terrain, textures) ?? terrain.buildMaterial(textures);
     for (const tile of terrain.tiles(geometry)) {
       const mesh = new THREE.Mesh(tile, material);
       mesh.name = 'terrain-tile';

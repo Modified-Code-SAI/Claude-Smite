@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  cameraPosition, dot, exp, float, fog, max, min, mix, positionWorld, pow, uniform, vec3, vec4,
+  cameraPosition, dot, exp, float, fog, max, min, mix, mx_fractal_noise_float, positionWorld, pow, smoothstep, time, uniform, vec3, vec4,
 } from '../render/tsl';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
@@ -49,6 +49,9 @@ export class Environment {
   /** Sun elevation and azimuth in degrees. Late-morning sun gives long, readable shadows. */
   elevation = 36;
   azimuth = -142;
+
+  /** Set for the underworld: a dark sky with a glow at the horizon instead of the daylight model. */
+  private dark: { horizon: any; zenith: any } | null = null;
 
   constructor(private readonly scene: THREE.Scene, private readonly camera: THREE.PerspectiveCamera) {
     this.sky = new SkyMesh();
@@ -146,8 +149,44 @@ export class Environment {
     renderer.shadowMap.enabled = true;
   }
 
+  /**
+   * The underworld's air: no sun or clouds, a black sky with the depth's glow
+   * low at the horizon, a cold light from high above (its shadows are the
+   * walls'), a dim warm bounce from the other side and dark, low-lying haze.
+   * Call before the first frame; `setDepth` recolors it later.
+   */
+  underworld(c: { fog: number; horizon: number; key: number }): void {
+    const horizon = uniform(new THREE.Color(c.horizon));
+    const zenith = uniform(new THREE.Color(0.006, 0.006, 0.012));
+    this.dark = { horizon, zenith };
+    const mat = this.sky.material as THREE.NodeMaterial;
+    mat.colorNode = vec4(darkSky(horizon, zenith), 1);
+    this.elevation = 74;
+    this.azimuth = -150;
+    this.updateSunDirection();
+    this.sun.intensity = 1.5;
+    this.fill.intensity = 0.55;
+    this.fill.color.setRGB(1.0, 0.72, 0.6);
+    this.fogDensity.value = 0.011;
+    this.fogHeightFalloff.value = 0.06;
+    this.fogStart.value = 16;
+    this.setDepth(c);
+  }
+
+  /** Recolors the underworld's sky, haze and light for a depth (uniform writes only). */
+  setDepth(c: { fog: number; horizon: number; key: number }): void {
+    if (!this.dark) return;
+    this.dark.horizon.value.setHex(c.horizon);
+    this.fogColor.value.setHex(c.fog);
+    this.sun.color.setHex(c.key);
+  }
+
   /** Bakes the current sky into the scene environment (ambient + reflections). */
   bakeEnvironment(renderer: THREE.WebGPURenderer, groundColor: THREE.Color): void {
+    if (this.dark) {
+      this.bakeDark(renderer, groundColor);
+      return;
+    }
     const envScene = new THREE.Scene();
     const sky = new SkyMesh();
     sky.scale.setScalar(100);
@@ -177,6 +216,29 @@ export class Environment {
     this.scene.environmentIntensity = this.ambient;
     pmrem.dispose();
     sky.geometry.dispose();
+    ground.geometry.dispose();
+  }
+
+  /** The underworld's ambient light: its dark sky and a dim ground, a little brighter than they look so gods stay readable. */
+  private bakeDark(renderer: THREE.WebGPURenderer, groundColor: THREE.Color): void {
+    const envScene = new THREE.Scene();
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(100, 32, 16), new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide }));
+    // a fixed, neutral cool glow: the depth colors stay in the fires and haze
+    (dome.material as THREE.MeshBasicNodeMaterial).colorNode = darkSky(vec3(0.1, 0.085, 0.12), vec3(0.05, 0.055, 0.075), true);
+    envScene.add(dome);
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(90, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicNodeMaterial({ color: groundColor }),
+    );
+    ground.position.y = -2;
+    envScene.add(ground);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    this.envTarget?.dispose();
+    this.envTarget = pmrem.fromScene(envScene, 0.0, 0.1, 400);
+    this.scene.environment = this.envTarget.texture;
+    this.scene.environmentIntensity = this.ambient;
+    pmrem.dispose();
+    dome.geometry.dispose();
     ground.geometry.dispose();
   }
 
@@ -226,4 +288,20 @@ export class Environment {
   private cascades(): { shadow: THREE.LightShadow }[] | undefined {
     return (this.csm as unknown as { lights?: { shadow: THREE.LightShadow }[] } | null)?.lights;
   }
+}
+
+/**
+ * A black sky with a glow low at the horizon and slow smoke drifting through
+ * it. For the environment bake (`flat`) the smoke is left out.
+ */
+function darkSky(horizon: any, zenith: any, flat = false): any {
+  const dir = positionWorld.sub(cameraPosition).normalize();
+  const up = dir.y;
+  const glow = smoothstep(0.45, -0.05, up);
+  let col: any = mix(zenith, horizon, glow.mul(glow));
+  if (!flat) {
+    const smoke = mx_fractal_noise_float(vec3(dir.x.mul(3), up.mul(5).sub(time.mul(0.01)), dir.z.mul(3)), 3, 2.0, 0.5).mul(0.5).add(0.5);
+    col = col.mul(smoke.mul(0.7).add(0.55));
+  }
+  return col;
 }

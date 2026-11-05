@@ -101,6 +101,8 @@ export class Unit {
   wasAlive = true;
   /** Gods respawn at home; minions are removed a moment after death and structures stay as rubble. */
   respawns = true;
+  /** A god lying downed until a teammate revives them (Underworld Descent). */
+  downed = false;
   /** A structure that cannot be damaged yet (the one in front of it still stands). */
   shielded: () => boolean = () => false;
   /** The last time this unit damaged an enemy god, for tower aggro. */

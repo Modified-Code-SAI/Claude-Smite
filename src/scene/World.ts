@@ -11,11 +11,14 @@ import { Grass } from './Grass';
 import { MaterialLibrary, TextureLibrary } from './Materials';
 import { Temple } from './Temple';
 import { Terrain } from './Terrain';
+import { DEPTH_COLORS } from './underworld/palettes';
+import { UnderworldMap } from './underworld/UnderworldMap';
+import { underworldTerrain } from './underworld/UnderworldTerrain';
 import type { QualitySettings } from '../render/Quality';
 import { hypot } from '../core/math';
 import { slice } from '../core/slices';
 
-export type MapName = 'arena' | 'conquest';
+export type MapName = 'arena' | 'conquest' | 'underworld';
 
 /** The map picked by the `?map=` URL parameter (the temple arena by default). */
 export function mapFromUrl(): MapName {
@@ -91,10 +94,16 @@ export class World {
   static async create(textures: TextureLibrary, camera: THREE.PerspectiveCamera, map: MapName = 'arena'): Promise<World> {
     const w = new World(textures, camera, map);
     const conquest = map === 'conquest' ? await conquestTerrain() : null;
-    w.terrain = await Terrain.create(textures, conquest ?? arenaTerrain());
+    const underworld = map === 'underworld';
+    w.terrain = await Terrain.create(textures, conquest ?? (underworld ? underworldTerrain() : arenaTerrain()));
     w.static.add(w.terrain.root);
     w.collision = new CollisionWorld((x, z) => w.terrain.heightAt(x, z));
-    if (conquest) {
+    if (underworld) {
+      w.environment.underworld(DEPTH_COLORS.ember);
+      w.content = await UnderworldMap.create(w.materials, w.collision);
+      // no grass grows down here
+      w.grass = new Grass(w.terrain, w.environment.sunDirection, { extent: 1, round: true, density: 0, maxHeight: -1, reject: () => true });
+    } else if (conquest) {
       w.collision.setWalkable(conquest.walkable);
       w.content = await ConquestMap.create(w.materials, w.terrain, w.collision, conquest, w.environment.sunDirection);
       w.grass = new Grass(w.terrain, w.environment.sunDirection, conquest.grass);
@@ -191,6 +200,11 @@ export class World {
       for (const o of culled) o.frustumCulled = true;
       for (const o of hidden) o.visible = false;
     };
+  }
+
+  /** Copies the fires' colors to the GPU again after the map recolored them. */
+  recolorFires(): void {
+    this.fireBatch.recolor();
   }
 
   bakeLighting(renderer: THREE.WebGPURenderer): void {
