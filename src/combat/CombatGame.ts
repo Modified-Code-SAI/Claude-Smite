@@ -157,7 +157,7 @@ export class CombatGame implements Updatable {
     // except mid-leap, where the sim flies them over and settles the landing
     player.resolve = (x, z, r, y, from) => {
       const f = this.player?.forced;
-      return f && !f.collide ? world.collision.resolve(x, z, r, y) : this.sim.solid(x, z, r, y, from, world.collision);
+      return f && !f.collide ? world.collision.resolve(x, z, r, y) : this.sim.solid(x, z, r, y + (this.player?.stepOver ?? 0), from, world.collision, this.player);
     };
     this.sim.summonFactory = (owner, kind, at, i) => {
       const s = summonUnit(owner, kind, at, i);

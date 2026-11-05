@@ -37,6 +37,8 @@ export interface BotOptions {
   route?: (goal: Point) => Point;
   /** Channel a recall when low and nobody is close, instead of walking home. */
   recall?: boolean;
+  /** Targets besides gods worth spending skills on (the Jötunn's weak points). */
+  castOn?: (target: Unit) => boolean;
 }
 
 /**
@@ -125,7 +127,7 @@ export class GodBot implements Brain {
       this.decide = 0.3;
       // skills are for gods; on minions only now and then, with mana to spare
       const farm = (target.kind === 'minion' && c.mana > c.stats.maxMana * 0.5) || (target.kind === 'monster' && c.mana > c.stats.maxMana * 0.35);
-      const chance = target.kind === 'god' ? this.options.aggression : farm ? this.options.aggression * (target.kind === 'monster' ? 0.6 : 0.3) : 0;
+      const chance = target.kind === 'god' || this.options.castOn?.(target) ? this.options.aggression : farm ? this.options.aggression * (target.kind === 'monster' ? 0.6 : 0.3) : 0;
       if (sim.rng() < chance) this.tryCast(dist, target);
     }
   }

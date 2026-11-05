@@ -191,7 +191,7 @@ export class HostSync {
     this.events = [];
     const p = sim.projectiles.filter((x) => x.alive).map(encProjectile);
     const z = sim.zones.map((x) => [x.id, x.owner.id, encCast(x.cast), x.x, x.z, x.radius, x.ticks, x.interval, x.timer, x.follow, x.range, x.age, x.duration]);
-    const f = sim.flashes.map((x) => [x.id, x.owner.id, x.shape, x.age, x.life]);
+    const f = sim.flashes.map((x) => (x.warn ? [x.id, x.owner.id, x.shape, x.age, x.life, 1] : [x.id, x.owner.id, x.shape, x.age, x.life]));
     const m = this.match.netState();
     const b: [number, number][] = [];
     for (const [s, t] of this.match.netTargets?.() ?? []) b.push([s.id, t.id]);
@@ -634,12 +634,13 @@ export class GuestSync {
   private syncFlashes(s: Snapshot): void {
     const seen = new Set<number>();
     for (const r of s.f) {
-      const [id, ownerId, shape, age, life] = r as [number, number, FlashShape, number, number];
+      const [id, ownerId, shape, age, life, warn] = r as [number, number, FlashShape, number, number, number?];
       const owner = this.byId.get(ownerId);
       if (!owner) continue;
       seen.add(id);
       if (this.flashes.has(id)) continue;
       const f: Flash = { id, shape, owner, age, life };
+      if (warn) f.warn = true;
       this.flashes.set(id, f);
       this.sim.flashes.push(f);
     }

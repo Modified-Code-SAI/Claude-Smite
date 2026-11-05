@@ -843,10 +843,31 @@ export class CombatVfx {
     for (const f of sim.flashes) {
       live.add(f.id);
       let v = this.flashes.get(f.id);
+      if (v && f.warn) {
+        // a wound-up attack: the shape it will strike fills as the blow comes
+        const k = Math.min(1, f.age / f.life);
+        v.decal.values.fill = k;
+        v.decal.values.opacity = Math.min(1, f.age * 8) * (1 + k * 0.6);
+        continue;
+      }
       if (!v) {
         v = this.flashPool.take();
         const p = monsterPalette(f.owner);
         v.reset(p, f.shape.type === 'circle');
+        v.decal.setStyle(f.warn ? 'telegraph' : 'flash');
+        if (f.warn) {
+          // red for blows aimed at you, frost for your own
+          const own = this.player !== null && f.owner.team === this.player.team;
+          v.decal.setColors(own ? 0x7fd4ff : 0xff3b22, own ? 0xf2fbff : 0xffd6a0);
+          v.decal.values.glyphs = 0;
+          v.lightning = false;
+          const d = flashDecal(f.shape);
+          v.decal.place(d.shape, d.x, d.z, d.yaw);
+          v.decal.values.fill = 0;
+          v.decal.values.opacity = 0;
+          this.flashes.set(f.id, v);
+          continue;
+        }
         // smoke and sand gods kick up a cloud where the shape lands
         if (p.element === 'smoke' || p.element === 'sand') {
           const s = f.shape;
