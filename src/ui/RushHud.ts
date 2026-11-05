@@ -33,6 +33,8 @@ export class RushHud {
   private goalShow = 0;
   private rushShow = 0;
   private wasKickoff = true;
+  private readonly arrow: HTMLElement;
+  private arrowTone = '';
 
   constructor(
     private readonly rush: Rush,
@@ -51,6 +53,7 @@ export class RushHud {
       </div>
       <div class="clash-state"></div>
       <div class="duel-big"></div>
+      <div class="rush-pointer"><i></i></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><div class="clash-end-table"></div><button class="clash-again">${online ? 'Back to the title screen' : 'Play again'}</button></div>`;
     document.body.appendChild(this.root);
     this.pips = {
@@ -61,7 +64,19 @@ export class RushHud {
     this.state = this.root.querySelector('.clash-state')!;
     this.big = this.root.querySelector('.duel-big')!;
     this.end = this.root.querySelector('.clash-end')!;
+    this.arrow = this.root.querySelector('.rush-pointer')!;
     this.root.querySelector('.clash-again')!.addEventListener('click', () => (online ? location.assign(location.pathname) : location.reload()));
+  }
+
+  /** The arrow at the screen's edge toward an out-of-sight relic (null hides it). */
+  pointer(p: { x: number; y: number; angle: number; tone: string } | null): void {
+    this.arrow.classList.toggle('show', !!p);
+    if (!p) return;
+    this.arrow.style.transform = `translate(${p.x.toFixed(0)}px, ${p.y.toFixed(0)}px) rotate(${p.angle.toFixed(3)}rad)`;
+    if (p.tone !== this.arrowTone) {
+      this.arrowTone = p.tone;
+      this.arrow.dataset.tone = p.tone;
+    }
   }
 
   private who(u: Unit): string {
@@ -116,10 +131,13 @@ export class RushHud {
 
     const pips = `${r.score.order}:${r.score.chaos}`;
     if (pips !== this.lastPips) {
+      const was = this.lastPips ? this.lastPips.split(':').map(Number) : [0, 0];
       this.lastPips = pips;
-      for (const side of ['order', 'chaos'] as const) {
-        this.pips[side].innerHTML = Array.from({ length: RUSH.goals }, (_, i) => `<i class="${i < r.score[side] ? 'on' : ''}"></i>`).join('');
-      }
+      (['order', 'chaos'] as const).forEach((side, k) => {
+        // a new goal's pip pops in
+        const fresh = r.score[side] > was[k]! ? r.score[side] - 1 : -1;
+        this.pips[side].innerHTML = Array.from({ length: RUSH.goals }, (_, i) => `<i class="${i < r.score[side] ? 'on' : ''}${i === fresh ? ' new' : ''}"></i>`).join('');
+      });
     }
     const time = r.overtime ? 'Golden relic' : clock(Math.ceil(r.clock));
     if (time !== this.lastClock) {

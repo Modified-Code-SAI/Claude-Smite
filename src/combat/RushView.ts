@@ -49,6 +49,90 @@ function makeHaloMaterial(): THREE.SpriteNodeMaterial {
   return m;
 }
 
+/** The thrown relic's streak: bright at the relic, thinning and fading down its path. */
+let trailMaterial: THREE.MeshBasicNodeMaterial | null = null;
+const trailUniforms = () => ({ alpha: 0 });
+const TRAIL = 18;
+
+function makeTrailMaterial(): THREE.MeshBasicNodeMaterial {
+  const { alpha } = objectUniforms(trailUniforms());
+  const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, forceSinglePass: true });
+  const along = uv().x;
+  const across = float(1).sub(abs(uv().y.mul(2).sub(1)));
+  const head = float(1).sub(along);
+  const body = head.pow(1.6).mul(smoothstep(0, 0.7, across)).mul(alpha);
+  m.colorNode = vec4(mix(color(GOLD.main).mul(1.8), color(0xfff6dc).mul(4), head.pow(3).mul(across)).mul(body), 1);
+  m.opacityNode = body.clamp(0, 1);
+  return m;
+}
+
+/** A camera-facing ribbon through the relic's last positions (one draw, rebuilt in place each frame). */
+class Trail {
+  readonly mesh: THREE.Mesh;
+  readonly values = trailUniforms();
+  private readonly points: THREE.Vector3[] = Array.from({ length: TRAIL }, () => new THREE.Vector3());
+  private count = 0;
+  private readonly pos: THREE.BufferAttribute;
+  private readonly side = new THREE.Vector3();
+  private readonly eye = new THREE.Vector3();
+  private readonly dir = new THREE.Vector3();
+  private readonly toEye = new THREE.Vector3();
+
+  constructor() {
+    const g = new THREE.BufferGeometry();
+    this.pos = new THREE.BufferAttribute(new Float32Array(TRAIL * 2 * 3), 3);
+    this.pos.setUsage(THREE.DynamicDrawUsage);
+    const uvs = new Float32Array(TRAIL * 2 * 2);
+    const index: number[] = [];
+    for (let i = 0; i < TRAIL; i++) {
+      uvs.set([i / (TRAIL - 1), 0, i / (TRAIL - 1), 1], i * 4);
+      if (i < TRAIL - 1) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    }
+    g.setAttribute('position', this.pos);
+    g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    g.setIndex(index);
+    this.mesh = new THREE.Mesh(g, (trailMaterial ??= makeTrailMaterial()));
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 13;
+    useUniforms(this.values, this.mesh);
+  }
+
+  /** Each frame: `at` is the relic while it streaks (null lets the tail run out). */
+  frame(at: THREE.Vector3 | null, camera: THREE.Camera | null, dt: number): void {
+    const pts = this.points;
+    if (at) {
+      // a new sample once the relic has moved a little, the head always on the relic
+      if (this.count === 0 || pts[0]!.distanceTo(pts[1] ?? pts[0]!) > 0.35) {
+        for (let i = TRAIL - 1; i > 0; i--) pts[i]!.copy(pts[i - 1]!);
+        this.count = Math.min(TRAIL, this.count + 1);
+      }
+      pts[0]!.copy(at);
+      if (this.count === 1) for (const p of pts) p.copy(at);
+      this.values.alpha = Math.min(1, this.values.alpha + dt * 8);
+    } else {
+      this.values.alpha = Math.max(0, this.values.alpha - dt * 3.5);
+      if (this.values.alpha <= 0) this.count = 0;
+    }
+    this.mesh.visible = this.values.alpha > 0 && this.count > 1;
+    if (!this.mesh.visible) return;
+    const a = this.pos.array as Float32Array;
+    if (camera) this.eye.setFromMatrixPosition(camera.matrixWorld);
+    for (let i = 0; i < TRAIL; i++) {
+      const p = pts[i]!;
+      const q = pts[Math.min(TRAIL - 1, i + 1)]!;
+      const r = pts[Math.max(0, i - 1)]!;
+      // across the path and the line to the camera, so the ribbon always faces the viewer
+      this.dir.subVectors(r, q);
+      this.toEye.subVectors(this.eye, p);
+      this.side.crossVectors(this.dir, this.toEye);
+      if (this.side.lengthSq() < 1e-6) this.side.set(0, 1, 0);
+      this.side.normalize().multiplyScalar(0.32 * (1 - (i / TRAIL) * 0.75));
+      a.set([p.x + this.side.x, p.y + this.side.y, p.z + this.side.z, p.x - this.side.x, p.y - this.side.y, p.z - this.side.z], i * 6);
+    }
+    this.pos.needsUpdate = true;
+  }
+}
+
 /**
  * Everything Relic Rush draws on top of the temple: the Sun Relic itself (a
  * gold orb inside a turning ring, with a halo), the gold column that marks
@@ -75,6 +159,9 @@ export class RushView {
   private readonly goal = new THREE.Vector3();
   private placed = false;
   private light: THREE.PointLight | null = null;
+  private readonly trail = new Trail();
+  /** The camera the trail ribbon faces. */
+  camera: THREE.Camera | null = null;
 
   constructor(
     private readonly ground: Ground,
@@ -95,7 +182,7 @@ export class RushView {
     useUniforms(this.haloValues, this.halo);
     this.relic.add(this.orb, this.ring, this.halo);
     this.locator = new RelicView(ground);
-    this.group.add(this.relic, this.locator.group);
+    this.group.add(this.relic, this.locator.group, this.trail.mesh);
 
     for (const side of ['order', 'chaos'] as const) {
       const g = RUSH.gates[side];
@@ -144,7 +231,16 @@ export class RushView {
     const was = this.preview.mesh.visible;
     this.preview.mesh.visible = true;
     this.relic.visible = true;
-    return () => (this.preview.mesh.visible = was);
+    this.trail.mesh.visible = true;
+    return () => {
+      this.preview.mesh.visible = was;
+      this.trail.mesh.visible = false;
+    };
+  }
+
+  /** Where the relic is drawn, or null while it is gone (after a goal). */
+  get relicAt(): THREE.Vector3 | null {
+    return this.relic.visible ? this.relic.position : null;
   }
 
   frame(rush: Rush, me: Unit, headOf: (u: Unit, out: THREE.Vector3) => THREE.Vector3 | null, dt: number, t: number): void {
@@ -172,6 +268,8 @@ export class RushView {
     this.placed = shown;
     const bob = r.phase === 'loose' || r.phase === 'center' ? Math.sin(t * 2.2) * 0.12 : 0;
     this.relic.position.set(this.drawn.x, this.drawn.y + bob, this.drawn.z);
+    // a thrown or knocked-loose relic streaks through the air
+    this.trail.frame(r.phase === 'flying' ? this.relic.position : null, this.camera, dt);
     this.orb.rotation.y = t * 0.8;
     this.ring.rotation.set(Math.PI / 2 + Math.sin(t * 0.9) * 0.5, t * 1.7, 0);
     const golden = rush.overtime;

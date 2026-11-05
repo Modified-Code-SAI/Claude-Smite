@@ -365,6 +365,9 @@ export class CombatGame implements Updatable {
       groundAt: this.groundAt,
       headOf: (u, out) => this.views.headOf(u, out),
       toast: (t) => this.hud.toast(t),
+      camera: this.deps.camera,
+      burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
+      shake: this.deps.shake,
     });
     this.rushMode = mode;
     this.rush = mode.rush;

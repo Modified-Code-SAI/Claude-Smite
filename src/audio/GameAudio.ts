@@ -703,7 +703,7 @@ export class GameAudio {
   }
 
   /** Last seen Relic Rush state, so each beat is called once. */
-  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, flying: false, overtime: false, minute: false, winner: '' };
+  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
 
   /** Relic Rush: the horn at each kickoff, goals, steals and fumbles, the golden relic and the result. */
   private watchRush(): void {
@@ -722,6 +722,10 @@ export class GameAudio {
       seen.phase = r.phase;
     }
     seen.overtime = r.overtime;
+    // the kickoff counts down out loud: a bell on 3, 2 and 1, then the horn
+    const tick = r.phase === 'kickoff' ? Math.ceil(r.timer) : 0;
+    if (tick !== seen.tick && tick >= 1 && tick <= 3) this.engine.play('ui.point', { gain: 0.5, rate: 0.75 + (3 - tick) * 0.06 }, 2);
+    seen.tick = tick;
     if (r.goalCount !== seen.goals) {
       seen.goals = r.goalCount;
       const g = r.lastGoal;
