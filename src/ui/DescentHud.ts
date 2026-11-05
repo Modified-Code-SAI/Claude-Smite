@@ -47,6 +47,8 @@ export class DescentHud {
   private readonly tally: KillTally | null;
   private readonly banner: HTMLElement;
   private bannerUntil = 0;
+  /** The first chamber Shades rose in this run, where the status line says how to fight them. */
+  private shadeHint = -1;
 
   constructor(
     private readonly run: Descent,
@@ -201,6 +203,8 @@ export class DescentHud {
         else if (r.champion?.alive) s += r.versus ? ' · a Champion leads them: its fall empowers whoever lands it' : ' · a Champion leads them';
         if (r.gilded) s += r.versus ? ' · catch the Gilded Thornback before the rivals!' : ' · catch the Gilded Thornback!';
         if (r.erupting) s += ' · soul fire!';
+        if (this.shadeHint < 0 && r.monsters.some((m) => m.alive && m.tag.endsWith(':shade'))) this.shadeHint = r.chamber;
+        if (this.shadeHint === r.chamber) s += ' · Shades blink away when you close in: sidestep their slow bolts';
         return s + downText;
       }
       case 'reward':

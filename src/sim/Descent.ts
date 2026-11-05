@@ -71,10 +71,14 @@ export const DESCENT = {
   },
 } as const;
 
+/** The Shade's blink: how close (edge to edge) a god gets before it goes, how often, and how far from them it reappears. */
+export const SHADE_BLINK = { near: 4.5, every: 5.5, first: 1.5, far: 9 } as const;
+
 /** Souls a monster pays the team that slays it in a shared descent. */
 export const SOULS: Record<MonsterType, number> = {
   thornback: 1,
   thornSpitter: 1,
+  shade: 2,
   thornbackAlpha: 2,
   warden: 4,
   gildedThornback: 5,
@@ -222,9 +226,12 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     const add = (t: MonsterType, count: number) => {
       for (let i = 0; i < Math.round(count * k * many); i++) out.push(t);
     };
-    add('thornback', Math.min(9, 3 + Math.floor(n * 0.6)));
+    // Shades haunt the halls past the first boss, each in place of a Thornback
+    const shades = n > DESCENT.bossEvery ? Math.min(3, 1 + Math.floor((n - DESCENT.bossEvery - 1) / 3)) : 0;
+    add('thornback', Math.min(9, 3 + Math.floor(n * 0.6)) - shades);
     add('thornSpitter', n >= 2 ? Math.min(4, Math.floor(n / 2)) : 0);
     add('thornbackAlpha', Math.min(4, Math.floor((n - 1) / 3)));
+    add('shade', shades);
     return out;
   };
   // a big pack rises in two or three waves, the heavier monsters last
@@ -320,12 +327,16 @@ export const DESCENT_CURSES: readonly DescentCurse[] = [
  */
 export class DescentMonsterBrain extends MonsterBrain {
   private readonly at: [number, number];
+  /** A Shade's next blink, in seconds (never for anything else). */
+  private blinkIn: number = SHADE_BLINK.first;
 
   constructor(
     private readonly s: Sim,
     private readonly self: Unit,
     camp: CampState,
     private readonly obstacles: readonly (readonly [number, number, number])[] = [],
+    /** The chamber it fights in: where a Shade may blink to. */
+    private readonly chamber: ChamberDef | null = null,
   ) {
     super(s, self, camp);
     this.at = camp.camp.at as unknown as [number, number];
@@ -346,6 +357,7 @@ export class DescentMonsterBrain extends MonsterBrain {
       // a monster whose foe is only far away keeps it rather than flip-flopping
       if (best || !foe?.alive || !foe.targetable) camp.foe = best;
     }
+    if (u.tag.endsWith(':shade') && (this.blinkIn -= dt) <= 0 && this.blink()) this.blinkIn = SHADE_BLINK.every;
     // the camp travels with the fight, so the jungle's leash never pulls it home
     const t = camp.foe;
     this.at[0] = t ? t.x : u.x;
@@ -361,6 +373,37 @@ export class DescentMonsterBrain extends MonsterBrain {
         u.body.yaw = Math.atan2(-dx, -dz);
       }
     }
+  }
+
+  /**
+   * A god closed in on the Shade: it vanishes and reappears out of their
+   * reach, on the far side from them, still in bolt range. Never into a wall,
+   * a column or the pit, and never while stunned or rooted.
+   */
+  private blink(): boolean {
+    const u = this.self;
+    const c = this.chamber;
+    if (!c || !u.alive || u.windup > 0 || !this.s.canMove(u)) return false;
+    let near: Unit | null = null;
+    let nd: number = SHADE_BLINK.near;
+    for (const t of this.s.enemiesOf(u)) {
+      if (t.kind !== 'god' || !t.alive || !t.targetable) continue;
+      const d = hypot(t.x - u.x, t.z - u.z) - t.radius - u.radius;
+      if (d < nd) [nd, near] = [d, t];
+    }
+    if (!near) return false;
+    const away = Math.atan2(u.x - near.x, u.z - near.z);
+    for (let i = 0; i < 10; i++) {
+      // straight away from them first, then anywhere around them
+      const a = away + (this.s.rng() - 0.5) * (i < 5 ? 1.6 : 5);
+      const x = near.x + Math.sin(a) * SHADE_BLINK.far;
+      const z = near.z + Math.cos(a) * SHADE_BLINK.far;
+      if (c.sd(x - c.x, z - c.z) < 2.5) continue;
+      if (this.obstacles.some(([ox, oz, r]) => hypot(x - ox, z - oz) < r + u.radius + 0.6)) continue;
+      this.s.teleport(u, x, z, Math.atan2(x - near.x, z - near.z));
+      return true;
+    }
+    return false;
   }
 }
 
@@ -827,7 +870,7 @@ export class Descent {
       u.home.x = x;
       u.home.z = z;
       const camp: CampState = { camp: { id: `descent:${n}:${label}:${i}`, kind: campKind, team: null, at: [x, z] }, members: [u], respawnAt: null, foe: null };
-      u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c));
+      u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c), c);
       if (boss) this.boss = u;
       u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : i === champ ? 'champion' : '' } satisfies DescentSpawn };
       this.monsters.push(u);

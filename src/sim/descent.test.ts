@@ -3,9 +3,9 @@ import { ULTIMATE_SLOT } from '../game/loadout';
 import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { BOSS_CHAMBER, CHAMBERS, chamberField, entranceSpot, exitSpot, steer, underworldField, obstaclesOf } from '../map/UnderworldLayout';
-import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, draftFor, learnSkill, planRun } from './Descent';
+import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, learnSkill, planRun, SHADE_BLINK } from './Descent';
 import { DescentBot } from './DescentBot';
-import { godUnit } from './factory';
+import { godUnit, monsterUnit } from './factory';
 import { CollisionWorld } from '../scene/Collision';
 import { addUnderworldColliders } from '../map/UnderworldLayout';
 import { Sim, type SimTerrain } from './Sim';
@@ -129,6 +129,52 @@ describe('Underworld Descent: the run', () => {
     expect(chamberWaves({ n: 10, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('moltenColossus');
     expect(chamberWaves({ n: 15, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('treasureWyrm');
     expect(chamberWaves({ n: 4, layout: 0, kind: 'elite' })[0]).toContain('warden');
+  });
+
+  it('brings Shades only past the first boss, more of them deeper down', () => {
+    const shades = (n: number) => chamberWaves({ n, layout: 0, kind: 'pack' }).flat().filter((t) => t === 'shade').length;
+    for (let n = 1; n <= DESCENT.bossEvery; n++) expect(shades(n)).toBe(0);
+    expect(shades(DESCENT.bossEvery + 1)).toBeGreaterThan(0);
+    expect(shades(14)).toBeGreaterThan(shades(DESCENT.bossEvery + 1));
+  });
+
+  it('blinks a Shade away from a god who closes in, onto open floor, but never while it is stunned', () => {
+    const c = CHAMBERS[1]!;
+    const sim = new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(4));
+    const [sx, sz] = c.spawns[3]!;
+    const shade = sim.add(monsterUnit(zeus, 'shade', { x: c.x + sx, z: c.z + sz, yaw: 0 }, 0));
+    shade.tag = 'descent-small-6.0.0:shade';
+    const camp = { camp: { id: 'shade', kind: 'small' as const, team: null, at: [shade.x, shade.z] as [number, number] }, members: [shade], respawnAt: null, foe: null };
+    shade.brain = new DescentMonsterBrain(sim, shade, camp, obstaclesOf(c), c);
+    const god = sim.add(godUnit(thor, 'order', { x: shade.x + 2, z: shade.z, yaw: 0 }));
+    let hops = 0;
+    sim.listeners.push((e) => {
+      if (e.type === 'teleport' && e.unit === shade) hops++;
+    });
+    const run = (seconds: number) => {
+      for (let i = 0; i < seconds * 30; i++) sim.step(1 / 30);
+    };
+    // it gets its bearings first, then goes
+    run(SHADE_BLINK.first - 0.2);
+    expect(hops).toBe(0);
+    run(0.4);
+    expect(hops).toBe(1);
+    const away = () => Math.hypot(shade.x - god.x, shade.z - god.z);
+    expect(away()).toBeGreaterThan(SHADE_BLINK.far - 0.5);
+    expect(c.sd(shade.x - c.x, shade.z - c.z)).toBeGreaterThan(2);
+    for (const [ox, oz, r] of obstaclesOf(c)) expect(Math.hypot(shade.x - ox, shade.z - oz)).toBeGreaterThan(r);
+    // still in range of its bolts
+    expect(away()).toBeLessThan(shade.combatant.god.basicAttack.range * 1.75);
+    // closing in again too soon: it waits out its cooldown
+    sim.teleport(god, shade.x + 2, shade.z);
+    run(1);
+    expect(hops).toBe(1);
+    // a stunned Shade stays put
+    shade.combatant.cc.apply('stun', SHADE_BLINK.every + 1);
+    run(SHADE_BLINK.every);
+    expect(hops).toBe(1);
+    run(2);
+    expect(hops).toBe(2);
   });
 
   it('starts every god with one skill, the rest sealed', () => {
@@ -343,6 +389,7 @@ describe('Underworld Descent: the run', () => {
     expect(run.cleared).toBe(15);
   });
 
+  // three whole bot runs: more than the default timeout allows on a busy machine
   it('lets a team of bots play a run on its own, walls and all, with no chamber stalling', () => {
     for (let r = 0; r < 3; r++) {
       const walls = new CollisionWorld(() => 0);
@@ -367,5 +414,5 @@ describe('Underworld Descent: the run', () => {
       expect(run.cleared).toBeGreaterThanOrEqual(3);
       for (const g of run.gods) expect(underworldField(g.x, g.z)).toBeGreaterThan(-0.2);
     }
-  });
+  }, 20000);
 });
