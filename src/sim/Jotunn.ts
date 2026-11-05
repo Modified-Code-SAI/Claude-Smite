@@ -22,14 +22,14 @@ export const JOTUNN = {
   godLevel: 12,
   giantLevel: 20,
   /** The giant's health: its Might. */
-  might: { base: 40000, perGod: 20000 },
-  /** Damage reduction of the giant's hide: blows to the body do a tenth of their damage. */
+  might: { base: 20000, perGod: 20000 },
+  /** Damage reduction of the giant's hide: blows to the body do a fifth of their damage. */
   hide: 0.8,
   bodyRadius: 1.6,
   /** Rubble and low walls it strides over. */
   stepOver: 2.5,
   /** Club blows a brazier takes (its health is set from the club's damage). */
-  brazierHits: 14,
+  brazierHits: 17,
   braziersToWin: 3,
   godRespawn: 7,
   /** Share of max health a second a god heals at the fountain. */
@@ -98,12 +98,12 @@ export interface PartDef {
 
 export const PARTS: Record<PartId, PartDef> = {
   // measured on the model: it stands with its club leg back and strides with its knees square
-  kneeL: { name: 'Left Knee', health: 3500, radius: 1, right: -1.5, fwd: 2.9, walk: { right: -1.4, fwd: 1 }, height: 5.2, mult: 1, shatter: 0.015, regrow: 12 },
-  kneeR: { name: 'Right Knee', health: 3500, radius: 1, right: 4, fwd: -1.5, walk: { right: 1.1, fwd: 1.1 }, height: 5.2, mult: 1, shatter: 0.015, regrow: 12 },
+  kneeL: { name: 'Left Knee', health: 3000, radius: 1, right: -1.5, fwd: 2.9, walk: { right: -1.4, fwd: 1 }, height: 5.2, mult: 1, shatter: 0.015, regrow: 12 },
+  kneeR: { name: 'Right Knee', health: 3000, radius: 1, right: 4, fwd: -1.5, walk: { right: 1.1, fwd: 1.1 }, height: 5.2, mult: 1, shatter: 0.015, regrow: 12 },
   rune: { name: 'Back Rune', health: 4000, radius: 1.25, right: -0.6, fwd: -1.9, walk: { right: -0.2, fwd: -0.5 }, height: 12, mult: 1, shatter: 0.03, regrow: 25 },
   wristL: { name: 'Left Wrist', health: 1500, radius: 1.1, right: -2.2, fwd: 4, height: 3, mult: 1.5, shatter: 0.03, regrow: 0 },
   wristR: { name: 'Right Wrist', health: 1500, radius: 1.1, right: 2.2, fwd: 4, height: 3, mult: 1.5, shatter: 0.03, regrow: 0 },
-  crown: { name: 'Crown', health: 1e6, radius: 1.5, right: 0.7, fwd: 3.5, height: 8.5, mult: 2, shatter: 0, regrow: 0 },
+  crown: { name: 'Crown', health: 1e6, radius: 1.5, right: 0.7, fwd: 3.5, height: 8.5, mult: 2.5, shatter: 0, regrow: 0 },
 };
 
 export const PART_IDS = Object.keys(PARTS) as PartId[];

@@ -456,6 +456,7 @@ export class CombatGame implements Updatable {
       control: (u, giant) => this.control(u, giant),
       toast: (t) => this.hud.toast(t),
       reaction: d === 'easy' ? 0.55 : d === 'hard' ? 0.18 : undefined,
+      giantPower: d === 'easy' ? 0.85 : d === 'hard' ? 1.2 : undefined,
       net,
       cue: (name, at, k) => this.onCue?.(name, at, k),
     });

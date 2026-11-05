@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { GODS, thor, zeus } from '../game/gods';
 import { jotunn } from '../game/gods/jotunn';
+import { basicAttackRaw, computeDamage } from '../game/combat';
 import { ULTIMATE_SLOT } from '../game/loadout';
+import { XP_TABLE } from '../game/progression';
 import { godUnit } from './factory';
 import { Jotunn, JOTUNN, PARTS, SHRINES } from './Jotunn';
 import { escape, jotunnBots } from './JotunnBots';
@@ -39,6 +41,8 @@ describe('wound-up attacks', () => {
     const giant = sim.add(godUnit(jotunn, 'chaos', { x: 0, z: 0, yaw: Math.PI }));
     giant.combatant.gainXp(1e6);
     const god = sim.add(godUnit(zeus, 'order', { x: 0, z: 5, yaw: 0 }));
+    // at the mode's level, so the slam stuns rather than kills
+    god.combatant.gainXp(XP_TABLE[JOTUNN.godLevel - 1]!);
     giant.aim.x = 0;
     giant.aim.z = 5;
     const slam = giant.combatant.loadout.indexOf('jotunn.slam');
@@ -56,6 +60,25 @@ describe('wound-up attacks', () => {
     expect(god.combatant.cc.has('stun')).toBe(true);
     expect(sim.canMove(giant)).toBe(true);
     expect(sim.flashes.some((f) => f.warn)).toBe(false);
+  });
+
+  it('hit hard, but no single one kills a god at full health', () => {
+    const giant = godUnit(jotunn, 'chaos', { x: 0, z: 0, yaw: 0 });
+    giant.combatant.gainXp(XP_TABLE[JOTUNN.giantLevel - 1]!);
+    const gs = giant.combatant.stats;
+    for (const g of GODS) {
+      const t = godUnit(g, 'order', { x: 0, z: 0, yaw: 0 }).combatant;
+      t.gainXp(XP_TABLE[JOTUNN.godLevel - 1]!);
+      const share = (raw: number) => computeDamage(raw, 'physical', gs, t.stats).dealt / t.stats.maxHealth;
+      // a club swing is about a fifth of a god's health
+      expect(share(basicAttackRaw(gs))).toBeGreaterThan(0.15);
+      for (const k of jotunn.skills) {
+        const e = k.effects.find((x) => x.kind === 'damage');
+        if (e?.kind !== 'damage' || typeof e.amount !== 'number') continue;
+        // every hit of it, standing in it the whole time
+        expect(share(e.amount * (e.hits ?? 1)), `${k.name} on ${g.name}`).toBeLessThan(0.85);
+      }
+    }
   });
 
   it('are cancelled by a stun, warning and all', () => {
