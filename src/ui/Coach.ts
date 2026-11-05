@@ -16,6 +16,8 @@ export interface CoachView {
   menuOpen: boolean;
   /** Modes without a fountain to run back to (Temple Duel) skip the fountain tips. */
   fountain: boolean;
+  /** Relic Rush, where the Playmaker tree opens. */
+  sport?: boolean;
 }
 
 export interface Tip {
@@ -29,6 +31,7 @@ export interface Tip {
  * never again. Order is priority: the first tip whose moment has come wins.
  */
 export const TIPS: readonly Tip[] = [
+  { id: 'sport', text: 'Relic Rush opens a fourth skill tree, <b>Playmaker</b>: speed, long passes, safe hands and hard shoves for less damage. Press <kbd>K</kbd>.', when: (v) => !!v.sport && v.alive && v.unspentPoints > 0 && !v.menuOpen },
   { id: 'death', text: 'You will be back in a few seconds. Spend skill points with <kbd>K</kbd> while you wait.', when: (v) => !v.alive },
   { id: 'points', text: 'You have a skill point! Press <kbd>K</kbd> to grow your skill trees and change how your god fights.', when: (v) => v.alive && v.unspentPoints > 0 && !v.menuOpen },
   { id: 'ult', text: 'Your ultimate is ready: press <kbd>4</kbd> or <kbd>R</kbd>.', when: (v) => v.alive && v.ultReady },
@@ -62,6 +65,7 @@ export class Coach {
     private readonly player: Unit,
     private readonly menuOpen: () => boolean,
     private readonly fountain = true,
+    private readonly sport = false,
   ) {
     this.el.className = 'coach';
     document.body.appendChild(this.el);
@@ -89,6 +93,7 @@ export class Coach {
         respawned: this.died && c.alive,
         menuOpen: this.menuOpen(),
         fountain: this.fountain,
+        sport: this.sport,
       },
       this.seen,
     );

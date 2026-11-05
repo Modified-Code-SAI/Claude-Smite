@@ -369,6 +369,8 @@ function talentBadge(node: TreeNode): string | null {
  * tree's accent color, and keystones a gold frame.
  */
 export function talentIcon(godId: string, node: TreeNode, skills: readonly SkillDef[], accent: string): string {
+  const sport = node.id.startsWith('sport.') && SPORT_SCENES[node.id.slice(6)];
+  if (sport) return iconSvg(node.tier === 4 ? '#ffb43a' : accent, sport, node.tier === 4);
   const first = node.effects.find((e) => e.type === 'skill' || e.type === 'augment') ?? node.effects[0];
   if (node.tier !== 4 && (first?.type === 'skill' || first?.type === 'augment')) {
     const skill = skills.find((s) => s.id === first.skill);
@@ -383,6 +385,41 @@ export function talentIcon(godId: string, node: TreeNode, skills: readonly Skill
   const glyph = (first?.type === 'stat' && STAT_GLYPHS[first.stat]) || 'buff';
   return iconSvg(accent, glyphAt(glyph, 32, 32, 0.8, 'fill="#fff6e2" stroke="#fff6e2"'), false);
 }
+
+// ---------------------------------------------------------------------------
+// Relic Rush's Playmaker tree: scenes with the Sun Relic in them
+
+const ME = 'fill="#fff6e2" stroke="#ffffff" stroke-width="1"';
+const me = (x: number, y: number, s = 0.85, o = 1) => figure(x, y, s, ME, o);
+const LINE = 'stroke="#fff6e2" fill="none" stroke-linecap="round" stroke-linejoin="round"';
+
+/** The Sun Relic: a gold orb in a tilted ring. */
+function relic(x: number, y: number, r = 6): string {
+  return `<ellipse cx="${x}" cy="${y}" rx="${r * 1.7}" ry="${r * 0.55}" transform="rotate(-18 ${x} ${y})" fill="none" stroke="#ffd34a" stroke-width="${r * 0.28}"/><circle cx="${x}" cy="${y}" r="${r}" fill="#ffe28a" stroke="#fff6d8" stroke-width="1.2"/><circle cx="${x - r * 0.35}" cy="${y - r * 0.35}" r="${r * 0.3}" fill="#ffffff" opacity="0.8"/>`;
+}
+
+const SPORT_SCENES: Record<string, string> = {
+  // a runner leaving afterimages
+  stride: `${me(14, 52, 0.8, 0.22)}${me(26, 50, 0.8, 0.45)}<path d="M2 34 H22 M6 44 H24 M2 54 H20" ${LINE} stroke-width="2.4" opacity="0.7"/>${me(40, 48, 0.95)}<path d="M48 18 L56 26 L48 34 M40 18 L48 26 L40 34" ${LINE} stroke-width="4"/>`,
+  // a pass on a long arc, landing past the usual ring
+  arm: `${me(10, 58, 0.7)}<path d="M14 44 Q32 0 52 42" ${LINE} stroke-width="2.4" stroke-dasharray="4 3"/><ellipse cx="36" cy="49" rx="6" ry="2.4" fill="none" stroke="#fff6e2" stroke-width="1.5" opacity="0.45"/><ellipse cx="52" cy="48" rx="8" ry="3.2" fill="none" stroke="#ffd34a" stroke-width="2.2"/><path d="M40 58 H60 M56 54 L60 58 L56 62" ${LINE} stroke-width="2.6"/>${relic(32, 16, 5.5)}`,
+  // a hand reaching wide for the relic
+  hands: `<circle cx="32" cy="20" r="15" fill="none" stroke="#fff6e2" stroke-width="2" stroke-dasharray="4 3" opacity="0.8"/>${relic(32, 20, 6.5)}${glyphAt('hand', 32, 46, 0.5, 'fill="#fff6e2" stroke="#fff6e2"')}`,
+  // the carrier at full stride, relic overhead
+  bearer: `<path d="M2 36 H18 M4 46 H20 M2 56 H16" ${LINE} stroke-width="2.4" opacity="0.7"/>${me(34, 56, 1)}${relic(34, 26, 7)}<path d="M50 34 L58 42 L50 50" ${LINE} stroke-width="4"/>`,
+  // back on their feet, dizzy stars flying off
+  rise: `<ellipse cx="32" cy="58" rx="20" ry="4" fill="#fff6e2" opacity="0.25"/>${me(32, 54, 1)}<path d="M50 50 V20 M43 27 L50 18 L57 27" ${LINE} stroke-width="4"/>${[[14, 26], [22, 16], [10, 40]].map(([x, y]) => `<path transform="translate(${x} ${y}) scale(0.7)" d="M0 -5 L1.3 -1.6 L5 -1.5 L2 0.8 L3.1 4.5 L0 2.3 L-3.1 4.5 L-2 0.8 L-5 -1.5 L-1.3 -1.6 Z" fill="#fff6e2" opacity="0.6"/>`).join('')}`,
+  // the relic knocked off a carrier, popping into the tackler's hands
+  strip: `${foe(16, 50, 0.85)}<path transform="translate(16 26) scale(0.9)" d="M0 -5 L1.3 -1.6 L5 -1.5 L2 0.8 L3.1 4.5 L0 2.3 L-3.1 4.5 L-2 0.8 L-5 -1.5 L-1.3 -1.6 Z" fill="#ffd34a"/><path d="M20 30 Q34 6 46 30" ${LINE} stroke-width="2.4" stroke-dasharray="3 3"/><path d="M42 26 L46 31 L49 25" ${LINE} stroke-width="2.4"/>${relic(34, 14, 5)}${me(48, 52, 0.9)}`,
+  // a pass flying flat and fast
+  bullet: `${me(9, 58, 0.62)}<path d="M4 22 H30 M10 30 H32 M4 38 H28" ${LINE} stroke-width="2.6" opacity="0.75"/>${relic(40, 30, 7.5)}<path d="M52 22 L60 30 L52 38" ${LINE} stroke-width="3"/>${ally(56, 58, 0.62)}`,
+  // a shove that sends a foe flying
+  shove: `${me(14, 52, 0.95)}<path d="M24 42 H40 M34 34 L44 42 L34 50" ${LINE} stroke-width="5"/><path d="M30 50 Q44 18 56 26" ${LINE} stroke-width="2" stroke-dasharray="3 3" opacity="0.7"/><g transform="rotate(30 52 30)">${foe(52, 34, 0.75)}</g><path d="M58 50 L62 54 M54 56 L58 60" ${LINE} stroke-width="2.4" opacity="0.6"/>`,
+  // planted feet against an incoming shove
+  footing: `<path d="M2 32 H18 M12 25 L20 32 L12 39" ${LINE} stroke-width="4"/><path d="M22 22 L26 42" ${LINE} stroke-width="2.6" opacity="0.7"/>${me(38, 54, 1)}<path d="M18 60 H58" ${LINE} stroke-width="4"/><path d="M26 60 L23 64 M34 60 L31 64 M42 60 L39 64 M50 60 L47 64" ${LINE} stroke-width="2.4" opacity="0.8"/>`,
+  // the keystone: the relic crowned
+  captain: `<circle cx="32" cy="38" r="20" fill="#ffd34a" opacity="0.16"/><path d="M32 14 V8 M14 22 L10 18 M50 22 L54 18 M10 38 H4 M54 38 H60" ${LINE} stroke-width="3" opacity="0.8"/>${relic(32, 40, 10)}${glyphAt('crown', 32, 15, 0.32, 'fill="#fff4cf" stroke="#fff4cf"')}`,
+};
 
 function iconSvg(vfx: string, body: string, gold: boolean): string {
   const id = `g${Math.random().toString(36).slice(2, 8)}`;

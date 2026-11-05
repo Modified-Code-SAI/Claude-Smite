@@ -225,7 +225,7 @@ export class CombatGame implements Updatable {
     this.setPlayerModel(mine.id);
 
     this.hud = new CombatHud(this.player, deps.camera, (u, out) => this.views.headOf(u, out));
-    this.coach = new Coach(this.player, () => this.menu.isOpen, !duel);
+    this.coach = new Coach(this.player, () => this.menu.isOpen, !duel, rush);
     this.menu = new LoadoutMenu(
       conquest || clash || siege || duel || rush
         ? { combatant: () => this.player.combatant, gods: GODS, onClose: () => undefined }

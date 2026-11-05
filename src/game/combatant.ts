@@ -4,6 +4,7 @@ import { levelForXp, ranked, skillRank, treePointsEarned, XP_TABLE, MAX_LEVEL } 
 import { addStats, effectiveAttackSpeed, effectiveMoveSpeed, finalizeStats, statsAtLevel } from './stats';
 import {
   addPoint,
+  emptyBonuses,
   emptySkillMods,
   indexTrees,
   removePoint,
@@ -13,7 +14,7 @@ import {
   type TreeBonuses,
   type TreeIndex,
 } from './trees';
-import type { CCKind, DamageType, Effect, GodDef, Keystone, SkillDef, StatKey, Stats, Targeting } from './types';
+import type { CCKind, DamageType, Effect, GodDef, Keystone, SkillDef, SkillTree, SportKey, StatKey, Stats, Targeting } from './types';
 
 /** The two sides of a match. */
 export type Side = 'order' | 'chaos';
@@ -84,6 +85,8 @@ export class Combatant {
   readonly god: GodDef;
   readonly team: Team;
   readonly trees: TreeIndex;
+  /** The trees points can go into: the god's three, plus any a mode adds (Relic Rush's Playmaker). */
+  readonly treeList: SkillTree[];
   /** Unique per instance; tags the CC this unit applies. */
   readonly uid = nextUid++;
 
@@ -114,7 +117,7 @@ export class Combatant {
 
   private mods: TimedMod[] = [];
   private shields: Shield[] = [];
-  private bonuses: TreeBonuses = { stats: {}, skills: {}, keystones: [], augments: {} };
+  private bonuses: TreeBonuses = emptyBonuses();
   private cached: Stats | null = null;
   private stacks = { count: 0, remaining: 0 };
   private hardCCShieldCooldown = 0;
@@ -124,6 +127,7 @@ export class Combatant {
     this.god = god;
     this.team = team;
     this.trees = indexTrees(god);
+    this.treeList = [...god.trees];
     this.loadout = normalizeLoadout(god, loadout);
     const s = this.stats;
     this.health = s.maxHealth;
@@ -170,6 +174,18 @@ export class Combatant {
   skillInSlot(slot: number): SkillDef | undefined {
     const id = this.loadout[slot];
     return id === undefined ? undefined : skillById(this.god, id);
+  }
+
+  /** A mode's own tree, next to the god's three (before any points go into it). */
+  addTree(tree: SkillTree): void {
+    if (this.treeList.includes(tree)) return;
+    this.treeList.push(tree);
+    for (const n of tree.nodes) this.trees.node.set(n.id, { node: n, tree });
+  }
+
+  /** A Relic Rush sport number from the Playmaker tree (0 without it). */
+  sport(key: SportKey): number {
+    return this.bonuses.sport[key] ?? 0;
   }
 
   /** New points can be spent anywhere; taking points back is a respec and needs base. */
