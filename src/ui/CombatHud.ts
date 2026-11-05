@@ -1,5 +1,5 @@
 import { BUFF_GLOW } from '../combat/MonsterViews';
-import { BUFF_DURATION, BUFF_KINDS, BUFFS, buffMark, FURY_DURATION, isBoss, isBuff, MonsterBrain, type BuffKind } from '../sim/Jungle';
+import { BUFF_DURATION, BUFF_KINDS, BUFFS, buffMark, FURY_DURATION, isBuff, MonsterBrain, type BuffKind } from '../sim/Jungle';
 import * as THREE from 'three/webgpu';
 import { SLOT_COUNT, SLOT_KEYS, ULTIMATE_SLOT } from '../game/loadout';
 import { MAX_LEVEL } from '../game/progression';
@@ -75,9 +75,10 @@ interface Floater {
 const EPITHET: Record<string, string> = {
   treasureWyrm: 'Coiled Keeper of the Hoard',
   moltenColossus: 'Heart of the Sunken Forge',
+  ossuaryKing: 'Lord of the Abyss',
 };
-const SPECIAL_NAME: Record<string, string> = { treasureWyrm: 'Tail Sweep', moltenColossus: 'Eruption' };
-const OBJECTIVE_COLOR: Record<string, string> = { treasureWyrm: '#f5c542', moltenColossus: '#ff6a1a' };
+const SPECIAL_NAME: Record<string, string> = { treasureWyrm: 'Tail Sweep', moltenColossus: 'Eruption', ossuaryKing: 'Grave Toll' };
+const OBJECTIVE_COLOR: Record<string, string> = { treasureWyrm: '#f5c542', moltenColossus: '#ff6a1a', ossuaryKing: '#ffa83a' };
 /** The objective bar shows the nearest boss or Warden within this range of the player. */
 const OBJECTIVE_RANGE = 38;
 
@@ -485,8 +486,7 @@ export class CombatHud {
     let bd = OBJECTIVE_RANGE;
     for (const u of units) {
       if (!u.alive || !(u.brain instanceof MonsterBrain)) continue;
-      const kind = u.brain.camp.camp.kind;
-      if (!isBoss(kind) && !isBuff(kind)) continue;
+      if (u.brain.bossKey === null && !isBuff(u.brain.camp.camp.kind)) continue;
       const d = hypot(u.x - p.x, u.z - p.z);
       if (d < bd) {
         best = u;
@@ -500,15 +500,16 @@ export class CombatHud {
       return;
     }
     const brain = best.brain as MonsterBrain;
-    const kind = brain.camp.camp.kind;
+    const boss = brain.bossKey;
+    const kind = boss ?? brain.camp.camp.kind;
     if (best !== this.objectiveUnit) {
       this.objectiveUnit = best;
       this.objectiveLag = 1;
       const color = OBJECTIVE_COLOR[kind] ?? hex(BUFF_GLOW[kind] ?? 0xffffff);
       o.root.style.setProperty('--c', color);
-      const title = isBoss(kind) ? EPITHET[kind]! : `Guardian of ${BUFFS[kind as BuffKind].name}`;
+      const title = boss ? (EPITHET[boss] ?? '') : `Guardian of ${BUFFS[kind as BuffKind].name}`;
       o.name.innerHTML = `${best.name}<small>${title}</small>`;
-      o.root.classList.toggle('ch-boss-major', isBoss(kind));
+      o.root.classList.toggle('ch-boss-major', boss !== null);
       // a notch every thousand health
       o.root.style.setProperty('--tick', `${(100 * 1000) / best.combatant.stats.maxHealth}%`);
       o.cast.querySelector('span')!.textContent = SPECIAL_NAME[kind] ?? '';

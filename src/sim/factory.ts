@@ -106,7 +106,7 @@ export function minionUnit(
   return u;
 }
 
-export type MonsterType = 'thornback' | 'thornbackAlpha' | 'thornSpitter' | 'shade' | 'gravekeeper' | 'gildedThornback' | 'warden' | 'treasureWyrm' | 'moltenColossus';
+export type MonsterType = 'thornback' | 'thornbackAlpha' | 'thornSpitter' | 'shade' | 'gravekeeper' | 'gildedThornback' | 'warden' | 'treasureWyrm' | 'moltenColossus' | 'ossuaryKing';
 
 /** Jungle monsters, neutral to both sides. Bounty is XP and favor for the god who kills one. */
 const MONSTERS: Record<MonsterType, { name: string; health: number; power: number; speed: number; prot: number; range: number; radius: number; rate: number; xp: number; favor: number; projectile?: number }> = {
@@ -122,6 +122,8 @@ const MONSTERS: Record<MonsterType, { name: string; health: number; power: numbe
   gildedThornback: { name: 'Gilded Thornback', health: 900, power: 0, speed: 345, prot: 25, range: 1.4, radius: 0.6, rate: 0.5, xp: 120, favor: 40 },
   treasureWyrm: { name: 'Treasure Wyrm', health: 5200, power: 70, speed: 280, prot: 35, range: 3.2, radius: 2.6, rate: 0.5, xp: 300, favor: 0 },
   moltenColossus: { name: 'Molten Colossus', health: 8500, power: 95, speed: 240, prot: 45, range: 3.6, radius: 3.4, rate: 0.4, xp: 400, favor: 0 },
+  // Underworld Descent's last boss: a crowned giant of bones at the bottom of the Abyss
+  ossuaryKing: { name: 'Ossuary King', health: 5200, power: 70, speed: 260, prot: 38, range: 3.8, radius: 2.6, rate: 0.45, xp: 500, favor: 0 },
   warden: { name: 'Warden', health: 950, power: 30, speed: 300, prot: 20, range: 2, radius: 1.25, rate: 0.55, xp: 220, favor: FAVOR_REWARDS.buffCamp },
 };
 

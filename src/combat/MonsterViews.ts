@@ -1001,6 +1001,197 @@ function gravekeeper(): MonsterView {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Ossuary King
+
+/**
+ * The lord of the Abyss: a towering crowned skeleton in a royal mantle, iron
+ * pauldrons spiked with bone, a soul fire burning amber in its ribs and a
+ * great soul-forged blade. It swings the blade overhead and down, raises it
+ * high in both hands and drives it into the floor for its Grave Toll, and
+ * kneels and sinks when it falls. Every material is one the other monsters
+ * already use, so it builds no shader when it rises.
+ */
+function ossuaryKing(): MonsterView {
+  const { ivory, scales: gold } = (wyrmMats ??= wyrmMaterials());
+  const iron = mats().hoof;
+  const shroud = (keeperShroud ??= keeperShroudMaterial());
+  const fire = glow(KEEPER_GLOW, 1.6);
+  const root = new THREE.Group();
+  const S = 2.5;
+  const rig = pivot(root, 0, 0, 0);
+  rig.scale.setScalar(S);
+  const HIP = 0.95;
+  const hips = pivot(rig, 0, HIP, 0);
+  mesh(hips, geo('ok-pelvis', () => new THREE.SphereGeometry(0.16, 16, 12).scale(1.4, 0.7, 0.9)), ivory);
+  // a royal tabard about the hips under a gold belt
+  mesh(hips, geo('ok-tabard', () => tattered([[0.3, -0.66], [0.28, -0.36], [0.24, -0.12], [0.2, 0.05]], 7, 0.2, 3.1, 32)), shroud);
+  mesh(hips, geo('ok-belt', () => new THREE.TorusGeometry(0.205, 0.022, 6, 28).rotateX(Math.PI / 2).scale(1, 1, 0.85)), gold, 0, 0.02, 0);
+  const thighs: THREE.Group[] = [];
+  const knees: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const hip = pivot(hips, sx * 0.13, -0.03, 0);
+    bone(hip, ivory, v3(0, 0, 0), v3(0, -0.45, 0), 0.045, 0.036);
+    const knee = pivot(hip, 0, -0.45, 0);
+    mesh(knee, geo('ok-kneecap', () => new THREE.SphereGeometry(0.05, 10, 8)), ivory, 0, 0, 0.015);
+    bone(knee, ivory, v3(0, 0, 0), v3(0, -0.45, 0), 0.038, 0.03);
+    // iron greaves over the shins
+    mesh(knee, geo('ok-greave', () => new THREE.CylinderGeometry(0.06, 0.05, 0.3, 10, 1, true)), iron, 0, -0.2, 0.01);
+    mesh(knee, geo('ok-foot', () => new THREE.SphereGeometry(0.07, 10, 8).scale(1, 0.5, 2.1)), ivory, 0, -0.46, 0.08);
+    thighs.push(hip);
+    knees.push(knee);
+  }
+  // spine and a great open ribcage around the soul fire
+  const torso = pivot(hips, 0, 0.04, 0);
+  for (let i = 0; i < 8; i++) mesh(torso, geo('ok-vertebra', () => new THREE.SphereGeometry(0.045, 10, 8).scale(1.2, 0.8, 1)), ivory, 0, 0.05 + i * 0.08, -0.09 - Math.sin((i / 7) * Math.PI) * 0.03);
+  [0.17, 0.21, 0.235, 0.235, 0.215, 0.18].forEach((r, i) => {
+    const g = geo(`ok-rib-${r}`, () => new THREE.TorusGeometry(r, 0.019, 6, 22, Math.PI * 1.7).rotateX(Math.PI / 2).rotateY(Math.PI * 1.35).scale(1, 1, 0.8));
+    mesh(torso, g, ivory, 0, 0.2 + i * 0.075, 0.0, 0.14, 0, 0);
+  });
+  mesh(torso, geo('ok-sternum', () => new THREE.BoxGeometry(0.05, 0.3, 0.03)), ivory, 0, 0.42, 0.19, -0.12, 0, 0);
+  const heart = mesh(torso, geo('ok-heart', () => new THREE.SphereGeometry(0.075, 14, 10)), fire, 0, 0.42, 0.02, 0, 0, 0, false);
+  const core = mesh(torso, geo('ok-core', () => new THREE.SphereGeometry(0.036, 10, 8)), glow(KEEPER_CORE, 5), 0, 0.42, 0.06, 0, 0, 0, false);
+  bone(torso, ivory, v3(-0.3, 0.69, -0.02), v3(0.3, 0.69, -0.02), 0.024, 0.024);
+  mesh(torso, geo('ok-collar', () => new THREE.TorusGeometry(0.11, 0.025, 6, 22).rotateX(Math.PI / 2)), gold, 0, 0.72, 0.0);
+  // the mantle: from the shoulders to the floor behind it
+  mesh(torso, geo('ok-mantle', () => tattered([[0.52, -0.92], [0.46, -0.5], [0.4, -0.1], [0.36, 0.3], [0.32, 0.6], [0.2, 0.74]], 9, 0.24, 4.4, 36, Math.PI * 0.45, Math.PI * 1.1)), shroud);
+  // iron pauldrons rimmed in gold, bristling with bone
+  for (const sx of [-1, 1]) {
+    const p = pivot(torso, sx * 0.33, 0.68, 0);
+    p.rotation.z = -sx * 0.25;
+    mesh(p, geo('ok-pauldron', () => new THREE.SphereGeometry(0.17, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(1.15, 0.85, 1.1)), iron);
+    mesh(p, geo('ok-pauldron-rim', () => new THREE.TorusGeometry(0.17, 0.016, 6, 26).rotateX(Math.PI / 2).scale(1.15, 1, 1.1)), gold, 0, 0.026, 0);
+    for (let i = 0; i < 3; i++) {
+      const at = v3(sx * (0.03 + i * 0.055), 0.12 - i * 0.02, -0.05 + i * 0.05);
+      bone(p, ivory, at, at.clone().add(v3(sx * (0.06 + i * 0.03), 0.2 - i * 0.04, -0.03)), 0.022, 0.004);
+    }
+  }
+  // the skull under its crown, embers deep in the sockets, the jaw on a hinge
+  const head = pivot(torso, 0, 0.79, 0.03);
+  mesh(head, geo('ok-skull', () => new THREE.SphereGeometry(0.15, 20, 16).scale(0.88, 1, 1.05)), ivory, 0, 0.1, 0);
+  mesh(head, geo('ok-maxilla', () => new THREE.SphereGeometry(0.09, 14, 10).scale(1, 0.62, 1.05)), ivory, 0, 0.01, 0.09);
+  const jaw = pivot(head, 0, 0.015, 0);
+  mesh(jaw, geo('ok-jaw', () => new THREE.SphereGeometry(0.088, 12, 8, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55).scale(1, 0.7, 1.15)), ivory, 0, -0.012, 0.075);
+  const eyes: THREE.Mesh[] = [];
+  for (const sx of [-1, 1]) {
+    mesh(head, geo('ok-socket', () => new THREE.SphereGeometry(0.038, 10, 8)), glow(0x000000, 0), sx * 0.055, 0.1, 0.112, 0, 0, 0, false);
+    eyes.push(mesh(head, geo('ok-eye', () => new THREE.SphereGeometry(0.016, 8, 6)), glow(KEEPER_CORE, 6), sx * 0.055, 0.1, 0.137, 0, 0, 0, false));
+  }
+  mesh(head, geo('ok-crown', () => new THREE.CylinderGeometry(0.135, 0.125, 0.06, 24, 1, true)), gold, 0, 0.215, -0.005);
+  for (let i = 0; i < 7; i++) {
+    const a = ((i - 3) / 3.5) * Math.PI * 0.95;
+    const tall = 0.24 - Math.abs(i - 3) * 0.035;
+    const x = Math.sin(a) * 0.132;
+    const z = Math.cos(a) * 0.132 - 0.005;
+    mesh(head, geo(`ok-spike-${i}`, () => new THREE.ConeGeometry(0.022, tall, 6).translate(0, tall / 2, 0)), gold, x, 0.24, z, Math.cos(a) * 0.18, 0, -Math.sin(a) * 0.18);
+  }
+  mesh(head, geo('ok-gem', () => new THREE.OctahedronGeometry(0.026, 0).scale(0.8, 1.2, 0.6)), glow(KEEPER_GLOW, 4), 0, 0.215, 0.135, 0, 0, 0, false);
+  // arms with iron bracers and bone claws; the right one wields the blade
+  const shoulders: THREE.Group[] = [];
+  const elbows: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const sh = pivot(torso, sx * 0.37, 0.62, 0);
+    bone(sh, ivory, v3(0, 0, 0), v3(0, -0.4, 0), 0.036, 0.03);
+    const el = pivot(sh, 0, -0.4, 0);
+    mesh(el, geo('ok-elbow', () => new THREE.SphereGeometry(0.04, 10, 8)), ivory);
+    bone(el, ivory, v3(0, 0, 0), v3(0, -0.38, 0), 0.03, 0.025);
+    mesh(el, geo('ok-bracer', () => new THREE.CylinderGeometry(0.048, 0.042, 0.18, 10, 1, true)), iron, 0, -0.22, 0);
+    mesh(el, geo('ok-hand', () => new THREE.SphereGeometry(0.04, 10, 8).scale(1.1, 0.8, 1)), ivory, 0, -0.4, 0);
+    for (let i = 0; i < 4; i++) bone(el, ivory, v3((i - 1.5) * 0.02, -0.41, 0.01), v3((i - 1.5) * 0.035, -0.53, 0.045), 0.011, 0.004);
+    shoulders.push(sh);
+    elbows.push(el);
+  }
+  // the blade: +y runs from the grip to the point, a seam of soul fire down its middle
+  const sword = pivot(elbows[1]!, 0, -0.41, 0.02);
+  mesh(sword, geo('ok-grip', () => new THREE.CylinderGeometry(0.022, 0.022, 0.22, 8)), iron, 0, -0.02, 0);
+  mesh(sword, geo('ok-pommel', () => new THREE.SphereGeometry(0.036, 10, 8)), gold, 0, -0.15, 0);
+  mesh(sword, geo('ok-guard', () => new THREE.BoxGeometry(0.3, 0.045, 0.055)), gold, 0, 0.1, 0);
+  mesh(sword, geo('ok-blade', () => new THREE.BoxGeometry(0.12, 1.12, 0.024).translate(0, 0.68, 0)), iron);
+  mesh(sword, geo('ok-tip', () => new THREE.ConeGeometry(0.06, 0.22, 4).scale(1, 1, 0.2).translate(0, 1.35, 0)), iron);
+  mesh(sword, geo('ok-seam', () => new THREE.BoxGeometry(0.022, 1.02, 0.03).translate(0, 0.68, 0)), glow(KEEPER_GLOW, 2.4), 0, 0, 0, 0, 0, 0, false);
+  skinRigid(root, 'ossuaryKing', rig, [heart, core, ...eyes], bounds(2.5 * S));
+
+  let clock = Math.random() * 10;
+  let phase = Math.random() * 10;
+  let raise = 0;
+  let lift = 0;
+  let slamAt = -9;
+  let tolling = false;
+  const mx = (a: number, b: number, t: number) => a + (b - a) * t;
+  return {
+    root,
+    height: 2.35 * S,
+    linger: 4.5,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      const speed = hypot(u.vx, u.vz);
+      phase += dt * (1.3 + speed * 1.1);
+      const gait = Math.min(1, speed / 1.4);
+      // the Grave Toll: the blade lifts high in both hands through the windup (the host's
+      // brain knows it; guests see the slam land), then comes down into the floor
+      const special = u.brain instanceof MonsterBrain ? u.brain.specialProgress : 0;
+      if (tolling && special <= 0) slamAt = clock;
+      tolling = special > 0;
+      lift += ((tolling ? 1 : 0) - lift) * (1 - Math.exp(-dt * (tolling ? 5 : 30)));
+      const st = clock - slamAt;
+      const slam = st < 1.3 ? Math.min(1, st / 0.1) * (st < 0.75 ? 1 : 1 - (st - 0.75) / 0.55) : 0;
+      // a basic swing: back over the shoulder through the windup, then down across the body
+      const goal = u.windup > 0 ? 1 : 0;
+      raise += (goal - raise) * (1 - Math.exp(-dt * (goal ? 8 : 20)));
+      const a = u.sinceAction;
+      const strike = slam > 0 ? 0 : a < 0.5 ? Math.sin(Math.min(1, a / 0.5) * Math.PI * 0.5) * (1 - Math.max(0, a - 0.3) / 0.2) : 0;
+      const walk = Math.sin(phase);
+      // a slow, heavy stride; it braces for the toll and crouches into the slam
+      thighs.forEach((t, i) => {
+        const sw = Math.sin(phase + i * Math.PI);
+        t.rotation.x = mx(mx(sw * 0.42 * gait, -0.15, lift), -0.5, slam);
+        knees[i]!.rotation.x = mx(mx(Math.max(0, -sw) * 0.55 * gait + 0.08, 0.3, lift), 0.8, slam);
+      });
+      hips.position.y = HIP + Math.abs(Math.cos(phase)) * 0.025 * gait + Math.sin(clock * 1.1) * 0.006 - lift * 0.04 - slam * 0.16;
+      torso.rotation.x = mx(mx(0.1 + Math.sin(clock * 1.1) * 0.015 + wobble * 0.04 - raise * 0.12 + strike * 0.22, -0.08, lift), 0.5, slam);
+      torso.rotation.y = (raise * 0.35 - strike * 0.4) * (1 - lift) * (1 - slam);
+      torso.rotation.z = walk * 0.04 * gait;
+      head.rotation.x = mx(mx(-0.12 + Math.sin(clock * 0.6) * 0.04 - raise * 0.1, -0.3, lift), -0.35, slam);
+      head.rotation.y = Math.sin(clock * 0.37) * 0.25 * (1 - gait) * (1 - raise) * (1 - lift);
+      jaw.rotation.x = 0.05 + raise * 0.25 + lift * 0.3 + slam * 0.4;
+      // the arms: the sword arm swings, both rise for the toll and drive down together
+      const sh = shoulders[1]!;
+      const el = elbows[1]!;
+      const off = shoulders[0]!;
+      const oel = elbows[0]!;
+      sh.rotation.x = mx(mx(-0.35 + walk * 0.15 * gait - raise * 2.2 + strike * 1.6, -2.75, lift), -1.15, slam);
+      sh.rotation.z = mx(mx(0.12 + raise * 0.35, -0.12, lift), -0.1, slam);
+      el.rotation.x = mx(mx(-0.55 - raise * 0.6 + strike * 0.5, -0.35, lift), -0.25, slam);
+      off.rotation.x = mx(mx(-0.25 - walk * 0.15 * gait + raise * 0.3, -2.6, lift), -1.0, slam);
+      off.rotation.z = mx(mx(-0.18, 0.14, lift), 0.12, slam);
+      oel.rotation.x = mx(mx(-0.45, -0.6, lift), -0.3, slam);
+      // the blade's angle in the body (0 points straight up, pi straight down), whatever the arm does
+      const blade = mx(mx(2.05 - raise * 2.6 + strike * 2.7, 0.15, lift), 2.95, slam);
+      sword.rotation.x = blade - (torso.rotation.x + sh.rotation.x + el.rotation.x);
+      const flare = 1 + Math.sin(clock * 2.2) * 0.08 + raise * 0.2 + lift * 0.5 + slam * 0.8;
+      heart.scale.setScalar(flare);
+      core.scale.setScalar(flare * (0.9 + Math.sin(clock * 9) * 0.1));
+      if (deathTime >= 0) {
+        // it sinks to its knees, slumps over its blade and goes down into the dark
+        const t = Math.min(1, deathTime / 1.4);
+        const k = t * t * (3 - 2 * t);
+        hips.position.y = HIP * (1 - k * 0.5) - Math.max(0, deathTime - 2.4) * 0.35;
+        for (const th of thighs) th.rotation.x = -k * 1.3;
+        for (const kn of knees) kn.rotation.x = k * 2.0;
+        torso.rotation.x = 0.1 + k * 0.6;
+        head.rotation.x = -0.12 + k * 0.6;
+        sh.rotation.x = -0.35 - k * 0.6;
+        off.rotation.x = -0.25 + k * 0.2;
+        sword.rotation.x = 2.9 - (torso.rotation.x + sh.rotation.x + el.rotation.x);
+        const out = Math.max(0.01, 1 - Math.max(0, deathTime - 0.6) / 1.2);
+        heart.scale.setScalar(out);
+        core.scale.setScalar(out);
+        for (const e of eyes) e.scale.setScalar(out);
+      }
+    },
+  };
+}
+
 /** The camp kind is encoded in the monster's tag: `<team>-<kind>-<i>:<type>`. */
 function campKindOf(u: Unit): CampKind {
   return u.tag.split(':')[0]!.split('-')[1] as CampKind;
@@ -1022,6 +1213,7 @@ export function monsterWarmup(): THREE.Object3D[] {
     wyrm(),
     shade(),
     gravekeeper(),
+    ossuaryKing(),
   ].map((v) => v.root);
 }
 
@@ -1044,5 +1236,6 @@ function createView(u: Unit): MonsterView {
   if (type === 'treasureWyrm') return wyrm();
   if (type === 'shade') return shade();
   if (type === 'gravekeeper') return gravekeeper();
+  if (type === 'ossuaryKing') return ossuaryKing();
   return thornback(type === 'thornbackAlpha', type === 'thornSpitter', type === 'gildedThornback');
 }

@@ -36,7 +36,7 @@ interface Tracked {
 /** Which god basic-hit sound each god makes. */
 const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand', jotunn: 'hit.jotunn' };
 const GOD_TRAVEL: Record<string, string> = { zeus: 'travel.zeus', anubis: 'travel.anubis' };
-const BOSSES = ['Treasure Wyrm', 'Molten Colossus'];
+const BOSSES = ['Treasure Wyrm', 'Molten Colossus', 'Ossuary King'];
 
 export class GameAudio {
   private readonly projectiles = new Map<Projectile, Tracked>();
@@ -254,7 +254,7 @@ export class GameAudio {
         ref = 20;
         break;
       case 'monster':
-        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : 'basic.monster';
+        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.name === 'Ossuary King' ? 'basic.king' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : 'basic.monster';
         ref = u.radius > 2 ? 16 : 7;
         gain = u.radius > 2 ? 1.1 : 0.7;
         break;
@@ -605,7 +605,7 @@ export class GameAudio {
       // a boss arriving
       if (BOSSES.includes(u.name) && !this.seenBoss.has(u)) {
         this.seenBoss.add(u);
-        this.at(u.name === 'Treasure Wyrm' ? 'wyrm.roar' : 'colossus.roar', u, { gain: 1, ref: 25 }, 5);
+        this.at(u.name === 'Treasure Wyrm' ? 'wyrm.roar' : u.name === 'Ossuary King' ? 'king.roar' : 'colossus.roar', u, { gain: 1, ref: 25 }, 5);
         if (this.conquest) this.herald.say(u.name === 'Treasure Wyrm' ? 'The Treasure Wyrm has awoken.' : 'The Molten Colossus rises from the deep.', 'epic', 2);
       }
       const brain = u.brain as { specialProgress?: number } | null;
@@ -625,7 +625,7 @@ export class GameAudio {
       this.seenFlash.add(f.id);
       const o = f.owner;
       if (o.kind === 'monster' && BOSSES.includes(o.name) && f.shape.type === 'circle') {
-        this.engine.play(o.name === 'Treasure Wyrm' ? 'wyrm.sweep' : 'colossus.stomp', { at: { x: f.shape.x, z: f.shape.z }, gain: 1.2, ref: 18 }, 6);
+        this.engine.play(o.name === 'Treasure Wyrm' ? 'wyrm.sweep' : o.name === 'Ossuary King' ? 'king.toll' : 'colossus.stomp', { at: { x: f.shape.x, z: f.shape.z }, gain: 1.2, ref: 18 }, 6);
       }
     }
     if (this.seenFlash.size > 500) this.seenFlash.clear();

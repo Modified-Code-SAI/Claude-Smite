@@ -76,6 +76,21 @@ export const SOUNDS: Record<string, Recipe> = {
   // the Gravekeeper: a flick of lantern fire, its scorch, and the murmur and rising shimmer of a mend
   'basic.keeper': { variants: 3, peak: 0.55, make: (r) => layer([fire(r, 0.35, { gain: 0.8 }), 0.7], [whoosh(r, 0.3, 900, 2200, { q: 1.3 }), 0.7, 0.02], [crackles(r, 0.3, 14), 0.25, 0.03]) },
   'hit.keeper': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.12, { tone: 1500 }), 0.7], [crackles(r, 0.25, 18), 0.4, 0.01]) },
+  // the Ossuary King: its great blade cleaving the air, the Grave Toll (a funeral bell under the slam), and its rising roar
+  'basic.king': { variants: 2, peak: 0.95, make: (r) => layer([whoosh(r, 0.7, 90, 520, { q: 0.7, peak: 0.75, gain: 1.3 }), 1], [thump(r, 0.8, 55, 22, { click: 0.5, noise: 0.6, drive: 2.5 }), 0.9, 0.32], [clang(r, 0.7, 220, { decay: 0.35, gain: 0.3, bright: 0.3 }), 0.35, 0.33]) },
+  'king.toll': {
+    peak: 1,
+    make: (r) =>
+      layer(
+        [thump(r, 1.4, 48, 18, { click: 0.7, noise: 1, drive: 3 }), 1],
+        [clang(r, 4, 73.4, { decay: 3.2, bright: 0.35, gain: 0.9 }), 0.9, 0.02],
+        [clang(r, 3.2, 110, { decay: 2.4, bright: 0.25, gain: 0.5 }), 0.5, 0.03],
+        [choir(r, 2.6, 73.4, { vowelName: 'oh', env: (t) => ahr(t, 0.2, 0.6, 1.6) }), 0.45, 0.1],
+        [fire(r, 1.6, { gain: 0.6, roar: 2.2 }), 0.8, 0.04],
+        [debris(r, 1.8, { density: 30, gain: 0.5, tone: 500 }), 0.8, 0.08],
+      ),
+  },
+  'king.roar': { peak: 0.95, make: (r) => layer([roar(r, 3, 48, { open: 0.9 }), 1], [choir(r, 3, 55, { vowelName: 'oh', env: (t) => ahr(t, 0.6, 1.2, 1.2) }), 0.6, 0.2], [rumble(r, 3, { tone: 90 }), 0.8], [crackles(r, 2.4, 10), 0.3, 0.4]) },
   'keeper.mend': { variants: 2, peak: 0.55, make: (r) => layer([choir(r, 1.1, r() < 0.5 ? 98 : 110, { vowelName: 'oh', env: (t) => ahr(t, 0.25, 0.3, 0.5) }), 0.5], [shimmer(r, 1, 587.3, { rise: 1.5, peak: 0.6 }), 0.8, 0.1], [fire(r, 0.6, { gain: 0.6 }), 0.45], [vowel(r, 0.7, (t) => glide(140, 120, t, 0.7), VOWELS.oo, { breath: 2.4, gain: 0.3 }), 0.4, 0.05]) },
   'hit.acid': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.1, { tone: 900 }), 0.7], [sand(r, 0.35, { tone: 3000, peak: 0.5 }), 0.8, 0.03]) },
   'basic.monster': { variants: 3, peak: 0.6, make: (r) => layer([whoosh(r, 0.22, 500, 1200, { q: 1 }), 1], [vowel(r, 0.25, (t) => glide(220, 150, t, 0.25), VOWELS.ah, { breath: 0.5, growl: 0.2, gain: 0.5 }), 1]) },

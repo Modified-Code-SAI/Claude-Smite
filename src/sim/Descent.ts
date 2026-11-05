@@ -6,7 +6,7 @@ import type { GodDef, SkillDef, StatKey } from '../game/types';
 import type { CampKind } from '../map/ConquestLayout';
 import { BOSS_CHAMBER, CHAMBERS, entranceSpot, exitSpot, obstaclesOf, steer, type ChamberDef, type Palette } from '../map/UnderworldLayout';
 import { monsterUnit, type MonsterType } from './factory';
-import { MonsterBrain, type CampState } from './Jungle';
+import { MonsterBrain, type BossSpecial, type CampState } from './Jungle';
 import { BOONS, CHAMPION, CURSES, type Boon, type Curse } from './Siege';
 import type { Sim } from './Sim';
 import type { Brain, SimEvent, Unit } from './Unit';
@@ -74,6 +74,16 @@ export const DESCENT = {
 /** The Shade's blink: how close (edge to edge) a god gets before it goes, how often, and how far from them it reappears. */
 export const SHADE_BLINK = { near: 4.5, every: 5.5, first: 1.5, far: 9 } as const;
 
+/** The Ossuary King, lord of the Abyss and the run's last boss. */
+export const KING = {
+  /** Grave Toll: it drives its blade into the floor and a ring of soul fire bursts out around it. */
+  toll: { every: 10, windup: 1.3, radius: 8, scale: 1.4 },
+  /** Soul Rain: soul fire falls under every god within `reach` of it, and on `extra` spots near it. */
+  rain: { first: 7, every: 12, enraged: 8, extra: 2, reach: 40 },
+  /** Below this share of its health it is enraged and the rain comes faster. */
+  enrage: 0.3,
+} as const;
+
 /**
  * The Gravekeeper's lantern: how often it mends, how far it reaches, how much
  * (a share of the patient's health, capped at a share of its own), who counts
@@ -92,6 +102,7 @@ export const SOULS: Record<MonsterType, number> = {
   gildedThornback: 5,
   treasureWyrm: 15,
   moltenColossus: 15,
+  ossuaryKing: 20,
 };
 
 export type ChamberKind = 'pack' | 'trap' | 'elite' | 'champion' | 'treasure' | 'boss';
@@ -195,6 +206,8 @@ export const DESCENT_TUNING = {
   health: 2.5,
   /** Bosses' health on top of `health` (the packs carry the length of a chamber; a boss shouldn't drag). */
   bossHealth: 0.55,
+  /** The last boss (the Ossuary King) on top of that. */
+  lastBoss: 1.5,
   /** How many monsters a pack brings, as a multiplier. */
   count: 2,
   /** Monster health in a shared descent on top of the rest: each team fights its own half, and the rivals too. */
@@ -223,7 +236,7 @@ export const teamScale = (gods: number): number => 0.4 + 0.2 * Math.max(1, gods)
 /** How many monsters come for a team of this many gods. */
 export const teamCount = (gods: number): number => [0.5, 0.75, 1, 1.3, 1.45, 1.6][Math.min(6, Math.max(1, gods)) - 1]!;
 
-const isBossType = (t: string): boolean => t === 'treasureWyrm' || t === 'moltenColossus';
+const isBossType = (t: string): boolean => t === 'treasureWyrm' || t === 'moltenColossus' || t === 'ossuaryKing';
 
 /** The monsters of one chamber, wave by wave. */
 export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
@@ -271,7 +284,7 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     case 'treasure':
       return split(pack(0.7));
     case 'boss':
-      return [[n % 10 === 5 ? 'treasureWyrm' : 'moltenColossus', ...(n >= 10 ? (['thornSpitter', 'thornSpitter'] as MonsterType[]) : [])]];
+      return [[n >= DESCENT.chambers ? 'ossuaryKing' : n % 10 === 5 ? 'treasureWyrm' : 'moltenColossus', ...(n >= 10 ? (['thornSpitter', 'thornSpitter'] as MonsterType[]) : [])]];
   }
 }
 
@@ -279,7 +292,8 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
 function bossAdds(n: number): MonsterType[] {
   const out: MonsterType[] = ['thornback', 'thornback', 'thornback', 'thornSpitter'];
   if (n >= 10) out.push('thornbackAlpha', 'thornSpitter');
-  if (n >= 15) out.push('thornbackAlpha', 'thornback');
+  // the Ossuary King calls up Shades of its court (never a Gravekeeper: a healer on a boss drags the fight out)
+  if (n >= DESCENT.chambers) out.push('shade', 'thornbackAlpha');
   return out;
 }
 
@@ -353,6 +367,15 @@ export class DescentMonsterBrain extends MonsterBrain {
   ) {
     super(s, self, camp);
     this.at = camp.camp.at as unknown as [number, number];
+  }
+
+  override get bossKey(): string | null {
+    return this.self.tag.endsWith(':ossuaryKing') ? 'ossuaryKing' : super.bossKey;
+  }
+
+  /** The Ossuary King's Grave Toll in place of a jungle boss's slam. */
+  protected override get specialSpec(): BossSpecial | null {
+    return this.self.tag.endsWith(':ossuaryKing') ? KING.toll : super.specialSpec;
   }
 
   override update(dt: number): void {
@@ -580,6 +603,8 @@ export class Descent {
   obolUsed = 0;
   readonly eruptions: Eruption[] = [];
   private eruptIn = 0;
+  /** Seconds until the Ossuary King's next Soul Rain. */
+  private rainIn = 0;
   private nextEruption = 1;
   /** This chamber's Champion while it stands, the Gilded Thornback while it runs, and the boss. */
   champion: Unit | null = null;
@@ -804,6 +829,7 @@ export class Descent {
     this.stepRevives(dt);
     if (this.checkWipe()) return;
     this.stepEruptions(dt);
+    this.stepKing(dt);
     switch (this.phase) {
       case 'enter':
         this.timer -= dt;
@@ -904,7 +930,8 @@ export class Descent {
       const jz = boss ? 0 : (this.sim.rng() - 0.5) * 2.2;
       const x = c.x + spot[0]! + jx;
       const z = c.z + spot[1]! + jz;
-      const title = i === champ ? 'Champion' : boss && n === DESCENT.chambers ? 'Abyssal' : '';
+      const king = type === 'ossuaryKing';
+      const title = i === champ ? 'Champion' : boss && !king && n === DESCENT.chambers ? 'Abyssal' : '';
       const u = monsterUnit(this.base, type, { x, z, yaw: 0 }, minutes, title);
       const cb = u.combatant;
       let hp = scale * team * DESCENT_TUNING.health * (this.versus ? DESCENT_TUNING.versusHealth : 1);
@@ -913,7 +940,7 @@ export class Descent {
       if (boss && n === DESCENT.bossEvery) hp *= 0.7;
       if (boss && n === 2 * DESCENT.bossEvery) hp *= DESCENT_TUNING.secondBoss;
       if (boss && n === DESCENT.chambers) {
-        hp *= 1.5;
+        hp *= DESCENT_TUNING.lastBoss;
         power *= 1.15;
       }
       if (i === champ) {
@@ -933,13 +960,15 @@ export class Descent {
       }
       cb.health = cb.stats.maxHealth;
       if (u.bounty) u.bounty = { xp: u.bounty.xp * DESCENT_TUNING.killXp, favor: u.bounty.favor * DESCENT_TUNING.favor };
-      const campKind: CampKind = type === 'warden' ? WARDEN_GLOWS[(n + i) % 4]! : boss ? (type as CampKind) : 'small';
+      // (the King's slam is its own, so it fights from a plain camp: see DescentMonsterBrain.specialSpec)
+      const campKind: CampKind = type === 'warden' ? WARDEN_GLOWS[(n + i) % 4]! : boss && !king ? (type as CampKind) : 'small';
       u.tag = `descent-${campKind}-${n}.${label}.${i}:${type}`;
       u.home.x = x;
       u.home.z = z;
       const camp: CampState = { camp: { id: `descent:${n}:${label}:${i}`, kind: campKind, team: null, at: [x, z] }, members: [u], respawnAt: null, foe: null };
       u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c), c);
       if (boss) this.boss = u;
+      if (king) this.rainIn = KING.rain.first;
       u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : i === champ ? 'champion' : '' } satisfies DescentSpawn };
       this.monsters.push(u);
       this.sim.add(u);
@@ -1277,6 +1306,37 @@ export class Descent {
         const s = c.spawns[Math.floor(rng() * c.spawns.length)]!;
         this.erupt(c.x + s[0]! + (rng() - 0.5) * 6, c.z + s[1]! + (rng() - 0.5) * 6);
       }
+    }
+  }
+
+  /**
+   * The Ossuary King's Soul Rain: it raises its hand and soul fire falls under
+   * every god, a little ahead of where each is going, and on a few spots around
+   * it besides. Faster once it is badly hurt; never while it is stunned.
+   */
+  private stepKing(dt: number): void {
+    const k = this.boss;
+    if (!k?.alive || this.phase !== 'fight' || !k.tag.endsWith(':ossuaryKing')) return;
+    this.rainIn -= dt;
+    if (this.rainIn > 0) return;
+    if (k.combatant.cc.locks().cast) {
+      this.rainIn = 0.5;
+      return;
+    }
+    const hurt = k.combatant.health / k.combatant.stats.maxHealth < KING.enrage;
+    this.rainIn = hurt ? KING.rain.enraged : KING.rain.every;
+    const rng = this.sim.rng;
+    for (const g of this.gods) {
+      if (!g.alive || hypot(g.x - k.x, g.z - k.z) > KING.rain.reach) continue;
+      this.erupt(g.x + g.vx * 0.6 + (rng() - 0.5) * 1.5, g.z + g.vz * 0.6 + (rng() - 0.5) * 1.5);
+    }
+    const c = this.layout;
+    for (let i = 0; i < KING.rain.extra; i++) {
+      const a = rng() * Math.PI * 2;
+      const r = 5 + rng() * 6;
+      const x = k.x + Math.sin(a) * r;
+      const z = k.z + Math.cos(a) * r;
+      if (c.sd(x - c.x, z - c.z) > 1.5) this.erupt(x, z);
     }
   }
 

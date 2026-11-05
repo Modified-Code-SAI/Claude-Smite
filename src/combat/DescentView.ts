@@ -71,6 +71,8 @@ export class DescentView {
   private sinkIn = 0;
   /** Monsters already seen climbing out of the floor. */
   private readonly risen = new WeakSet<Unit>();
+  /** The newest soul fire already marked (the Ossuary King's rain sends a bolt into each new one). */
+  private lastErupt = 0;
   private clock = 0;
   /** The run of souls reaching the player: its length and when the last landed. */
   private streak = { k: 0, at: -1 };
@@ -168,6 +170,7 @@ export class DescentView {
       d.place({ type: 'circle', radius: e.r }, e.x, e.z, 0, 0.09);
     });
     for (let i = r.eruptions.length; i < this.eruptions.length; i++) this.eruptions[i]!.mesh.visible = false;
+    this.rain(r);
     // each landing: a column of soul fire bursting from the ground, spitting loose souls
     const me = this.opts.me;
     for (const e of r.landed.splice(0)) {
@@ -200,6 +203,23 @@ export class DescentView {
       d.place({ type: 'circle', radius: DESCENT.revive.range }, g.x, g.z, 0, 0.08);
     }
     for (; k < this.revives.length; k++) this.revives[k]!.mesh.visible = false;
+  }
+
+  /**
+   * The Ossuary King's Soul Rain: a bolt of amber souls arcs from the fire in
+   * its ribs into each circle of soul fire it calls down, so the rain reads as
+   * its doing.
+   */
+  private rain(r: Descent): void {
+    const k = r.boss;
+    for (const e of r.eruptions) {
+      if (e.id <= this.lastErupt) continue;
+      this.lastErupt = e.id;
+      if (!k?.alive || !k.tag.endsWith(':ossuaryKing') || Math.hypot(k.x - e.x, k.z - e.z) > 45) continue;
+      const spot = { x: e.x, z: e.z, body: { y: this.groundAt(e.x, e.z) }, alive: true };
+      const f = k.forward;
+      for (let i = 0; i < 3; i++) this.wisps.swarm.send(k.x + f.x * 0.4, k.body.y + 3.5, k.z + f.z * 0.4, spot, KEEPER_GLOW, 0.5 - i * 0.08, 3.2);
+    }
   }
 
   /** Souls leave the slain: a monster's into the god who landed the blow (as many as it was worth), a downed god's to the rival who downed it or away; a god rising takes souls back in. */
