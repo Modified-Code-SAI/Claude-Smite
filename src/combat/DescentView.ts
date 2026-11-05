@@ -210,9 +210,10 @@ export class DescentView {
       // the Gravekeeper's lantern flares and a stream of amber souls pours into its patient
       const k = e.source;
       const f = k.forward;
-      const x = k.x + f.x * 0.4;
-      const z = k.z + f.z * 0.4;
-      const y = k.body.y + 2;
+      // (the lantern hangs ahead of it on its staff hand, the model's +x side)
+      const x = k.x + f.x * 0.8 + f.z * 0.25;
+      const z = k.z + f.z * 0.8 - f.x * 0.25;
+      const y = k.body.y + 2.1;
       const to = e.target;
       for (let i = 0; i < 5; i++) this.wisps.swarm.send(x, y, z, to, KEEPER_GLOW, 0.42, Math.min(2.6, 0.6 + to.radius * 0.6));
       this.vfx.burst(LANTERN, x, y, z, 0.6);

@@ -891,7 +891,7 @@ function gravekeeper(): MonsterView {
     const g = geo(`gk-rib-${r}`, () => new THREE.TorusGeometry(r, 0.013, 6, 20, Math.PI * 1.65).rotateX(Math.PI / 2).rotateY(Math.PI * 1.325).scale(1, 1, 0.82));
     mesh(torso, g, ivory, 0, 0.22 + i * 0.065, 0.02, 0.18, 0, 0);
   });
-  const ember = mesh(torso, geo('gk-ember', () => new THREE.SphereGeometry(0.05, 12, 10)), glow(KEEPER_GLOW, 3.5), 0, 0.33, 0.02, 0, 0, 0, false);
+  const ember = mesh(torso, geo('gk-ember', () => new THREE.SphereGeometry(0.038, 12, 10)), glow(KEEPER_GLOW, 1.5), 0, 0.33, 0.02, 0, 0, 0, false);
   bone(torso, ivory, v3(-0.2, 0.55, -0.02), v3(0.2, 0.55, -0.02), 0.018, 0.018);
   // a ragged cloak over the back
   mesh(torso, geo('gk-cloak', () => tattered([[0.42, -0.25], [0.36, 0.08], [0.31, 0.36], [0.26, 0.56], [0.16, 0.62]], 7, 0.22, 2.2, 28, Math.PI * 0.5, Math.PI)), shroud);
@@ -928,9 +928,9 @@ function gravekeeper(): MonsterView {
   }
   // the staff, with a crook at the top and the lantern swinging from it
   const staff = pivot(elbows[1]!, 0, -0.27, 0);
-  mesh(staff, geo('gk-staff', () => new THREE.CylinderGeometry(0.016, 0.022, 1.75, 7).translate(0, 0.32, 0)), iron);
-  mesh(staff, geo('gk-crook', () => new THREE.TorusGeometry(0.09, 0.016, 6, 14, Math.PI).rotateY(Math.PI / 2).translate(0, 1.195, 0.09)), iron);
-  const lantern = pivot(staff, 0, 1.2, 0.18);
+  mesh(staff, geo('gk-staff', () => new THREE.CylinderGeometry(0.016, 0.022, 1.5, 7).translate(0, 0.25, 0)), iron);
+  mesh(staff, geo('gk-crook', () => new THREE.TorusGeometry(0.09, 0.016, 6, 14, Math.PI).rotateY(Math.PI / 2).translate(0, 1.0, 0.09)), iron);
+  const lantern = pivot(staff, 0, 1.0, 0.18);
   mesh(lantern, geo('gk-chain', () => new THREE.CylinderGeometry(0.005, 0.005, 0.12, 4).translate(0, -0.06, 0)), iron, 0, 0, 0, 0, 0, 0, false);
   mesh(lantern, geo('gk-cap', () => new THREE.ConeGeometry(0.07, 0.06, 6).translate(0, -0.15, 0)), iron);
   mesh(lantern, geo('gk-base', () => new THREE.CylinderGeometry(0.055, 0.06, 0.02, 6).translate(0, -0.36, 0)), iron);
@@ -968,7 +968,7 @@ function gravekeeper(): MonsterView {
       head.rotation.x = -0.45 + Math.sin(clock * 0.7) * 0.05 + lift * 0.15;
       head.rotation.y = Math.sin(clock * 0.43) * 0.3 * (1 - lift);
       jaw.rotation.x = 0.06 + lift * 0.35 + (Math.sin(clock * 3.1) > 0.85 ? Math.abs(Math.sin(clock * 40)) * 0.12 : 0);
-      shoulders[1]!.rotation.x = -0.95 - lift * 1.1;
+      shoulders[1]!.rotation.x = -0.95 - lift * 0.75;
       elbows[1]!.rotation.x = -0.55 + lift * 0.35;
       shoulders[1]!.rotation.z = 0.12;
       // the staff stays upright whatever the arm does, tipping toward the patient as the lantern lifts
@@ -976,7 +976,8 @@ function gravekeeper(): MonsterView {
       shoulders[0]!.rotation.x = -0.85 + Math.sin(phase + Math.PI) * 0.25 * gait - lift * 0.5;
       elbows[0]!.rotation.x = -0.5 - lift * 0.3;
       shoulders[0]!.rotation.z = -0.15;
-      lantern.rotation.x = Math.sin(clock * 1.9) * 0.12 - lean * 0.35 - staff.rotation.x * 0.6;
+      // (the lantern hangs plumb from the crook, cancelling the staff's tip, and trails a little as it walks)
+      lantern.rotation.x = Math.sin(clock * 1.9) * 0.12 - lean * 0.35 - lift * 0.45;
       lantern.rotation.z = Math.sin(clock * 1.4) * 0.1;
       const flick = 0.9 + Math.sin(clock * 13) * 0.12 + Math.sin(clock * 29 + 1) * 0.08;
       flame.scale.setScalar(flick * (1 + lift * 0.9));
