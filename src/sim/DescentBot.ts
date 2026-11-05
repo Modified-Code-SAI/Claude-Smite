@@ -66,8 +66,8 @@ export class DescentBot implements Brain {
   update(dt: number): void {
     const { run, u } = this;
     if (run.chamber === 0) return;
-    // a boss rising: the team holds and watches it
-    if (run.intro > 0) {
+    // a boss rising or falling: the team holds and watches it
+    if (run.intro > 0 || run.fall > 0) {
       u.move = null;
       return;
     }

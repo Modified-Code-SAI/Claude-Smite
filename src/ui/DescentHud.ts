@@ -8,7 +8,7 @@ import { awardLine } from './ascension';
 import { relicById, type RelicId } from '../sim/Relics';
 import { relicIcon, skillIcon } from './icons';
 import { KillTally } from './killTally';
-import { BOSS_EPITHET } from './bossNames';
+import { BOSS_EPITHET, BOSS_FALL_LINE } from './bossNames';
 import type { SimEvent } from '../sim/Unit';
 import './match.css';
 import './clash.css';
@@ -60,7 +60,7 @@ export class DescentHud {
   private readonly hintAt = new Map<string, number>();
   /** A boss's name and title as it rises (see DESCENT.bossIntro). */
   private readonly bossCard: HTMLElement;
-  private bossShown: Unit | null = null;
+  private bossShown = '';
   /** The team's relics down the left edge, each lighting up as it goes off. */
   private readonly relicTray: HTMLElement;
   private readonly relicEls = new Map<RelicId, HTMLElement>();
@@ -118,15 +118,21 @@ export class DescentHud {
   /** A boss rising: its name and title under it, held while its chamber waits (they fade as the camera comes back). */
   private bossIntro(): void {
     const r = this.run;
-    const boss = r.intro > 0.4 ? r.boss : null;
-    if (boss === this.bossShown) return;
-    this.bossShown = boss;
+    // its name as it rises, and again (in gold) a moment after it falls
+    const rising = r.intro > 0.4;
+    const falling = r.fall > 0.5 && r.fall < DESCENT.bossFall - 0.35;
+    const boss = rising || falling ? r.boss : null;
+    const key = boss ? `${boss.id}${falling ? ':fell' : ''}` : '';
+    if (key === this.bossShown) return;
+    this.bossShown = key;
     if (boss) {
-      const key = boss.tag.split(':')[1] ?? '';
+      const type = boss.tag.split(':')[1] ?? '';
       const last = r.chamber === DESCENT.chambers;
-      this.bossCard.querySelector('small')!.textContent = last ? 'The bottom of the underworld' : `The master of ${DEPTHS[r.depth]!.name}`;
+      const theirs = r.versus && r.bossBy && r.bossBy !== this.mine;
+      this.bossCard.querySelector('small')!.textContent = falling ? (theirs ? 'Felled by the rivals' : 'Vanquished') : last ? 'The bottom of the underworld' : `The master of ${DEPTHS[r.depth]!.name}`;
       this.bossCard.querySelector('b')!.textContent = boss.name;
-      this.bossCard.querySelector('span')!.textContent = BOSS_EPITHET[key] ?? '';
+      this.bossCard.querySelector('span')!.textContent = (falling ? BOSS_FALL_LINE[type] : BOSS_EPITHET[type]) ?? '';
+      this.bossCard.classList.toggle('fell', falling);
     }
     this.bossCard.classList.toggle('show', !!boss);
   }

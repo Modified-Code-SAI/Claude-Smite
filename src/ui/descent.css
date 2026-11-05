@@ -74,4 +74,7 @@ body.descent-cine .combat-hud, body.descent-cine .hud-hint, body.descent-cine .c
 .descent-boss small { font: 600 13px system-ui, sans-serif; letter-spacing: 0.34em; text-transform: uppercase; color: #ffb48a; opacity: 0.9; }
 .descent-boss b { font-family: 'Cinzel', Georgia, serif; font-weight: 700; font-size: clamp(40px, 7vw, 84px); letter-spacing: 0.1em; color: #ffe2c4; padding: 0 56px 6px; border-bottom: 1px solid; border-image: linear-gradient(90deg, transparent, rgba(255, 140, 90, 0.9), transparent) 1; }
 .descent-boss span { font-family: 'Cinzel', Georgia, serif; font-size: 18px; letter-spacing: 0.16em; color: #f2d6b0; }
+.descent-boss.fell small { color: #ffd77a; }
+.descent-boss.fell b { color: #fff0c4; border-image: linear-gradient(90deg, transparent, rgba(255, 205, 110, 0.95), transparent) 1; text-shadow: 0 0 28px rgba(255, 190, 90, 0.5), 0 4px 24px rgba(0, 0, 0, 0.95), 0 0 2px #000; }
+.descent-boss.fell span { color: #ffe6b0; }
 @keyframes descent-boss-in { from { opacity: 0; letter-spacing: 0.32em; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%); } }

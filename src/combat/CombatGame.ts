@@ -750,8 +750,8 @@ export class CombatGame implements Updatable {
 
     this.deps.player.movement = {
       speed: this.sim.moveSpeed(this.player),
-      // a kickoff countdown holds everyone on their marks, and a boss's entrance holds the team while it rises
-      canMove: this.sim.canMove(this.player) && !this.rushMode?.frozen && !this.jotunnMode?.piloting && !this.descent?.intro,
+      // a kickoff countdown holds everyone on their marks, and a boss's entrance and fall hold the team while it rises and goes down
+      canMove: this.sim.canMove(this.player) && !this.rushMode?.frozen && !this.jotunnMode?.piloting && !this.descent?.intro && !this.descent?.fall,
     };
   }
 
@@ -873,9 +873,9 @@ export class CombatGame implements Updatable {
 
   private wasInBase = true;
 
-  /** Whether the fight takes input: no menu up, and the match isn't over, counting down or watching a boss rise. */
+  /** Whether the fight takes input: no menu up, and the match isn't over, counting down or watching a boss rise or fall. */
   private get inFight(): boolean {
-    return !this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && !this.descent?.intro && this.jotunn?.phase !== 'done';
+    return !this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && !this.descent?.intro && !this.descent?.fall && this.jotunn?.phase !== 'done';
   }
 
   /** Another god on the player's team, bot or human: someone to ping. */

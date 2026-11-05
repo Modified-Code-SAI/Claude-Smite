@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOSS_INTRO, introDistance, introShot, introSpot } from './bossIntro';
+import { BOSS_FALL, BOSS_INTRO, fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot } from './bossIntro';
 
 const boss = { x: 0, z: 0, ground: 2, height: 5 };
 const shot = () => ({ pos: { x: 0, y: 0, z: 0 }, look: { x: 0, y: 0, z: 0 }, weight: 0 });
@@ -46,5 +46,38 @@ describe('a boss entrance on camera', () => {
     expect(introDistance(6)).toBeGreaterThan(introDistance(4));
     expect(introDistance(1)).toBe(BOSS_INTRO.near);
     expect(introDistance(40)).toBe(BOSS_INTRO.far);
+  });
+});
+
+describe('a boss fall on camera', () => {
+  const spot = { x: 0, z: 10 };
+
+  it('stands back and higher than for the entrance, drifts round the boss and eases back, following it down', () => {
+    const total = 2.4;
+    expect(fallShot(0, total, boss, spot, BOSS_FALL.orbit, shot()).weight).toBe(0);
+    const early = fallShot(0.6, total, boss, spot, BOSS_FALL.orbit, shot());
+    const late = fallShot(1.6, total, boss, spot, BOSS_FALL.orbit, shot());
+    expect(early.weight).toBe(1);
+    expect(early.pos.y).toBeGreaterThan(introShot(1.3, 2.6, boss, spot, shot()).pos.y);
+    // round the boss, a little further off, looking lower
+    expect(Math.atan2(late.pos.x, late.pos.z)).toBeGreaterThan(Math.atan2(early.pos.x, early.pos.z));
+    expect(Math.hypot(late.pos.x, late.pos.z)).toBeGreaterThan(Math.hypot(early.pos.x, early.pos.z));
+    expect(late.look.y).toBeLessThan(early.look.y);
+    expect(fallShot(total, total, boss, spot, BOSS_FALL.orbit, shot()).weight).toBe(0);
+  });
+
+  it('drifts the way that stays clear of walls, or holds still when neither does', () => {
+    expect(fallOrbit(boss, spot, () => 99)).toBe(BOSS_FALL.orbit);
+    // a wall on the +x side: drift the other way
+    const east = (x: number) => 3 - x;
+    expect(fallOrbit(boss, spot, east)).toBe(-BOSS_FALL.orbit);
+    // boxed in on both sides
+    expect(fallOrbit(boss, spot, (x) => 1 - Math.abs(x))).toBe(0);
+  });
+
+  it('stands further back than for the entrance', () => {
+    expect(fallDistance(5)).toBeGreaterThan(introDistance(5));
+    expect(fallDistance(1)).toBe(BOSS_FALL.near);
+    expect(fallDistance(40)).toBe(BOSS_FALL.far);
   });
 });

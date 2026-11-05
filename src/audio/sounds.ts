@@ -277,6 +277,18 @@ export const SOUNDS: Record<string, Recipe> = {
         [choir(r, 2.8, 55, { vowelName: 'oo', env: (t) => ahr(t, 0.8, 0.9, 1.1) }), 0.4, 0.35],
       ),
   },
+  // a boss gone down: a last great blow, then a bright chord and voices rising over it
+  'boss.fall': {
+    peak: 0.85,
+    make: (r) =>
+      layer(
+        [impact(r, 1.8, { tone: 48, sub: 1, room: 1 }), 1],
+        [debris(r, 1.6, { density: 22, gain: 0.4, tone: 520 }), 0.6, 0.06],
+        [horn(r, 2.8, [110, 138.6, 164.8]), 0.4, 0.45],
+        [choir(r, 3, 220, { vowelName: 'ah', env: (t) => ahr(t, 0.7, 1, 1.3) }), 0.35, 0.5],
+        [shimmer(r, 2.2, 880, { rise: 1.5, peak: 0.25 }), 0.22, 0.7],
+      ),
+  },
   'monster.emerge': { variants: 3, peak: 0.6, make: (r) => layer([rumble(r, 1.3, { tone: 75, attack: 0.04 }), 1], [debris(r, 1, { density: 16, gain: 0.35, tone: 650 }), 0.75, 0.04], [choir(r, 1.5, r() < 0.5 ? 82 : 73, { vowelName: 'oo', env: (t) => ahr(t, 0.35, 0.25, 0.8) }), 0.3, 0.12]) },
   'soul.absorb': { variants: 3, peak: 0.35, make: (r) => layer([whoosh(r, 0.3, 700, 3400, { q: 1.4, peak: 0.85, gain: 0.7 }), 0.6], [shimmer(r, 0.55, 1046.5, { rise: 1.3, peak: 0.15 }), 1, 0.07], [choir(r, 0.6, 523.3, { vowelName: 'oo', env: (t) => ahr(t, 0.06, 0.08, 0.4) }), 0.35, 0.05]) },
 

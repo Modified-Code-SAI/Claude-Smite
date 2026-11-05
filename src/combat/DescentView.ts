@@ -9,7 +9,7 @@ import type { World } from '../scene/World';
 import { DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { ArcView } from './Arcs';
-import { introDistance, introShot, introSpot, type IntroSubject } from './bossIntro';
+import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
 import { GroundDecal } from './GroundDecal';
 import { KEEPER_CORE, KEEPER_GLOW } from './MonsterViews';
 import type { GodPalette } from './palette';
@@ -60,7 +60,7 @@ export interface DescentViewOptions {
   heightOf?: (u: Unit) => number | null;
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'boss' | `relic.${RelicId}`;
+export type DescentCue = 'soul' | 'emerge' | 'boss' | 'bossFall' | `relic.${RelicId}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -93,8 +93,10 @@ export class DescentView {
   private sinkIn = 0;
   /** Monsters already seen climbing out of the floor. */
   private readonly risen = new WeakSet<Unit>();
-  /** A boss's entrance on camera: the boss, how long it has run, and where the camera stands. */
-  private intro: { boss: Unit; t: number; subject: IntroSubject; spot: { x: number; z: number }; shot: CameraShot } | null = null;
+  /** A boss's entrance or fall on camera: the boss, how long it has run, where the camera stands (and drifts). */
+  private intro: { fall: boolean; boss: Unit; t: number; subject: IntroSubject; spot: { x: number; z: number }; orbit: number; shot: CameraShot } | null = null;
+  /** The last boss whose fall was shown. */
+  private fell: Unit | null = null;
   /** The newest soul fire already marked (the Ossuary King's rain sends a bolt into each new one). */
   private lastErupt = 0;
   private clock = 0;
@@ -228,6 +230,11 @@ export class DescentView {
       this.risen.add(m);
       if (m.alive) this.emerge(m);
     }
+    const boss = r.boss;
+    if (boss && !boss.alive && r.fall > 0 && this.fell !== boss) {
+      this.fell = boss;
+      this.startFall(boss);
+    }
     this.introFrame(dt);
     this.streams();
     this.gate(dt, door);
@@ -342,6 +349,19 @@ export class DescentView {
   /** A boss rising while its chamber holds still: the camera turns to it (see bossIntro). */
   private startIntro(boss: Unit, ground: number): void {
     this.opts.cue?.('boss', { x: boss.x, y: ground, z: boss.z }, 1);
+    // in step with the sim's own clock (a guest may see the boss rise a moment late)
+    this.frameBoss(boss, ground, false, DESCENT.bossIntro - this.run.intro);
+  }
+
+  /** A boss gone down: the camera stands back and watches it fall (see BOSS_FALL). */
+  private startFall(boss: Unit): void {
+    const ground = this.groundAt(boss.x, boss.z);
+    this.opts.cue?.('bossFall', { x: boss.x, y: ground, z: boss.z }, 1);
+    this.opts.shake?.(0.35);
+    this.frameBoss(boss, ground, true, DESCENT.bossFall - this.run.fall);
+  }
+
+  private frameBoss(boss: Unit, ground: number, fall: boolean, t: number): void {
     if (!this.opts.cameraShot) return;
     const height = this.opts.heightOf?.(boss) ?? 4;
     const subject = { x: boss.x, z: boss.z, ground, height };
@@ -353,20 +373,20 @@ export class DescentView {
       for (const [ox, oz, or] of obstacles) r = Math.min(r, Math.hypot(x - ox, z - oz) - or);
       return r;
     };
-    const spot = introSpot(subject, toward, room, introDistance(height));
-    // in step with the sim's own clock (a guest may see the boss rise a moment late)
-    this.intro = { boss, t: DESCENT.bossIntro - this.run.intro, subject, spot, shot: { pos: { x: 0, y: 0, z: 0 }, look: { x: 0, y: 0, z: 0 }, weight: 0 } };
+    const spot = fall ? introSpot(subject, toward, room, fallDistance(height), BOSS_FALL.side) : introSpot(subject, toward, room, introDistance(height));
+    const orbit = fall ? fallOrbit(subject, spot, room) : 0;
+    this.intro = { fall, boss, t, subject, spot, orbit, shot: this.intro?.shot ?? { pos: { x: 0, y: 0, z: 0 }, look: { x: 0, y: 0, z: 0 }, weight: 0 } };
   }
 
-  /** Runs the boss's entrance shot, handing the camera back as it ends (or if the fight ends first). */
+  /** Runs a boss's entrance or fall shot, handing the camera back as it ends (or if the run moves on first). */
   private introFrame(dt: number): void {
     const it = this.intro;
     const set = this.opts.cameraShot;
     if (!it || !set) return;
     it.t += dt;
-    const total = DESCENT.bossIntro;
-    const shot = introShot(it.t, total, it.subject, it.spot, it.shot);
-    const over = shot.weight <= 0.001 || this.run.phase !== 'fight';
+    const shot = it.fall ? fallShot(it.t, DESCENT.bossFall, it.subject, it.spot, it.orbit, it.shot) : introShot(it.t, DESCENT.bossIntro, it.subject, it.spot, it.shot);
+    const phase = this.run.phase;
+    const over = shot.weight <= 0.001 || (it.fall ? phase === 'lost' : phase !== 'fight');
     set(over ? null : shot);
     document.body.classList.toggle('descent-cine', !over && shot.weight > 0.4);
     if (over) this.intro = null;

@@ -110,6 +110,7 @@ export class GameAudio {
       else if (name === 'emerge') this.engine.play('monster.emerge', { at, gain: 0.5 + k * 0.6, rate: 1.15 - k * 0.35, vary: 0.06, ref: 12 + k * 20 }, 2, 0.12);
       // a boss's entrance (the camera turns to it): the whole chamber hears it, not just whoever is near
       else if (name === 'boss') this.engine.play('boss.intro', { bus: 'ui', gain: 0.75 }, 3);
+      else if (name === 'bossFall') this.engine.play('boss.fall', { bus: 'ui', gain: 0.75 }, 3);
       // a relic going off: bursts and leaps where they happen (a pack's chain of bursts thinned out), a god's own relics at that god
       else if (name.startsWith('relic.')) this.engine.play(name, { at, gain: RELIC_GAIN[name] ?? 0.5, vary: 0.05, ref: 14 }, 2, name === 'relic.knell' ? 0.09 : name === 'relic.chain' ? 0.06 : 0.12);
     };
