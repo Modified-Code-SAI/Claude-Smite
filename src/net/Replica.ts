@@ -124,7 +124,7 @@ function decCast(owner: Unit, c: EncCast | null): ResolvedSkill | null {
   return skill ? { ...c, skill } : null;
 }
 
-const UNIT_KEYS = ['target', 'source', 'unit', 'owner', 'killer'] as const;
+const UNIT_KEYS = ['target', 'source', 'unit', 'owner', 'killer', 'subject'] as const;
 
 // ---------------------------------------------------------------------------
 // Host
@@ -153,6 +153,8 @@ export class HostSync {
     private readonly roster: Roster,
     /** A player's authority sequence: bumped when the host moves their god itself. */
     private readonly seq: (u: Unit) => number,
+    /** The team a guest plays on: only their own team's pings reach them. */
+    private readonly teamOf: (guest: string) => Team | null = () => null,
   ) {
     sim.listeners.push((e) => this.events.push(e));
     this.initial = new Set([...roster.slots, ...roster.structures.values()].map((u) => u.id));
@@ -187,7 +189,10 @@ export class HostSync {
         detail.set(u.id, { d, key: JSON.stringify(d, tenth) });
       }
     }
-    const events = this.events.map(encEvent).filter((e) => e !== null);
+    const events = this.events.map(encEvent);
+    // pings are team chat: each guest gets only their own team's
+    const pingTeams = this.events.map((e) => (e.type === 'ping' ? e.unit.team : null));
+    const anyPing = pingTeams.some((t) => t !== null);
     this.events = [];
     const p = sim.projectiles.filter((x) => x.alive).map(encProjectile);
     const z = sim.zones.map((x) => [x.id, x.owner.id, encCast(x.cast), x.x, x.z, x.radius, x.ticks, x.interval, x.timer, x.follow, x.range, x.age, x.duration]);
@@ -203,7 +208,9 @@ export class HostSync {
 
     const out: [string, Snapshot][] = [];
     for (const [id, g] of this.guests) {
-      const snap: Snapshot = { t: 'snap', time, n: [], u: [], d: [], r: [], e: events, p, z, f, m, b };
+      const team = anyPing ? this.teamOf(id) : null;
+      const e = anyPing ? events.filter((_, i) => pingTeams[i] === null || pingTeams[i] === team) : events;
+      const snap: Snapshot = { t: 'snap', time, n: [], u: [], d: [], r: [], e, p, z, f, m, b };
       if (g.fresh) {
         g.fresh = false;
         snap.ids = { slots: this.roster.slots.map((u) => u.id), structures: [...this.roster.structures].map(([k, u]) => [k, u.id]) };
@@ -581,6 +588,12 @@ export class GuestSync {
 
   private unit(id: unknown): Unit | null {
     return (typeof id === 'number' && this.byId.get(id)) || null;
+  }
+
+  /** The host's id for a unit on this end (0 when the host has no such unit), for messages about it. */
+  hostId(u: Unit): number {
+    for (const [id, v] of this.byId) if (v === u) return id;
+    return 0;
   }
 
   private decEvent(raw: Record<string, unknown>): SimEvent | null {

@@ -1,0 +1,62 @@
+/* Pings: the call wheel, world markers and the team's call feed (PingHud.ts) */
+.ping-hud { position: fixed; inset: 0; pointer-events: none; font-family: 'Cinzel', Georgia, serif; color: var(--ink, #f4ead8); z-index: 7; }
+
+/* -- the wheel */
+.ping-wheel { position: fixed; left: 50%; top: 50%; width: 312px; height: 312px; margin: -156px 0 0 -156px; opacity: 0; transform: scale(0.82); transition: opacity 0.12s ease-out, transform 0.16s cubic-bezier(0.3, 1.5, 0.5, 1); filter: drop-shadow(0 6px 22px rgba(0, 0, 0, 0.65)); }
+.ping-wheel.show { opacity: 1; transform: none; }
+.ping-wheel > svg { position: absolute; inset: 0; overflow: visible; }
+.pw-back { fill: rgba(10, 8, 6, 0.42); stroke: rgba(231, 194, 122, 0.55); stroke-width: 1.5; }
+.pw-hub { fill: rgba(12, 9, 6, 0.88); stroke: rgba(231, 194, 122, 0.7); stroke-width: 1.5; }
+.pw-wedge { fill: rgba(22, 17, 12, 0.72); stroke: rgba(231, 194, 122, 0.28); stroke-width: 1; transition: fill 0.08s, stroke 0.08s; }
+.pw-icon { fill: var(--pc); opacity: 0.78; transition: opacity 0.08s, transform 0.12s; transform-box: fill-box; transform-origin: center; }
+.pw-icon text { fill: var(--pc); }
+.pw-label { fill: #e9dcc0; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; paint-order: stroke; stroke: rgba(0, 0, 0, 0.6); stroke-width: 2px; }
+.pw-slice.on .pw-wedge { fill: color-mix(in srgb, var(--pc) 34%, rgba(16, 12, 8, 0.85)); stroke: var(--pc); stroke-width: 2; }
+.pw-slice.on .pw-icon { opacity: 1; transform: scale(1.18); filter: drop-shadow(0 0 5px var(--pc)); }
+.pw-slice.on .pw-label { fill: #fff; opacity: 1; }
+.pw-center { position: absolute; left: 50%; top: 50%; width: 96px; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; text-shadow: 0 1px 2px #000; }
+.pw-center b { font-size: 12px; letter-spacing: 0.06em; color: #ffe9b8; line-height: 1.15; }
+.pw-center span { font-family: Georgia, serif; font-size: 9.5px; color: #cdbf9f; line-height: 1.2; }
+.pw-dot { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #fff3cf; box-shadow: 0 0 8px rgba(255, 220, 140, 0.95); }
+
+/* -- world markers */
+.ping-mark { position: fixed; left: 0; top: 0; width: 0; height: 0; will-change: transform, opacity; }
+.pm-disc { position: absolute; left: -18px; top: -18px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 40% 32%, color-mix(in srgb, var(--pc) 45%, white), var(--pc) 58%, color-mix(in srgb, var(--pc) 55%, black) 100%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 0 0 3.5px rgba(0, 0, 0, 0.55), 0 0 18px color-mix(in srgb, var(--pc) 80%, transparent); }
+.pm-disc svg { width: 22px; height: 22px; fill: #fff; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
+.pm-disc svg text { fill: #fff; }
+.pm-disc::after { content: ''; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--pc); animation: pm-ripple 1.4s ease-out infinite; }
+.ping-mark.pop .pm-disc { animation: pm-pop 0.42s cubic-bezier(0.3, 1.7, 0.5, 1); }
+.pm-under { position: absolute; left: 0; top: 22px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pm-text { white-space: nowrap; padding: 2px 9px 3px; border-radius: 10px; font-size: 12.5px; letter-spacing: 0.03em; color: #fff; background: rgba(8, 6, 5, 0.78); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 70%, transparent); text-shadow: 0 1px 2px #000; }
+.pm-text b { color: #9fd0ff; font-weight: 700; }
+.pm-text em { display: block; font-style: normal; font-size: 10.5px; color: #bfe0ff; text-align: center; }
+.pm-text em:empty { display: none; }
+.ping-mark.answered .pm-text em { animation: pm-answer 0.5s ease-out; }
+@keyframes pm-answer { 0% { color: #fff; text-shadow: 0 0 8px var(--pc); } 100% { color: #bfe0ff; } }
+.ping-mark.mine .pm-text b { color: #ffd76a; }
+.pm-dist { white-space: nowrap; font-family: Georgia, serif; font-size: 11px; font-weight: 700; color: #f1e6cc; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+/* after a few seconds only the distance stays (and who is on the way, if anyone answered) */
+.ping-mark.brief .pm-text { display: none; }
+.ping-mark.brief:has(.pm-text em:not(:empty)) .pm-text { display: block; }
+.ping-mark.brief .pm-text b, .ping-mark.brief .pm-text span { display: none; }
+.ping-mark.brief .pm-text em { font-size: 11px; }
+.pm-arrow { display: none; position: absolute; left: 0; top: 0; width: 0; height: 0; transform: rotate(var(--turn, 0rad)); }
+.pm-arrow::before { content: ''; position: absolute; left: 22px; top: -8px; width: 13px; height: 16px; clip-path: polygon(100% 50%, 0 0, 0 100%); background: var(--pc); filter: drop-shadow(0 0 4px var(--pc)); }
+.ping-mark.edge .pm-arrow { display: block; }
+.ping-mark.edge .pm-text { display: none !important; }
+.ping-mark.edge .pm-disc { transform: scale(0.82); }
+@keyframes pm-pop { 0% { transform: scale(0.1); } 100% { transform: none; } }
+@keyframes pm-ripple { 0% { transform: scale(1); opacity: 0.9; } 100% { transform: scale(2.1); opacity: 0; } }
+
+/* -- the team's call feed */
+.ping-feed { position: fixed; left: 14px; bottom: 34%; width: 300px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.ping-row { display: flex; align-items: center; gap: 7px; padding: 3px 12px 3px 6px; font-size: 13px; background: linear-gradient(90deg, rgba(8, 6, 5, 0.82), transparent); border-left: 3px solid var(--pc); text-shadow: 0 1px 2px #000; transition: opacity 0.6s; animation: ping-in 0.22s ease-out; }
+.ping-row svg { width: 16px; height: 16px; flex: none; fill: var(--pc); }
+.ping-row svg text { fill: var(--pc); }
+.ping-row b { color: #9fd0ff; }
+.ping-row b.me { color: #ffd76a; }
+.ping-row.out { opacity: 0; }
+@keyframes ping-in { from { transform: translateX(-24px); opacity: 0; } }
+@media (max-width: 700px) { .ping-feed { bottom: 40%; width: 240px; } .ping-row { font-size: 11.5px; } }

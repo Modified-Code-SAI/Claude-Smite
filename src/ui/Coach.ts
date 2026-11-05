@@ -18,6 +18,8 @@ export interface CoachView {
   fountain: boolean;
   /** Relic Rush, where the Playmaker tree opens. */
   sport?: boolean;
+  /** Teammates (bots or players) to ping. */
+  team?: boolean;
 }
 
 export interface Tip {
@@ -36,6 +38,7 @@ export const TIPS: readonly Tip[] = [
   { id: 'points', text: 'You have a skill point! Press <kbd>K</kbd> to grow your skill trees and change how your god fights.', when: (v) => v.alive && v.unspentPoints > 0 && !v.menuOpen },
   { id: 'ult', text: 'Your ultimate is ready: press <kbd>4</kbd> or <kbd>R</kbd>.', when: (v) => v.alive && v.ultReady },
   { id: 'lowhp', text: 'Low on health? Step back to your fountain: it heals you fast.', when: (v) => v.fountain && v.alive && v.healthPct < 0.3 && !v.inBase },
+  { id: 'ping', text: 'Hold <kbd>G</kbd> to call your team: attack, group up, fall back and more. A quick tap pings what you aim at.', when: (v) => !!v.team && v.alive && !v.inBase && !v.menuOpen },
   { id: 'swap', text: 'At the fountain you can swap which skills sit on your bar: open <kbd>K</kbd>.', when: (v) => v.fountain && v.alive && v.inBase && v.respawned && !v.menuOpen },
 ];
 
@@ -66,6 +69,7 @@ export class Coach {
     private readonly menuOpen: () => boolean,
     private readonly fountain = true,
     private readonly sport = false,
+    private readonly team: () => boolean = () => false,
   ) {
     this.el.className = 'coach';
     document.body.appendChild(this.el);
@@ -94,6 +98,7 @@ export class Coach {
         menuOpen: this.menuOpen(),
         fountain: this.fountain,
         sport: this.sport,
+        team: this.team(),
       },
       this.seen,
     );
