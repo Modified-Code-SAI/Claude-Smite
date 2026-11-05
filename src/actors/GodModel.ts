@@ -184,6 +184,7 @@ export class GodModel {
   private readonly physics: SecondaryPhysics;
   private readonly tmpQ = new THREE.Quaternion();
   private readonly tmpQ2 = new THREE.Quaternion();
+  private readonly tmpQ3 = new THREE.Quaternion();
   private readonly curl: { bone: THREE.Bone; q: THREE.Quaternion }[] = [];
   private readonly accents: { bone: THREE.Bone; axis: THREE.Vector3; angle: number }[] = [];
   private readonly ultAccents: { bone: THREE.Bone; axis: THREE.Vector3; angle: number }[] = [];
@@ -587,7 +588,7 @@ export class GodModel {
     parent.getWorldQuaternion(this.tmpQ);
     this.tmpQ2.setFromAxisAngle(this.tmpV, angle);
     const p = this.tmpQ;
-    bone.quaternion.premultiply(p.clone().invert().multiply(this.tmpQ2).multiply(p));
+    bone.quaternion.premultiply(this.tmpQ3.copy(p).invert().multiply(this.tmpQ2).multiply(p));
     bone.updateMatrixWorld(true);
   }
 
@@ -597,7 +598,7 @@ export class GodModel {
     parent.getWorldQuaternion(this.tmpQ);
     this.tmpQ2.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, angle);
     const p = this.tmpQ;
-    bone.quaternion.premultiply(p.clone().invert().multiply(this.tmpQ2).multiply(p));
+    bone.quaternion.premultiply(this.tmpQ3.copy(p).invert().multiply(this.tmpQ2).multiply(p));
     bone.updateMatrixWorld(true);
   }
 }

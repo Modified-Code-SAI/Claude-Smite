@@ -32,9 +32,17 @@ export interface GodBuilds {
 export const MAX_SAVED = 4;
 const KEY = 'ascendant.builds';
 
-/** One build per playstyle tree: the skills it changes on the bar, straight up the tree to its keystone, then up the next one. */
-export function readyBuilds(god: GodDef): Build[] {
-  return god.trees.map((t, i) => ({ id: `tree:${i}`, name: t.name, loadout: treeLoadout(god, i), ranks: {}, trees: [i, (i + 1) % god.trees.length] }));
+const ready = new WeakMap<GodDef, readonly Build[]>();
+
+/**
+ * One build per playstyle tree: the skills it changes on the bar, straight up
+ * the tree to its keystone, then up the next one. Made once per god (the
+ * build in use is looked up every frame).
+ */
+export function readyBuilds(god: GodDef): readonly Build[] {
+  let out = ready.get(god);
+  if (!out) ready.set(god, (out = god.trees.map((t, i) => ({ id: `tree:${i}`, name: t.name, loadout: treeLoadout(god, i), ranks: {}, trees: [i, (i + 1) % god.trees.length] }))));
+  return out;
 }
 
 /**

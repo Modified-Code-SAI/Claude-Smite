@@ -22,7 +22,8 @@ import {
 /** What the simulation needs from the arena. CollisionWorld satisfies it. */
 export interface SimTerrain {
   groundAt(x: number, z: number): number;
-  resolve(x: number, z: number, radius: number, feetY: number): { x: number; z: number };
+  /** Pushes a circle out of the obstacles. Writes into `out` and returns it, when given (so a hot loop allocates nothing). */
+  resolve(x: number, z: number, radius: number, feetY: number, stepHeight?: number, out?: { x: number; z: number }): { x: number; z: number };
 }
 
 export interface BaseZone {
@@ -81,6 +82,8 @@ export class Sim {
   private readonly primed = new Map<Unit, { owner: Unit; cast: ResolvedSkill; mark: string }>();
   /** Gods a priming skill revealed, and until when; outlasts the primed hit itself. */
   private readonly revealed = new Map<Unit, number>();
+  /** Scratch point for line-of-sight probes (blocked), which run thousands of times a frame. */
+  private readonly probe = { x: 0, z: 0 };
   /** Skills riding on a unit's basic attacks, and until when (see SkillDef.imbue). */
   private readonly imbued = new Map<Unit, { cast: ResolvedSkill; until: number }>();
   /** Attacks winding up (a skill or a swing with a windup): what runs when, and the aim it was given. */
@@ -1195,7 +1198,7 @@ export class Sim {
 
   private blocked(x: number, z: number): boolean {
     const ground = this.terrain.groundAt(x, z);
-    const r = this.terrain.resolve(x, z, 0.1, ground + PROJECTILE_HEIGHT - 0.55);
+    const r = this.terrain.resolve(x, z, 0.1, ground + PROJECTILE_HEIGHT - 0.55, undefined, this.probe);
     return hypot(r.x - x, r.z - z) > 0.01;
   }
 

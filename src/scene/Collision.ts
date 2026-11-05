@@ -29,7 +29,6 @@ export type Collider = CircleCollider | BoxCollider;
 /** Side of a lookup cell, in meters. */
 const CELL = 8;
 const cellKey = (cx: number, cz: number) => (cx + 4096) * 8192 + (cz + 4096);
-const ascending = (a: number, b: number) => a - b;
 
 /** Anything that can report a walkable height at a point (or null if not over it). */
 export type GroundSurface = (x: number, z: number) => number | null;
@@ -73,14 +72,17 @@ export class CollisionWorld {
   }
 
   /**
-   * The colliders whose bounds touch the box [x0, x1] x [z0, z1], in the order
-   * they were added (so results match a scan of every collider). The array is
-   * reused by the next query.
+   * Gathers the colliders whose bounds touch the box [x0, x1] x [z0, z1] into
+   * `near`, in the order they were added (so results match a scan of every
+   * collider), and returns how many there are. `near` is reused by the next
+   * query. It runs thousands of times a frame (every shot's line of sight
+   * steps through it), so it allocates nothing: the arrays only grow, and the
+   * handful of hits are put in order in place, where Array.sort copies them.
    */
-  private gather(x0: number, z0: number, x1: number, z1: number): readonly Collider[] {
+  private gather(x0: number, z0: number, x1: number, z1: number): number {
     const q = ++this.query;
     const idx = this.nearIdx;
-    idx.length = 0;
+    let n = 0;
     for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++) {
       for (let cz = Math.floor(z0 / CELL); cz <= Math.floor(z1 / CELL); cz++) {
         const list = this.cells.get(cellKey(cx, cz));
@@ -88,15 +90,19 @@ export class CollisionWorld {
         for (const i of list) {
           if (this.seen[i] === q) continue;
           this.seen[i] = q;
-          idx.push(i);
+          idx[n++] = i;
         }
       }
     }
-    idx.sort(ascending);
+    for (let a = 1; a < n; a++) {
+      const v = idx[a]!;
+      let b = a - 1;
+      for (; b >= 0 && idx[b]! > v; b--) idx[b + 1] = idx[b]!;
+      idx[b + 1] = v;
+    }
     const near = this.near;
-    near.length = idx.length;
-    for (let k = 0; k < idx.length; k++) near[k] = this.colliders[idx[k]!]!;
-    return near;
+    for (let k = 0; k < n; k++) near[k] = this.colliders[idx[k]!]!;
+    return n;
   }
 
   /**
@@ -131,12 +137,15 @@ export class CollisionWorld {
    * Pushes a circle of `radius` at (x, z) out of every collider taller than
    * `feetY + stepHeight`. Returns the corrected position.
    */
-  resolve(x: number, z: number, radius: number, feetY: number, stepHeight = 0.55): { x: number; z: number } {
+  resolve(x: number, z: number, radius: number, feetY: number, stepHeight = 0.55, out?: { x: number; z: number }): { x: number; z: number } {
+    const near = this.near;
     for (let iter = 0; iter < 3; iter++) {
       let moved = false;
       // a meter of slack covers the pushes earlier colliders make this pass
       const reach = radius + 1;
-      for (const c of this.gather(x - reach, z - reach, x + reach, z + reach)) {
+      const count = this.gather(x - reach, z - reach, x + reach, z + reach);
+      for (let k = 0; k < count; k++) {
+        const c = near[k]!;
         if (c.top <= feetY + stepHeight) continue;
         if (c.kind === 'circle') {
           const dx = x - c.x;
@@ -197,7 +206,10 @@ export class CollisionWorld {
       }
       if (!moved) break;
     }
-    return { x, z };
+    if (!out) return { x, z };
+    out.x = x;
+    out.z = z;
+    return out;
   }
 
   /**
@@ -213,22 +225,23 @@ export class CollisionWorld {
     const steps = Math.ceil(maxDist / 0.25);
     const ex = ox + dx * maxDist;
     const ez = oz + dz * maxDist;
-    const near = solids ? this.gather(Math.min(ox, ex) - radius, Math.min(oz, ez) - radius, Math.max(ox, ex) + radius, Math.max(oz, ez) + radius) : [];
+    const count = solids ? this.gather(Math.min(ox, ex) - radius, Math.min(oz, ez) - radius, Math.max(ox, ex) + radius, Math.max(oz, ez) + radius) : 0;
     for (let i = 1; i <= steps; i++) {
       const t = (i / steps) * maxDist;
       const x = ox + dx * t;
       const y = oy + dy * t;
       const z = oz + dz * t;
       if (y < this.groundAt(x, z) + 0.25) return Math.max(0, t - 0.25);
-      if (hitsAny(near, x, y, z, radius) || hitsAny(blockers, x, y, z, radius)) return Math.max(0, t - 0.25);
+      if (hitsAny(this.near, x, y, z, radius, count) || hitsAny(blockers, x, y, z, radius)) return Math.max(0, t - 0.25);
     }
     return best;
   }
 }
 
 /** Whether a sphere-ish probe of `radius` at (x, y, z) is inside any collider below its top. */
-function hitsAny(colliders: readonly Collider[], x: number, y: number, z: number, radius: number): boolean {
-  for (const c of colliders) {
+function hitsAny(colliders: readonly Collider[], x: number, y: number, z: number, radius: number, count = colliders.length): boolean {
+  for (let k = 0; k < count; k++) {
+    const c = colliders[k]!;
     if (y > c.top) continue;
     if (c.kind === 'circle') {
       if (hypot(x - c.x, z - c.z) < c.r + radius) return true;

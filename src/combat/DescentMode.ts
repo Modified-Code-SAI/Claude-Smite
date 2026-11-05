@@ -34,6 +34,8 @@ export interface DescentDeps {
   shake?: (amount: number) => void;
   /** A moment with its own sound (see DescentViewOptions.cue). */
   cue?: DescentViewOptions['cue'];
+  /** Builds the models of the monsters a chamber will raise ahead of time (UnitViews.stock). */
+  stock?: (coming: readonly { tag: string; name: string }[]) => void;
 }
 
 /**
@@ -50,6 +52,8 @@ export class DescentMode {
   guest: NetGuest | null = null;
   readonly hud: DescentHud;
   readonly view: DescentView;
+  /** The chamber whose monsters' models were last stocked. */
+  private stocked = 0;
 
   constructor(private readonly deps: DescentDeps) {
     const { sim, player, net, world } = deps;
@@ -137,6 +141,11 @@ export class DescentMode {
   }
 
   frame(dt: number, time: number): void {
+    // a new chamber: its monsters' models are built while the team walks in, not as each wave rises
+    if (this.run.chamber !== this.stocked) {
+      this.stocked = this.run.chamber;
+      this.deps.stock?.(this.run.upcoming());
+    }
     this.hud.frame();
     this.view.frame(dt, time);
   }

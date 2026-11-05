@@ -5,7 +5,7 @@ import { float, fract, length, mix, mx_noise_float, positionGeometry, smoothstep
 import type { StructureKind } from '../sim/factory';
 import { isStructure, type SimEvent, type Unit } from '../sim/Unit';
 import { MinionViews } from './MinionViews';
-import { createMonsterView, type MonsterView } from './MonsterViews';
+import { createMonsterView, monsterViewKey, type MonsterView } from './MonsterViews';
 import { createStructureModel, type StructureModel } from './structures';
 import { MUZZLE_HEIGHT } from './Vfx';
 import { castStaticAsOne } from '../scene/merge';
@@ -218,6 +218,10 @@ export class UnitViews {
   private readonly bounds = new THREE.Sphere();
   private frameNo = 0;
   private created = 0;
+  /** Monster views built ahead of their monsters (see stock), by monsterViewKey. */
+  private readonly spares = new Map<string, MonsterView[]>();
+  /** Monsters still to get a spare view, built one a frame. */
+  private readonly toBuild: { tag: string; name: string }[] = [];
 
   constructor(
     private player: Unit,
@@ -238,6 +242,51 @@ export class UnitViews {
    */
   prime(units: readonly Unit[]): void {
     for (const u of units) if (u.kind === 'dummy' && !this.views.has(u)) this.create(u);
+  }
+
+  /**
+   * Builds the models of monsters that are about to arrive, one a frame, so a
+   * wave rising out of the floor doesn't build a whole pack's models in the
+   * frame it appears (a dozen ms for a big wave). `coming` lists the monsters
+   * to come by their tag and name; spares already built count toward it, so
+   * repeated calls never stock more than one chamber's worth.
+   */
+  stock(coming: readonly { tag: string; name: string }[]): void {
+    this.toBuild.length = 0;
+    const wanted = new Map<string, number>();
+    for (const m of coming) {
+      const key = monsterViewKey(m);
+      const n = (wanted.get(key) ?? 0) + 1;
+      wanted.set(key, n);
+      if (n > (this.spares.get(key)?.length ?? 0)) this.toBuild.push(m);
+    }
+  }
+
+  /** Spare monster views ready, for tests and the performance probe. */
+  get spareCount(): number {
+    let n = 0;
+    for (const list of this.spares.values()) n += list.length;
+    return n;
+  }
+
+  private buildSpare(): void {
+    const m = this.toBuild.shift();
+    if (!m) return;
+    const key = monsterViewKey(m);
+    const list = this.spares.get(key);
+    const v = createMonsterView(m);
+    if (list) list.push(v);
+    else this.spares.set(key, [v]);
+  }
+
+  /** A spare view for a monster that has arrived, or a new one (which no longer needs building ahead). */
+  private monsterView(u: Unit): MonsterView {
+    const key = monsterViewKey(u);
+    const spare = this.spares.get(key)?.pop();
+    if (spare) return spare;
+    const i = this.toBuild.findIndex((m) => monsterViewKey(m) === key);
+    if (i >= 0) this.toBuild.splice(i, 1);
+    return createMonsterView(u);
   }
 
   /** After a god switch: the old player's view is dropped (its model belongs to the controller). */
@@ -294,6 +343,7 @@ export class UnitViews {
       this.prev.delete(u);
       this.cur.delete(u);
     }
+    this.buildSpare();
   }
 
   private setShadows(v: UnitView, on: boolean): void {
@@ -381,7 +431,7 @@ export class UnitViews {
       root = new THREE.Group();
       height = u.tag.endsWith('brute') ? 2.7 : 1.85;
     } else if (u.kind === 'monster') {
-      monster = createMonsterView(u);
+      monster = this.monsterView(u);
       root = monster.root;
       height = monster.height;
       this.group.add(root);
