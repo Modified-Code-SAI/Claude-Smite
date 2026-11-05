@@ -538,8 +538,12 @@ export class JotunnView {
     return b;
   }
 
-  /** Builds every effect once, so a loading frame draws them all and prepares their shaders. */
-  prime(at: THREE.Vector3): void {
+  /**
+   * Builds every effect once, so a loading frame draws them all and prepares
+   * their shaders. The giant and the braziers' frost only join the scene on the
+   * match's first frame, so they stand in at `at` until the returned call.
+   */
+  prime(at: THREE.Vector3): () => void {
     this.spikes.add(at, 0, 1, 0, 0.2);
     this.hail.add(at.clone().setY(at.y + 30), 0, 1, 0, 0.2, 0.01, at.y - 1);
     this.snow.spawn(at, tmp.set(0, 0, 0), { life: 0.3, size0: 1, size1: 1, alpha: 0.5, color: 0xffffff });
@@ -548,6 +552,20 @@ export class JotunnView {
     this.hail.update(0);
     this.snow.update(0);
     this.mist.update(0);
+    const giant = this.model.root;
+    const loose = !giant.parent;
+    if (loose) {
+      giant.position.copy(at);
+      this.group.add(giant);
+    }
+    const crust = new THREE.Mesh(this.crust, this.crustMaterial);
+    crust.castShadow = true;
+    crust.position.copy(at);
+    this.group.add(crust);
+    return () => {
+      crust.removeFromParent();
+      if (loose && giant.parent === this.group) this.group.remove(giant);
+    };
   }
 
   // ------------------------------------------------------------------ the giant

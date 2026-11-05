@@ -620,6 +620,8 @@ export class GiantModel {
     }
     this.fx.name = 'jotunn-fx';
     this.fx.add(this.shards.mesh, this.trail.mesh, this.boulder.mesh);
+    // hidden until a blow uses them: drawn while the loader prepares shaders, so the first boulder doesn't build one mid-fight
+    for (const m of [this.shards.mesh, this.trail.mesh, this.boulder.mesh]) m.userData.shownLater = true;
     this.buildParts();
     for (const s of ['L', 'R']) {
       const b = this.god.bone(`DEF-foot.${s}`);
