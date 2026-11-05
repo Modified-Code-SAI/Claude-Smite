@@ -5,11 +5,19 @@ import type { RushCall } from '../combat/RushMode';
 import { addResult } from './records';
 import { awardLine } from './ascension';
 import { RushRadar } from './RushRadar';
+import { rushAwards, type RushAwardKey } from './rushAwards';
 import './clash.css';
 import './rush.css';
 
 /** A raised open hand: the call for the pass. */
 const HAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 58 V30 Q18 26 22 26 Q26 26 26 30 V14 Q26 10 30 10 Q34 10 34 14 V28 V12 Q34 8 38 8 Q42 8 42 12 V30 V18 Q42 14 46 14 Q50 14 50 18 V40 Q50 52 40 58 Z"/></svg>';
+
+/** The end screen's award medals: a star, a pass's arc, a shield. */
+const AWARD_ICON: Record<RushAwardKey, string> = {
+  mvp: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 20.9l1.6-7L2 9.2l7.1-.6z"/></svg>',
+  playmaker: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 18.5C6 11 12 7.5 18 8.6" fill="none" stroke-width="2.6" stroke-linecap="round"/><path d="M15.6 4.6l6 4.4-6.6 3.3z"/><circle cx="4.5" cy="19" r="2.2"/></svg>',
+  wall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8 3v6c0 5-3.4 9.1-8 11-4.6-1.9-8-6-8-11V5z"/></svg>',
+};
 
 /** Seconds the post-goal dip takes to close, and to open again on the kickoff. */
 const RUSH_CUT = { in: 0.3, out: 0.55 };
@@ -308,12 +316,26 @@ export class RushHud {
     const score = this.end.querySelector('.clash-end-score')!;
     score.textContent = `${r.score[this.mine]} – ${r.score[this.foe]}${r.overtime ? ' · won on the golden relic' : ''}`;
     score.insertAdjacentHTML('afterend', awardLine(award));
+    // the match's awards, as medals over the table
+    const awards = rushAwards(this.gods, r.lines, r.winner as Side);
+    const mvp = awards.find((a) => a.key === 'mvp')?.unit ?? null;
+    if (awards.length) {
+      const medals = awards
+        .map((a) => {
+          const cls = a.unit.team === this.mine ? 'ally' : 'foe';
+          const name = `${esc(a.unit.name)}${a.unit === this.me ? ' (you)' : ''}`;
+          return `<div class="rush-award ${cls}" data-award="${a.key}"><i>${AWARD_ICON[a.key]}</i><b>${a.title}</b><span>${name}</span><small>${esc(a.stat)}</small></div>`;
+        })
+        .join('');
+      this.end.querySelector('.clash-end-table')!.insertAdjacentHTML('beforebegin', `<div class="rush-awards">${medals}</div>`);
+    }
     const rows = [...this.gods]
       .sort((a, b) => Number(b.team === this.mine) - Number(a.team === this.mine) || (r.lines.get(b)?.goals ?? 0) - (r.lines.get(a)?.goals ?? 0))
       .map((u) => {
         const l = r.lines.get(u)!;
         const cls = [u === this.me ? 'me' : '', u.team === this.mine ? 'ally' : 'foe'].join(' ');
-        return `<tr class="${cls}"><td>${esc(u.name)}${u === this.me ? ' (you)' : ''}</td><td>${l.goals}</td><td>${l.assists}</td><td>${l.passes}</td><td>${l.steals}</td><td>${l.tackles}</td><td>${l.dazed}</td></tr>`;
+        const star = u === mvp ? '<span class="rush-mvp" title="MVP">★</span>' : '';
+        return `<tr class="${cls}"><td>${star}${esc(u.name)}${u === this.me ? ' (you)' : ''}</td><td>${l.goals}</td><td>${l.assists}</td><td>${l.passes}</td><td>${l.steals}</td><td>${l.tackles}</td><td>${l.dazed}</td></tr>`;
       })
       .join('');
     this.end.querySelector('.clash-end-table')!.innerHTML =

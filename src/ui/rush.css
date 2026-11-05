@@ -57,3 +57,18 @@
 @keyframes rush-intro-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translateX(-50%); } }
 @keyframes rush-count-pop { 0% { transform: scale(1.7); opacity: 0.2; } 100% { transform: none; opacity: 1; } }
 @media (max-width: 700px) { .rush-intro { white-space: normal; width: 92vw; padding: 8px 12px 10px; text-align: center; } .rush-intro-teams { gap: 8px; } .rush-intro-teams div { flex-direction: column; gap: 2px; } .rush-intro-teams .ally { align-items: flex-end; } }
+/* the end screen's awards: a medal each for the MVP, the Playmaker and the Wall */
+.rush-awards { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 94vw; }
+.rush-award { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; min-width: 156px; padding: 8px 16px 8px 10px; background: rgba(8, 6, 5, 0.74); border-radius: 6px; box-shadow: 0 0 0 1px rgba(255, 211, 74, 0.35), 0 6px 18px rgba(0, 0, 0, 0.45); text-align: left; animation: rush-award-in 0.5s 0.35s ease-out both; }
+.rush-award:nth-child(2) { animation-delay: 0.5s; }
+.rush-award:nth-child(3) { animation-delay: 0.65s; }
+.rush-award i { grid-row: 1 / 4; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fff4cc, #ffb428 72%); box-shadow: 0 0 0 1px rgba(255, 246, 210, 0.7), 0 0 14px rgba(255, 190, 60, 0.6); }
+.rush-award i svg { width: 21px; height: 21px; fill: #3a2405; stroke: #3a2405; }
+.rush-award b { font-size: 11px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #ffd34a; }
+.rush-award span { font-size: 15px; letter-spacing: 0.04em; }
+.rush-award.ally span { color: #cfe8ff; }
+.rush-award.foe span { color: #ffb4a6; }
+.rush-award small { font-size: 11px; letter-spacing: 0.03em; color: #f2e6cc; opacity: 0.85; }
+.rush-award[data-award='mvp'] { box-shadow: 0 0 0 1px rgba(255, 211, 74, 0.75), 0 0 22px rgba(255, 190, 60, 0.35), 0 6px 18px rgba(0, 0, 0, 0.45); }
+.rush-mvp { margin-right: 6px; color: #ffd34a; text-shadow: 0 0 8px rgba(255, 200, 80, 0.8); }
+@keyframes rush-award-in { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
