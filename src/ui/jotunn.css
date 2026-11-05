@@ -1,0 +1,50 @@
+/* The Jötunn mode's readout (JotunnHud). Shares the Clash HUD's frame and end screen. */
+.jotunn { --frost: #8fe4ff; --frost-deep: #1d6fb8; }
+.jt-top { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: min(64vw, 560px); display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 14px 9px; background: linear-gradient(180deg, rgba(10, 18, 28, 0.78), rgba(4, 8, 14, 0.9)); border: 1px solid rgba(143, 228, 255, 0.42); border-radius: 7px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 24px rgba(79, 207, 255, 0.12); }
+.jt-head { display: flex; gap: 14px; align-items: baseline; font-size: 12px; letter-spacing: 0.12em; }
+.jt-round { color: #ffe9b8; opacity: 0.8; }
+.jt-who { color: var(--frost); font-size: 15px; font-weight: 700; letter-spacing: 0.08em; text-shadow: 0 0 10px rgba(79, 207, 255, 0.6), 0 2px 3px #000; }
+.jt-might { position: relative; width: 100%; height: 16px; background: rgba(0, 0, 0, 0.65); border-radius: 3px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+.jt-lag, .jt-fill { position: absolute; left: 0; top: 0; bottom: 0; }
+.jt-lag { background: rgba(230, 248, 255, 0.55); }
+.jt-fill { background: linear-gradient(180deg, #bff0ff 0%, #4fcfff 45%, #1d6fb8 100%); box-shadow: 0 0 12px rgba(79, 207, 255, 0.8); transition: width 0.12s linear; }
+.jt-pct { position: absolute; inset: 0; display: grid; place-items: center; font: 700 10px system-ui, sans-serif; letter-spacing: 0.14em; color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+.jt-parts { display: flex; gap: 8px; }
+.jt-part { --hp: 1; position: relative; width: 26px; height: 26px; display: grid; place-items: center; font-style: normal; clip-path: polygon(50% 0, 100% 30%, 100% 70%, 50% 100%, 0 70%, 0 30%); background: linear-gradient(180deg, #2a4a66, #13263a); transition: transform 0.15s, filter 0.2s; }
+.jt-part b { position: relative; font: 700 11px system-ui, sans-serif; color: #cfeeff; text-shadow: 0 1px 2px #000; }
+.jt-part::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--hp) * 100%); background: linear-gradient(180deg, rgba(143, 228, 255, 0.55), rgba(29, 111, 184, 0.55)); }
+.jt-part b { z-index: 1; }
+.jt-part[data-s='open'] { background: linear-gradient(180deg, #bff4ff, #3fbfff); filter: drop-shadow(0 0 6px rgba(120, 225, 255, 0.95)); animation: jt-open 0.6s ease-in-out infinite alternate; }
+.jt-part[data-s='open'] b { color: #062033; text-shadow: none; }
+.jt-part[data-s='broken'] { background: #0c0f14; filter: grayscale(1) brightness(0.6); }
+.jt-part[data-s='broken']::after { height: 0; }
+.jt-part[data-s='broken'] b { color: #586470; }
+.jt-part.crown { width: 30px; }
+@keyframes jt-open { from { transform: scale(1); } to { transform: scale(1.14); } }
+.jt-row { display: flex; gap: 18px; align-items: center; }
+.jt-braziers { display: flex; gap: 6px; }
+.jt-brazier { --hp: 1; width: 14px; height: 18px; border-radius: 50% 50% 40% 40% / 65% 65% 35% 35%; background: radial-gradient(ellipse at 50% 70%, #fff2c0 0%, #ffb03a calc(30% + var(--hp) * 20%), #e23d0a 75%, transparent 76%); filter: drop-shadow(0 0 5px rgba(255, 140, 40, calc(0.4 + var(--hp) * 0.5))); }
+.jt-brazier[data-s='out'] { background: linear-gradient(180deg, #d8f4ff, #4f8fc0); border-radius: 3px; clip-path: polygon(50% 0, 100% 40%, 80% 100%, 20% 100%, 0 40%); filter: drop-shadow(0 0 4px rgba(143, 228, 255, 0.7)); }
+.jt-shrines { display: flex; gap: 10px; }
+.jt-shrine { --claim: 0; display: flex; align-items: center; gap: 4px; font: 11px system-ui, sans-serif; color: #cfeeff; opacity: 0.9; }
+.jt-shrine i { width: 12px; height: 16px; clip-path: polygon(50% 0, 100% 35%, 75% 100%, 25% 100%, 0 35%); background: linear-gradient(0deg, #8fe4ff calc(var(--claim) * 100%), #2a4a66 calc(var(--claim) * 100%)); }
+.jt-shrine[data-s='claiming'] i { filter: drop-shadow(0 0 6px rgba(143, 228, 255, 0.95)); }
+.jt-shrine[data-s='held'] i { background: linear-gradient(0deg, #ffd36a calc(var(--claim) * 100%), #2a4a66 calc(var(--claim) * 100%)); }
+.jt-shrine[data-s='spent'] { opacity: 0.45; }
+.jt-shrine em { font-style: normal; white-space: nowrap; }
+.jotunn .clash-state { top: 136px; font-size: 14px; }
+.jotunn .clash-state[data-state=''] { box-shadow: 0 0 0 1px rgba(143, 228, 255, 0.4); color: #dff6ff; }
+.jt-big { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); display: none; font-size: clamp(40px, 7vw, 90px); letter-spacing: 0.14em; color: #dff6ff; text-shadow: 0 0 30px rgba(79, 207, 255, 0.7), 0 4px 18px rgba(0, 0, 0, 0.9); }
+.jt-big.show { display: block; animation: clash-in 0.35s ease-out; }
+.jt-wins { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; font: 12px system-ui, sans-serif; color: #f2e6cc; background: rgba(8, 6, 5, 0.6); border-radius: 5px; }
+.jt-wins span { display: flex; justify-content: space-between; gap: 14px; }
+.jt-wins span.me { color: #ffe08a; font-weight: 600; }
+.jt-wins span.giant::before { content: '❄ '; color: var(--frost); }
+.jt-wins b { color: #ffe9b8; }
+@media (max-width: 700px) { .jt-top { width: 92vw; } .jt-shrine em { display: none; } }
+/* the settings panel moves off the wins list, as in Temple Clash */
+body:has(.jotunn) .hud-panel { top: auto; bottom: 12px; right: 12px; }
+/* the top bar already shows the giant's Might and its weak points: only the weak point lined up for a blow keeps a bar */
+body:has(.jotunn) .ch-ob[data-tag='jotunn'], body:has(.jotunn) .ch-ob-weakpoint:not(.ch-ob-target) { display: none; }
+/* the giant has no skill trees to grow */
+body:has(.jotunn.as-giant) .ch-points { visibility: hidden; }

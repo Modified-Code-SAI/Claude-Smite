@@ -587,6 +587,8 @@ export class CombatHud {
   private makeBar(u: Unit): Bar {
     const side = u === this.player ? 'self' : u.team === this.player.team ? 'ally' : u.team === 'neutral' ? 'neutral' : 'enemy';
     const root = el('div', `ch-ob ch-ob-${side} ch-ob-${u.kind}${u.name.startsWith('Champion ') ? ' ch-ob-champion' : ''}`, this.overlay);
+    // a mode's own HUD can hide or restyle its units' bars by tag (the Jötunn's Might is in its top bar)
+    if (u.tag) root.dataset.tag = u.tag;
     const head = el('div', 'ch-ob-head', root);
     const level = el('span', 'ch-ob-level', head);
     const name = el('span', 'ch-ob-name', head, u === this.player ? '' : u.name);

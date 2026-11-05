@@ -11,7 +11,7 @@ import { DIFFICULTIES, parseDifficulty, type Difficulty } from '../game/difficul
 import { recordLine } from './records';
 import { rankBadge } from './ascension';
 
-export type GameMode = 'conquest' | 'arena' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent';
+export type GameMode = 'conquest' | 'arena' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent' | 'jotunn';
 
 /** The map a mode is played on. */
 export function mapOf(mode: GameMode): 'conquest' | 'arena' | 'underworld' {

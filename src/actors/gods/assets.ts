@@ -7,7 +7,7 @@ export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis'] as const;
 export type GodId = (typeof GOD_IDS)[number];
 
 export interface GodAsset {
-  id: GodId;
+  id: string;
   scene: THREE.Group;
   /** Clips retargeted for this god (hips translation scaled to its size). */
   clips: Map<string, THREE.AnimationClip>;
@@ -45,48 +45,75 @@ export interface ClothSpec {
   damping?: number;
 }
 
-const assets = new Map<GodId, GodAsset>();
+const assets = new Map<string, GodAsset>();
 let loading: Promise<void> | null = null;
+let clipsGltf: Promise<{ animations: THREE.AnimationClip[] }> | null = null;
+const extra = new Map<string, Promise<void>>();
+const loader = new GLTFLoader();
+const base = () => `${import.meta.env.BASE_URL}models/gods/`;
+
+function sharedClips(): Promise<{ animations: THREE.AnimationClip[] }> {
+  return (clipsGltf ??= loader.loadAsync(`${base()}clips.glb`));
+}
+
+/** Loads one model and retargets the shared clips to it; false if it isn't built. */
+async function loadOne(id: string, clips: { animations: THREE.AnimationClip[] }): Promise<boolean> {
+  let gltf;
+  try {
+    gltf = await loader.loadAsync(`${base()}${id}.glb`);
+  } catch {
+    return false;
+  }
+  widenVertexFormats(gltf.scene);
+  // one draw per material instead of one per armor piece
+  mergeSkinned(gltf.scene);
+  const root = gltf.scene.getObjectByName('god') ?? gltf.scene;
+  const meta = root.userData as GodMeta;
+  const retargeted = new Map<string, THREE.AnimationClip>();
+  for (const c of clips.animations) {
+    const clip = c.clone();
+    for (const t of clip.tracks) {
+      if (t.name.endsWith('.position')) {
+        // clone() shares the value array between clips, so replace it
+        t.values = Float32Array.from(t.values, (x) => x * meta.hipsScale);
+      }
+    }
+    retargeted.set(clip.name, clip);
+  }
+  assets.set(id, { id, scene: gltf.scene, clips: retargeted, meta });
+  return true;
+}
 
 /** Loads every god model and the shared clips once. Await before creating god models. */
 export function preloadGodAssets(onProgress?: (fraction: number) => void): Promise<void> {
   loading ??= (async () => {
-    const loader = new GLTFLoader();
-    const base = `${import.meta.env.BASE_URL}models/gods/`;
     let done = 0;
     const tick = () => onProgress?.(++done / (GOD_IDS.length + 1));
-    const clipsGltf = await loader.loadAsync(`${base}clips.glb`);
+    const clips = await sharedClips();
     tick();
+    // a god not built yet falls back to Zeus's body
     await Promise.all(GOD_IDS.map(async (id) => {
-      let gltf;
-      try {
-        gltf = await loader.loadAsync(`${base}${id}.glb`);
-      } catch {
-        // not built yet: fall back to Zeus's body
-        gltf = null;
-      }
+      await loadOne(id, clips);
       tick();
-      if (!gltf) return;
-      widenVertexFormats(gltf.scene);
-      // one draw per material instead of one per armor piece
-      mergeSkinned(gltf.scene);
-      const root = gltf.scene.getObjectByName('god') ?? gltf.scene;
-      const meta = root.userData as GodMeta;
-      const clips = new Map<string, THREE.AnimationClip>();
-      for (const c of clipsGltf.animations) {
-        const clip = c.clone();
-        for (const t of clip.tracks) {
-          if (t.name.endsWith('.position')) {
-            // clone() shares the value array between clips, so replace it
-            t.values = Float32Array.from(t.values, (x) => x * meta.hipsScale);
-          }
-        }
-        clips.set(clip.name, clip);
-      }
-      assets.set(id, { id, scene: gltf.scene, clips, meta });
     }));
   })();
   return loading;
+}
+
+/**
+ * Loads a model only one mode uses (the Jötunn), once, after the gods. Every
+ * match preloads the gods; this keeps the rest off their download.
+ */
+export function loadGodAsset(id: string): Promise<void> {
+  let p = extra.get(id);
+  if (!p) {
+    p = (async () => {
+      await preloadGodAssets();
+      if (!assets.has(id) && !(await loadOne(id, await sharedClips()))) throw new Error(`model ${id} missing`);
+    })();
+    extra.set(id, p);
+  }
+  return p;
 }
 
 /**
@@ -111,7 +138,7 @@ function widenVertexFormats(scene: THREE.Object3D): void {
 }
 
 export function godAsset(id: string): GodAsset {
-  const a = assets.get(id as GodId) ?? assets.get('zeus');
+  const a = assets.get(id) ?? assets.get('zeus');
   if (!a) throw new Error('God models not loaded: await preloadGodAssets() first');
   return a;
 }

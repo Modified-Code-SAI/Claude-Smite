@@ -190,12 +190,25 @@ export class GodModel {
   private readonly stance: { bone: THREE.Bone; axis: THREE.Vector3; angle: number }[] = [];
   private stanceWeight = 1;
   private readonly tmpV = new THREE.Vector3();
+  /** Every bone, and its rotation as the clips last left it (before this model's own layers). */
+  private readonly allBones: THREE.Bone[] = [];
+  private readonly clipPose: THREE.Quaternion[] = [];
+
+  /**
+   * Runs after the clips and overlays each frame, before the hands close and
+   * the cloth steps: a caller's own pose layers (the Jötunn's procedural moves).
+   */
+  poseHook: ((dt: number) => void) | null = null;
+  /** Ground speed (m/s at this model's size) at which the stride is fully in, so a slow walk strides instead of sliding. */
+  private readonly fullStride: number;
 
   /**
    * `shadowStandIn: false` leaves each piece in its own material and casting
    * its own shadow, for callers that re-dress the model (see `castSkinnedAsOne`).
+   * `idle` swaps the resting clip; `fullStride` (m/s at the model's size) is
+   * the speed at which the walk is fully in.
    */
-  constructor(god: string | object = 'zeus', variant?: string, { shadowStandIn = true } = {}) {
+  constructor(god: string | object = 'zeus', variant?: string, { shadowStandIn = true, idle = 'Idle_Loop', fullStride = 0 } = {}) {
     this.id = typeof god === 'string' ? god : 'zeus';
     this.asset = godAsset(this.id);
     const scene = cloneSkinned(this.asset.scene) as THREE.Group;
@@ -248,7 +261,7 @@ export class GodModel {
       return c;
     };
     const k = this.height / 1.75; // UAL clips are authored for a 1.75 m mannequin
-    this.idle = this.mixer.clipAction(clip('Idle_Loop'));
+    this.idle = this.mixer.clipAction(clip(idle));
     this.idle.play();
     for (const [n, speed] of [['Walk_Loop', 1.55], ['Jog_Fwd_Loop', 3.9], ['Sprint_Loop', 6.2]] as const) {
       const a = this.mixer.clipAction(clip(n));
@@ -256,6 +269,7 @@ export class GodModel {
       a.setEffectiveWeight(0);
       this.loco.push({ action: a, speed: speed * k });
     }
+    this.fullStride = fullStride || this.loco[0]!.speed * 0.6;
     this.air = this.mixer.clipAction(clip('Jump_Loop'));
     this.air.play();
     this.air.setEffectiveWeight(0);
@@ -303,7 +317,26 @@ export class GodModel {
     }
 
     this.physics = new SecondaryPhysics(this.root, scene, this.asset.meta, this.bones, mats);
+    for (const b of this.bones.values()) {
+      this.allBones.push(b);
+      this.clipPose.push(b.quaternion.clone());
+    }
     this.mixer.update(0);
+    this.saveClipPose();
+  }
+
+  /**
+   * The mixer only writes a bone when its blended clip value changes, so a
+   * bone held still by the clips (a static idle) would keep last frame's
+   * layers (stance, accents, finger curl, a caller's poses) and they would
+   * pile up. Each frame starts from the clips' own pose instead.
+   */
+  private restoreClipPose(): void {
+    for (let i = 0; i < this.allBones.length; i++) this.allBones[i]!.quaternion.copy(this.clipPose[i]!);
+  }
+
+  private saveClipPose(): void {
+    for (let i = 0; i < this.allBones.length; i++) this.clipPose[i]!.copy(this.allBones[i]!.quaternion);
   }
 
   /**
@@ -437,7 +470,7 @@ export class GodModel {
     }
     hi = this.loco[Math.min(this.loco.indexOf(lo) + 1, this.loco.length - 1)]!;
     const t = hi === lo ? 1 : THREE.MathUtils.clamp((speed - lo.speed) / (hi.speed - lo.speed), 0, 1);
-    const move = THREE.MathUtils.clamp(speed / (this.loco[0]!.speed * 0.6), 0, 1);
+    const move = THREE.MathUtils.clamp(speed / this.fullStride, 0, 1);
     const cycleSpeed = THREE.MathUtils.lerp(lo.speed, hi.speed, t);
     const playRate = speed / Math.max(0.01, cycleSpeed);
     this.phase = (this.phase + dt * playRate / THREE.MathUtils.lerp(lo.action.getClip().duration, hi.action.getClip().duration, t) * (backward ? -1 : 1) + 1) % 1;
@@ -461,7 +494,9 @@ export class GodModel {
     }
     this.idle.timeScale = 1;
     this.air.setEffectiveWeight(this.airWeight * alive);
+    this.restoreClipPose();
     this.mixer.update(dt);
+    this.saveClipPose();
     if (alive <= 0) {
       for (const c of this.curl) c.bone.quaternion.multiply(c.q);
       this.root.updateMatrixWorld(true);
@@ -524,10 +559,24 @@ export class GodModel {
         c.bone.quaternion.slerp(this.tmpQ, fw);
       }
     }
+    if (this.poseHook) {
+      this.root.updateMatrixWorld(true);
+      this.poseHook(dt);
+    }
     // the weapon hand stays closed around its handle in every clip
     for (const c of this.curl) c.bone.quaternion.multiply(c.q);
     this.root.updateMatrixWorld(true);
     this.physics.update(Math.min(clothDt, 1 / 20));
+  }
+
+  /** A bone by its rig name ('DEF-upper_arm.R'). */
+  bone(name: string): THREE.Bone | undefined {
+    return this.bones.get(name.replace(/\./g, ''));
+  }
+
+  /** Rotates a bone about an axis in the model's space; its parents' world matrices must be current. */
+  rotateBone(bone: THREE.Object3D, axis: THREE.Vector3, angle: number): void {
+    this.rotateModel(bone, axis, angle);
   }
 
   /** Rotates a bone about an axis given in the god's model space (parents must have current world matrices). */

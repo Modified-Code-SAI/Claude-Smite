@@ -27,12 +27,16 @@ export class GiantBot implements Brain {
   /** Shrines it has given up on (gods kept it from them), until when. */
   private readonly skip = new Map<string, number>();
   private held = 0;
+  /** How far ahead a slam can land. */
+  private readonly slamReach: number;
 
   constructor(
     private readonly sim: Sim,
     private readonly mode: Jotunn,
   ) {
     this.facing = mode.giant.body.yaw;
+    const slam = mode.giant.combatant.god.skills.find((k) => k.id === 'jotunn.slam')!.targeting;
+    this.slamReach = ('range' in slam ? slam.range : 0) * WORLD_SCALE;
   }
 
   update(dt: number): void {
@@ -83,7 +87,7 @@ export class GiantBot implements Brain {
     if (!locks.cast) {
       if (this.ult(gods)) return;
       if ((near.length >= 2 || near.some((u) => hypot(u.x - g.x, u.z - g.z) < 4)) && cast(STOMP, { x: g.x, z: g.z })) return;
-      const slamAt = gods.find((u) => inFront(u, 10.5 + 3));
+      const slamAt = gods.find((u) => inFront(u, this.slamReach + 3));
       if (slamAt && cast(SLAM, lead(slamAt, 0.85))) return;
       const far = gods.filter((u) => this.ahead(u) && hypot(u.x - g.x, u.z - g.z) > 9 && hypot(u.x - g.x, u.z - g.z) < 31);
       if (far.length && this.sim.rng() < 0.6 && cast(BOULDER, lead(far[0]!, 0.9))) return;

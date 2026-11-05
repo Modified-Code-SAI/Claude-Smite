@@ -33,6 +33,8 @@ export const ACID = 0x8cff3a;
 export interface MonsterView {
   root: THREE.Group;
   height: number;
+  /** Seconds the body stays after death (3 if unset). */
+  linger?: number;
   /** Pose for this frame. `windup` is the sim's slam windup, `wobble` the hit spring. */
   animate(u: Unit, dt: number, deathTime: number, wobble: number): void;
 }
