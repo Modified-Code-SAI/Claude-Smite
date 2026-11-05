@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GODS } from '../game/gods';
+import { jotunn } from '../game/gods/jotunn';
 import { PLAYMAKER } from '../game/sport';
 import { glyphFor, skillIcon, talentIcon } from './icons';
 
@@ -37,6 +38,17 @@ describe('skill icons', () => {
       seen.add(svg);
       // a scene, not the generic stat glyph
       expect(svg, n.name).toContain('#fff6e2');
+    }
+  });
+
+  it("draws each of the Jötunn's blows as its own scene", () => {
+    const seen = new Set<string>();
+    for (const s of jotunn.skills) {
+      const svg = skillIcon(jotunn.id, s).replace(/g[a-z0-9]{6}/g, '');
+      expect(seen.has(svg), s.name).toBe(false);
+      seen.add(svg);
+      // the giant's own art, not the generic shape scene
+      expect(svg, s.name).toContain('#9eeaff');
     }
   });
 });
