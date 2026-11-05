@@ -758,6 +758,11 @@ export class CombatGame implements Updatable {
 
     // the giant has no skill trees to grow
     if (input.wasPressed('KeyK') && !this.jotunnMode?.piloting) this.toggleMenu();
+    // a taunt: your god says something cutting, and everyone near hears it (the giant has no words)
+    if (input.wasPressed('KeyV') && this.inFight && !this.jotunnMode?.piloting) {
+      if (this.netGuest) this.netGuest.taunt();
+      else this.sim.taunt(this.player);
+    }
     if (this.siege?.offer) {
       const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
       if (pick >= 0) this.takeBoon(pick);
