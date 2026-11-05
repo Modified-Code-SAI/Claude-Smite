@@ -8,7 +8,7 @@ export interface ModeRecord {
   best: number;
 }
 
-export type RecordMode = 'conquest' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent';
+export type RecordMode = 'conquest' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent' | 'jotunn';
 
 const KEY = 'ascendant.records';
 /** Where the Siege best lived before records existed. */
@@ -33,7 +33,7 @@ export function getRecord(mode: RecordMode): ModeRecord {
  * Count a finished game and award its Ascension XP. Returns the record as it
  * was before (so a screen can say "new best") and the award.
  */
-export function addResult(mode: RecordMode, result: { won?: boolean; best?: number }): ModeRecord & { award: Award } {
+export function addResult(mode: RecordMode, result: { won?: boolean; best?: number; rounds?: number }): ModeRecord & { award: Award } {
   const all = loadAll();
   const before = { played: 0, won: 0, best: 0, ...all[mode] };
   all[mode] = { played: before.played + 1, won: before.won + (result.won ? 1 : 0), best: Math.max(before.best, result.best ?? 0) };
@@ -47,7 +47,7 @@ export function addResult(mode: RecordMode, result: { won?: boolean; best?: numb
 
 /** One line for the mode's card on the start screen, or '' before the first game. */
 export function recordLine(mode: string): string {
-  if (mode !== 'conquest' && mode !== 'clash' && mode !== 'siege' && mode !== 'duel' && mode !== 'rush' && mode !== 'descent') return '';
+  if (mode !== 'conquest' && mode !== 'clash' && mode !== 'siege' && mode !== 'duel' && mode !== 'rush' && mode !== 'descent' && mode !== 'jotunn') return '';
   const r = getRecord(mode);
   if (mode === 'siege') return r.best ? `Best: ${r.best} ${r.best === 1 ? 'wave' : 'waves'}` : '';
   if (mode === 'descent') return r.best ? `Deepest: chamber ${r.best}${r.won ? ` · ${r.won} ${r.won === 1 ? 'escape' : 'escapes'}` : ''}` : '';

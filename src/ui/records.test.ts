@@ -18,6 +18,8 @@ describe('mode records', () => {
     expect(getRecord('clash')).toEqual({ played: 2, won: 1, best: 0 });
     expect(recordLine('clash')).toBe('1 win in 2 games');
     expect(recordLine('arena')).toBe('');
+    addResult('jotunn', { won: true, rounds: 2 });
+    expect(recordLine('jotunn')).toBe('1 win in 1 game');
   });
 
   it('keeps the best Siege run and returns the record from before', () => {

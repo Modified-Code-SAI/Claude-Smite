@@ -229,7 +229,7 @@ async function main(): Promise<void> {
   const loop = new Loop();
   loop.addFixed(player);
   // Conquest plays a full match against bots; the arena is the training ground
-  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, shake: (a) => follow.addShake(a), role: parseRole(params.get('role')), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
+  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, shake: (a) => follow.addShake(a), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
   void baked;
   // `?stage`: the trailer's film set (tools/trailer)
