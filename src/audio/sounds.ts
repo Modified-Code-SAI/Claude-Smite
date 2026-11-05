@@ -4,7 +4,7 @@
  * hits, swings) never sound like one sample on repeat.
  */
 
-import { ahr, Biquad, buf, crackle, dcBlock, declick, fill, glide, loopable, normalize, Osc, perc, pink, RATE, seeded as rngFor, tail, wander, white, type Rand } from './dsp';
+import { ahr, Biquad, buf, crackle, dcBlock, declick, drive, fill, glide, loopable, normalize, Osc, perc, pink, RATE, seeded as rngFor, tail, wander, white, type Rand } from './dsp';
 import {
   chime, chirp, choir, clang, debris, filter, fire, impact, knock, layer, puff, roar, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
 } from './gestures';
@@ -159,6 +159,10 @@ export const SOUNDS: Record<string, Recipe> = {
         [chime(r, 0.45, 1975.5), 0.85, 0.42],
       ),
   },
+  // the spirits round the pitch: on their feet for a goal, a gasp at a save, and their murmur between
+  'crowd.roar': { variants: 2, peak: 0.8, make: (r) => tail(crowd(r, 4.2, { voices: 24, pitch: 190, rise: 0.22, breath: 0.6, babble: 0.35, lp: 3600, env: (t) => ahr(t, 0.22, 1.3, 2.4) }), 0.85, 0.35, 3200) },
+  'crowd.ooh': { variants: 2, peak: 0.6, make: (r) => tail(crowd(r, 1.9, { voices: 18, pitch: 165, rise: 0.3, breath: 0.25, babble: 0.1, lp: 3000, vowels: ['oo', 'oh'], arc: true, env: (t) => ahr(t, 0.16, 0.45, 1.1) }), 0.8, 0.3, 2800) },
+  'amb.crowd': { loop: true, peak: 0.45, make: (r) => loopable(crowd(r, 10, { voices: 20, pitch: 150, rise: 0, breath: 0.35, babble: 1, lp: 2200, env: () => 1 }), 1.2) },
   'relic.fumble': { variants: 2, peak: 0.7, make: (r) => layer([clang(r, 0.9, 660, { decay: 0.55, gain: 0.6 }), 1], [thump(r, 0.3, 120, 50, { click: 0.3 }), 0.8], [whoosh(r, 0.3, 2000, 700, { q: 1 }), 0.4, 0.04]) },
   // the big kill moments (multi-kills, shutdowns, streaks): a close thunderclap under a rising chorus and a bell
   // your ultimate: the world drops away under a rising surge of power
@@ -335,6 +339,54 @@ function coin(r: Rand): Float32Array {
   const f = 1900 + r() * 200;
   chime(r, 0.4, f, { out, gain: 0.7 });
   chime(r, 0.45, f * 1.335, { out, at: 0.06, gain: 0.8 });
+  return out;
+}
+
+/**
+ * A crowd: dozens of voices at once, each its own pitch and loudness, through
+ * a few vowel shapes, over the breathy roar of a mass of people. `babble`
+ * chops each voice into syllables (a murmur); `rise` lifts every pitch as the
+ * shout swells; `arc` bends the pitch up then down (an "ooh").
+ */
+function crowd(
+  r: Rand,
+  len: number,
+  o: { voices: number; pitch: number; rise: number; breath: number; babble: number; lp: number; env: (t: number) => number; vowels?: (keyof typeof VOWELS)[]; arc?: boolean },
+): Float32Array {
+  const out = buf(len);
+  const shapes = (o.vowels ?? ['ah', 'eh', 'oh']).map((v) => VOWELS[v].map(([f, q, g]) => ({ b: new Biquad('bandpass', f * (0.92 + r() * 0.16), q * 0.6), g })));
+  const people = Array.from({ length: o.voices }, (_, k) => ({
+    o: new Osc(r()),
+    f: o.pitch * (0.55 + r() * 1.15),
+    // shouting voices waver: a few percent of pitch, several times a second
+    drift: wander(r, 3 + r() * 4),
+    loud: wander(r, 2 + r() * 3 + o.babble * 5),
+    start: o.babble > 0.5 ? 0 : r() * 0.3,
+    shape: k % shapes.length,
+  }));
+  const sums = shapes.map(() => 0);
+  const air = pink(r);
+  const airBand = new Biquad('bandpass', 1100, 0.45);
+  const lp = new Biquad('lowpass', o.lp, 0.6);
+  const n = out.length;
+  for (let i = 0; i < n; i++) {
+    const t = i / RATE;
+    const env = o.env(t);
+    const lift = 1 + o.rise * (o.arc ? Math.sin(Math.min(1, t / (len * 0.8)) * Math.PI) : Math.min(1, t / 0.6));
+    sums.fill(0);
+    for (const p of people) {
+      if (t < p.start) continue;
+      const l = p.loud();
+      // a murmur is mostly gaps between words; a roar is everyone at once
+      const amp = o.babble > 0 ? Math.max(0, l * (0.6 + o.babble * 0.6) + 0.35 - o.babble * 0.25) : 0.6 + 0.4 * l;
+      sums[p.shape]! += p.o.saw(p.f * lift * (1 + p.drift() * 0.07)) * amp;
+    }
+    let y = 0;
+    for (let s = 0; s < shapes.length; s++) for (const f of shapes[s]!) y += f.b.run(sums[s]!) * f.g;
+    // (strained a little, the way a shout is)
+    y = drive((y * 2.2) / Math.sqrt(o.voices), 1.5) + airBand.run(air()) * o.breath * 2;
+    out[i] = lp.run(y) * env;
+  }
   return out;
 }
 
