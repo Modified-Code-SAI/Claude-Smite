@@ -10,6 +10,8 @@ import './start.css';
 import { DIFFICULTIES, parseDifficulty, type Difficulty } from '../game/difficulty';
 import { recordLine } from './records';
 import { rankBadge } from './ascension';
+import type { JotunnRole } from '../combat/JotunnMode';
+import { jotunn } from '../game/gods/jotunn';
 
 export type GameMode = 'conquest' | 'arena' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent' | 'jotunn';
 
@@ -26,6 +28,8 @@ export interface StartChoice {
   difficulty?: Difficulty;
   /** Temple Duel: the rival god's id, or '' for a random one. */
   rival?: string;
+  /** The Jötunn: who plays the giant on your own (online, every player takes a turn). */
+  role?: JotunnRole;
 }
 
 const STORAGE_KEY = 'ascendant.start';
@@ -58,9 +62,29 @@ const MODES: { id: GameMode; name: string; text: string; net?: NetHostOption[] }
     text: 'Co-op dungeon run: go down through fifteen chambers of the underworld, a boss every fifth. Vote on a reward after each chamber, learn new skills as you go, and raise fallen allies. Solo with two bots, or with up to three friends. About 25 minutes.',
     net: [{ mode: 'coop', label: 'Host co-op', text: 'Up to four friends descend together; bots fill the team to three', cap: 4 }],
   },
+  {
+    id: 'jotunn',
+    name: 'The Jötunn',
+    text: 'One frost giant against four gods. The giant wins a round by smashing three of the four braziers; the gods win by breaking it at its knees, wrists, back rune and crown. Shrines in the valley give the giant new ultimates. About 3 minutes a round.',
+    net: [{ mode: 'coop', label: 'Host a hunt', text: 'Up to five friends take turns as the giant; bots fill the rest', cap: 5 }],
+  },
   { id: 'duel', name: 'Temple Duel', text: 'One on one against a bot god. Win a round by taking them down; a ring of fire closes in so nobody can hide. First to 3 rounds. About 2–3 minutes.' },
   { id: 'arena', name: 'Training ground', text: 'Training posts and one enemy Thor. Swap gods and levels freely with K.' },
 ];
+
+const JOTUNN_TIP =
+  'As a god, strike the glowing weak points: break both knees and the giant kneels, opening its crown. As the giant, every blow winds up first, so aim where the gods are going. Claim a shrine for a new ultimate.';
+
+/** Who plays the giant in a Jötunn match on your own. */
+const GIANT_ROLES: { id: JotunnRole; name: string; text: string }[] = [
+  { id: 'rotate', name: 'Take turns', text: 'Two rounds: a bot is the giant first, then you are' },
+  { id: 'giant', name: 'Me', text: 'One round as the giant' },
+  { id: 'god', name: 'A bot', text: 'One round as a god against a bot giant' },
+];
+
+function parseGiantRole(s: unknown): JotunnRole {
+  return s === 'giant' || s === 'god' ? s : 'rotate';
+}
 
 const ROLE_NAMES: Record<string, string> = { solo: 'Solo', jungle: 'Jungle', mid: 'Mid', carry: 'Carry', support: 'Support' };
 
@@ -98,7 +122,7 @@ function load(): Partial<StartChoice> {
 /** The mode the title screen opens with: the last one played, Conquest at first. */
 export function savedMode(): GameMode {
   const m = load().mode;
-  return m === 'arena' || m === 'clash' || m === 'siege' || m === 'duel' || m === 'rush' || m === 'descent' ? m : 'conquest';
+  return m === 'arena' || m === 'clash' || m === 'siege' || m === 'duel' || m === 'rush' || m === 'descent' || m === 'jotunn' ? m : 'conquest';
 }
 
 function save(c: StartChoice): void {
@@ -171,6 +195,7 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
   let god = gods.some((g) => g.id === prev.god) ? prev.god! : gods[0]!.id;
   let difficulty: Difficulty = parseDifficulty(prev.difficulty);
   let rival = gods.some((g) => g.id === prev.rival) ? prev.rival! : '';
+  let role = parseGiantRole(prev.role);
 
   const root = document.createElement('div');
   root.className = 'sm';
@@ -184,6 +209,7 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
           <h3>Mode</h3>
           <div class="sm-modes">${MODES.map((m) => `<button class="sm-mode" data-mode="${m.id}"><b>${m.name}</b><span>${m.text}</span>${recordLine(m.id) ? `<em class="sm-rec">${recordLine(m.id)}</em>` : ''}</button>`).join('')}</div>
           <div class="sm-diff"><span>Bots</span>${DIFFICULTIES.map((d) => `<button class="sm-dif" data-dif="${d.id}" title="${d.text}">${d.name}</button>`).join('')}</div>
+          <div class="sm-diff sm-role"><span>Giant</span>${GIANT_ROLES.map((r) => `<button class="sm-dif" data-role="${r.id}" title="${r.text}">${r.name}</button>`).join('')}</div>
           <div class="sm-diff sm-rival"><span>Rival</span><button class="sm-dif" data-rival="">Random</button>${gods.map((g) => `<button class="sm-dif" data-rival="${g.id}">${g.name}</button>`).join('')}</div>
           <div class="sm-detail"></div>
           <h3 class="help-gap">Play with friends</h3>
@@ -209,11 +235,15 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
     // a rival row only for the duel; your own god can't be your rival
     if (rival === god) rival = '';
     root.querySelector<HTMLDivElement>('.sm-rival')!.classList.toggle('hide', mode !== 'duel');
+    // the Jötunn: who plays the giant
+    root.querySelector<HTMLDivElement>('.sm-role')!.classList.toggle('hide', mode !== 'jotunn');
+    root.querySelectorAll<HTMLButtonElement>('[data-role]').forEach((b) => b.classList.toggle('on', b.dataset.role === role));
     root.querySelectorAll<HTMLButtonElement>('[data-rival]').forEach((b) => {
       b.classList.toggle('on', b.dataset.rival === rival);
       b.hidden = b.dataset.rival === god;
     });
-    const def = gods.find((g) => g.id === god)!;
+    // picking yourself as the Jötunn's giant shows the giant you'll play
+    const def = mode === 'jotunn' && role === 'giant' ? jotunn : gods.find((g) => g.id === god)!;
     const skills = def.defaultLoadout.map((id) => def.skills.find((s) => s.id === id)!);
     const keys = SLOT_KEYS;
     detail.innerHTML = `
@@ -222,10 +252,16 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
       <div class="sm-skills">${skills
         .map((s, i) => `<div class="sm-skill" title="${s.description.replace(/"/g, '&quot;')}"><div class="sm-ico">${skillIcon(def.id, s)}</div><div class="sm-k">${keys[i]}</div><div class="sm-sn">${s.name}</div></div>`)
         .join('')}</div>
-      <div class="sm-tip">${mode === 'conquest' ? 'You start mid with four allied bots in the other lanes. Go wherever you like.' : mode === 'clash' ? 'You and two bots start at level 8. Stand on the plaza with no enemy on it to score.' : mode === 'siege' ? 'Monsters on the plaza corrupt it. Meet them at the gates, north and south.' : mode === 'descent' ? 'You start with one skill; a Forgotten Rite reward teaches you another. A fallen god stays down until an ally stands over them.' : mode === 'duel' ? 'Both gods start at level 9 and gain two levels every round. Stay inside the ring once it closes.' : mode === 'rush' ? 'Everyone starts at level 10. The carrier is slower and can\'t fight, so pass to open teammates and use your stuns and knockbacks to break up their rushes.' : 'Swap gods and jump levels with K at the fountain.'} Press K at your fountain to swap skills and spend tree points.</div>`;
+      <div class="sm-tip">${mode === 'conquest' ? 'You start mid with four allied bots in the other lanes. Go wherever you like.' : mode === 'clash' ? 'You and two bots start at level 8. Stand on the plaza with no enemy on it to score.' : mode === 'siege' ? 'Monsters on the plaza corrupt it. Meet them at the gates, north and south.' : mode === 'descent' ? 'You start with one skill; a Forgotten Rite reward teaches you another. A fallen god stays down until an ally stands over them.' : mode === 'duel' ? 'Both gods start at level 9 and gain two levels every round. Stay inside the ring once it closes.' : mode === 'rush' ? 'Everyone starts at level 10. The carrier is slower and can\'t fight, so pass to open teammates and use your stuns and knockbacks to break up their rushes.' : mode === 'jotunn' ? JOTUNN_TIP : 'Swap gods and jump levels with K at the fountain.'}${mode === 'jotunn' ? '' : ' Press K at your fountain to swap skills and spend tree points.'}</div>`;
   };
   render();
 
+  root.querySelectorAll<HTMLButtonElement>('[data-role]').forEach((b) =>
+    b.addEventListener('click', () => {
+      role = parseGiantRole(b.dataset.role);
+      render();
+    }),
+  );
   root.querySelectorAll<HTMLButtonElement>('[data-rival]').forEach((b) =>
     b.addEventListener('click', () => {
       rival = b.dataset.rival ?? '';
@@ -293,12 +329,12 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
 
   return new Promise((resolve) => {
     const finish = (choice: StartChoice) => {
-      save({ mode: choice.mode, god: choice.god, difficulty, rival });
+      save({ mode: choice.mode, god: choice.god, difficulty, rival, role });
       root.classList.add('done');
       setTimeout(() => root.remove(), 400);
       resolve(choice);
     };
     started = finish;
-    play.addEventListener('click', () => finish({ mode, god, difficulty, rival }));
+    play.addEventListener('click', () => finish({ mode, god, difficulty, rival, role }));
   });
 }

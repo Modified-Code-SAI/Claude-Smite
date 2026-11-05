@@ -24,6 +24,9 @@ describe('Ascension', () => {
     expect(gameXp('clash', { won: true })).toBe(2 * gameXp('clash', { won: false }));
     expect(gameXp('siege', { best: 10 })).toBe(10 * gameXp('siege', { best: 1 }));
     expect(gameXp('conquest', {})).toBeGreaterThan(gameXp('duel', {}));
+    // the Jötunn pays per round played, so taking turns pays for both rounds
+    expect(gameXp('jotunn', { rounds: 2 })).toBe(2 * gameXp('jotunn', { rounds: 1 }));
+    expect(gameXp('jotunn', { rounds: 2, won: true })).toBe(2 * gameXp('jotunn', { rounds: 2 }));
   });
 
   it('every finished game adds to it, and the end screen says when a rank is gained', () => {

@@ -1,5 +1,7 @@
 import { JOTUNN, PART_IDS, PARTS, type Jotunn, type PartId } from '../sim/Jotunn';
 import type { Unit } from '../sim/Unit';
+import { awardLine } from './ascension';
+import { addResult } from './records';
 import './jotunn.css';
 
 const PART_GLYPH: Record<PartId, string> = { kneeL: 'L', kneeR: 'R', rune: 'ᛟ', wristL: 'L', wristR: 'R', crown: '♛' };
@@ -174,7 +176,10 @@ export class JotunnHud {
       const won = champs.some((p) => p.god === this.me);
       this.end.classList.add('show', won ? 'won' : 'lost');
       this.end.querySelector('.clash-end-title')!.textContent = won ? (champs.length > 1 ? 'Shared victory' : 'Victory') : 'Defeat';
-      this.end.querySelector('.clash-end-score')!.innerHTML = this.table();
+      const score = this.end.querySelector('.clash-end-score')!;
+      score.innerHTML = this.table();
+      const { award } = addResult('jotunn', { won, rounds: m.rounds });
+      score.insertAdjacentHTML('afterend', awardLine(award));
     }
   }
 
