@@ -20,7 +20,7 @@ export function godUnit(god: GodDef, team: Team, home: { x: number; z: number; y
  * Non-god units borrow a god's definition (the rules engine needs a full
  * GodDef) with their own stats. They never cast, so the loadout is unused.
  */
-function variant(base: GodDef, id: string, name: string, stats: Partial<GodDef['base']>, basicAttack?: GodDef['basicAttack']): GodDef {
+export function variant(base: GodDef, id: string, name: string, stats: Partial<GodDef['base']>, basicAttack?: GodDef['basicAttack']): GodDef {
   return {
     ...base,
     id,

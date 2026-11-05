@@ -94,6 +94,8 @@ export class Combatant {
   alive = true;
   inBase = true;
   respawnTimer = 0;
+  /** Takes no crowd control at all (the Jötunn: only its own weak points bring it down). */
+  ccImmune = false;
   loadout: Loadout;
   allocation: Allocation = {};
   /**
@@ -644,7 +646,7 @@ export class Combatant {
   }
 
   receiveCC(kind: CCKind, duration: number, magnitude = 0, source?: string): number {
-    if (!this.alive) return 0;
+    if (!this.alive || this.ccImmune) return 0;
     const applied = this.cc.apply(kind, duration, magnitude, this.stats.ccReduction, false, source);
     const k = this.hasKeystone('shieldOnHardCC');
     if (applied > 0 && k && ccClass(kind) !== 'soft' && this.hardCCShieldCooldown <= 0) {
@@ -674,6 +676,13 @@ export class Combatant {
     this.mods = [];
     this.cc.reset();
     this.respawnTimer = respawnTime(this.level);
+    this.invalidate();
+  }
+
+  /** Put a skill on cooldown for `seconds` (0 makes it ready), outside a cast: a mode's rules. */
+  setCooldown(skillId: string, seconds: number): void {
+    if (seconds > 0) this.cooldowns.set(skillId, seconds);
+    else this.cooldowns.delete(skillId);
     this.invalidate();
   }
 

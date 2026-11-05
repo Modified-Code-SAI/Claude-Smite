@@ -13,11 +13,16 @@ export function worldSpeed(moveSpeed: number): number {
   return (moveSpeed / 100) * WORLD_SCALE;
 }
 
-export type UnitKind = 'god' | 'dummy' | 'summon' | 'minion' | 'tower' | 'phoenix' | 'titan' | 'monster';
+/**
+ * `weakpoint` is a breakable part of a bigger unit (the Jötunn's knees and
+ * wrists): its mode moves it with the body it belongs to. `brazier` is a
+ * mode's fixture that only basic attacks can break.
+ */
+export type UnitKind = 'god' | 'dummy' | 'summon' | 'minion' | 'tower' | 'phoenix' | 'titan' | 'monster' | 'weakpoint' | 'brazier';
 
-/** Towers, Phoenixes and Titans: never move, take only basic attacks, and never respawn on their own. */
+/** Towers, Phoenixes, Titans and braziers: never move, take only basic attacks, and never respawn on their own. */
 export function isStructure(u: { kind: UnitKind }): boolean {
-  return u.kind === 'tower' || u.kind === 'phoenix' || u.kind === 'titan';
+  return u.kind === 'tower' || u.kind === 'phoenix' || u.kind === 'titan' || u.kind === 'brazier';
 }
 
 /**
@@ -110,6 +115,10 @@ export class Unit {
   bounty: { xp: number; favor: number } | null = null;
   /** Free-form tag the match uses (lane, minion type). */
   tag = '';
+  /** Others can't walk through it, as with structures (the Jötunn's legs). */
+  blocks = false;
+  /** Meters of rubble and low wall it strides over without being stopped (the Jötunn). */
+  stepOver = 0;
   /** Set by the factory functions. */
   origin: SpawnOrigin | null = null;
 
@@ -207,6 +216,8 @@ export interface Flash {
   owner: Unit;
   age: number;
   life: number;
+  /** A warning: the shape is struck when the flash ends (an attack winding up). */
+  warn?: boolean;
 }
 
 export type SimEvent =

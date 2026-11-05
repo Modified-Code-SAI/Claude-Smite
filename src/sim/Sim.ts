@@ -79,6 +79,8 @@ export class Sim {
   private readonly revealed = new Map<Unit, number>();
   /** Skills riding on a unit's basic attacks, and until when (see SkillDef.imbue). */
   private readonly imbued = new Map<Unit, { cast: ResolvedSkill; until: number }>();
+  /** Attacks winding up (a skill or a swing with a windup): what runs when, and the aim it was given. */
+  private readonly winding = new Map<Unit, { at: number; aim: Point; basic: boolean; flash: number; run: () => void }>();
   private events: SimEvent[] = [];
   time = 0;
 
@@ -135,6 +137,8 @@ export class Sim {
   /** Whether input (or a bot) may walk this unit right now. */
   canMove(u: Unit): boolean {
     if (!u.alive || u.forced) return false;
+    // a god winding up an attack stands its ground (the timer reaches guests too)
+    if (this.winding.has(u) || (u.kind === 'god' && u.windup > 0)) return false;
     const locks = u.combatant.cc.locks();
     return !locks.move && !locks.forcedMovement;
   }
@@ -153,7 +157,7 @@ export class Sim {
    * `scale` multiplies its damage (tower escalation, empowered minions).
    */
   basic(u: Unit, opts: { homing?: Unit; scale?: number } = {}): boolean {
-    if (u.forced) return false;
+    if (u.forced || this.winding.has(u)) return false;
     const shot = u.combatant.startBasic(this.rng);
     if (!shot) return false;
     if (opts.scale !== undefined) shot.raw *= opts.scale;
@@ -164,13 +168,18 @@ export class Sim {
     const dir = this.aimDir(u);
     const range = def.range * WORLD_SCALE;
     if (def.projectileSpeed === undefined) {
-      this.emit({ type: 'basic', unit: u, melee: true });
-      for (const t of this.enemiesOf(u)) {
-        const d = hypot(t.x - u.x, t.z - u.z);
-        if (d > range + t.radius) continue;
-        if (d > t.radius && angleBetween(dir, { x: t.x - u.x, z: t.z - u.z }) > MELEE_ARC / 2) continue;
-        this.landBasic(u, t, shot);
-      }
+      const swing = () => {
+        const dir = this.aimDir(u);
+        this.emit({ type: 'basic', unit: u, melee: true });
+        for (const t of this.enemiesOf(u)) {
+          const d = hypot(t.x - u.x, t.z - u.z);
+          if (d > range + t.radius) continue;
+          if (d > t.radius && angleBetween(dir, { x: t.x - u.x, z: t.z - u.z }) > MELEE_ARC / 2) continue;
+          this.landBasic(u, t, shot);
+        }
+      };
+      if (def.windup) this.windUp(u, def.windup, true, { type: 'cone', x: u.x, z: u.z, yaw: Math.atan2(-dir.x, -dir.z), range, angle: MELEE_ARC }, swing);
+      else swing();
     } else {
       this.emit({ type: 'basic', unit: u, melee: false });
       this.spawnProjectile(u, dir, null, shot, def.projectileSpeed * WORLD_SCALE, range, 0.45, false, 0, opts.homing ?? null);
@@ -180,15 +189,66 @@ export class Sim {
 
   /** Cast the skill in `slot` toward the unit's aim point. */
   cast(u: Unit, slot: number): CastResult {
-    if (u.forced) return 'forced';
+    if (u.forced || this.winding.has(u)) return 'forced';
     const r = u.combatant.cast(slot);
     if (!r.ok) return r.error;
     this.interruptRecall(u);
     u.sinceAction = 0;
     const grantsStealth = r.cast.hits.some((e) => e.kind === 'stealth');
     if (!grantsStealth) u.stealth = 0;
-    this.execute(u, r.cast);
+    const windup = r.cast.skill.windup;
+    if (windup) this.windUp(u, windup, false, this.strikeShape(u, r.cast), () => this.execute(u, r.cast));
+    else this.execute(u, r.cast);
     return null;
+  }
+
+  /**
+   * Hold an attack for `time` seconds: the unit stands rooted, the shape it
+   * will strike shows as a warning, and the attack lands along the aim it had
+   * at the press. Hard crowd control in the meantime cancels it.
+   */
+  private windUp(u: Unit, time: number, basic: boolean, shape: FlashShape, run: () => void): void {
+    const flash = nextEntityId();
+    this.flashes.push({ id: flash, shape, owner: u, age: 0, life: time, warn: true });
+    this.winding.set(u, { at: this.time + time, aim: { x: u.aim.x, z: u.aim.z }, basic, flash, run });
+    u.windup = time;
+  }
+
+  /** Drop a wound-up attack before it lands (its warning goes too). */
+  cancelWindup(u: Unit): void {
+    const w = this.winding.get(u);
+    if (!w) return;
+    this.winding.delete(u);
+    u.windup = 0;
+    removeWhere(this.flashes, (f) => f.id === w.flash);
+  }
+
+  /** The ground a skill will strike if cast from where the unit stands, for its warning. */
+  private strikeShape(u: Unit, cast: ResolvedSkill): FlashShape {
+    const t = cast.targeting;
+    const range = (r: number) => r * WORLD_SCALE * cast.rangeScale;
+    const radius = (r: number) => r * WORLD_SCALE * cast.radiusScale;
+    const dir = this.aimDir(u);
+    const yaw = Math.atan2(-dir.x, -dir.z);
+    switch (t.type) {
+      case 'cone':
+        return { type: 'cone', x: u.x, z: u.z, yaw, range: range(t.range), angle: t.angle };
+      case 'line':
+        return { type: 'line', x: u.x, z: u.z, yaw, length: range(t.range), width: radius(t.width) };
+      case 'projectile':
+        return { type: 'line', x: u.x, z: u.z, yaw, length: range(t.range), width: radius(t.radius) * 2 };
+      case 'dash':
+        return { type: 'line', x: u.x, z: u.z, yaw, length: t.distance * WORLD_SCALE * cast.rangeScale, width: radius(t.width) };
+      case 'ground':
+      case 'leap': {
+        const at = this.aimPoint(u, range(t.range));
+        return { type: 'circle', x: at.x, z: at.z, radius: radius(t.radius) };
+      }
+      case 'self':
+        return { type: 'circle', x: u.x, z: u.z, radius: t.radius === undefined ? u.radius + 1 : radius(t.radius) };
+      case 'ally':
+        return { type: 'circle', x: u.x, z: u.z, radius: u.radius + 1 };
+    }
   }
 
   startRecall(u: Unit): boolean {
@@ -273,9 +333,11 @@ export class Sim {
           // a placed field shows its circle a moment before it starts to bite
           this.spawnZone(u, cast, at, r, ticking.hits, ticking.interval, followAim ? 'aim' : null, range(t.range), followAim ? 0 : GROUND_WARNING);
           if (followAim) u.untargetable = ticking.hits * ticking.interval;
-        } else if (cast.hits.some((e) => e.kind === 'summon')) {
+        } else if (cast.hits.some((e) => e.kind === 'summon') || cast.skill.windup) {
+          // (a wound-up blast already showed its warning while it wound up)
           this.area(u, cast, at, r);
           this.flash(u, { type: 'circle', x: at.x, z: at.z, radius: r });
+          if (cast.skill.windup) this.emit({ type: 'impact', x: at.x, z: at.z, owner: u, big: true });
         } else {
           // a ground blast lands after a short warning circle, so it can be dodged
           this.spawnZone(u, cast, at, r, 0, 0, null, 0, GROUND_WARNING);
@@ -592,6 +654,9 @@ export class Sim {
         break;
       }
       case 'titan':
+      case 'weakpoint':
+      case 'brazier':
+        // their mode decides what breaking one is worth
         break;
       case 'monster': {
         const b = victim.bounty;
@@ -781,6 +846,7 @@ export class Sim {
   step(dt: number): void {
     this.time += dt;
     for (const u of [...this.units]) this.stepUnit(u, dt);
+    this.stepWinding();
     this.stepProjectiles(dt);
     this.stepZones(dt);
     this.stepPending();
@@ -885,10 +951,11 @@ export class Sim {
    * through. A walker heading straight at one slides around its side
    * instead of stalling against it.
    */
-  solid(x: number, z: number, radius: number, feetY: number, from: Point = { x, z }, terrain: SimTerrain = this.terrain): Point {
+  solid(x: number, z: number, radius: number, feetY: number, from: Point = { x, z }, terrain: SimTerrain = this.terrain, mover: Unit | null = null): Point {
     let r = terrain.resolve(x, z, radius, feetY);
     for (const s of this.units) {
-      if (!s.alive || !isStructure(s)) continue;
+      // (a unit's own parts, the Jötunn's legs, don't block it)
+      if (!s.alive || !(isStructure(s) || s.blocks) || s === mover || (mover && s.owner === mover)) continue;
       const min = s.radius + radius;
       let dx = r.x - s.x;
       let dz = r.z - s.z;
@@ -922,7 +989,7 @@ export class Sim {
     if (len < 1e-6) return;
     const nx = u.x + (dx / len) * dist;
     const nz = u.z + (dz / len) * dist;
-    const r = this.solid(nx, nz, u.radius, u.body.y, u);
+    const r = this.solid(nx, nz, u.radius, u.body.y + u.stepOver, u, this.terrain, u);
     u.body.x = r.x;
     u.body.z = r.z;
     u.body.y = this.terrain.groundAt(r.x, r.z);
@@ -936,7 +1003,9 @@ export class Sim {
     let nz = u.z + f.vz * step;
     if (f.collide || f.remaining <= 0) {
       // leaps fly over everything but never land inside a structure
-      const r = f.collide ? this.solid(nx, nz, u.radius, u.body.y, u) : this.solid(nx, nz, u.radius, this.terrain.groundAt(nx, nz), u);
+      const r = f.collide
+        ? this.solid(nx, nz, u.radius, u.body.y + u.stepOver, u, this.terrain, u)
+        : this.solid(nx, nz, u.radius, this.terrain.groundAt(nx, nz) + u.stepOver, u, this.terrain, u);
       nx = r.x;
       nz = r.z;
     }
@@ -1108,6 +1177,24 @@ export class Sim {
       }
     }
     removeWhere(this.zones, (z) => z.ticks <= 0 && z.timer <= -0.4);
+  }
+
+  private stepWinding(): void {
+    if (!this.winding.size) return;
+    for (const [u, w] of this.winding) {
+      const locks = u.combatant.cc.locks();
+      if (!u.alive || u.forced || (w.basic ? locks.attack : locks.cast)) {
+        this.cancelWindup(u);
+        continue;
+      }
+      u.windup = Math.max(0, w.at - this.time);
+      if (this.time < w.at - 1e-6) continue;
+      this.winding.delete(u);
+      u.windup = 0;
+      u.aim.x = w.aim.x;
+      u.aim.z = w.aim.z;
+      w.run();
+    }
   }
 
   private stepLanding(): void {

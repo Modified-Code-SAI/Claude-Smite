@@ -130,6 +130,12 @@ export interface SkillDef {
    * stacking) any damage over time it already left there.
    */
   imbue?: number;
+  /**
+   * Seconds between pressing the skill and its effect: the caster stands
+   * rooted while the shape it will strike shows on the ground, so it can be
+   * dodged (the Jötunn's blows). Cooldown and cost are paid at the press.
+   */
+  windup?: number;
 }
 
 export interface BasicAttackDef {
@@ -137,6 +143,8 @@ export interface BasicAttackDef {
   damageType: DamageType;
   /** Melee swings hit everything in a small cone; ranged attacks fire projectiles. */
   projectileSpeed?: number;
+  /** Seconds a swing winds up (rooted, its cone shown) before it lands. */
+  windup?: number;
 }
 
 export interface PassiveDef {
