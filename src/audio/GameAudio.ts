@@ -11,6 +11,8 @@ import { slotForCode, ULTIMATE_SLOT } from '../game/loadout';
 import { ConquestLayout as L, nearestOnPolyline } from '../map/ConquestLayout';
 import { isStructure, type Projectile, type SimEvent, type Unit, type Zone } from '../sim/Unit';
 import type { Announcer } from './Announcer';
+import { GodVoice } from './GodVoice';
+import type { LineKind } from './godLines';
 import type { AudioEngine, LoopHandle } from './AudioEngine';
 import { skillPart, skillSound } from './bank';
 import type { Music, SongName } from './music';
@@ -66,6 +68,12 @@ export class GameAudio {
   private phase = 0;
   private ended = false;
   private time = 0;
+  /** The gods' spoken lines, fetched for each god in the match. */
+  private readonly lines: GodVoice;
+  private linesCheck = 0;
+  private saidStart = false;
+  /** When the last teammate said they were coming (one answer per call is plenty). */
+  private omwAt = -999;
 
   constructor(
     private readonly engine: AudioEngine,
@@ -77,6 +85,7 @@ export class GameAudio {
     /** Whether the player is off the ground on a jump of their own (the sim does not see those). */
     private readonly jumping: () => boolean = () => false,
   ) {
+    this.lines = new GodVoice(engine, import.meta.env.BASE_URL);
     game.sim.listeners.push((e) => this.onEvent(e));
     window.addEventListener('keydown', (e) => this.onKey(e));
     engine.onUnlock(() => this.startAmbience());
@@ -146,7 +155,10 @@ export class GameAudio {
         this.onDeath(e.unit, e.killer);
         break;
       case 'respawn':
-        if (e.unit === me) this.engine.play('god.respawn', { gain: 0.8 }, 4);
+        if (e.unit === me) {
+          this.engine.play('god.respawn', { gain: 0.8 }, 4);
+          if (!this.game.rush) this.speak(me, 'respawn', { delay: 0.5 });
+        }
         else if (e.unit.kind === 'phoenix') this.at('phoenix.rise', e.unit, { gain: 1, ref: 14 }, 4);
         break;
       case 'levelUp':
@@ -173,6 +185,16 @@ export class GameAudio {
       case 'recall':
         this.onRecall(e.unit, e.state);
         break;
+      case 'taunt':
+        // a taunt is on purpose, so it cuts in over whatever the god was saying
+        this.speak(e.unit, 'taunt', { variant: e.line, cut: true });
+        break;
+      case 'ping':
+        // a teammate's "on my way" in their own voice (the first to answer a call)
+        if (e.kind === 'omw' && e.unit.team === me.team && (e.unit === me || this.time - this.omwAt > 3)) {
+          if (this.speak(e.unit, 'omw', { flat: true, delay: 0.15 }) && e.unit !== me) this.omwAt = this.time;
+        }
+        break;
     }
   }
 
@@ -182,7 +204,7 @@ export class GameAudio {
     const ult = slot === ULTIMATE_SLOT;
     const gain = (mine ? 1 : 0.85) * (ult ? 1.15 : 1);
     this.at(skillPart(id, 'cast'), u, { gain, ref: ult ? 12 : 8, vary: 0.02, wet: ult ? 0.2 : 0.05 }, mine ? 6 : 4);
-    if (ult) this.voice(u, 'cry', 0.9, 5);
+    if (ult && !this.speak(u, 'ult')) this.voice(u, 'cry', 0.9, 5);
     if (ult && mine) {
       this.engine.duckMusic(0.6, 1.4);
       this.engine.play('ult.surge', { gain: 0.8 }, 6);
@@ -299,7 +321,9 @@ export class GameAudio {
           break;
         }
         this.at(this.game.rush ? 'god.daze' : 'god.death', u, { gain: u === me ? 1 : 0.8, ref: 10 }, 5);
-        this.voice(u, 'death', 0.85, 5);
+        // your own god has last words (nobody dies in Relic Rush, they are only dazed)
+        const lastWords = u === me && !this.game.rush ? this.speak(u, 'death') : 0;
+        if (!lastWords) this.voice(u, 'death', 0.85, 5);
         const streak = this.endStreak(u, killer);
         if (killer === me && u !== me) {
           this.streak++;
@@ -310,11 +334,19 @@ export class GameAudio {
           this.engine.play('kill.confirm', { gain: 0.8, rate: 2 ** ((step * 2) / 12) }, 5);
           if (this.multi.count >= 2 || streak >= 3 || this.streak >= 3) this.engine.play('kill.big', { gain: 0.6 + 0.1 * Math.min(3, this.multi.count) }, 5);
         }
-        if (this.conquest) this.announceDeath(u, killer, streak);
+        // the killer has a word over the body, after the fallen's own; a run of kills earns a streak call
+        let gloat = 0;
+        if (killer?.kind === 'god' && killer !== u && killer.alive && !this.game.rush) {
+          const run = killer === me ? Math.max(this.streak, this.multi.count >= 2 ? 3 : 0) : (this.streaks.get(killer) ?? 0);
+          gloat = this.speak(killer, run >= 3 ? 'streak' : 'kill', { delay: lastWords ? lastWords + 0.15 : 0.3 });
+        }
+        // the herald waits for the gods to finish, and leaves out what they just said
+        if (lastWords || (gloat && (killer === me || u === me))) this.herald.hold(Math.max(lastWords, gloat) + 0.1);
+        if (this.conquest) this.announceDeath(u, killer, streak, gloat > 0 && killer === me);
         if (u === me) {
           this.streak = 0;
           // in Relic Rush nobody dies: they are dazed for a moment
-          this.herald.say(this.game.rush ? 'You are dazed!' : 'You have fallen.', 'bad', 2);
+          if (!lastWords) this.herald.say(this.game.rush ? 'You are dazed!' : 'You have fallen.', 'bad', 2);
         }
         break;
       case 'minion':
@@ -359,7 +391,7 @@ export class GameAudio {
    * victim's side, so they are called whoever landed the blow; first blood,
    * shutdowns and the player's streaks need a god to have earned the kill.
    */
-  private announceDeath(victim: Unit, by: Unit | null, victimStreak: number): void {
+  private announceDeath(victim: Unit, by: Unit | null, victimStreak: number, gloated = false): void {
     const me = this.me;
     const killer = by?.kind === 'god' ? by : null;
     const first = !!killer && !this.firstBlood;
@@ -387,7 +419,7 @@ export class GameAudio {
     if (this.multi.count >= 2) this.herald.say(multi[Math.min(5, this.multi.count)]!, 'epic', 4);
     else if (this.streak === 3) this.herald.say('You are on a rampage!', 'epic', 3);
     else if (this.streak === 5) this.herald.say('Unstoppable! None can stand against you!', 'epic', 3);
-    else this.herald.say('Enemy god slain.', 'good', 1);
+    else if (!gloated) this.herald.say('Enemy god slain.', 'good', 1);
   }
 
   private onRecall(u: Unit, state: 'start' | 'cancel' | 'done'): void {
@@ -423,6 +455,7 @@ export class GameAudio {
 
     const target = 1 / Math.sqrt(Math.max(1, this.engine.busy / 16));
     this.crowd += (target - this.crowd) * Math.min(1, dt * 8);
+    this.followLines(dt);
     this.followProjectiles();
     this.followZones();
     for (const [u, l] of this.recalls) {
@@ -1185,6 +1218,34 @@ export class GameAudio {
       this.at('jotunn.windup', g, { gain: f.act === 'basic' ? 0.55 : 0.95, vary: 0.05, ref: 24 }, 4, 0, true);
     }
     if (seen.flashes.size > 200) seen.flashes.clear();
+  }
+
+  /** Fetch the lines of every god in the match (a few times a second is plenty), and open the match with a word from yours. */
+  private followLines(dt: number): void {
+    this.linesCheck -= dt;
+    if (this.linesCheck <= 0) {
+      this.linesCheck = 2;
+      this.lines.load(this.game.ownGod.combatant.god.id);
+      for (const u of this.game.sim.units) if (u.kind === 'god') this.lines.load(u.combatant.god.id);
+    }
+    // a moment after the fight opens (or after the first click lets sound play), once
+    if (!this.saidStart && this.time > 1.5 && this.me.alive) {
+      if (this.speak(this.me, 'start') || this.time > 10) this.saidStart = true;
+    }
+  }
+
+  /**
+   * A god's spoken line (godLines.ts): flat for your own god and for team
+   * calls, from the god otherwise (and only near enough to hear). A hidden
+   * enemy says nothing. Returns how long until it ends, or 0.
+   */
+  private speak(u: Unit, kind: LineKind, o: { delay?: number; variant?: number; flat?: boolean; cut?: boolean } = {}): number {
+    if (u.kind !== 'god' || (u.stealth > 0 && u.team !== this.me.team)) return 0;
+    const own = u === this.me;
+    if (!own && !o.flat && this.dist(u) > 32) return 0;
+    const at = own || o.flat ? undefined : { x: u.x, y: u.body.y + 1.6, z: u.z };
+    const gain = own ? 0.95 : o.flat ? 0.7 : 0.9 * this.crowd;
+    return this.lines.say(u, u.combatant.god.id, kind, { own, at, gain, delay: o.delay, variant: o.variant, cut: o.cut });
   }
 
   private dist(u: Unit): number {

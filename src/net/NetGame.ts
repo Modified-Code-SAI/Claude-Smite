@@ -201,6 +201,9 @@ export class NetHost {
       case 'act':
         if (rp && this.started) this.onAct?.(rp.unit, msg, from);
         return;
+      case 'taunt':
+        if (rp && this.started) this.sim.taunt(rp.unit);
+        return;
       case 'ping': {
         if (!rp || !this.started || !isPingKind(msg.k)) return;
         const subject = typeof msg.s === 'number' && msg.s > 0 ? (this.sim.units.find((u) => u.id === msg.s) ?? null) : null;
@@ -332,6 +335,11 @@ export class NetGuest {
   /** Units the host walks from this player's intent: drawn from snapshots even while this player controls one (see NetHost.steered). */
   set steered(fn: ((u: Unit) => boolean) | null) {
     this.sync.steered = fn;
+  }
+
+  /** A taunt: the host checks it isn't too soon and everyone near hears it. */
+  taunt(): void {
+    this.session.send('host', { t: 'taunt' });
   }
 
   /** A quick call to this player's team: the host checks it and passes it on to them. */

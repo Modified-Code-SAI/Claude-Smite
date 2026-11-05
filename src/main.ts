@@ -30,6 +30,7 @@ import { compatibilityMode, installErrorHandlers, showFatal } from './ui/Fatal';
 import { playIntro } from './ui/Intro';
 import { Announcer } from './audio/Announcer';
 import { AudioEngine } from './audio/AudioEngine';
+import { GodVoice } from './audio/GodVoice';
 import { bakeAll } from './audio/bank';
 import { GameAudio } from './audio/GameAudio';
 import { Music } from './audio/music';
@@ -74,7 +75,11 @@ async function main(): Promise<void> {
     ? Promise.resolve({ mode: (['clash', 'siege', 'duel', 'rush', 'descent', 'jotunn'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined, allies: params.get('allies') !== '0', rivals: params.get('rivals') === '1' })
     : playIntro(audio).then(() => {
         music.play('hymn');
-        return showStartMenu(GODS, graphics);
+        // each god says who it is when picked
+        const voice = new GodVoice(audio, import.meta.env.BASE_URL);
+        for (const g of GODS) voice.load(g.id, ['select']);
+        const menu = {};
+        return showStartMenu(GODS, graphics, (id) => voice.say(menu, id, 'select', { own: true, cut: true, gain: 0.9 }));
       });
 
   const { renderer, isWebGPU } = await rendering;

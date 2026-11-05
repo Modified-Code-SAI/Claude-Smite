@@ -89,6 +89,7 @@ export class AudioEngine {
   private muffle = 0;
   private readonly raw = new Map<string, { data: Float32Array[]; loop: boolean }>();
   private readonly buffers = new Map<string, AudioBuffer[]>();
+  private readonly clipLoads = new Map<string, Promise<boolean>>();
   private readonly voices: Voice[] = [];
   private readonly lastPlayed = new Map<string, number>();
   readonly listenerPos = { x: 0, y: 0, z: 0 };
@@ -301,7 +302,35 @@ export class AudioEngine {
   }
 
   has(name: string): boolean {
-    return this.raw.has(name);
+    return this.raw.has(name) || this.buffers.has(name);
+  }
+
+  /**
+   * Recorded clips (the gods' spoken lines) under a name, one variant per
+   * file, fetched and decoded once audio is unlocked. Resolves false when
+   * any of them fails, and the name stays silent.
+   */
+  loadClips(name: string, urls: readonly string[]): Promise<boolean> {
+    let p = this.clipLoads.get(name);
+    if (!p) {
+      p = new Promise<void>((r) => this.onUnlock(r))
+        .then(() =>
+          Promise.all(
+            urls.map(async (url) => {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`${url}: ${res.status}`);
+              return this.ctx!.decodeAudioData(await res.arrayBuffer());
+            }),
+          ),
+        )
+        .then((list) => {
+          this.buffers.set(name, list);
+          return true;
+        })
+        .catch(() => false);
+      this.clipLoads.set(name, p);
+    }
+    return p;
   }
 
   private toBuffers(name: string, data: Float32Array[]): void {
