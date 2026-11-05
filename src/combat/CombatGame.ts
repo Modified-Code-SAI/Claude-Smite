@@ -426,7 +426,7 @@ export class CombatGame implements Updatable {
       camera: this.deps.camera,
       burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
       shake: this.deps.shake,
-      swing: (u) => this.views.swing(u),
+      swing: (u, kind) => this.views.swing(u, kind),
     });
     // nobody dies here: a god knocked out lies dazed where it fell (no soul pillar) until it stands up at its gate
     this.views.dazes = true;

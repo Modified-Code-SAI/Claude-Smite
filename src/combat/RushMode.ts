@@ -41,8 +41,8 @@ export interface RushDeps {
   /** A burst of light and sparks (CombatVfx.burst). */
   burst: (p: GodPalette, x: number, y: number, z: number, power: number) => void;
   shake?: (amount: number) => void;
-  /** Plays a god's throwing arm (the basic-attack swing). */
-  swing?: (u: Unit) => void;
+  /** Plays a god's throwing arm (the basic-attack swing), or a scorer's cheer ('ult': chest up, a hand to the sky). */
+  swing?: (u: Unit, kind?: 'basic' | 'ult') => void;
 }
 
 /** A teammate's call for the pass, placed over their head on screen. */
@@ -73,6 +73,8 @@ export class RushMode {
   private readonly fwd = new THREE.Vector3();
   private readonly toHead = new THREE.Vector3();
   private lastThrower: Unit | null = null;
+  /** Seconds into the goal celebration at the last frame (-1 outside one), to catch the scorer's second fist pump. */
+  private cheerAt = -1;
 
   constructor(private readonly deps: RushDeps) {
     const { sim, player, slots, net } = deps;
@@ -189,10 +191,17 @@ export class RushMode {
       const y = this.deps.groundAt(gate.x, gate.z);
       burst(g.team === me.team ? ALLY : FOE, gate.x, y + 2.4, gate.z, 1.9);
       burst(GOLD, gate.x, y + 0.5, gate.z, 1.2);
+      // the scorer throws a fist to the sky (Rush.goal marked it as an action, so every end holds the pose)
+      this.deps.swing?.(g.scorer, 'ult');
+      this.cheerAt = 0;
       const near = Math.max(0, 1 - Math.hypot(me.x - gate.x, me.z - gate.z) / 30);
       this.deps.shake?.(0.15 + near * 0.35);
     }
     if (r.phase === 'play' && seen.phase === 'kickoff' && at) burst(GOLD, at.x, at.y, at.z, 0.9);
+    // and again a moment later
+    const cheer = r.phase === 'goal' && r.lastGoal ? RUSH.celebrate - r.timer : -1;
+    if (r.lastGoal && this.cheerAt >= 0 && this.cheerAt < RUSH.cheer.again && cheer >= RUSH.cheer.again) this.deps.swing?.(r.lastGoal.scorer, 'ult');
+    this.cheerAt = cheer;
     this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, goals: r.goalCount, phase: r.phase };
   }
 

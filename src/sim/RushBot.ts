@@ -130,7 +130,14 @@ export class RushBot implements Brain {
     while (c.unspentPoints > 0 && this.build.some((id) => c.allocate(id) === null));
     if (!u.alive || u.forced || rush.frozen) return;
     if (rush.phase === 'goal') {
-      // the celebration: drift back toward the kickoff line
+      // the celebration: the scorer stands and cheers while their team runs over to them, then everyone drifts back toward the kickoff line
+      const g = rush.lastGoal;
+      const t = RUSH.celebrate - rush.timer;
+      if (g && g.scorer === u && t < RUSH.cheer.scorerHold) return;
+      if (g && g.team === u.team && g.scorer !== u && t < RUSH.cheer.mobUntil) {
+        this.walkTo(g.scorer, 2.2);
+        return;
+      }
       this.walkTo({ x: u.x * 0.6, z: (u.team === 'order' ? 1 : -1) * 9 }, 2);
       return;
     }

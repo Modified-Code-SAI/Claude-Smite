@@ -37,6 +37,12 @@ export const RUSH = {
   countdown: 3,
   /** Seconds between a goal and the next kickoff. */
   celebrate: 3.5,
+  /**
+   * The celebration: the scorer pumps a fist to the sky as it goes in and again
+   * this many seconds later, holding their spot for `scorerHold` seconds while
+   * their teammates run over to them (bots; see RushBot).
+   */
+  cheer: { again: 0.9, scorerHold: 1.6, mobUntil: 2.6 },
   /** The field is a circle around the temple; nothing walks or lands beyond it. */
   pitchRadius: 32,
   /** The gateway each team defends: the relic carried (or thrown low) through it scores. */
@@ -305,7 +311,10 @@ export class Rush {
       return;
     }
     if (this.phase === 'goal') {
+      const was = RUSH.celebrate - this.timer;
       this.timer -= dt;
+      // the scorer's second fist pump, drawn as an action like the first (see goal())
+      if (this.lastGoal && was < RUSH.cheer.again && RUSH.celebrate - this.timer >= RUSH.cheer.again) this.lastGoal.scorer.sinceAction = 0;
       if (this.timer <= 0) this.startKickoff();
       return;
     }
@@ -571,6 +580,8 @@ export class Rush {
     this.lastPass = null;
     this.lastGoal = { team, scorer, assist, kind, at: this.sim.time };
     this.goalCount++;
+    // the scorer's cheer is drawn as an action (see RushMode), so it reaches guests with the god's state
+    scorer.sinceAction = 0;
     if (this.overtime || this.score[team] >= RUSH.goals) {
       this.winner = team;
       this.phase = 'over';

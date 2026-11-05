@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { GodModel } from '../actors/GodModel';
+import type { CastKind, GodModel } from '../actors/GodModel';
 import { createGodModel } from './godModels';
 import { float, fract, length, mix, mx_noise_float, positionGeometry, smoothstep, uv, vec3 } from '../render/tsl';
 import type { StructureKind } from '../sim/factory';
@@ -309,9 +309,9 @@ export class UnitViews {
   }
 
   /** Hit-stop on a god's pose (the player's included); other units just wobble. */
-  /** A swing of the arm without an attack (Relic Rush's throw). */
-  swing(u: Unit): void {
-    (u === this.player ? this.playerModel : this.views.get(u)?.model)?.startCast('basic');
+  /** A move of the arms without an attack: Relic Rush's throw (a basic swing) and a scorer's cheer (the ultimate's arms to the sky). */
+  swing(u: Unit, kind: CastKind = 'basic'): void {
+    (u === this.player ? this.playerModel : this.views.get(u)?.model)?.startCast(kind);
   }
 
   hitStop(u: Unit, seconds: number): void {
