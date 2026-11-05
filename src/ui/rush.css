@@ -72,6 +72,19 @@
 .rush-award[data-award='mvp'] { box-shadow: 0 0 0 1px rgba(255, 211, 74, 0.75), 0 0 22px rgba(255, 190, 60, 0.35), 0 6px 18px rgba(0, 0, 0, 0.45); }
 .rush-mvp { margin-right: 6px; color: #ffd34a; text-shadow: 0 0 8px rgba(255, 200, 80, 0.8); }
 @keyframes rush-award-in { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
-/* the first kickoff's fly-over: the gameplay HUD stands aside while the camera is up in the stands */
+/* the first kickoff's fly-over and the goal cam: the gameplay HUD stands aside while the camera is away */
 .rush-mode .combat-hud { transition: opacity 0.35s ease-out; }
-.rush-mode.rush-flyover .combat-hud, .rush-mode.rush-flyover .hud-hint { opacity: 0; }
+.rush-mode.rush-cine .combat-hud, .rush-mode.rush-cine .hud-hint, .rush-mode.rush-cine .coach, .rush-mode.rush-cine .hud-crosshair { opacity: 0; }
+/* the carrier's pass read: a marker over whoever would catch the throw, blue for a teammate, red for an enemy */
+.rush-catch { position: fixed; left: 0; top: 0; display: none; width: 90px; margin: -40px 0 0 -45px; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7)); }
+.rush-catch.show { display: block; }
+.rush-catch > span { display: flex; flex-direction: column; align-items: center; }
+.rush-catch.raised { margin-top: -86px; }
+.rush-catch b { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #d8ecff; text-shadow: 0 0 8px rgba(80, 170, 255, 0.9), 0 1px 2px #000; }
+.rush-catch i { display: block; width: 22px; height: 22px; animation: rush-catch-bob 0.9s ease-in-out infinite; }
+.rush-catch svg { width: 100%; height: 100%; fill: #4fb2ff; stroke: #e6f4ff; stroke-width: 1.6; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(79, 178, 255, 0.95)); }
+.rush-catch.foe b { color: #ffd9cf; text-shadow: 0 0 8px rgba(255, 70, 40, 0.9), 0 1px 2px #000; }
+.rush-catch.foe svg { fill: #ff3524; stroke: #ffe0c8; filter: drop-shadow(0 0 6px rgba(255, 60, 30, 0.95)); }
+.rush-catch.pop > span { animation: rush-call-pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.rush-mode.rush-cine .rush-catch { opacity: 0; }
+@keyframes rush-catch-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }

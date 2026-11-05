@@ -14,6 +14,7 @@ import { RushBot, RushCoach } from '../sim/RushBot';
 import type { Sim } from '../sim/Sim';
 import type { Unit } from '../sim/Unit';
 import { RushHud } from '../ui/RushHud';
+import { GOAL_CAM, goalCamSpot } from './goalCam';
 import { RushView } from './RushView';
 import type { GodPalette } from './palette';
 
@@ -58,6 +59,18 @@ export interface RushDeps {
 const FLYOVER = { sweep: 1.35, radius: [27, 19], height: [15, 8.5], orbitFor: 2.6, holdUntil: 1.75, backBy: 2.75 } as const;
 
 /** A teammate's call for the pass, placed over their head on screen. */
+/** Who would catch the local carrier's throw, placed over their head on screen. */
+export interface RushCatch {
+  x: number;
+  y: number;
+  ally: boolean;
+  name: string;
+  /** What the marker says: a pass, a cut-off or a keeper's save. */
+  label: string;
+  /** Raised above the bubble of a teammate who is calling for the pass. */
+  raised: boolean;
+}
+
 export interface RushCall {
   x: number;
   y: number;
@@ -185,7 +198,7 @@ export class RushMode {
       this.flyoverDone = true;
       if (this.flyover) set(null);
       this.flyover = null;
-      document.body.classList.remove('rush-flyover');
+      document.body.classList.remove('rush-cine');
       return;
     }
     const me = this.deps.player;
@@ -210,17 +223,65 @@ export class RushMode {
     shot.weight = 1 - back * back * (3 - 2 * back);
     set(shot.weight > 0.001 ? shot : null);
     // the action bar, health bars and nameplates stand aside while the camera is up in the stands
-    document.body.classList.toggle('rush-flyover', shot.weight > 0.4);
+    document.body.classList.toggle('rush-cine', shot.weight > 0.4);
+  }
+
+  /** The goal cam (see GOAL_CAM) for the goal it was set up for. */
+  private goalCam: { goal: number; shot: CameraShot } | null = null;
+
+  private goalCamFrame(dt: number): void {
+    const set = this.deps.cameraShot;
+    const r = this.rush;
+    const g = r.lastGoal;
+    if (!set) return;
+    if (r.phase !== 'goal' || !g) {
+      if (this.goalCam) {
+        set(null);
+        this.goalCam = null;
+        document.body.classList.remove('rush-cine');
+      }
+      return;
+    }
+    const ground = this.deps.groundAt;
+    const u = g.scorer;
+    if (!this.goalCam || this.goalCam.goal !== r.goalCount) {
+      const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
+      const best = goalCamSpot(u.x, u.z, gate);
+      this.goalCam = {
+        goal: r.goalCount,
+        shot: { pos: { x: best.x, y: ground(best.x, best.z) + GOAL_CAM.height, z: best.z }, look: { x: u.x, y: ground(u.x, u.z) + GOAL_CAM.look, z: u.z }, weight: 0 },
+      };
+    }
+    const shot = this.goalCam.shot;
+    // the look follows the scorer as they celebrate and their team mobs them
+    const k = 1 - Math.exp(-GOAL_CAM.follow * dt);
+    shot.look.x += (u.x - shot.look.x) * k;
+    shot.look.z += (u.z - shot.look.z) * k;
+    shot.look.y += (ground(u.x, u.z) + GOAL_CAM.look - shot.look.y) * k;
+    const dx = shot.look.x - shot.pos.x;
+    const dz = shot.look.z - shot.pos.z;
+    const gap = Math.hypot(dx, dz);
+    if (gap > GOAL_CAM.near && shot.weight > 0) {
+      const step = Math.min(GOAL_CAM.push * dt, gap - GOAL_CAM.near) / gap;
+      shot.pos.x += dx * step;
+      shot.pos.z += dz * step;
+    }
+    shot.pos.y += (ground(shot.pos.x, shot.pos.z) + GOAL_CAM.height - shot.pos.y) * k;
+    shot.weight = RUSH.celebrate - r.timer >= GOAL_CAM.cutAt ? 1 : 0;
+    set(shot.weight > 0 ? shot : null);
+    document.body.classList.toggle('rush-cine', shot.weight > 0.4);
   }
 
   frame(dt: number, time: number): void {
     this.flyoverFrame();
+    this.goalCamFrame(dt);
     this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time);
     this.beats();
     this.victory(dt);
     this.throws();
     this.hud.pointer(this.pointer());
     this.hud.calls(this.callouts());
+    this.hud.catcher(this.catchMarker());
     this.hud.frame(dt);
   }
 
@@ -314,6 +375,24 @@ export class RushMode {
       out.push({ x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h, name: g === me ? 'You' : g.name, mine: g === me, age: ago / RUSH.call.time });
     }
     return out;
+  }
+
+  /** The marker over whoever would catch the local carrier's throw (see RushView.read). */
+  private catchMarker(): RushCatch | null {
+    const by = this.view.read?.catcher;
+    const me = this.deps.player;
+    if (!by || !by.alive) return null;
+    const cam = this.deps.camera;
+    const head = this.deps.headOf(by, this.v);
+    if (!head) return null;
+    head.y += 0.9;
+    cam.getWorldDirection(this.fwd);
+    if (this.fwd.dot(this.toHead.copy(head).sub(cam.position)) < 0) return null;
+    const p = head.project(cam);
+    if (Math.abs(p.x) > 1.05 || Math.abs(p.y) > 1.05) return null;
+    const ally = by.team === me.team;
+    const label = ally ? 'Pass' : this.rush.shotOnTarget(me, me.aim) ? 'Save' : 'Cut off';
+    return { x: ((p.x + 1) / 2) * window.innerWidth, y: ((1 - p.y) / 2) * window.innerHeight, ally, name: by.name, label, raised: ally && this.rush.calledAgo(by) !== null };
   }
 
   /**

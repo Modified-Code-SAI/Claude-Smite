@@ -200,6 +200,56 @@ describe('Relic Rush', () => {
     expect(onTarget).toBeLessThan(36);
   });
 
+  it('the pass read names who catches a throw: a teammate, an enemy cutting it off, a keeper, or nobody', () => {
+    const gz = RUSH.gates.chaos.z;
+    const wrong: string[] = [];
+    const seen = { mate: 0, foe: 0, goal: 0, none: 0 };
+    const spots = [[0, -10], [-6, -14], [5, -18], [0, gz + 2], [-3, -4], [9, -8]] as const;
+    for (const [mx, mz] of spots) {
+      // the enemy elsewhere, off the pitch, or on the line: just short of the teammate, or right in front of the thrower
+      const d = Math.hypot(mx, mz - 2);
+      const along = (k: number) => [(mx * k) / d, 2 + ((mz - 2) * k) / d] as const;
+      for (const [fx, fz] of [...spots, [30, 0], along(d - 1.6), along(2.2)] as const) {
+        for (const moving of [false, true]) {
+          const { sim, rush } = match();
+          const a = god(sim, loki, 'order', 0);
+          const mate = god(sim, thor, 'order', 1);
+          const foe = god(sim, anubis, 'chaos', 0);
+          rush.begin([a, mate, foe]);
+          run(sim, rush, RUSH.countdown + 0.1);
+          sim.teleport(a, 0, 2);
+          sim.teleport(mate, mx, mz);
+          sim.teleport(foe, fx, fz);
+          Object.assign(rush.relic, { phase: 'loose', x: 0, z: 2 });
+          run(sim, rush, 0.4);
+          expect(rush.holder).toBe(a);
+          if (moving) {
+            mate.move = { x: 0.6, z: -0.8 };
+            foe.move = { x: -1, z: 0 };
+            run(sim, rush, 0.3);
+          }
+          {
+            const aim = { x: mate.x, z: mate.z };
+            const read = rush.passRead(a, aim);
+            expect(rush.throwRelic(a, aim)).toBe(true);
+            run(sim, rush, 3, () => rush.phase !== 'play' || rush.relic.phase !== 'flying');
+            const goal = rush.score.order === 1;
+            const caught = rush.relic.phase === 'held' ? rush.holder : null;
+            const said = read.goal ? 'goal' : read.catcher?.name ?? 'nobody';
+            const was = goal ? 'goal' : caught?.name ?? 'nobody';
+            seen[read.goal ? 'goal' : read.catcher === mate ? 'mate' : read.catcher === foe ? 'foe' : 'none']++;
+            if (said !== was) wrong.push(`mate ${mx},${mz} foe ${fx},${fz}${moving ? ' moving' : ''}: read ${said}, was ${was}`);
+          }
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+    // the grid has every kind of outcome in it
+    expect(seen.mate).toBeGreaterThan(5);
+    expect(seen.foe).toBeGreaterThan(5);
+    expect(seen.goal + seen.none).toBeGreaterThan(0);
+  });
+
   it('first to five wins; a tie at the end of the clock goes to golden-relic overtime', () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);
