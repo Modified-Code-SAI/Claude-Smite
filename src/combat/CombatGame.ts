@@ -14,7 +14,7 @@ import { dummyUnit, godUnit, summonUnit } from '../sim/factory';
 import { LaneBot, ROLES, spawnPoint, type BotRole } from '../sim/LaneBot';
 import { conquestBases, Match } from '../sim/Match';
 import { angleBetween, MELEE_ARC, Sim, type BaseZone, type SimTerrain } from '../sim/Sim';
-import { isStructure, Unit, WORLD_SCALE, type Body, type SimEvent } from '../sim/Unit';
+import { isStructure, Unit, WORLD_SCALE, type Body, type Point, type SimEvent } from '../sim/Unit';
 import { CombatHud } from '../ui/CombatHud';
 import { LoadoutMenu } from '../ui/LoadoutMenu';
 import { MatchHud } from '../ui/MatchHud';
@@ -49,6 +49,8 @@ import type { Descent } from '../sim/Descent';
 import { DescentMode } from './DescentMode';
 import type { DescentCue } from './DescentView';
 import { JOTUNN, type Jotunn } from '../sim/Jotunn';
+import { BotComms } from '../sim/BotComms';
+import { PingMode, type PingSound } from './PingMode';
 import { GIANT_CAMERA, JotunnMode, type JotunnRole } from './JotunnMode';
 import type { Fire } from '../scene/Effects';
 
@@ -106,6 +108,8 @@ export class CombatGame implements Updatable {
   ownGod!: Unit;
   /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls; souls reaching the player and the dead climbing out of the floor in Underworld Descent. */
   onCue: ((name: 'step' | DescentCue, at: { x: number; y: number; z: number }, k: number) => void) | null = null;
+  /** A ping went up for the player's team (set by GameAudio): its sound, and whether it was the player's own. */
+  onPing: ((sound: PingSound, mine: boolean) => void) | null = null;
   bot: Unit | null = null;
   readonly match: Match | null = null;
   private readonly matchHud: MatchHud | null = null;
@@ -157,6 +161,12 @@ export class CombatGame implements Updatable {
   private netGuest: NetGuest | null = null;
   /** Whether the basic attack button is held this frame (sent to the host by a guest). */
   private basicHeld = false;
+  /** The ping wheel and the team's pings, and the bots answering them. */
+  private readonly pings: PingMode;
+  private readonly comms: BotComms;
+  /** The ground under the crosshair (unclamped, unlike the aim) and how far along the camera's ray it is. */
+  private crosshair: Point | null = null;
+  private crossT = 140;
 
   constructor(private readonly deps: CombatDeps) {
     const { world, player } = deps;
@@ -271,7 +281,7 @@ export class CombatGame implements Updatable {
     this.setPlayerModel(mine.id);
 
     this.hud = new CombatHud(this.player, deps.camera, (u, out) => this.views.headOf(u, out));
-    this.coach = new Coach(this.player, () => this.menu.isOpen, !duel, rush);
+    this.coach = new Coach(this.player, () => this.menu.isOpen, !duel, rush, () => this.hasAllies());
     this.menu = new LoadoutMenu(
       conquest || clash || siege || duel || rush || descent || jotunn
         ? { combatant: () => this.player.combatant, gods: GODS, onClose: () => undefined }
@@ -288,6 +298,29 @@ export class CombatGame implements Updatable {
           },
     );
 
+    // the host's (or a lone player's) bots answer pings; a guest's copy only shows them
+    this.comms = new BotComms(this.sim, () => this.match, () => !this.netGuest);
+    this.pings = new PingMode({
+      sim: this.sim,
+      input: deps.input,
+      camera: deps.camera,
+      groundAt: this.groundAt,
+      parent: world.vfx,
+      player: () => this.player,
+      headOf: (u, out) => this.views.headOf(u, out),
+      aim: () => this.pingAim(),
+      send: (k, x, z, subject) => {
+        if (!this.netGuest) return this.sim.ping(this.player, k, x, z, subject);
+        this.netGuest.ping(k, x, z, subject);
+        return null;
+      },
+      guest: () => !!this.netGuest,
+      enabled: () => this.inFight && !this.jotunnMode?.piloting,
+      pillar: (p, x, z, size, width) => this.vfx.pillar(p, x, z, size, width),
+      deny: (text) => this.hud.toast(text, 'warn'),
+    });
+    this.pings.onSound = (sound, mine) => this.onPing?.(sound, mine);
+
     if (conquest) {
       this.match = new Match(this.sim, godById('zeus')!);
       // build the bots' jungle paths while the map loads, not mid-match
@@ -301,6 +334,7 @@ export class CombatGame implements Updatable {
         this.addTeam('chaos', GODS, ROLES, [0, 1, 2, 3, 4]);
       }
       this.matchHud = new MatchHud(this.match, this.player);
+      this.matchHud.pings = this.pings.mapMarks;
       this.sim.drainEvents();
       return;
     }
@@ -649,7 +683,7 @@ export class CombatGame implements Updatable {
   prime(): () => void {
     this.views.prime(this.sim.units);
     // (lane minions only march in Conquest)
-    const restore = [this.vfx.prime(), this.status.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : []), ...(this.descentMode ? [this.descentMode.view.prime()] : []), ...(this.jotunnMode ? [this.jotunnMode.prime()] : [])];
+    const restore = [this.vfx.prime(), this.status.prime(), this.pings.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : []), ...(this.descentMode ? [this.descentMode.view.prime()] : []), ...(this.jotunnMode ? [this.jotunnMode.prime()] : [])];
     return () => {
       for (const r of restore) r();
     };
@@ -683,6 +717,7 @@ export class CombatGame implements Updatable {
       this.descentMode?.step(dt);
       this.jotunnMode?.step(dt);
       this.sim.step(dt);
+      this.comms.step();
       this.jotunnMode?.afterStep();
       this.netHost?.afterStep(dt);
       this.views.afterStep(this.sim.units);
@@ -731,7 +766,14 @@ export class CombatGame implements Updatable {
     if (this.menu.isOpen && input.wasPressed('Escape')) this.menu.close();
 
     this.basicHeld = false;
-    if (!this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && this.jotunn?.phase !== 'done') this.handleCombatInput();
+    // the ping wheel takes the mouse while it is up: no basic attack, and the click that sends a call doesn't swing
+    const pinging = this.pings.busy;
+    this.pings.controls(dt);
+    if (pinging || this.pings.busy) {
+      this.suppressBasic = true;
+      this.cancelPreview();
+    }
+    if (this.inFight) this.handleCombatInput();
     this.netGuest?.syncBuild();
 
     for (const e of this.sim.drainEvents()) {
@@ -742,11 +784,13 @@ export class CombatGame implements Updatable {
       this.clashHud?.onEvent(e);
       this.descentMode?.onEvent(e);
       this.jotunnMode?.onEvent(e);
+      this.pings.onEvent(e);
       this.feel(e);
       if ((e.type === 'levelUp' || e.type === 'reward' || e.type === 'recall') && e.unit === this.player) this.menu.refresh();
     }
 
     this.views.frame(this.sim.units, dt, alpha, time);
+    this.pings.frame(dt);
     this.matchHud?.frame(dt, this.sim.units, input.isDown('Tab'));
     this.clashHud?.frame(dt);
     this.siegeHud?.frame();
@@ -802,6 +846,46 @@ export class CombatGame implements Updatable {
   }
 
   private wasInBase = true;
+
+  /** Whether the fight takes input: no menu up, and the match isn't over or counting down. */
+  private get inFight(): boolean {
+    return !this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && this.jotunn?.phase !== 'done';
+  }
+
+  /** Another god on the player's team, bot or human: someone to ping. */
+  private hasAllies(): boolean {
+    const me = this.player;
+    return this.sim.units.some((u) => u !== me && u.kind === 'god' && u.team === me.team);
+  }
+
+  /**
+   * What a ping marks: the ground under the crosshair, and the unit the
+   * camera's center ray passes through first (an ally, or a visible enemy).
+   */
+  private pingAim(): { point: Point; unit: Unit | null } {
+    const cam = this.deps.camera;
+    const dir = cam.getWorldDirection(this.ray);
+    const o = cam.position;
+    const me = this.player;
+    let best: Unit | null = null;
+    let bestT = Infinity;
+    for (const u of this.sim.units) {
+      if (u === me || !u.alive) continue;
+      if (u.team !== me.team && (u.stealth > 0 || !u.targetable)) continue;
+      // the ray's closest pass by the middle of the unit's body
+      const px = u.x - o.x;
+      const py = u.body.y + Math.min(2.4, Math.max(1, u.radius * 1.4)) - o.y;
+      const pz = u.z - o.z;
+      const t = px * dir.x + py * dir.y + pz * dir.z;
+      if (t < 1 || t > this.crossT + u.radius + 2) continue;
+      const mx = px - dir.x * t;
+      const my = py - dir.y * t;
+      const mz = pz - dir.z * t;
+      if (Math.sqrt(mx * mx + my * my + mz * mz) > u.radius + 0.6 + t * 0.012) continue;
+      if (t < bestT) [bestT, best] = [t, u];
+    }
+    return { point: this.crosshair ?? { x: me.aim.x, z: me.aim.z }, unit: best };
+  }
 
   private toggleMenu(): void {
     if (this.menu.isOpen) {
@@ -1017,15 +1101,19 @@ export class CombatGame implements Updatable {
     const dir = cam.getWorldDirection(this.ray);
     const o = cam.position;
     let hit: { x: number; z: number } | null = null;
+    let at = 140;
     for (let t = 1; t < 140; t += 0.5) {
       const x = o.x + dir.x * t;
       const y = o.y + dir.y * t;
       const z = o.z + dir.z * t;
       if (y <= this.groundAt(x, z)) {
         hit = { x, z };
+        at = t;
         break;
       }
     }
+    this.crosshair = hit && { ...hit };
+    this.crossT = at;
     const f = u.forward;
     if (!hit) hit = { x: u.x + f.x * 60, z: u.z + f.z * 60 };
     // never aim behind the god (steep camera angles can hit the ground between camera and god)

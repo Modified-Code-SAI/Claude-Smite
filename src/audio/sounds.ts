@@ -187,6 +187,19 @@ export const SOUNDS: Record<string, Recipe> = {
   'ui.point': { peak: 0.5, make: (r) => layer([chime(r, 0.6, 1318.5), 1], [chime(r, 0.6, 1975.5, { at: 0.04 }), 0.5]) },
   'ui.toast': { peak: 0.3, make: (r) => chime(r, 0.4, 987.8) },
 
+  // -- pings: a low knock under a bell, each kind its own color of sound
+  // look here: a soft wooden tap and a single clear bell
+  'ping.look': { variants: 2, peak: 0.5, make: (r) => tail(layer([thump(r, 0.18, 120, 70, { click: 0.25, noise: 0.1 }), 0.8], [knock(r, 0.05, 1100), 0.35], [chime(r, 0.55, 659.3), 0.9, 0.01]), 0.5, 0.18) },
+  // attack: a driven drum hit with a struck bronze ring over it
+  'ping.attack': { variants: 2, peak: 0.6, make: (r) => tail(layer([thump(r, 0.3, 96, 40, { click: 0.55, drive: 2.4, noise: 0.25 }), 1], [clang(r, 0.7, 196, { bright: 0.7, decay: 0.45 }), 0.55, 0.005], [chime(r, 0.3, 880), 0.35, 0.02]), 0.55, 0.2) },
+  // fall back, enemy missing, need help: a low two-note brass warning falling a fourth over a deep pulse
+  'ping.warn': { variants: 2, peak: 0.6, make: (r) => tail(layer([thump(r, 0.26, 82, 44, { click: 0.3, drive: 1.6 }), 0.9], [horn(r, 0.34, [196, 293.7]), 0.75], [horn(r, 0.42, [146.8, 220]), 0.8, 0.16], [chime(r, 0.4, 587.3), 0.3, 0.16]), 0.6, 0.22) },
+  // on my way, group up, ultimate, thanks: a warm rising pair of bells over a soft drum
+  'ping.call': { variants: 2, peak: 0.5, make: (r) => tail(layer([thump(r, 0.2, 110, 60, { click: 0.22, noise: 0.08 }), 0.75], [chime(r, 0.45, 784), 0.8, 0.01], [chime(r, 0.55, 1174.7), 0.65, 0.08]), 0.5, 0.2) },
+  // the wheel opening and a wedge lighting
+  'ping.wheel': { peak: 0.3, make: (r) => layer([whoosh(r, 0.18, 300, 1400, { q: 1.1 }), 0.8], [thump(r, 0.1, 140, 90, { click: 0.1, noise: 0 }), 0.5]) },
+  'ping.tick': { variants: 3, peak: 0.16, make: (r) => { const k = 0.94 + r() * 0.12; return layer([knock(r, 0.03, 1500 * k), 1], [sine(0.05, 520 * k, 0.4), 1]); } },
+
   // -- ambience
   'amb.wind': { loop: true, peak: 0.5, make: (r) => windBed(r, 12) },
   'amb.leaves': { loop: true, peak: 0.4, make: (r) => leavesBed(r, 9) },

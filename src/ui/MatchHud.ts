@@ -28,6 +28,8 @@ const MAP_INTERVAL = 0.05;
  * the victory or defeat screen.
  */
 export class MatchHud {
+  /** The team's pings, drawn on the minimap as pulsing rings (PingMode.mapMarks). */
+  pings: readonly { x: number; z: number; color: number; age: number }[] = [];
   readonly root: HTMLDivElement;
   private readonly kills: Record<Team, HTMLSpanElement>;
   private readonly clockText: HTMLSpanElement;
@@ -284,6 +286,26 @@ export class MatchHud {
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       g.fillText(u.name[0]!, x, y + 0.5);
+    }
+    // pings: a ring pulsing out around a bright dot, in the call's color
+    for (const p of this.pings) {
+      const [x, y] = this.toMap(p.x, p.z);
+      const col = hex(p.color);
+      const k = (p.age % 1) / 1;
+      g.globalAlpha = 1 - k;
+      g.beginPath();
+      g.arc(x, y, 4 + k * 9, 0, Math.PI * 2);
+      g.strokeStyle = col;
+      g.lineWidth = 2;
+      g.stroke();
+      g.globalAlpha = 1;
+      g.beginPath();
+      g.arc(x, y, 3, 0, Math.PI * 2);
+      g.fillStyle = col;
+      g.fill();
+      g.lineWidth = 1;
+      g.strokeStyle = '#fff';
+      g.stroke();
     }
   }
 

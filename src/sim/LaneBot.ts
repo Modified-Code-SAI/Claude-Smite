@@ -277,7 +277,8 @@ export class LaneBot implements Brain {
   /** Walk along the lane instead of cutting through the jungle walls; junglers path through the jungle. */
   private route(goal: Point): Point {
     const { u } = this;
-    if (this.role === 'roam' || this.camp) return this.jungleRoute(goal);
+    // a teammate's call can lead anywhere: path there through the jungle
+    if (this.role === 'roam' || this.camp || this.bot.order?.kind === 'come') return this.jungleRoute(goal);
     const me = nearestOnPolyline(this.path, u.x, u.z);
     const there = nearestOnPolyline(this.path, goal.x, goal.z);
     if (me.distance > OFF_LANE) {

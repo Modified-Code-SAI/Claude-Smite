@@ -103,6 +103,7 @@ export const CONTROLS: [string, string][] = [
   ['1  2  3', 'Skills: press to aim, press again or click to cast, right click cancels'],
   ['4 or R', 'Ultimate (unlocks at level 5)'],
   ['B', 'Recall to the fountain'],
+  ['G (hold)', 'Ping wheel: attack, on my way, group up, fall back and more. Tap G or middle click to ping what you aim at'],
   ['F', 'Relic Rush: call for the pass'],
   ['Z  X  C', 'Temple Siege and Underworld Descent: pick a boon, a reward or a skill'],
   ['K', 'Skills & trees: spend points; swap skills at the fountain'],

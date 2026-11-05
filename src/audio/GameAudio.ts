@@ -82,6 +82,13 @@ export class GameAudio {
     engine.onUnlock(() => this.startAmbience());
     this.music.play(this.conquest ? 'dawn' : game.descent ? 'abyss' : game.jotunn ? 'frost' : 'battle');
     // the giant's footfalls come from its model, so each lands with the foot; souls reaching you rise in pitch along a run
+    // pings are the team's voice: flat, heard anywhere on the map, your own softer
+    game.onPing = (sound, mine) => {
+      if (!this.engine.ready) return;
+      if (sound === 'wheel') this.engine.play('ping.wheel', { bus: 'ui', gain: 0.45 }, 2);
+      else if (sound === 'tick') this.engine.play('ping.tick', { bus: 'ui', gain: 0.5 }, 1, 0.03);
+      else this.engine.play(`ping.${sound}`, { bus: 'ui', gain: mine ? 0.55 : 0.85, vary: 0.02 }, 3, 0.08);
+    };
     game.onCue = (name, at, k) => {
       if (!this.engine.ready) return;
       if (name === 'step') this.engine.play('step.giant', { at, gain: 0.45 + 0.55 * k, vary: 0.05, ref: 26 }, 3);
