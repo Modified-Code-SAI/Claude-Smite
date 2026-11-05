@@ -5,6 +5,24 @@ import { ROLES, type BotRole } from '../sim/LaneBot';
 /** Co-op puts every human on Order against bots; versus splits the humans across both teams. */
 export type NetMode = 'coop' | 'versus';
 
+/** A kind of lobby a game mode can host online (its title-screen entry lists them). */
+export interface NetHostOption {
+  mode: NetMode;
+  /** The button's label and the line under it. */
+  label: string;
+  text: string;
+  /** Most players in the lobby. */
+  cap: number;
+}
+
+/** What the lobby needs to know about a game mode. */
+export interface NetGameInfo {
+  id: string;
+  name: string;
+  /** Empty when the mode can't be played online yet. */
+  hosts: readonly NetHostOption[];
+}
+
 export interface NetPlayer {
   /** The player's peer id. */
   id: string;

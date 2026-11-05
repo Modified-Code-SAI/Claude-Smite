@@ -59,6 +59,11 @@ export class NetSession {
   private early: [string, Msg][] = [];
   private readonly conns = new Map<string, DataConnection>();
 
+  /** The game mode the lobby plays (the title screen's mode id: 'conquest', …). */
+  game = 'conquest';
+  /** Most players the lobby takes (host only). */
+  cap = TEAM_SIZE;
+
   private constructor(
     readonly role: 'host' | 'guest',
     public mode: NetMode,
@@ -75,8 +80,11 @@ export class NetSession {
     return this.role === 'host';
   }
 
-  /** Open a lobby with a fresh code. */
-  static host(mode: NetMode, god: string): Promise<NetSession> {
+  /**
+   * Open a lobby with a fresh code, for a game mode (Conquest by default) and
+   * at most `cap` players (Conquest's five a team by default).
+   */
+  static host(mode: NetMode, god: string, game = 'conquest', cap = mode === 'coop' ? TEAM_SIZE : TEAM_SIZE * 2): Promise<NetSession> {
     return new Promise((resolve, reject) => {
       const attempt = (tries: number) => {
         const code = newCode();
@@ -85,6 +93,8 @@ export class NetSession {
         peer.on('open', () => {
           open = true;
           const s = new NetSession('host', mode, code, peer);
+          s.game = game;
+          s.cap = cap;
           s.players = [{ id: peer.id, name: 'Player 1', god, team: 'order' }];
           peer.on('connection', (c) => s.accept(c));
           resolve(s);
@@ -159,7 +169,7 @@ export class NetSession {
   start(): void {
     if (!this.isHost || this.started) return;
     this.started = true;
-    this.broadcast({ t: 'start', mode: this.mode, players: this.players });
+    this.broadcast({ t: 'start', mode: this.mode, game: this.game, players: this.players });
     this.onStart();
   }
 
@@ -200,8 +210,7 @@ export class NetSession {
     switch (msg.t) {
       case 'hello': {
         if (!conn || !this.isHost) return;
-        const cap = this.mode === 'coop' ? TEAM_SIZE : TEAM_SIZE * 2;
-        const why = this.started ? 'That match has already started.' : this.players.length >= cap ? 'That lobby is full.' : null;
+        const why = this.started ? 'That match has already started.' : this.players.length >= this.cap ? 'That lobby is full.' : null;
         if (why) {
           conn.send(encode({ t: 'full', why }));
           setTimeout(() => conn.close(), 500);
@@ -220,12 +229,14 @@ export class NetSession {
         return;
       case 'lobby':
         this.mode = msg.mode as NetMode;
+        this.game = (msg.game as string | undefined) ?? 'conquest';
         this.players = msg.players as NetPlayer[];
         this.onLobby();
         return;
       case 'start':
         if (this.isHost || this.started) return;
         this.mode = msg.mode as NetMode;
+        this.game = (msg.game as string | undefined) ?? 'conquest';
         this.players = msg.players as NetPlayer[];
         this.started = true;
         this.onStart();
@@ -244,7 +255,7 @@ export class NetSession {
   }
 
   private changed(): void {
-    this.broadcast({ t: 'lobby', mode: this.mode, players: this.players });
+    this.broadcast({ t: 'lobby', mode: this.mode, game: this.game, players: this.players });
     this.onLobby();
   }
 

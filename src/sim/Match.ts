@@ -128,11 +128,27 @@ export class Match {
     return { time: this.time, wave: this.wave, next: this.nextWave, winner: this.winner };
   }
 
-  applyNet(s: { time: number; wave: number; next: number; winner: Team | null }): void {
+  applyNet(state: unknown): void {
+    const s = state as ReturnType<Match['netState']>;
     this.time = s.time;
     this.wave = s.wave;
     this.nextWave = s.next;
     this.winner = s.winner;
+  }
+
+  /** Each firing structure and its target, for a guest's targeting beams. */
+  *netTargets(): Iterable<readonly [Unit, Unit]> {
+    for (const [s, brain] of this.brains) if (brain.current) yield [s, brain.current];
+  }
+
+  /** On a guest: monster tags start with their camp's id, and the minimap reads camps from their members. */
+  netAdded(u: Unit): void {
+    if (u.kind !== 'monster') return;
+    const id = u.tag.slice(0, u.tag.lastIndexOf(':'));
+    const camp = this.jungle.camps.find((c) => c.camp.id === id);
+    if (!camp) return;
+    if (!camp.members.some((m) => m.alive && this.sim.units.includes(m))) camp.members.length = 0;
+    camp.members.push(u);
   }
 
   /** The structure a team must break next in a lane, or its Titan when the lane is open. */

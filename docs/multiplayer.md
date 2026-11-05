@@ -21,6 +21,19 @@ Only the host runs the simulation (`NetHost` in `NetGame.ts`). Bots think there,
 
 Guests (`GuestSync`) never step the simulation. They draw the match 0.12 s in the past, interpolating positions between snapshots, and apply each snapshot's events and state when the delayed clock reaches it. Events go to the same views, effects, HUD and audio as in a single-player match; the guest's match drops its own event listeners so nothing is counted twice.
 
+## Online play for any mode
+
+The lobby hosts whatever mode the title screen has selected. A mode's entry in `MODES` (`src/ui/StartMenu.ts`) lists the lobbies it offers in `net` (co-op and/or versus, each with a player cap); a mode without `net` is single player. The lobby and start messages carry the mode's id (`NetSession.game`), so a guest who joins by code or link lands on the host's mode.
+
+To make a mode playable online, its setup in `CombatGame` builds the same units in the same order on every end (from `net.players`), then:
+
+- **Host:** `new NetHost(session, sim, toBot, toast)`, `host.assign(playerId, unit)` for each guest's unit, then `host.bind(netMatch, roster)`. `roster.slots` are the god slots and `roster.structures` any other units both ends build up front, by name.
+- **Guest:** `new NetGuest(session, sim, netMatch, roster, myUnit, controller)`, and clear `sim.listeners` (the host's events arrive ready-made).
+- **`NetMatch`** (`Replica.ts`) is the mode's side of the snapshot: `netState()`/`applyNet()` for its own state (score, phase, clock), optional `gods`/`stats` for the scoreboard, `netTargets()` for targeting beams, and `netSpawn()` for units the mode makes mid-match (give them `origin: { f: 'mode', kind, data }`). Conquest's `Match` implements it.
+- **Mode messages:** `guest.act({ ... })` reaches `host.onAct(unit, msg)` with that guest's unit (a vote, a throw). `host.basic` carries out a guest's held basic attack and can be replaced (a relic carrier throws instead).
+- **Moving a player:** `host.assign(player, otherUnit)` hands a guest another unit mid-match (a rotation). Their next snapshot says so; `guest.onSelf(unit)` must move the controller's body onto that unit (`unit.body = …`) before returning, and the controller then snaps to where the host has it.
+- Any `sim.teleport` of a guest's unit bumps their authority sequence, so teleporting gods between rooms needs nothing extra.
+
 ## Testing locally
 
 ```sh

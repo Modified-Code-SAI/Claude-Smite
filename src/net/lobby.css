@@ -22,3 +22,6 @@
 .sm-play.held { opacity: 0.35; pointer-events: none; }
 .net-status { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 28; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 22px; font: 16px 'Cinzel', Georgia, serif; letter-spacing: 0.06em; color: #ffe3a3; background: rgba(12, 10, 8, 0.88); border: 1px solid rgba(231, 194, 122, 0.5); border-radius: 6px; pointer-events: auto; text-align: center; }
 .net-status button { font: inherit; font-size: 14px; color: inherit; cursor: pointer; padding: 6px 16px; background: rgba(231, 194, 122, 0.15); border: 1px solid rgba(231, 194, 122, 0.5); border-radius: 4px; }
+/* while a lobby is open its mode stays picked */
+.sm-modes.held .sm-mode { pointer-events: none; }
+.sm-modes.held .sm-mode:not(.on) { opacity: 0.4; }

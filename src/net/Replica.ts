@@ -2,10 +2,30 @@ import type { CombatantNet, ResolvedSkill, Team } from '../game/combatant';
 import { godById, GODS } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { dummyUnit, godUnit, minionUnit, monsterUnit, summonUnit, type MinionType, type MonsterType } from '../sim/factory';
-import type { Match } from '../sim/Match';
+import type { GodStats } from '../sim/Match';
 import type { Sim } from '../sim/Sim';
-import { Unit, type Flash, type FlashShape, type Projectile, type SimEvent, type SpawnOrigin, type Zone } from '../sim/Unit';
+import { Unit, type Flash, type FlashShape, type Point, type Projectile, type SimEvent, type SpawnOrigin, type Zone } from '../sim/Unit';
 import type { Msg } from './Session';
+
+/**
+ * What a networked mode shares with guests besides its units. Conquest's
+ * Match is one; any mode that plays online provides one (see docs/multiplayer.md).
+ */
+export interface NetMatch {
+  /** The mode's own state (clock, score, phase…), sent whole with every snapshot, so keep it small. */
+  netState(): unknown;
+  /** A guest's copy takes the host's state when its delayed clock reaches that snapshot. */
+  applyNet(state: unknown): void;
+  /** Gods on the scoreboard and their tallies, copied to guests (optional). */
+  readonly gods?: readonly Unit[];
+  readonly stats?: Map<Unit, GodStats>;
+  /** Structures and what each is shooting at, for the targeting beams (optional). */
+  netTargets?(): Iterable<readonly [Unit, Unit]>;
+  /** On a guest: build a unit the mode made on the host (origin `{ f: 'mode' }`); null skips it. */
+  netSpawn?(origin: Extract<SpawnOrigin, { f: 'mode' }>, team: Team, at: Point & { yaw: number }, owner: Unit | null): Unit | null;
+  /** On a guest: a copy of a host unit was just added (Conquest's camps count their monsters). */
+  netAdded?(u: Unit): void;
+}
 
 /*
  * The host's match, copied to guests. The host sends a snapshot 20 times a
@@ -61,7 +81,10 @@ interface Spawn {
 
 type EncCast = Omit<ResolvedSkill, 'skill'> & { skill: string };
 
-/** The units both ends build the same way at the start, by role: god slots in roster order, structures by id. */
+/**
+ * The units both ends build the same way at the start: god slots in order,
+ * and any other units by name (Conquest's structures, a mode's fixtures).
+ */
 export interface Roster {
   slots: Unit[];
   structures: Map<string, Unit>;
@@ -80,10 +103,13 @@ export interface Snapshot extends Msg {
   p: unknown[][];
   z: unknown[][];
   f: unknown[][];
-  m: ReturnType<Match['netState']>;
+  /** The mode's own state (NetMatch.netState). */
+  m: unknown;
   s?: [number, number[]][];
   /** What each firing structure is shooting at, for the targeting beams. */
   b: [number, number][];
+  /** The host id of the unit this guest now controls, when a mode moved them to another one. */
+  me?: number;
 }
 
 const end = (time: number, left: number) => (left > 0 ? time + left : 0);
@@ -105,6 +131,8 @@ const UNIT_KEYS = ['target', 'source', 'unit', 'owner', 'killer'] as const;
 
 interface GuestState {
   fresh: boolean;
+  /** The unit this guest controls, once a mode moved them (sent until acknowledged by the next snapshot). */
+  me: Unit | null;
   known: Set<number>;
   fast: Map<number, string>;
   detail: Map<number, string>;
@@ -121,7 +149,7 @@ export class HostSync {
 
   constructor(
     private readonly sim: Sim,
-    private readonly match: Match,
+    private readonly match: NetMatch,
     private readonly roster: Roster,
     /** A player's authority sequence: bumped when the host moves their god itself. */
     private readonly seq: (u: Unit) => number,
@@ -131,7 +159,13 @@ export class HostSync {
   }
 
   addGuest(id: string): void {
-    this.guests.set(id, { fresh: true, known: new Set(this.initial), fast: new Map(), detail: new Map(), stats: new Map() });
+    this.guests.set(id, { fresh: true, me: null, known: new Set(this.initial), fast: new Map(), detail: new Map(), stats: new Map() });
+  }
+
+  /** A mode moved this guest to another unit: tell them with their next snapshot. */
+  setSelf(id: string, u: Unit): void {
+    const g = this.guests.get(id);
+    if (g) g.me = u;
   }
 
   removeGuest(id: string): void {
@@ -160,10 +194,11 @@ export class HostSync {
     const f = sim.flashes.map((x) => [x.id, x.owner.id, x.shape, x.age, x.life]);
     const m = this.match.netState();
     const b: [number, number][] = [];
-    for (const [s, brain] of this.match.brains) if (brain.current) b.push([s.id, brain.current.id]);
-    const statRows = this.match.gods.map((g) => {
-      const s = this.match.stats.get(g)!;
-      return [g.id, [s.kills, s.deaths, s.assists, s.minions, s.structures, Math.round(s.damage)]] as [number, number[]];
+    for (const [s, t] of this.match.netTargets?.() ?? []) b.push([s.id, t.id]);
+    const stats = this.match.stats;
+    const statRows = (stats ? (this.match.gods ?? []) : []).flatMap((g) => {
+      const s = stats!.get(g);
+      return s ? [[g.id, [s.kills, s.deaths, s.assists, s.minions, s.structures, Math.round(s.damage)]] as [number, number[]]] : [];
     });
 
     const out: [string, Snapshot][] = [];
@@ -172,6 +207,11 @@ export class HostSync {
       if (g.fresh) {
         g.fresh = false;
         snap.ids = { slots: this.roster.slots.map((u) => u.id), structures: [...this.roster.structures].map(([k, u]) => [k, u.id]) };
+      }
+      if (g.me) {
+        // sent with every snapshot until the unit is known on their end, then once more is enough
+        snap.me = g.me.id;
+        if (g.known.has(g.me.id)) g.me = null;
       }
       const alive = new Set<number>();
       for (const u of units) {
@@ -312,6 +352,8 @@ export class GuestSync {
   /** Where this player's god is in the delayed picture (followed while the host moves it). */
   selfPlace: { x: number; y: number; z: number } | null = null;
   private selfId = 0;
+  /** Called when the host moves this player to another unit (a mode's rotation). */
+  onSelf: ((u: Unit) => void) | null = null;
   /** Whether the first snapshot (with the roster's ids) has arrived. */
   get live(): boolean {
     return this.selfId !== 0;
@@ -319,12 +361,17 @@ export class GuestSync {
 
   constructor(
     private readonly sim: Sim,
-    private readonly match: Match,
+    private readonly match: NetMatch,
     private readonly roster: Roster,
-    private readonly self: Unit,
+    private self: Unit,
     /** Structures and minions borrow this god's shape. */
     private readonly base = godById('zeus') ?? GODS[0]!,
   ) {}
+
+  /** The unit this player controls. */
+  get controlled(): Unit {
+    return this.self;
+  }
 
   receive(s: Snapshot): void {
     if (s.ids) this.mapRoster(s.ids);
@@ -390,6 +437,22 @@ export class GuestSync {
     for (const [id, u] of this.byId) if (u === this.self) this.selfId = id;
   }
 
+  /**
+   * The host moved this player to another unit. The mode's handler swaps the
+   * controller's body over first, so the old unit is drawn from snapshots again;
+   * the new unit's latest state (with the host's bumped authority sequence)
+   * then snaps the controller to where the host has it.
+   */
+  private moveSelf(id: number): void {
+    const u = this.byId.get(id);
+    if (!u) return;
+    this.selfId = id;
+    this.self = u;
+    this.selfPlace = null;
+    this.latestSelf = this.samples.get(id)?.at(-1)?.f ?? null;
+    this.onSelf?.(u);
+  }
+
   private place(u: Unit, a: Sample, b: Sample | undefined, rt: number): void {
     let f = a.f;
     if (b && rt > a.t) {
@@ -424,6 +487,7 @@ export class GuestSync {
   private apply(s: Snapshot): void {
     const sim = this.sim;
     for (const n of s.n) this.spawn(n);
+    if (s.me !== undefined && s.me !== this.selfId) this.moveSelf(s.me);
     for (const [id, d] of s.d) {
       const u = this.byId.get(id);
       if (!u) continue;
@@ -448,7 +512,7 @@ export class GuestSync {
     }
     for (const [id, row] of s.s ?? []) {
       const u = this.byId.get(id);
-      const st = u && this.match.stats.get(u);
+      const st = u && this.match.stats?.get(u);
       if (!st) continue;
       [st.kills, st.deaths, st.assists, st.minions, st.structures, st.damage] = row as [number, number, number, number, number, number];
     }
@@ -487,6 +551,9 @@ export class GuestSync {
         if (def) u = godUnit(def, n.team, at);
         break;
       }
+      case 'mode':
+        u = this.match.netSpawn?.(o, n.team, at, this.byId.get(n.owner) ?? null) ?? null;
+        break;
       default:
         return;
     }
@@ -497,16 +564,7 @@ export class GuestSync {
     u.body.yaw = n.yaw;
     this.byId.set(n.id, u);
     this.sim.add(u);
-    if (u.kind === 'monster') this.joinCamp(u);
-  }
-
-  /** Monster tags start with their camp's id; the minimap reads camps from their members. */
-  private joinCamp(u: Unit): void {
-    const id = u.tag.slice(0, u.tag.lastIndexOf(':'));
-    const camp = this.match.jungle.camps.find((c) => c.camp.id === id);
-    if (!camp) return;
-    if (!camp.members.some((m) => m.alive && this.sim.units.includes(m))) camp.members.length = 0;
-    camp.members.push(u);
+    this.match.netAdded?.(u);
   }
 
   private unit(id: unknown): Unit | null {
