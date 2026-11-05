@@ -4,6 +4,7 @@ import type { Unit } from '../sim/Unit';
 import type { RushCall } from '../combat/RushMode';
 import { addResult } from './records';
 import { awardLine } from './ascension';
+import { RushRadar } from './RushRadar';
 import './clash.css';
 import './rush.css';
 
@@ -47,6 +48,9 @@ export class RushHud {
   private cutOut = 0;
   private lastCut = '';
   private wasGoal = false;
+  /** The whole pitch at a glance, top right. */
+  private readonly radar: RushRadar;
+  private time = 0;
   /** Call-for-the-pass bubbles over teammates' heads, reused. */
   private readonly bubbles: { el: HTMLElement; name: HTMLElement; on: boolean; label: string }[] = [];
 
@@ -82,6 +86,8 @@ export class RushHud {
     this.end = this.root.querySelector('.clash-end')!;
     this.arrow = this.root.querySelector('.rush-pointer')!;
     this.cut = this.root.querySelector('.rush-cut')!;
+    this.radar = new RushRadar(rush, me, gods);
+    this.root.querySelector('.clash-bar')!.after(this.radar.el);
     const calls = this.root.querySelector('.rush-calls')!;
     for (let i = 0; i < 3; i++) {
       const el = document.createElement('div');
@@ -179,6 +185,8 @@ export class RushHud {
     this.wasKickoff = r.phase === 'kickoff';
     this.rushShow = Math.max(0, this.rushShow - dt);
     this.dip(dt);
+    this.time += dt;
+    if (!this.shownEnd) this.radar.frame(dt, this.time);
 
     const pips = `${r.score.order}:${r.score.chaos}`;
     if (pips !== this.lastPips) {
