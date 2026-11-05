@@ -122,6 +122,8 @@ export const SOUNDS: Record<string, Recipe> = {
   // Relic Rush: a pass whistling off, a clean catch, the relic knocked loose with a ring
   'relic.throw': { variants: 2, peak: 0.55, make: (r) => layer([whoosh(r, 0.5, 500, 2600, { q: 1.2, peak: 0.35, gain: 1.1 }), 1], [shimmer(r, 0.7, 880, { rise: 1.5, peak: 0.3 }), 0.5, 0.03]) },
   'relic.catch': { variants: 2, peak: 0.5, make: (r) => layer([chime(r, 0.6, 1318.5), 1], [knock(r, 0.05, 1800), 0.6], [shimmer(r, 0.5, 1046.5, { rise: 1.2, peak: 0.1 }), 0.4]) },
+  // a teammate calls for the pass: two quick rising notes, like a whistle
+  'relic.call': { variants: 2, peak: 0.45, make: (r) => layer([chime(r, 0.28, 1174.7), 0.8], [chime(r, 0.34, 1568), 0.95, 0.09]) },
   // a Captain keeps the relic through a hit: a bright deflecting ring
   'relic.shrug': { variants: 2, peak: 0.6, make: (r) => layer([clang(r, 0.8, 880, { decay: 0.45, gain: 0.5 }), 1], [shimmer(r, 0.6, 1318.5, { rise: 1.4, peak: 0.2 }), 0.6, 0.02], [thump(r, 0.25, 160, 60, { click: 0.4 }), 0.6]) },
   'relic.fumble': { variants: 2, peak: 0.7, make: (r) => layer([clang(r, 0.9, 660, { decay: 0.55, gain: 0.6 }), 1], [thump(r, 0.3, 120, 50, { click: 0.3 }), 0.8], [whoosh(r, 0.3, 2000, 700, { q: 1 }), 0.4, 0.04]) },

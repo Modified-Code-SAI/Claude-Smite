@@ -93,6 +93,8 @@ export const RUSH = {
   },
   /** A pass counts as an assist if its catcher scores within this long. */
   assistWindow: 8,
+  /** A call for the pass shows (and bots answer it) this long, and can't be repeated sooner than `gap`. */
+  call: { time: 2.5, gap: 1.2 },
 } as const;
 
 /** Crowd control that knocks the relic out of its carrier's hands. */
@@ -161,6 +163,8 @@ export interface RushNet {
   r: [RelicPhase, number, number, number, number, number, number, number, number, number, number, number, number, number, Side | null, number];
   l: [number, number, number, number, number, number][];
   ps: [number, number];
+  /** Seconds since each god called for the pass, -1 for none lately. */
+  cl: number[];
 }
 
 /** A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the relic through a hit. */
@@ -224,6 +228,8 @@ export class Rush {
   private noCatchAll = 0;
   /** The last completed pass, for assists. */
   private lastPass: { from: Unit; to: Unit; at: number } | null = null;
+  /** Sim time each god last called for the pass. */
+  private readonly calls = new Map<Unit, number>();
   /** The Captain keystone: spent for this possession, and the sim time its shrugged-off hit wears off. */
   private shrugUsed = false;
   private shrugUntil = 0;
@@ -321,9 +327,32 @@ export class Rush {
     if (this.sim.time - r.since < R.holdMin) return false;
     const to = this.throwTarget(u, at);
     const d = hypot(to.x - u.x, to.z - u.z);
+    // the thrower turns into the throw, and the views play it as a swing
+    if (d > 0.1) u.body.yaw = Math.atan2(-(to.x - u.x), -(to.z - u.z));
+    u.sinceAction = 0;
     this.launch(u, to.x, to.z, u, R.carryHeight, undefined, Rush.flightTime(d, u.combatant.sport('throwSpeed')));
     this.noCatch.set(u, this.sim.time + R.selfCatch);
     return true;
+  }
+
+  /**
+   * A god calls for the pass (F, or a bot that is open): their teammates see
+   * it over their head, and a bot carrier passes to them if it can.
+   */
+  call(u: Unit): boolean {
+    if (this.phase !== 'play' || !u.alive || this.relic.holder === u || !this.squad.includes(u)) return false;
+    const last = this.calls.get(u);
+    if (last !== undefined && this.sim.time - last < RUSH.call.gap) return false;
+    this.calls.set(u, this.sim.time);
+    return true;
+  }
+
+  /** Seconds since this god's call for the pass, or null when they haven't called lately. */
+  calledAgo(u: Unit): number | null {
+    const at = this.calls.get(u);
+    if (at === undefined) return null;
+    const ago = this.sim.time - at;
+    return ago >= 0 && ago < RUSH.call.time ? ago : null;
   }
 
   /** Where a throw toward `at` would land. */
@@ -467,6 +496,8 @@ export class Rush {
     }
     this.shrugUsed = false;
     this.shrugUntil = 0;
+    // the call is answered
+    this.calls.delete(u);
     r.phase = 'held';
     r.holder = u;
     r.team = team;
@@ -569,6 +600,7 @@ export class Rush {
     const r = this.relic;
     Object.assign(r, { phase: 'center', holder: null, x: 0, z: 0, h: RUSH.relic.centerHeight, thrower: null, team: null, t: 0 });
     this.noCatch.clear();
+    this.calls.clear();
     this.lastPass = null;
     for (const side of ['order', 'chaos'] as const) {
       this.team(side).forEach((g, i) => {
@@ -614,6 +646,10 @@ export class Rush {
         return [l.goals, l.assists, l.steals, l.tackles, l.passes, l.dazed];
       }),
       ps: [n(this.possession.order), n(this.possession.chaos)],
+      cl: this.squad.map((u) => {
+        const ago = this.calledAgo(u);
+        return ago === null ? -1 : n(ago);
+      }),
     };
   }
 
@@ -642,6 +678,11 @@ export class Rush {
       if (l) [l.goals, l.assists, l.steals, l.tackles, l.passes, l.dazed] = row;
     });
     [this.possession.order, this.possession.chaos] = s.ps;
+    this.calls.clear();
+    s.cl.forEach((ago, i) => {
+      const g = this.squad[i];
+      if (g && ago >= 0) this.calls.set(g, this.sim.time - ago);
+    });
   }
 
   /** On a guest, between the host's snapshots: a thrown relic keeps flying, a carried one stays with its carrier. */

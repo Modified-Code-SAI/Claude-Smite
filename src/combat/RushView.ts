@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, color, float, fract, mix, sin, smoothstep, time, uv, vec4 } from '../render/tsl';
+import { abs, color, float, fract, mix, sin, smoothstep, sqrt, time, uv, vec4 } from '../render/tsl';
 import { objectUniforms, useUniforms } from '../render/shared';
 import { Rush, RUSH } from '../sim/Rush';
 import type { Unit } from '../sim/Unit';
@@ -134,6 +134,91 @@ class Trail {
 }
 
 /**
+ * A dizzy star: a plump four-pointed star, gold with a white-hot middle and a
+ * dark amber rim, so it reads on the sunlit plaza floor as well as on shadow
+ * (an additive glow alone vanished on the pale stone). Its middle is bright
+ * enough to catch a touch of bloom.
+ */
+let starMaterial: THREE.MeshBasicNodeMaterial | null = null;
+
+function makeStarMaterial(): THREE.MeshBasicNodeMaterial {
+  const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true });
+  const p = uv().sub(0.5).mul(2.3);
+  // sqrt|x| + sqrt|y| = 1 is a four-pointed star with curved sides
+  const d = sqrt(abs(p.x)).add(sqrt(abs(p.y)));
+  const fill = smoothstep(1, 0.9, d);
+  const shape = smoothstep(1.28, 1.16, d);
+  const core = smoothstep(0.75, 0.15, d);
+  const inner = mix(color(GOLD.main).mul(1.5), color(0xfffbe8).mul(2.6), core);
+  m.colorNode = vec4(mix(color(0x6b3200), inner, fill), 1);
+  m.opacityNode = shape;
+  return m;
+}
+
+const STARS_PER_GOD = 3;
+const MAX_DAZED = 6;
+
+/** Stars circling the heads of dazed gods: every star of every god in one camera-facing mesh, one draw. */
+class DazeStars {
+  readonly mesh: THREE.Mesh;
+  private readonly pos: THREE.BufferAttribute;
+  private readonly right = new THREE.Vector3();
+  private readonly up = new THREE.Vector3();
+  /** How far each god's stars have grown in (0..1), so they pop in and shrink away. */
+  private readonly grow = new Map<Unit, number>();
+
+  constructor() {
+    const n = STARS_PER_GOD * MAX_DAZED;
+    const g = new THREE.BufferGeometry();
+    this.pos = new THREE.BufferAttribute(new Float32Array(n * 4 * 3), 3);
+    this.pos.setUsage(THREE.DynamicDrawUsage);
+    const uvs = new Float32Array(n * 4 * 2);
+    const index: number[] = [];
+    for (let i = 0; i < n; i++) {
+      uvs.set([0, 0, 1, 0, 1, 1, 0, 1], i * 8);
+      index.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
+    }
+    g.setAttribute('position', this.pos);
+    g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    g.setIndex(index);
+    this.mesh = new THREE.Mesh(g, (starMaterial ??= makeStarMaterial()));
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 13;
+    this.mesh.visible = false;
+  }
+
+  frame(gods: readonly Unit[], ground: Ground, camera: THREE.Camera | null, dt: number, t: number): void {
+    const a = this.pos.array as Float32Array;
+    a.fill(0);
+    if (camera) {
+      this.right.setFromMatrixColumn(camera.matrixWorld, 0);
+      this.up.setFromMatrixColumn(camera.matrixWorld, 1);
+    }
+    let slot = 0;
+    for (const g of gods) {
+      const k = Math.max(0, Math.min(1, (this.grow.get(g) ?? 0) + (g.alive ? -dt * 4 : dt * 3)));
+      this.grow.set(g, k);
+      if (k <= 0 || slot >= MAX_DAZED) continue;
+      // over where the god lies, circling and bobbing out of step
+      const cy = ground(g.x, g.z) + 0.9;
+      for (let i = 0; i < STARS_PER_GOD; i++) {
+        const ang = t * 3.2 + (i / STARS_PER_GOD) * Math.PI * 2 + g.combatant.uid;
+        const x = g.x + Math.cos(ang) * 0.65;
+        const z = g.z + Math.sin(ang) * 0.65;
+        const y = cy + Math.sin(t * 5 + i * 2.1) * 0.08;
+        const s = 0.3 * k * (0.85 + 0.15 * Math.sin(t * 9 + i * 1.7));
+        const rx = this.right.x * s, ry = this.right.y * s, rz = this.right.z * s;
+        const ux = this.up.x * s, uy = this.up.y * s, uz = this.up.z * s;
+        a.set([x - rx - ux, y - ry - uy, z - rz - uz, x + rx - ux, y + ry - uy, z + rz - uz, x + rx + ux, y + ry + uy, z + rz + uz, x - rx + ux, y - ry + uy, z - rz + uz], (slot * STARS_PER_GOD + i) * 12);
+      }
+      slot++;
+    }
+    this.mesh.visible = slot > 0;
+    if (slot > 0) this.pos.needsUpdate = true;
+  }
+}
+
+/**
  * Everything Relic Rush draws on top of the temple: the Sun Relic itself (a
  * gold orb inside a turning ring, with a halo), the gold column that marks
  * where it is from across the field, a ring where a throw will land, a veil
@@ -160,6 +245,7 @@ export class RushView {
   private placed = false;
   private light: THREE.PointLight | null = null;
   private readonly trail = new Trail();
+  private readonly stars = new DazeStars();
   /** The camera the trail ribbon faces. */
   camera: THREE.Camera | null = null;
 
@@ -182,7 +268,7 @@ export class RushView {
     useUniforms(this.haloValues, this.halo);
     this.relic.add(this.orb, this.ring, this.halo);
     this.locator = new RelicView(ground);
-    this.group.add(this.relic, this.locator.group, this.trail.mesh);
+    this.group.add(this.relic, this.locator.group, this.trail.mesh, this.stars.mesh);
 
     for (const side of ['order', 'chaos'] as const) {
       const g = RUSH.gates[side];
@@ -232,10 +318,19 @@ export class RushView {
     this.preview.mesh.visible = true;
     this.relic.visible = true;
     this.trail.mesh.visible = true;
+    this.stars.mesh.visible = true;
     return () => {
       this.preview.mesh.visible = was;
       this.trail.mesh.visible = false;
+      this.stars.mesh.visible = false;
     };
+  }
+
+  private readonly lineup: Unit[] = [];
+  /** Both teams' gods, gathered once (the line-up never changes). */
+  private gods(rush: Rush): readonly Unit[] {
+    if (!this.lineup.length) this.lineup.push(...rush.team('order'), ...rush.team('chaos'));
+    return this.lineup;
   }
 
   /** Where the relic is drawn, or null while it is gone (after a goal). */
@@ -270,6 +365,7 @@ export class RushView {
     this.relic.position.set(this.drawn.x, this.drawn.y + bob, this.drawn.z);
     // a thrown or knocked-loose relic streaks through the air
     this.trail.frame(r.phase === 'flying' ? this.relic.position : null, this.camera, dt);
+    this.stars.frame(this.gods(rush), this.ground, this.camera, dt, t);
     this.orb.rotation.y = t * 0.8;
     this.ring.rotation.set(Math.PI / 2 + Math.sin(t * 0.9) * 0.5, t * 1.7, 0);
     const golden = rush.overtime;
