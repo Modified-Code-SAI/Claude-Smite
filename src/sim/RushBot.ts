@@ -1,0 +1,502 @@
+import type { Side } from '../game/combatant';
+import { SLOT_COUNT, ULTIMATE_SLOT } from '../game/loadout';
+import { botBuildOrder } from '../game/trees';
+import { hypot } from '../core/math';
+import { reachOf, skillRole } from './Bot';
+import type { Nav } from './Nav';
+import { clampToPitch, FUMBLE_CC, inGate, Rush, RUSH } from './Rush';
+import type { Sim } from './Sim';
+import { WORLD_SCALE, type Brain, type Point, type Unit } from './Unit';
+
+const SLOTS = Array.from({ length: SLOT_COUNT }, (_, i) => i);
+
+/**
+ * What a sport bot is doing this moment. The team shares them out every
+ * step: with the relic loose two chase it and one guards the gate; with a
+ * teammate carrying, one escorts and one runs ahead for a pass; against an
+ * enemy carrier, one presses, one cuts off the way to the gate and one keeps
+ * the gate.
+ */
+export type RushRole = 'carry' | 'escort' | 'lead' | 'chase' | 'support' | 'guard' | 'press' | 'cut' | 'goalie';
+
+const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
+const dist = (a: Point, b: Point) => hypot(a.x - b.x, a.z - b.z);
+
+/** Shares the roles out for both teams once per step. */
+export class RushCoach {
+  private readonly roles = new Map<Unit, RushRole>();
+  private at = -1;
+
+  constructor(
+    private readonly sim: Sim,
+    private readonly rush: Rush,
+  ) {}
+
+  roleOf(u: Unit): RushRole {
+    if (this.at !== this.sim.time) {
+      this.at = this.sim.time;
+      this.assign();
+    }
+    return this.roles.get(u) ?? 'chase';
+  }
+
+  private assign(): void {
+    this.roles.clear();
+    const rush = this.rush;
+    const holder = rush.holder;
+    for (const side of ['order', 'chaos'] as const) {
+      const gods = rush.team(side).filter((g) => g.alive);
+      const gate = RUSH.gates[side];
+      const nearest = (list: Unit[], p: Point) => list.reduce<Unit | null>((b, g) => (!b || dist(g, p) < dist(b, p) ? g : b), null);
+      const set = (g: Unit | null, r: RushRole) => g && this.roles.set(g, r);
+      if (holder && holder.team === side) {
+        this.roles.set(holder, 'carry');
+        const rest = gods.filter((g) => g !== holder);
+        const escort = nearest(rest, holder);
+        set(escort, 'escort');
+        for (const g of rest) if (g !== escort) set(g, 'lead');
+      } else if (holder) {
+        // one presses the carrier; whoever is nearest our gate keeps it; the last cuts the way in
+        const press = nearest(gods, holder)!;
+        set(press, 'press');
+        const rest = gods.filter((g) => g !== press);
+        const threat = dist(holder, gate);
+        const keeper = threat < 24 ? nearest(rest, gate) : null;
+        set(keeper, 'goalie');
+        for (const g of rest) if (g !== keeper) set(g, threat < 12 ? 'press' : 'cut');
+      } else {
+        const t = rush.target;
+        const chase = nearest(gods, t)!;
+        set(chase, 'chase');
+        const rest = gods.filter((g) => g !== chase);
+        const guard = rest.length > 1 ? nearest(rest, gate) : dist(rest[0] ?? t, t) > 11 ? rest[0]! : null;
+        set(guard, 'guard');
+        for (const g of rest) if (g !== guard) set(g, dist(g, t) < 11 ? 'chase' : 'support');
+      }
+    }
+  }
+}
+
+export interface RushBotOptions {
+  /** Chance per decision (about four a second) to use a ready skill. */
+  aggression: number;
+}
+
+/**
+ * A Relic Rush bot: plays its team role, steers around defenders while
+ * carrying, passes to open teammates when pressed, shoots when the gate is
+ * open, and spends its crowd control on whoever holds the relic.
+ */
+export class RushBot implements Brain {
+  private decide = 0;
+  private passCheck = 0;
+  private readonly build: string[];
+  /** Which flank this bot runs when leading the attack. */
+  private readonly side: number;
+  private route: { goal: Point; next: Point; at: number } | null = null;
+
+  constructor(
+    private readonly sim: Sim,
+    private readonly u: Unit,
+    private readonly rush: Rush,
+    private readonly coach: RushCoach,
+    private readonly nav: Nav | null,
+    readonly options: RushBotOptions = { aggression: 0.45 },
+  ) {
+    this.build = botBuildOrder(u.combatant.god, u.combatant.uid);
+    this.side = u.combatant.uid % 2 === 0 ? 1 : -1;
+  }
+
+  update(dt: number): void {
+    const { u, rush } = this;
+    u.move = null;
+    const c = u.combatant;
+    while (c.unspentPoints > 0 && this.build.some((id) => c.allocate(id) === null));
+    if (!u.alive || u.forced || rush.frozen) return;
+    if (rush.phase === 'goal') {
+      // the celebration: drift back toward the kickoff line
+      this.walkTo({ x: u.x * 0.6, z: (u.team === 'order' ? 1 : -1) * 9 }, 2);
+      return;
+    }
+    const role = this.coach.roleOf(u);
+    if (role === 'carry') {
+      this.carry(dt);
+      return;
+    }
+    const goal = this.goalFor(role);
+    this.walkTo(goal, role === 'goalie' || role === 'guard' ? 1.2 : 0.4);
+    this.fight(dt, role);
+  }
+
+  // -------------------------------------------------------------------------
+  // Positions
+
+  private goalFor(role: RushRole): Point {
+    const { u, rush } = this;
+    const mine = u.team as Side;
+    const ownGate = RUSH.gates[mine];
+    const theirGate = RUSH.gates[other(mine)];
+    const holder = rush.holder;
+    const t = rush.target;
+    switch (role) {
+      case 'chase':
+        return t;
+      case 'support': {
+        // a step toward their gate from the relic, ready for a quick pass
+        const dx = theirGate.x - t.x;
+        const dz = theirGate.z - t.z;
+        const d = hypot(dx, dz) || 1;
+        return clampToPitch(t.x + (dx / d) * 9 + this.side * 5, t.z + (dz / d) * 9, 2);
+      }
+      case 'guard': {
+        const dx = t.x - ownGate.x;
+        const dz = t.z - ownGate.z;
+        const d = hypot(dx, dz) || 1;
+        const k = Math.min(8, d * 0.5);
+        return { x: ownGate.x + (dx / d) * k, z: ownGate.z + (dz / d) * k };
+      }
+      case 'escort': {
+        if (!holder) return t;
+        // between the carrier and the nearest enemy, or just ahead of the carrier
+        const foe = this.nearestEnemy(holder, 12);
+        if (foe) {
+          const dx = foe.x - holder.x;
+          const dz = foe.z - holder.z;
+          const d = hypot(dx, dz) || 1;
+          return { x: holder.x + (dx / d) * 2.6, z: holder.z + (dz / d) * 2.6 };
+        }
+        const dx = theirGate.x - holder.x;
+        const dz = theirGate.z - holder.z;
+        const d = hypot(dx, dz) || 1;
+        return { x: holder.x + (dx / d) * 3 - this.side * (dz / d) * 2, z: holder.z + (dz / d) * 3 + this.side * (dx / d) * 2 };
+      }
+      case 'lead': {
+        if (!holder) return t;
+        // ahead of the carrier on a flank, open for a pass
+        const dx = theirGate.x - holder.x;
+        const dz = theirGate.z - holder.z;
+        const d = hypot(dx, dz) || 1;
+        const ahead = Math.min(11, d);
+        let side = this.side;
+        const p = (s: number) => clampToPitch(holder.x + (dx / d) * ahead - s * (dz / d) * 6, holder.z + (dz / d) * ahead + s * (dx / d) * 6, 2);
+        // run the flank with more room
+        if (this.crowd(p(side)) > this.crowd(p(-side)) + 1) side = -side;
+        return p(side);
+      }
+      case 'press':
+        if (!holder) return t;
+        return { x: holder.x + holder.vx * 0.3, z: holder.z + holder.vz * 0.3 };
+      case 'cut': {
+        if (!holder) return t;
+        return { x: holder.x + (ownGate.x - holder.x) * 0.45, z: holder.z + (ownGate.z - holder.z) * 0.45 };
+      }
+      case 'goalie': {
+        // in the gate's mouth, a step toward the plaza, shading toward the threat
+        const s = Math.sign(-ownGate.z);
+        const threat = holder ?? t;
+        const x = Math.max(-2.5, Math.min(2.5, threat.x * 0.3));
+        return { x, z: ownGate.z + s * 1.6 };
+      }
+      default:
+        return t;
+    }
+  }
+
+  /** How many enemies stand within 5 m of a point. */
+  private crowd(p: Point): number {
+    let n = 0;
+    for (const e of this.enemies()) if (dist(e, p) < 5) n++;
+    return n;
+  }
+
+  private enemies(): Unit[] {
+    return this.rush.team(other(this.u.team as Side)).filter((g) => g.alive);
+  }
+
+  private allies(): Unit[] {
+    return this.rush.team(this.u.team as Side).filter((g) => g.alive && g !== this.u);
+  }
+
+  private nearestEnemy(from: Point, within: number): Unit | null {
+    let best: Unit | null = null;
+    let bestD = within;
+    for (const e of this.enemies()) {
+      const d = dist(e, from);
+      if (d < bestD) [best, bestD] = [e, d];
+    }
+    return best;
+  }
+
+  // -------------------------------------------------------------------------
+  // Carrying
+
+  private carry(dt: number): void {
+    const { u, rush } = this;
+    const mine = u.team as Side;
+    const gate = RUSH.gates[other(mine)];
+    const toGate = dist(u, gate);
+    this.passCheck -= dt;
+    if (this.passCheck <= 0 && this.sim.time - rush.relic.since > RUSH.relic.holdMin) {
+      this.passCheck = 0.2;
+      if (this.tryShot(gate, toGate) || this.tryPass(gate, toGate)) return;
+    }
+    // run at the gate's mouth, steering around defenders in the way
+    const aim = this.mouth(gate);
+    let dx = aim.x - u.x;
+    let dz = aim.z - u.z;
+    const d = hypot(dx, dz) || 1;
+    dx /= d;
+    dz /= d;
+    let ax = 0;
+    let az = 0;
+    for (const e of this.enemies()) {
+      const ex = e.x - u.x;
+      const ez = e.z - u.z;
+      const ed = hypot(ex, ez);
+      if (ed > 8 || ed < 1e-3) continue;
+      const ahead = (ex * dx + ez * dz) / ed;
+      if (ahead < -0.3) continue;
+      // push sideways, away from the defender's side of the line
+      const side = ex * dz - ez * dx > 0 ? -1 : 1;
+      const w = ((8 - ed) / 8) * (0.6 + ahead);
+      ax += -dz * side * w * 1.6 - (ex / ed) * w * 0.5;
+      az += dx * side * w * 1.6 - (ez / ed) * w * 0.5;
+    }
+    // close to the gate, go straight in
+    const k = toGate < 5 ? 0.2 : 1;
+    const step = clampToPitch(u.x + (dx + ax * k) * 3, u.z + (dz + az * k) * 3, 1.5);
+    this.walkTo(step, 0.1, true);
+  }
+
+  /** The point to run at to pass through the gate: its center, from whichever side the carrier is on. */
+  private mouth(gate: Point): Point {
+    const { u } = this;
+    const out = Math.sign(gate.z);
+    // from behind the gate (beyond it, seen from the temple), come back through it
+    const behind = (u.z - gate.z) * out > RUSH.gateDepth;
+    const x = Math.max(-3, Math.min(3, u.x * 0.5));
+    if (Math.abs(u.x) > RUSH.gateHalfWidth + 0.5 && Math.abs(u.z - gate.z) < 3) {
+      // beside a pillar: step in front of the mouth first
+      return { x: 0, z: gate.z - out * 3.5 * (behind ? -1 : 1) };
+    }
+    return { x, z: gate.z + out * (behind ? -0.2 : 0.4) };
+  }
+
+  /** Throw through the gate when close and nobody is in its mouth to catch it. */
+  private tryShot(gate: Point, toGate: number): boolean {
+    const { u, rush } = this;
+    if (toGate > 11 || toGate < 4.5) return false;
+    // only from in front of the gate: a throw from the side hits a pillar's line
+    const out = Math.sign(gate.z);
+    if ((gate.z - u.z) * out < 3 || Math.abs(u.x) > Math.abs(gate.z - u.z) * 0.9) return false;
+    const target = { x: gate.x + (u.x > 0 ? 0.8 : -0.8), z: gate.z };
+    for (const e of this.enemies()) {
+      if (dist(e, target) < 4.5) return false;
+      // a defender standing on the throw's line, close to the thrower, blocks it
+      if (this.onLine(e, target, 1.4)) return false;
+    }
+    return rush.throwRelic(u, target);
+  }
+
+  /** Whether an enemy stands near the low ends of a throw from this bot to `to`. */
+  private onLine(e: Unit, to: Point, width: number): boolean {
+    const { u } = this;
+    const dx = to.x - u.x;
+    const dz = to.z - u.z;
+    const len = hypot(dx, dz) || 1;
+    const along = ((e.x - u.x) * dx + (e.z - u.z) * dz) / len;
+    if (along < 0 || along > len) return false;
+    const side = Math.abs((e.x - u.x) * dz - (e.z - u.z) * dx) / len;
+    // the middle of a long throw flies too high to block
+    const p = along / len;
+    const low = len < 9 || p < 0.25 || p > 0.75;
+    return low && side < width + e.radius;
+  }
+
+  /** Pass to the most open teammate when pressed, or long to a runner well ahead. */
+  private tryPass(gate: Point, toGate: number): boolean {
+    const { u, rush } = this;
+    const R = RUSH.relic;
+    const foe = this.nearestEnemy(u, 9);
+    const pressure = foe ? dist(foe, u) : Infinity;
+    // a stun is coming if an enemy close by has crowd control ready
+    const danger = foe !== null && (pressure < 4.5 || (pressure < 8 && this.hasReadyCC(foe)));
+    let best: { at: Point; score: number } | null = null;
+    for (const t of this.allies()) {
+      if (t.forced) continue;
+      const guess = Rush.flightTime(dist(u, t));
+      const at = clampToPitch(t.x + t.vx * guess, t.z + t.vz * guess, 1.5);
+      const d = dist(u, at);
+      if (d < R.minThrow + 1 || d > R.maxThrow) continue;
+      let open = Infinity;
+      for (const e of this.enemies()) {
+        open = Math.min(open, dist(e, at));
+        if (this.onLine(e, at, 1.2)) open = 0;
+      }
+      const progress = toGate - dist(at, gate);
+      const score = Math.min(open, 9) + progress * 0.35;
+      if (open < 3.5 || progress < -6) continue;
+      if (!best || score > best.score) best = { at, score };
+    }
+    if (!best) return false;
+    const long = !danger && best.score > 9 && toGate > 14;
+    if (!danger && !long) return false;
+    return rush.throwRelic(u, best.at);
+  }
+
+  private hasReadyCC(e: Unit): boolean {
+    const c = e.combatant;
+    for (const s of SLOTS) {
+      if (c.canCast(s) !== null) continue;
+      if (c.resolve(s).hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) return true;
+    }
+    return false;
+  }
+
+  // -------------------------------------------------------------------------
+  // Fighting
+
+  /** Basic attacks on whoever is in reach (the carrier first), and skills now and then. */
+  private fight(dt: number, role: RushRole): void {
+    const { u, sim, rush } = this;
+    const c = u.combatant;
+    const holder = rush.holder;
+    const enemyCarrier = holder && holder.team !== u.team ? holder : null;
+    const basic = c.god.basicAttack;
+    const reach = basic.range * WORLD_SCALE;
+    // the carrier when there is one; otherwise whoever is closest to the relic or our carrier
+    const focus: Point = enemyCarrier ?? holder ?? rush.target;
+    let target: Unit | null = enemyCarrier && dist(enemyCarrier, u) <= reach + enemyCarrier.radius + 2 ? enemyCarrier : null;
+    if (!target) {
+      let bestD = Infinity;
+      for (const e of this.enemies()) {
+        const d = dist(e, u);
+        if (d > reach + e.radius + 1 || e.stealth > 0) continue;
+        const score = d + dist(e, focus) * 0.5;
+        if (score < bestD) [target, bestD] = [e, score];
+      }
+    }
+    if (target) {
+      this.aimAt(target);
+      sim.basic(u);
+    }
+    this.decide -= dt;
+    if (this.decide > 0) return;
+    this.decide = 0.25;
+    if (sim.rng() > this.options.aggression) return;
+    this.castSomething(role, enemyCarrier);
+  }
+
+  private castSomething(role: RushRole, enemyCarrier: Unit | null): void {
+    const { u, sim, rush } = this;
+    const c = u.combatant;
+    const hp = c.health / c.stats.maxHealth;
+    const ready = SLOTS.filter((s) => c.canCast(s) === null);
+    if (!ready.length) return;
+    const holder = rush.holder;
+    // 1. crowd control on the enemy carrier
+    if (enemyCarrier && enemyCarrier.targetable) {
+      const d = dist(enemyCarrier, u);
+      for (const s of ready) {
+        const cast = c.resolve(s);
+        if (!cast.hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) continue;
+        if (cast.skill.detonates && !enemyCarrier.marks.get(cast.skill.detonates)?.stacks) continue;
+        if (reachOf(u, s) + enemyCarrier.radius < d) continue;
+        // a keeper doesn't dash out of its gate after a carrier still far off
+        const moves = cast.targeting.type === 'dash' || cast.targeting.type === 'leap' || cast.hits.some((h) => h.kind === 'movement');
+        if (role === 'goalie' && moves && d > 6) continue;
+        this.aimAt(enemyCarrier);
+        if (sim.cast(u, s) === null) return;
+      }
+    }
+    // 2. close the distance to the relic or the carrier with a dash or leap
+    if (role === 'chase' || role === 'press') {
+      const to = role === 'press' && enemyCarrier ? enemyCarrier : rush.target;
+      const d = dist(to, u);
+      for (const s of ready) {
+        const cast = c.resolve(s);
+        const t = cast.targeting.type;
+        if (t !== 'dash' && t !== 'leap' && !cast.hits.some((h) => h.kind === 'movement')) continue;
+        const r = reachOf(u, s);
+        if (d < 6 || d > r + 4) continue;
+        u.aim.x = to.x;
+        u.aim.z = to.z;
+        u.body.yaw = Math.atan2(-(to.x - u.x), -(to.z - u.z));
+        if (sim.cast(u, s) === null) return;
+      }
+    }
+    // 3. sustain when hurt
+    if (hp < 0.5) {
+      for (const s of ready) {
+        if (skillRole(c.resolve(s).skill) !== 'sustain') continue;
+        if (sim.cast(u, s) === null) return;
+      }
+    }
+    // 4. knock defenders off our carrier, or anyone near the relic, with whatever reaches
+    // (a keeper only swings at someone at its gate: no leaping out of it)
+    const posted = role === 'goalie' || role === 'guard';
+    const near = holder && holder.team === u.team ? holder : rush.target;
+    let foe: Unit | null = null;
+    let bestD = Infinity;
+    for (const e of this.enemies()) {
+      if (e.stealth > 0) continue;
+      const d = dist(e, near) + dist(e, u) * 0.5;
+      if (d < bestD) [foe, bestD] = [e, d];
+    }
+    if (!foe) return;
+    const d = dist(foe, u);
+    const offense = ready.filter((s) => {
+      const cast = c.resolve(s);
+      if (skillRole(cast.skill) !== 'offense') return false;
+      if (posted && (cast.targeting.type === 'dash' || cast.targeting.type === 'leap' || cast.hits.some((h) => h.kind === 'movement')) && d > 5) return false;
+      if (cast.skill.detonates && !foe!.marks.get(cast.skill.detonates)?.stacks) return false;
+      return reachOf(u, s) + foe!.radius >= d;
+    });
+    if (!offense.length) return;
+    // save the ultimate for a carrier unless it is the only thing ready
+    const pick = offense.filter((s) => s !== ULTIMATE_SLOT);
+    const slot = (pick.length ? pick : offense)[Math.floor(sim.rng() * (pick.length || offense.length))]!;
+    if (slot === ULTIMATE_SLOT && !enemyCarrier && sim.rng() < 0.7) return;
+    this.aimAt(foe);
+    sim.cast(u, slot);
+  }
+
+  private aimAt(t: Unit): void {
+    const { u } = this;
+    const d = dist(t, u);
+    const lead = Math.min(0.5, d / 40);
+    u.aim.x = t.x + t.vx * lead;
+    u.aim.z = t.z + t.vz * lead;
+    u.body.yaw = Math.atan2(-(t.x - u.x), -(t.z - u.z));
+  }
+
+  // -------------------------------------------------------------------------
+  // Walking
+
+  private walkTo(goal: Point, stopAt: number, face = false): void {
+    const { u } = this;
+    if (dist(goal, u) <= stopAt) return;
+    let p = goal;
+    if (this.nav) {
+      const r = this.route;
+      if (!r || dist(r.goal, goal) > 1.5 || this.sim.time - r.at > 0.4) this.route = { goal: { ...goal }, next: this.nav.next(u, goal), at: this.sim.time };
+      p = this.route!.next;
+    }
+    const dx = p.x - u.x;
+    const dz = p.z - u.z;
+    const d = hypot(dx, dz);
+    if (d < 0.05) return;
+    u.move = { x: dx / d, z: dz / d };
+    if (face || !this.facingTarget()) u.body.yaw = Math.atan2(-dx, -dz);
+  }
+
+  /** While swinging at someone the bot keeps facing them. */
+  private facingTarget(): boolean {
+    return this.u.sinceAction < 0.35;
+  }
+}
+
+/** For tests and tuning: whether a god stands in the scoring mouth of the gate it attacks. */
+export function inEnemyGate(u: Unit): boolean {
+  return inGate(other(u.team as Side), u.x, u.z);
+}

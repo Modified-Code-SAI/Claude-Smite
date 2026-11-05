@@ -276,7 +276,8 @@ export class GameAudio {
         if (this.conquest) this.announceDeath(u, killer, streak);
         if (u === me) {
           this.streak = 0;
-          this.herald.say('You have fallen.', 'bad', 2);
+          // in Relic Rush nobody dies: they are dazed for a moment
+          this.herald.say(this.game.rush ? 'You are dazed!' : 'You have fallen.', 'bad', 2);
         }
         break;
       case 'minion':
@@ -400,6 +401,7 @@ export class GameAudio {
     this.watchMatch();
     this.watchModes();
     this.watchDuel();
+    this.watchRush();
     this.updateMood(dt);
     // while dead, the world is heard as if from far away
     this.muffle += ((me.alive ? 0 : 1) - this.muffle) * Math.min(1, dt * (me.alive ? 6 : 2.5));
@@ -697,6 +699,69 @@ export class GameAudio {
       seen.winner = d.winner;
       const won = d.winner === mine;
       this.herald.say(won ? 'Victory! You are the champion of the temple.' : 'Defeat. Your rival stands victorious.', won ? 'epic' : 'bad', 5);
+    }
+  }
+
+  /** Last seen Relic Rush state, so each beat is called once. */
+  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
+
+  /** Relic Rush: the horn at each kickoff, goals, steals and fumbles, the golden relic and the result. */
+  private watchRush(): void {
+    const r = this.game.rush;
+    if (!r) return;
+    const seen = this.rushSeen;
+    const mine = this.me.team;
+    const relic = r.relic;
+    const at = { x: relic.x, z: relic.z };
+    if (r.phase !== seen.phase) {
+      if (r.phase === 'play' && seen.phase === 'kickoff') {
+        this.engine.play('wave.horn', { gain: 0.6 }, 4);
+        if (r.overtime && !seen.overtime) this.herald.say('Golden relic! The next goal wins!', 'epic', 4);
+        else if (seen.goals === 0 && r.goalCount === 0 && r.clock > 290) this.herald.say('The Sun Relic is in play! Rush!', 'epic', 3);
+      }
+      seen.phase = r.phase;
+    }
+    seen.overtime = r.overtime;
+    // the kickoff counts down out loud: a bell on 3, 2 and 1, then the horn
+    const tick = r.phase === 'kickoff' ? Math.ceil(r.timer) : 0;
+    if (tick !== seen.tick && tick >= 1 && tick <= 3) this.engine.play('ui.point', { gain: 0.5, rate: 0.75 + (3 - tick) * 0.06 }, 2);
+    seen.tick = tick;
+    if (r.goalCount !== seen.goals) {
+      seen.goals = r.goalCount;
+      const g = r.lastGoal;
+      if (g && !r.winner) {
+        const ours = g.team === mine;
+        const line = g.scorer === this.me ? (g.kind === 'shot' ? 'What a shot! You score!' : 'You score!') : ours ? (g.kind === 'shot' ? 'A shot from range! Goal!' : 'Goal! Your team scores.') : 'The enemy scores.';
+        this.herald.say(line, ours ? 'epic' : 'bad', 4);
+      }
+    }
+    if (r.beats.fumble !== seen.fumble) {
+      seen.fumble = r.beats.fumble;
+      this.engine.play('relic.fumble', { at, ref: 10 }, 3);
+      const b = r.lastBeat;
+      if (b?.kind === 'fumble' && b.by === this.me) this.herald.say('You knocked it loose!', 'good', 2);
+      else if (b?.kind === 'fumble' && b.unit === this.me) this.herald.say('The relic is knocked from your hands!', 'bad', 2);
+    }
+    if (r.beats.steal !== seen.steal) {
+      seen.steal = r.beats.steal;
+      this.engine.play('relic.catch', { at, ref: 10, rate: 0.9 }, 3);
+      const b = r.lastBeat;
+      if (b?.kind === 'steal') this.herald.say(b.unit.team === mine ? 'Stolen! The relic is ours.' : 'The enemy has the relic!', b.unit.team === mine ? 'good' : 'bad', 1);
+    }
+    if (r.beats.catch !== seen.catch) {
+      seen.catch = r.beats.catch;
+      this.engine.play('relic.catch', { at, ref: 10 }, 3);
+    }
+    const flying = relic.phase === 'flying' && !!relic.thrower;
+    if (flying && !seen.flying) this.engine.play('relic.throw', { at, ref: 10 }, 3);
+    seen.flying = flying;
+    const minute = !r.overtime && r.phase === 'play' && r.clock <= 60;
+    if (minute && !seen.minute) this.herald.say('One minute remains!', 'neutral', 2);
+    seen.minute = seen.minute || minute;
+    if (r.winner && !seen.winner) {
+      seen.winner = r.winner;
+      const won = r.winner === mine;
+      this.herald.say(won ? 'Victory! The Sun Relic is yours.' : 'Defeat. The enemy takes the Sun Relic.', won ? 'epic' : 'bad', 5);
     }
   }
 

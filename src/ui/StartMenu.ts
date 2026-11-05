@@ -11,7 +11,7 @@ import { DIFFICULTIES, parseDifficulty, type Difficulty } from '../game/difficul
 import { recordLine } from './records';
 import { rankBadge } from './ascension';
 
-export type GameMode = 'conquest' | 'arena' | 'clash' | 'siege' | 'duel';
+export type GameMode = 'conquest' | 'arena' | 'clash' | 'siege' | 'duel' | 'rush';
 
 /** The map a mode is played on. */
 export function mapOf(mode: GameMode): 'conquest' | 'arena' {
@@ -43,6 +43,15 @@ const MODES: { id: GameMode; name: string; text: string; net?: NetHostOption[] }
   },
   { id: 'clash', name: 'Temple Clash', text: '3v3 king of the hill. Hold the temple plaza and take down gods; the temple\'s blessing doubles points now and then. First to 115. About 4 minutes.' },
   { id: 'siege', name: 'Temple Siege', text: 'You and two bots hold the temple against endless monster waves, with a boss every fifth. Pick a team boon after each wave. How long can you last?' },
+  {
+    id: 'rush',
+    name: 'Relic Rush',
+    text: '3v3 sport. Carry the Sun Relic through the enemy gate or pass it in; stun the carrier to steal it. Nobody dies, they get dazed. First to 5 goals. About 5 minutes.',
+    net: [
+      { mode: 'coop', label: 'Host co-op', text: 'Friends on one team against bots', cap: 3 },
+      { mode: 'versus', label: 'Host versus', text: 'Friends on both teams, bots fill in', cap: 6 },
+    ],
+  },
   { id: 'duel', name: 'Temple Duel', text: 'One on one against a bot god. Win a round by taking them down; a ring of fire closes in so nobody can hide. First to 3 rounds. About 2–3 minutes.' },
   { id: 'arena', name: 'Training ground', text: 'Training posts and one enemy Thor. Swap gods and levels freely with K.' },
 ];
@@ -54,7 +63,7 @@ export const CONTROLS: [string, string][] = [
   ['Click', 'Capture the mouse and play'],
   ['W A S D', 'Move'],
   ['Mouse', 'Aim (the camera follows)'],
-  ['Left click', 'Basic attack'],
+  ['Left click', 'Basic attack (Relic Rush: pass the relic)'],
   ['1  2  3', 'Skills: press to aim, press again or click to cast, right click cancels'],
   ['4 or R', 'Ultimate (unlocks at level 5)'],
   ['B', 'Recall to the fountain'],
@@ -82,7 +91,7 @@ function load(): Partial<StartChoice> {
 /** The mode the title screen opens with: the last one played, Conquest at first. */
 export function savedMode(): GameMode {
   const m = load().mode;
-  return m === 'arena' || m === 'clash' || m === 'siege' || m === 'duel' ? m : 'conquest';
+  return m === 'arena' || m === 'clash' || m === 'siege' || m === 'duel' || m === 'rush' ? m : 'conquest';
 }
 
 function save(c: StartChoice): void {
@@ -206,7 +215,7 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
       <div class="sm-skills">${skills
         .map((s, i) => `<div class="sm-skill" title="${s.description.replace(/"/g, '&quot;')}"><div class="sm-ico">${skillIcon(def.id, s)}</div><div class="sm-k">${keys[i]}</div><div class="sm-sn">${s.name}</div></div>`)
         .join('')}</div>
-      <div class="sm-tip">${mode === 'conquest' ? 'You start mid with four allied bots in the other lanes. Go wherever you like.' : mode === 'clash' ? 'You and two bots start at level 8. Stand on the plaza with no enemy on it to score.' : mode === 'siege' ? 'Monsters on the plaza corrupt it. Meet them at the gates, north and south.' : mode === 'duel' ? 'Both gods start at level 9 and gain two levels every round. Stay inside the ring once it closes.' : 'Swap gods and jump levels with K at the fountain.'} Press K at your fountain to swap skills and spend tree points.</div>`;
+      <div class="sm-tip">${mode === 'conquest' ? 'You start mid with four allied bots in the other lanes. Go wherever you like.' : mode === 'clash' ? 'You and two bots start at level 8. Stand on the plaza with no enemy on it to score.' : mode === 'siege' ? 'Monsters on the plaza corrupt it. Meet them at the gates, north and south.' : mode === 'duel' ? 'Both gods start at level 9 and gain two levels every round. Stay inside the ring once it closes.' : mode === 'rush' ? 'Everyone starts at level 10. The carrier is slower and can\'t fight, so pass to open teammates and use your stuns and knockbacks to break up their rushes.' : 'Swap gods and jump levels with K at the fountain.'} Press K at your fountain to swap skills and spend tree points.</div>`;
   };
   render();
 

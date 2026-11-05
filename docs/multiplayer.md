@@ -34,6 +34,8 @@ To make a mode playable online, its setup in `CombatGame` builds the same units 
 - **Moving a player:** `host.assign(player, otherUnit)` hands a guest another unit mid-match (a rotation). Their next snapshot says so; `guest.onSelf(unit)` must move the controller's body onto that unit (`unit.body = …`) before returning, and the controller then snaps to where the host has it.
 - Any `sim.teleport` of a guest's unit bumps their authority sequence, so teleporting gods between rooms needs nothing extra.
 
+Relic Rush (`src/combat/RushMode.ts`) is a small example: both ends build six gods from `rushRoster` (`src/net/rushRoster.ts`, three a side, bots fill in), `Rush` is the `NetMatch` (score, clock, phase and the relic, with gods sent as their place in the line-up), a guest carrier's click goes `act({ k: 'throw', a })` to the host, and between snapshots a guest's copy keeps a thrown relic flying on its own (`Rush.follow`).
+
 ## Testing locally
 
 ```sh

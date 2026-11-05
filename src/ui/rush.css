@@ -1,0 +1,16 @@
+.rush-clock { min-width: 78px; font-size: 20px; font-weight: 700; text-align: center; letter-spacing: 0.06em; color: #ffe9b8; text-shadow: 0 2px 4px #000; }
+.rush-clock.late { color: #ffb070; animation: clash-pulse 0.5s ease-in-out infinite alternate; }
+.rush-clock.gold { font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: #ffd34a; text-shadow: 0 0 12px rgba(255, 200, 80, 0.85), 0 2px 4px #000; }
+.rush .clash-state { white-space: nowrap; }
+.rush .duel-big small { display: block; margin-top: 6px; font-size: clamp(14px, 1.8vw, 22px); letter-spacing: 0.08em; text-transform: none; color: #f2e6cc; }
+@media (max-width: 700px) { .rush .clash-state { white-space: normal; width: 86vw; text-align: center; } }
+.rush-pointer { position: fixed; left: 0; top: 0; width: 0; height: 0; display: none; filter: drop-shadow(0 0 6px rgba(255, 190, 60, 0.9)); }
+.rush-pointer.show { display: block; }
+.rush-pointer i { position: absolute; left: -16px; top: -14px; width: 32px; height: 28px; clip-path: polygon(100% 50%, 0 0, 26% 50%, 0 100%); background: linear-gradient(90deg, #ffe7a8, #ffb428); animation: rush-nudge 0.9s ease-in-out infinite alternate; }
+.rush-pointer[data-tone='ally'] { filter: drop-shadow(0 0 6px rgba(110, 180, 255, 0.9)); }
+.rush-pointer[data-tone='ally'] i { background: linear-gradient(90deg, #e6f4ff, #2a7cff); }
+.rush-pointer[data-tone='foe'] { filter: drop-shadow(0 0 6px rgba(255, 90, 70, 0.9)); }
+.rush-pointer[data-tone='foe'] i { background: linear-gradient(90deg, #ffe0c8, #e8332a); }
+@keyframes rush-nudge { from { transform: translateX(-4px); } to { transform: translateX(3px); } }
+.rush .duel-pips i.new { animation: rush-pip 0.7s ease-out; }
+@keyframes rush-pip { 0% { transform: scale(2.4); filter: brightness(2.6); } 100% { transform: none; filter: none; } }

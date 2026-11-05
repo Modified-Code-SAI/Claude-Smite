@@ -41,6 +41,9 @@ import { Scoreboard } from '../sim/Scoreboard';
 import { difficultyPerks, type Difficulty } from '../game/difficulty';
 import { setXpDifficulty } from '../ui/ascension';
 import { Coach } from '../ui/Coach';
+import { pitchTerrain, RUSH, type Rush } from '../sim/Rush';
+import { RushMode } from './RushMode';
+import { rushRoster, type RushSlot } from '../net/rushRoster';
 
 
 const CAST_MESSAGES: Partial<Record<CastError | 'forced', string>> = {
@@ -54,7 +57,7 @@ const CAST_MESSAGES: Partial<Record<CastError | 'forced', string>> = {
 export interface CombatDeps {
   world: World;
   /** 'conquest' plays a full match against bots; 'clash' a 3v3 fight over the temple plaza; 'arena' is the training ground. */
-  mode?: 'arena' | 'conquest' | 'clash' | 'siege' | 'duel';
+  mode?: 'arena' | 'conquest' | 'clash' | 'siege' | 'duel' | 'rush';
   /** Temple Duel: the rival god's id; anything else (or the player's own god) picks one at random. */
   rival?: string;
   /** The player's god (defaults to Zeus). */
@@ -95,6 +98,9 @@ export class CombatGame implements Updatable {
   private siegeHud: SiegeHud | null = null;
   duel: Duel | null = null;
   private duelHud: DuelHud | null = null;
+  /** Relic Rush's rules, and the mode around them (bots, view, HUD, online play). */
+  rush: Rush | null = null;
+  private rushMode: RushMode | null = null;
   private ringShown = 0;
   private difficultyApplied = false;
   /** The plaza's edge, glowing in the color of whoever holds it. */
@@ -134,19 +140,28 @@ export class CombatGame implements Updatable {
     setXpDifficulty(deps.net ? 'normal' : (deps.difficulty ?? 'normal'));
     const conquest = deps.mode === 'conquest';
     const onConquestMap = (world as unknown as { map?: string }).map === 'conquest';
-    const terrain: SimTerrain = conquest && !onConquestMap ? openGround(world.collision) : world.collision;
+    const rush = deps.mode === 'rush';
+    // Relic Rush's pitch ends at a circle around the temple
+    const terrain: SimTerrain = conquest && !onConquestMap ? openGround(world.collision) : rush ? pitchTerrain(world.collision) : world.collision;
     this.groundAt = (x, z) => terrain.groundAt(x, z);
-    const net = conquest ? deps.net : undefined;
-    const slots = net ? roster(net.players) : null;
-    const mySlot = slots?.find((s) => s.player === net!.me) ?? null;
+    const net = conquest || rush ? deps.net : undefined;
+    const slots = net && conquest ? roster(net.players) : null;
+    const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random) : null;
+    const mySlot = slots?.find((s) => s.player === net!.me) ?? rushSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
     const myTeam = mySlot?.team ?? 'order';
     const clash = deps.mode === 'clash';
     const siege = deps.mode === 'siege';
     const duel = deps.mode === 'duel';
-    const spawn = conquest ? spawnPoint(myTeam, mySlot?.spot ?? 1) : clash ? CLASH_SPAWNS.order[0]! : siege ? SIEGE_SPAWNS[1]! : duel ? DUEL.spawns.order : world.spawn;
+    const spawn = conquest
+      ? spawnPoint(myTeam, mySlot?.spot ?? 1)
+      : rush
+        ? RUSH.homes[myTeam][mySlot?.spot ?? 1]!
+        : clash ? CLASH_SPAWNS.order[0]! : siege ? SIEGE_SPAWNS[1]! : duel ? DUEL.spawns.order : world.spawn;
     this.bases = conquest
       ? conquestBases()
-      : clash || siege || duel
+      : rush
+        ? { order: { ...RUSH.bases.order }, chaos: { ...RUSH.bases.chaos } }
+        : clash || siege || duel
         ? { order: { ...CLASH.bases.order }, chaos: { ...CLASH.bases.chaos } }
         : {
           order: { x: spawn.x, z: spawn.z + 2, radius: 9 },
@@ -155,9 +170,10 @@ export class CombatGame implements Updatable {
     this.sim = new Sim(terrain, this.bases);
     // the player walks against the same standing structures as everyone else,
     // except mid-leap, where the sim flies them over and settles the landing
+    const walls = rush ? terrain : world.collision;
     player.resolve = (x, z, r, y, from) => {
       const f = this.player?.forced;
-      return f && !f.collide ? world.collision.resolve(x, z, r, y) : this.sim.solid(x, z, r, y + (this.player?.stepOver ?? 0), from, world.collision, this.player);
+      return f && !f.collide ? walls.resolve(x, z, r, y) : this.sim.solid(x, z, r, y + (this.player?.stepOver ?? 0), from, walls, this.player);
     };
     this.sim.summonFactory = (owner, kind, at, i) => {
       const s = summonUnit(owner, kind, at, i);
@@ -190,7 +206,7 @@ export class CombatGame implements Updatable {
     this.shapeDecal.mesh.visible = this.rangeDecal.mesh.visible = false;
     world.vfx.add(this.shapeDecal.mesh, this.rangeDecal.mesh);
 
-    if (conquest || clash || siege || duel) player.spawn(spawn.x, spawn.z, spawn.yaw);
+    if (conquest || clash || siege || duel || rush) player.spawn(spawn.x, spawn.z, spawn.yaw);
     const mine = godById(mySlot?.god ?? deps.god ?? 'zeus') ?? GODS[0]!;
     this.player = godUnit(mine, myTeam, { x: spawn.x, z: spawn.z, yaw: spawn.yaw }, this.body);
     this.sim.add(this.player);
@@ -211,7 +227,7 @@ export class CombatGame implements Updatable {
     this.hud = new CombatHud(this.player, deps.camera, (u, out) => this.views.headOf(u, out));
     this.coach = new Coach(this.player, () => this.menu.isOpen, !duel);
     this.menu = new LoadoutMenu(
-      conquest || clash || siege || duel
+      conquest || clash || siege || duel || rush
         ? { combatant: () => this.player.combatant, gods: GODS, onClose: () => undefined }
         : {
             combatant: () => this.player.combatant,
@@ -239,6 +255,12 @@ export class CombatGame implements Updatable {
         this.addTeam('chaos', GODS, ROLES, [0, 1, 2, 3, 4]);
       }
       this.matchHud = new MatchHud(this.match, this.player);
+      this.sim.drainEvents();
+      return;
+    }
+
+    if (rush) {
+      this.startRush(rushSlots!, net);
       this.sim.drainEvents();
       return;
     }
@@ -324,6 +346,34 @@ export class CombatGame implements Updatable {
     this.relicView = new RelicView(this.groundAt);
     this.deps.world.vfx.add(this.relicView.group);
     this.hud.toast('Hold the temple plaza. Press K to spend your skill points.');
+  }
+
+  /** Relic Rush: three gods a side carry the Sun Relic through the enemy's gate, solo with bots or online. */
+  private startRush(slots: readonly RushSlot[], net: NetSession | undefined): void {
+    const world = this.deps.world;
+    const temple = (world.content as unknown as { relic?: { group: THREE.Group } }).relic?.group;
+    const mode = new RushMode({
+      sim: this.sim,
+      player: this.player,
+      ctrl: this.deps.player,
+      slots,
+      me: net?.me ?? 'me',
+      net,
+      vfx: world.vfx,
+      gold: world.materials.gold,
+      temple,
+      groundAt: this.groundAt,
+      headOf: (u, out) => this.views.headOf(u, out),
+      toast: (t) => this.hud.toast(t),
+      camera: this.deps.camera,
+      burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
+      shake: this.deps.shake,
+    });
+    this.rushMode = mode;
+    this.rush = mode.rush;
+    this.netHost = mode.host;
+    this.netGuest = mode.guest;
+    this.hud.toast('Carry the Sun Relic through their gate. Left click passes it; stun the carrier to knock it loose. Press K to spend your skill points.');
   }
 
   /** Temple Duel: the player against one bot god, round by round, inside a closing ring of fire. */
@@ -451,7 +501,8 @@ export class CombatGame implements Updatable {
   }
 
   private isHomeTeleport(x: number, z: number): boolean {
-    return hypot(x - this.player.home.x, z - this.player.home.z) < 0.01;
+    // a Relic Rush kickoff lines everyone up facing the relic, like a respawn
+    return hypot(x - this.player.home.x, z - this.player.home.z) < 0.01 || this.rush?.phase === 'kickoff';
   }
 
   /**
@@ -462,7 +513,7 @@ export class CombatGame implements Updatable {
   prime(): () => void {
     this.views.prime(this.sim.units);
     // (lane minions only march in Conquest)
-    const restore = [this.vfx.prime(), this.status.prime(), ...(this.match ? [this.views.minions.prime()] : [])];
+    const restore = [this.vfx.prime(), this.status.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : [])];
     return () => {
       for (const r of restore) r();
     };
@@ -474,11 +525,12 @@ export class CombatGame implements Updatable {
   update(dt: number): void {
     if (!this.difficultyApplied) this.applyDifficulty();
     // after a Titan falls the world keeps moving a few seconds, then freezes behind the end screen
-    if (this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner) this.endTimer += dt;
+    if (this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner) this.endTimer += dt;
     if (this.netGuest) {
       this.netGuest.basic = this.basicHeld;
       this.views.beforeStep(this.sim.units);
       this.netGuest.step(dt);
+      this.rushMode?.step(dt);
       this.views.afterStep(this.sim.units);
     } else if (this.netHost && !this.netHost.started) this.netHost.wait(dt);
     else if (this.endTimer < 4) {
@@ -488,6 +540,7 @@ export class CombatGame implements Updatable {
       this.clash?.step(dt);
       this.siege?.step(dt);
       this.duel?.step(dt);
+      this.rushMode?.step(dt);
       this.sim.step(dt);
       this.netHost?.afterStep(dt);
       this.views.afterStep(this.sim.units);
@@ -502,7 +555,8 @@ export class CombatGame implements Updatable {
 
     this.deps.player.movement = {
       speed: this.sim.moveSpeed(this.player),
-      canMove: this.sim.canMove(this.player),
+      // a kickoff countdown holds everyone on their marks
+      canMove: this.sim.canMove(this.player) && !this.rushMode?.frozen,
     };
   }
 
@@ -530,7 +584,7 @@ export class CombatGame implements Updatable {
     if (this.menu.isOpen && input.wasPressed('Escape')) this.menu.close();
 
     this.basicHeld = false;
-    if (!this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown') this.handleCombatInput();
+    if (!this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner) this.handleCombatInput();
     this.netGuest?.syncBuild();
 
     for (const e of this.sim.drainEvents()) {
@@ -548,6 +602,7 @@ export class CombatGame implements Updatable {
     this.clashHud?.frame(dt);
     this.siegeHud?.frame();
     this.duelHud?.frame();
+    this.rushMode?.frame(dt, time);
     if (this.plazaRing && this.duel) {
       // the ring is rebuilt only when it has moved half a meter, not every frame
       const r = Math.round(this.duel.ring * 2) / 2;
@@ -619,9 +674,22 @@ export class CombatGame implements Updatable {
       } else if (this.sim.startRecall(u)) this.cancelPreview();
     }
 
+    // a Relic Rush carrier can't fight: their click throws the relic instead
+    const carrying = this.rushMode?.carrying ?? false;
+    if (carrying) {
+      this.cancelPreview();
+      if (input.wasPressed('Mouse0') && input.locked) this.rushMode!.throw();
+      this.suppressBasic = true;
+    }
+
     SLOT_CODES.forEach((codes, slot) => {
       const code = codes.find((c) => input.wasPressed(c));
       if (!code) return;
+      if (carrying) {
+        this.hud.deny(slot);
+        this.hud.toast('Carrying the relic: no skills. Left click passes it.', 'warn');
+        return;
+      }
       if (this.preview?.slot === slot) {
         this.castSlot(slot);
         return;
@@ -912,6 +980,7 @@ export class CombatGame implements Updatable {
       units: this.sim.units.map((u) => ({ name: u.name, team: u.team, alive: u.alive, hp: Math.round(u.combatant.health), x: +u.x.toFixed(1), z: +u.z.toFixed(1) })),
       projectiles: this.sim.projectiles.length,
       zones: this.sim.zones.length,
+      rush: this.rush && { phase: this.rush.phase, score: { ...this.rush.score }, clock: Math.round(this.rush.clock), relic: this.rush.relic.phase, holder: this.rush.holder?.name ?? null },
     };
   }
 }

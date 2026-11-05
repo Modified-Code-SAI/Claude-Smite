@@ -83,6 +83,13 @@ export class Sim {
   private readonly winding = new Map<Unit, { at: number; aim: Point; basic: boolean; flash: number; run: () => void }>();
   private events: SimEvent[] = [];
   time = 0;
+  /**
+   * A mode's veto on a unit's basic attacks and casts: returning true stops the
+   * action (Relic Rush: the relic's carrier neither fights nor casts).
+   */
+  intercept: ((u: Unit, action: 'basic' | 'cast') => boolean) | null = null;
+  /** How far a knockback throws its target, arena meters (Relic Rush throws farther). */
+  knockback = 3.5;
 
   constructor(
     readonly terrain: SimTerrain,
@@ -157,7 +164,7 @@ export class Sim {
    * `scale` multiplies its damage (tower escalation, empowered minions).
    */
   basic(u: Unit, opts: { homing?: Unit; scale?: number } = {}): boolean {
-    if (u.forced || this.winding.has(u)) return false;
+    if (u.forced || this.winding.has(u) || this.intercept?.(u, 'basic')) return false;
     const shot = u.combatant.startBasic(this.rng);
     if (!shot) return false;
     if (opts.scale !== undefined) shot.raw *= opts.scale;
@@ -190,6 +197,7 @@ export class Sim {
   /** Cast the skill in `slot` toward the unit's aim point. */
   cast(u: Unit, slot: number): CastResult {
     if (u.forced || this.winding.has(u)) return 'forced';
+    if (this.intercept?.(u, 'cast')) return 'cc';
     const r = u.combatant.cast(slot);
     if (!r.ok) return r.error;
     this.interruptRecall(u);
@@ -598,8 +606,8 @@ export class Sim {
       const dz = target.z - owner.z;
       const d = hypot(dx, dz) || 1;
       if (e.cc === 'knockback') {
-        const time = 0.3;
-        const dist = 3.5;
+        const time = 0.3 * Math.sqrt(this.knockback / 3.5);
+        const dist = this.knockback;
         target.forced = { vx: (dx / d) * (dist / time), vz: (dz / d) * (dist / time), remaining: time, total: time, arc: 0.6, collide: true };
       } else if (e.cc === 'pull' || e.cc === 'grab') {
         const time = 0.3;

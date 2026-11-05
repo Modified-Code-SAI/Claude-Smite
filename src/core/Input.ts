@@ -25,6 +25,8 @@ export class Input {
     window.addEventListener('blur', () => this.down.clear());
     element.addEventListener('mousedown', (e) => {
       this.buttons |= 1 << e.button;
+      // a click shorter than a frame still counts once: wasPressed('Mouse0')
+      this.pressed.add(`Mouse${e.button}`);
       if (!this.locked) element.requestPointerLock?.();
     });
     window.addEventListener('mouseup', (e) => (this.buttons &= ~(1 << e.button)));
@@ -47,7 +49,7 @@ export class Input {
     return this.down.has(code);
   }
 
-  /** True once per physical key press. Cleared by `endFrame`. */
+  /** True once per physical key press (or mouse click, as 'Mouse0', 'Mouse2'…). Cleared by `endFrame`. */
   wasPressed(code: string): boolean {
     return this.pressed.has(code);
   }

@@ -27,12 +27,12 @@ export function rankOf(xp: number): Rank {
   return { level, title: RANKS[Math.min(level, RANKS.length) - 1]!, into: left, need: rankNeed(level) };
 }
 
-export type XpMode = 'conquest' | 'clash' | 'siege' | 'duel';
+export type XpMode = 'conquest' | 'clash' | 'siege' | 'duel' | 'rush';
 
 /** What a finished game is worth: a share for playing, as much again for winning; Siege pays per wave held. */
 export function gameXp(mode: XpMode, result: { won?: boolean; best?: number }): number {
   if (mode === 'siege') return 25 * Math.max(0, result.best ?? 0);
-  const base = { conquest: 200, clash: 80, duel: 60 }[mode];
+  const base = { conquest: 200, clash: 80, duel: 60, rush: 80 }[mode];
   return base * (result.won ? 2 : 1);
 }
 
