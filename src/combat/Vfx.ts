@@ -646,6 +646,8 @@ export class CombatVfx {
   private readonly burstPool: Pool<Burst>;
   private readonly pillarPool: Pool<Pillar>;
   private readonly pillars: Pillar[] = [];
+  /** A god's death raises a soul pillar (off in Relic Rush, where gods are only dazed). */
+  soulPillars = true;
   /** Last time each unit flared from a hit, so damage over time doesn't spam sparks. */
   private readonly lastFlare = new WeakMap<object, number>();
   private clock = 0;
@@ -796,7 +798,7 @@ export class CombatVfx {
       }
       case 'death': {
         const k = e.unit.kind;
-        if (k === 'god') this.pillar(paletteOf(e.unit), e.unit.x, e.unit.z);
+        if (k === 'god' && this.soulPillars) this.pillar(paletteOf(e.unit), e.unit.x, e.unit.z);
         const power = k === 'minion' ? 0.6 : isStructure(e.unit) || e.unit.radius > 2 ? 4 : k === 'monster' ? (e.unit.tag.endsWith('warden') ? 2.6 : 0.9) : 1.8;
         this.burst(monsterPalette(e.unit), e.unit.x, e.unit.body.y + (isStructure(e.unit) ? 4 : 1.2), e.unit.z, power);
         // a buff leaves its Warden in a flare and settles on the god who took it

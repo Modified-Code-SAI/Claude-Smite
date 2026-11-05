@@ -1,10 +1,14 @@
 import type { Side } from '../game/combatant';
 import { RUSH, type Rush } from '../sim/Rush';
 import type { Unit } from '../sim/Unit';
+import type { RushCall } from '../combat/RushMode';
 import { addResult } from './records';
 import { awardLine } from './ascension';
 import './clash.css';
 import './rush.css';
+
+/** A raised open hand: the call for the pass. */
+const HAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 58 V30 Q18 26 22 26 Q26 26 26 30 V14 Q26 10 30 10 Q34 10 34 14 V28 V12 Q34 8 38 8 Q42 8 42 12 V30 V18 Q42 14 46 14 Q50 14 50 18 V40 Q50 52 40 58 Z"/></svg>';
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
@@ -35,6 +39,8 @@ export class RushHud {
   private wasKickoff = true;
   private readonly arrow: HTMLElement;
   private arrowTone = '';
+  /** Call-for-the-pass bubbles over teammates' heads, reused. */
+  private readonly bubbles: { el: HTMLElement; name: HTMLElement; on: boolean; label: string }[] = [];
 
   constructor(
     private readonly rush: Rush,
@@ -54,6 +60,7 @@ export class RushHud {
       <div class="clash-state"></div>
       <div class="duel-big"></div>
       <div class="rush-pointer"><i></i></div>
+      <div class="rush-calls"></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><div class="clash-end-table"></div><button class="clash-again">${online ? 'Back to the title screen' : 'Play again'}</button></div>`;
     document.body.appendChild(this.root);
     this.pips = {
@@ -65,7 +72,40 @@ export class RushHud {
     this.big = this.root.querySelector('.duel-big')!;
     this.end = this.root.querySelector('.clash-end')!;
     this.arrow = this.root.querySelector('.rush-pointer')!;
+    const calls = this.root.querySelector('.rush-calls')!;
+    for (let i = 0; i < 3; i++) {
+      const el = document.createElement('div');
+      el.className = 'rush-call';
+      el.innerHTML = `<i>${HAND}</i><b>Pass!</b><span></span>`;
+      calls.appendChild(el);
+      this.bubbles.push({ el, name: el.querySelector('span')!, on: false, label: '' });
+    }
+    // the death screen reads as a daze in this mode (see rush.css)
+    document.body.classList.add('rush-mode');
     this.root.querySelector('.clash-again')!.addEventListener('click', () => (online ? location.assign(location.pathname) : location.reload()));
+  }
+
+  /** Teammates calling for the pass: a bubble over each one's head, fading out. */
+  calls(list: readonly RushCall[]): void {
+    this.bubbles.forEach((b, i) => {
+      const c = list[i];
+      if (!c) {
+        if (b.on) b.el.classList.remove('show', 'pop');
+        b.on = false;
+        return;
+      }
+      if (!b.on) {
+        b.el.classList.add('show', 'pop');
+        b.on = true;
+      }
+      if (c.name !== b.label) {
+        b.label = c.name;
+        b.name.textContent = c.name;
+        b.el.classList.toggle('mine', c.mine);
+      }
+      b.el.style.transform = `translate(${c.x.toFixed(0)}px, ${c.y.toFixed(0)}px)`;
+      b.el.style.opacity = (1 - c.age ** 3).toFixed(2);
+    });
   }
 
   /** The arrow at the screen's edge toward an out-of-sight relic (null hides it). */
@@ -94,7 +134,7 @@ export class RushHud {
     if (r.phase === 'kickoff') return { text: r.overtime ? 'Golden relic: the next goal wins' : 'Kickoff: the Sun Relic waits on the pedestal', tone: r.overtime ? 'contested' : '' };
     const h = relic.holder;
     if (h === me) return { text: 'You have the relic! Run it through their gate, or left click to pass where you aim', tone: 'order' };
-    if (h && h.team === me.team) return { text: `${h.name} has the relic: get open for a pass`, tone: 'order' };
+    if (h && h.team === me.team) return { text: `${h.name} has the relic: get open, and press F to call for the pass`, tone: 'order' };
     if (h) return { text: `${h.name} has the relic: stun or knock them back to make them drop it`, tone: 'chaos' };
     if (relic.phase === 'center') return { text: 'Grab the Sun Relic from the pedestal', tone: 'contested' };
     if (relic.phase === 'flying' && relic.thrower) {

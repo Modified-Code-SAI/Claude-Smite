@@ -705,6 +705,8 @@ export class GameAudio {
   }
 
   /** Last seen Relic Rush state, so each beat is called once. */
+  /** Gods whose current call for the pass has been heard. */
+  private readonly rushCalls = new Set<Unit>();
   private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
 
   /** Relic Rush: the horn at each kickoff, goals, steals and fumbles, the golden relic and the result. */
@@ -753,6 +755,13 @@ export class GameAudio {
     if (r.beats.catch !== seen.catch) {
       seen.catch = r.beats.catch;
       this.engine.play('relic.catch', { at, ref: 10 }, 3);
+    }
+    // a teammate's call for the pass (and your own, softer, so you know it went out)
+    for (const g of r.team(mine as 'order' | 'chaos')) {
+      const calling = r.calledAgo(g) !== null;
+      if (calling && !this.rushCalls.has(g)) this.engine.play('relic.call', { at: { x: g.x, z: g.z }, ref: 12, gain: g === this.me ? 0.5 : 0.9 }, 3);
+      if (calling) this.rushCalls.add(g);
+      else this.rushCalls.delete(g);
     }
     if (r.beats.shrug !== seen.shrug) {
       seen.shrug = r.beats.shrug;

@@ -14,3 +14,21 @@
 @keyframes rush-nudge { from { transform: translateX(-4px); } to { transform: translateX(3px); } }
 .rush .duel-pips i.new { animation: rush-pip 0.7s ease-out; }
 @keyframes rush-pip { 0% { transform: scale(2.4); filter: brightness(2.6); } 100% { transform: none; filter: none; } }
+.rush-calls { position: fixed; inset: 0; pointer-events: none; }
+.rush-call { position: fixed; left: 0; top: 0; display: none; flex-direction: column; align-items: center; gap: 1px; margin: -46px 0 0 -40px; width: 80px; text-shadow: 0 2px 3px #000; }
+.rush-call.show { display: flex; }
+.rush-call.pop i { animation: rush-call-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.rush-call i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #e6f4ff, #2a7cff 70%); box-shadow: 0 0 0 2px #ffd34a, 0 0 14px rgba(110, 180, 255, 0.9); }
+.rush-call i svg { width: 19px; height: 19px; fill: #0b1a33; }
+.rush-call b { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #ffe9b8; }
+.rush-call span { font-size: 10px; letter-spacing: 0.08em; color: #cfe6ff; }
+.rush-call.mine i { background: radial-gradient(circle at 40% 35%, #fff6d8, #ffb428 70%); box-shadow: 0 0 0 2px #fff, 0 0 14px rgba(255, 200, 80, 0.9); }
+@keyframes rush-call-pop { 0% { transform: scale(0.2); } 100% { transform: none; } }
+/* nobody dies in Relic Rush: the death screen is a daze */
+.rush-mode .ch-death { background: radial-gradient(ellipse at center, rgba(255, 230, 160, 0.06), rgba(30, 20, 6, 0.55)); filter: none; }
+.rush-mode .ch-death-title { font-size: 0; }
+.rush-mode .ch-death-title::after { content: 'Dazed'; font-size: 54px; color: #ffd34a; letter-spacing: 0.3em; text-shadow: 0 0 18px rgba(255, 200, 80, 0.7), 0 2px 6px #000; display: inline-block; animation: rush-daze 1.6s ease-in-out infinite; }
+.rush-mode .ch-death-line { font-size: 0; }
+.rush-mode .ch-death-line::before { content: 'On your feet at your gate in '; font-size: 18px; }
+.rush-mode .ch-death-line span { font-size: 18px; }
+@keyframes rush-daze { 0%, 100% { transform: rotate(-3deg) translateX(-4px); } 50% { transform: rotate(3deg) translateX(4px); } }

@@ -199,6 +199,8 @@ export class UnitViews {
   /** Built with the first training dummy. */
   private dummies: DummyCrowd | null = null;
   private readonly views = new Map<Unit, UnitView>();
+  /** Relic Rush: fallen gods are dazed, not dead, and lie where they fell instead of sinking away. */
+  dazes = false;
   private readonly prev = new Map<Unit, THREE.Vector3>();
   private readonly cur = new Map<Unit, THREE.Vector3>();
   /** When set, gods off screen or far away animate at a reduced rate. */
@@ -297,6 +299,11 @@ export class UnitViews {
   }
 
   /** Hit-stop on a god's pose (the player's included); other units just wobble. */
+  /** A swing of the arm without an attack (Relic Rush's throw). */
+  swing(u: Unit): void {
+    (u === this.player ? this.playerModel : this.views.get(u)?.model)?.startCast('basic');
+  }
+
   hitStop(u: Unit, seconds: number): void {
     (u === this.player ? this.playerModel : this.views.get(u)?.model)?.hitStop(seconds);
   }
@@ -409,8 +416,8 @@ export class UnitViews {
     } else v.deathTime = -1;
     if (v.model) v.model.deathTime = v.deathTime;
 
-    // a downed god (Underworld Descent) lies where it fell until it is raised
-    const lying = u.downed && !u.alive;
+    // a downed god (Underworld Descent) lies where it fell until it is raised; a dazed one (Relic Rush) until it stands up
+    const lying = (u.downed || (this.dazes && u.kind === 'god')) && !u.alive;
     if (u === this.player) {
       // no sink: the camera follows this root through the respawn wait
       v.root.visible = u.alive || lying || v.deathTime < GOD_CORPSE;

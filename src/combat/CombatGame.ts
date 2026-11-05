@@ -383,12 +383,16 @@ export class CombatGame implements Updatable {
       camera: this.deps.camera,
       burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
       shake: this.deps.shake,
+      swing: (u) => this.views.swing(u),
     });
+    // nobody dies here: a god knocked out lies dazed where it fell (no soul pillar) until it stands up at its gate
+    this.views.dazes = true;
+    this.vfx.soulPillars = false;
     this.rushMode = mode;
     this.rush = mode.rush;
     this.netHost = mode.host;
     this.netGuest = mode.guest;
-    this.hud.toast('Carry the Sun Relic through their gate. Left click passes it; stun the carrier to knock it loose. Press K to spend your skill points.');
+    this.hud.toast('Carry the Sun Relic through their gate. Left click passes it; stun the carrier to knock it loose. F calls for the pass. Press K to spend your skill points.');
   }
 
   /** Temple Duel: the player against one bot god, round by round, inside a closing ring of fire. */
@@ -724,6 +728,7 @@ export class CombatGame implements Updatable {
 
     // a Relic Rush carrier can't fight: their click throws the relic instead
     const carrying = this.rushMode?.carrying ?? false;
+    if (this.rushMode && !carrying && input.wasPressed('KeyF')) this.rushMode.call();
     if (carrying) {
       this.cancelPreview();
       if (input.wasPressed('Mouse0') && input.locked) this.rushMode!.throw();
