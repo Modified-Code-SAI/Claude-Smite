@@ -16,6 +16,7 @@ import { skillPart, skillSound } from './bank';
 import type { Music, SongName } from './music';
 import { hypot } from '../core/math';
 import { DUEL } from '../sim/Duel';
+import { RUSH } from '../sim/Rush';
 import { DESCENT, DEPTHS } from '../sim/Descent';
 
 /** A match's music only ever moves forward: dawn, then battle, then the siege. */
@@ -141,7 +142,7 @@ export class GameAudio {
         if (e.unit === me && e.favor > 0) this.engine.play('favor', { gain: 0.35, vary: 0.05 }, 2, 0.08);
         break;
       case 'teleport':
-        if (this.dist(e.unit) < 50 || hypot(e.fromX - this.engine.listenerPos.x, e.fromZ - this.engine.listenerPos.z) < 50) {
+        if (!e.quiet && (this.dist(e.unit) < 50 || hypot(e.fromX - this.engine.listenerPos.x, e.fromZ - this.engine.listenerPos.z) < 50)) {
           this.engine.play('teleport', { at: { x: e.fromX, z: e.fromZ }, gain: 0.6 }, 2);
           this.at('teleport', e.unit, { gain: 0.5, delay: 0.05 }, 2);
         }
@@ -262,7 +263,7 @@ export class GameAudio {
     const me = this.me;
     switch (u.kind) {
       case 'god':
-        this.at('god.death', u, { gain: u === me ? 1 : 0.8, ref: 10 }, 5);
+        this.at(this.game.rush ? 'god.daze' : 'god.death', u, { gain: u === me ? 1 : 0.8, ref: 10 }, 5);
         this.voice(u, 'death', 0.85, 5);
         const streak = this.endStreak(u, killer);
         if (killer === me && u !== me) {
@@ -733,6 +734,12 @@ export class GameAudio {
     if (r.goalCount !== seen.goals) {
       seen.goals = r.goalCount;
       const g = r.lastGoal;
+      if (g) {
+        // the gate's gong: bright for our goal, lower and heavier for theirs
+        const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
+        const ours = g.team === mine;
+        this.engine.play('relic.goal', { at: { x: gate.x, z: gate.z }, ref: 40, gain: ours ? 1 : 0.8, rate: ours ? 1 : 0.84 }, 6);
+      }
       if (g && !r.winner) {
         const ours = g.team === mine;
         const line = g.scorer === this.me ? (g.kind === 'shot' ? 'What a shot! You score!' : 'You score!') : ours ? (g.kind === 'shot' ? 'A shot from range! Goal!' : 'Goal! Your team scores.') : 'The enemy scores.';

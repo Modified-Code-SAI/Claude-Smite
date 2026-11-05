@@ -10,6 +10,9 @@ import './rush.css';
 /** A raised open hand: the call for the pass. */
 const HAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 58 V30 Q18 26 22 26 Q26 26 26 30 V14 Q26 10 30 10 Q34 10 34 14 V28 V12 Q34 8 38 8 Q42 8 42 12 V30 V18 Q42 14 46 14 Q50 14 50 18 V40 Q50 52 40 58 Z"/></svg>';
 
+/** Seconds the post-goal dip takes to close, and to open again on the kickoff. */
+const RUSH_CUT = { in: 0.3, out: 0.55 };
+
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
 
@@ -39,6 +42,11 @@ export class RushHud {
   private wasKickoff = true;
   private readonly arrow: HTMLElement;
   private arrowTone = '';
+  /** The dip to dark that hides the kickoff reset after a goal, and how far it has faded back out. */
+  private readonly cut: HTMLElement;
+  private cutOut = 0;
+  private lastCut = '';
+  private wasGoal = false;
   /** Call-for-the-pass bubbles over teammates' heads, reused. */
   private readonly bubbles: { el: HTMLElement; name: HTMLElement; on: boolean; label: string }[] = [];
 
@@ -52,6 +60,7 @@ export class RushHud {
     this.foe = this.mine === 'order' ? 'chaos' : 'order';
     this.root.className = 'clash duel rush';
     this.root.innerHTML = `
+      <div class="rush-cut"></div>
       <div class="clash-bar">
         <div class="clash-side ally"><span class="duel-name">Your team</span><div class="duel-pips"></div></div>
         <div class="rush-clock"></div>
@@ -72,6 +81,7 @@ export class RushHud {
     this.big = this.root.querySelector('.duel-big')!;
     this.end = this.root.querySelector('.clash-end')!;
     this.arrow = this.root.querySelector('.rush-pointer')!;
+    this.cut = this.root.querySelector('.rush-cut')!;
     const calls = this.root.querySelector('.rush-calls')!;
     for (let i = 0; i < 3; i++) {
       const el = document.createElement('div');
@@ -168,6 +178,7 @@ export class RushHud {
     if (this.wasKickoff && r.phase === 'play') this.rushShow = 0.9;
     this.wasKickoff = r.phase === 'kickoff';
     this.rushShow = Math.max(0, this.rushShow - dt);
+    this.dip(dt);
 
     const pips = `${r.score.order}:${r.score.chaos}`;
     if (pips !== this.lastPips) {
@@ -203,6 +214,25 @@ export class RushHud {
       this.big.dataset.side = b.side;
     }
     if (r.winner && !this.shownEnd) this.showEnd();
+  }
+
+  /**
+   * After a goal the screen dips to dark as the celebration ends, so every god
+   * (and the camera) jumping back to the kickoff marks happens out of sight,
+   * then it opens again on the new kickoff.
+   */
+  private dip(dt: number): void {
+    const r = this.rush;
+    const goal = r.phase === 'goal';
+    if (this.wasGoal && !goal && r.phase === 'kickoff') this.cutOut = RUSH_CUT.out;
+    this.wasGoal = goal;
+    this.cutOut = Math.max(0, this.cutOut - dt);
+    const a = goal ? Math.max(0, 1 - r.timer / RUSH_CUT.in) : this.cutOut / RUSH_CUT.out;
+    const v = (a * a * (3 - 2 * a)).toFixed(2);
+    if (v === this.lastCut) return;
+    this.lastCut = v;
+    this.cut.style.opacity = v;
+    this.cut.style.display = v === '0.00' ? 'none' : 'block';
   }
 
   private showEnd(): void {

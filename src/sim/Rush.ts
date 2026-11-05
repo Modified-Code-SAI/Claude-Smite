@@ -700,10 +700,11 @@ export class Rush {
     }
   }
 
+  /** Onto their kickoff mark, quietly: the screen dips to dark over the reset (see RushHud), so it needs no flash. */
   private place(g: Unit, i: number): void {
     const spots = RUSH.kickoff[g.team as Side];
     const at = spots[i % spots.length]!;
-    if (hypot(g.x - at.x, g.z - at.z) > 0.05) this.sim.teleport(g, at.x, at.z, at.yaw);
+    if (hypot(g.x - at.x, g.z - at.z) > 0.05) this.sim.teleport(g, at.x, at.z, at.yaw, true);
   }
 
   /** During the countdown the gods stand at their marks (only moved when they step off). */

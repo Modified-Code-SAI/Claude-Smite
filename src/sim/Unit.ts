@@ -232,7 +232,8 @@ export type SimEvent =
   | { type: 'respawn'; unit: Unit }
   | { type: 'levelUp'; unit: Unit; level: number }
   | { type: 'reward'; unit: Unit; xp: number; favor: number }
-  | { type: 'teleport'; unit: Unit; fromX: number; fromZ: number }
+  /** `quiet`: a move the mode hides itself (Relic Rush's kickoff reset), so no flash or sound. */
+  | { type: 'teleport'; unit: Unit; fromX: number; fromZ: number; quiet?: boolean }
   | { type: 'recall'; unit: Unit; state: 'start' | 'cancel' | 'done' };
 
 export function nextEntityId(): number {

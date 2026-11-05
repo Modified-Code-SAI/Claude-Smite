@@ -32,3 +32,5 @@
 .rush-mode .ch-death-line::before { content: 'On your feet at your gate in '; font-size: 18px; }
 .rush-mode .ch-death-line span { font-size: 18px; }
 @keyframes rush-daze { 0%, 100% { transform: rotate(-3deg) translateX(-4px); } 50% { transform: rotate(3deg) translateX(4px); } }
+/* the dip to dark over the kickoff reset after a goal */
+.rush-cut { position: absolute; inset: 0; display: none; opacity: 0; background: radial-gradient(ellipse at center, rgba(22, 16, 8, 0.9), rgba(6, 4, 2, 0.97)); }
