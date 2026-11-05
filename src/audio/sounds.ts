@@ -163,6 +163,8 @@ export const SOUNDS: Record<string, Recipe> = {
   'crowd.roar': { variants: 2, peak: 0.8, make: (r) => tail(crowd(r, 4.2, { voices: 24, pitch: 190, rise: 0.22, breath: 0.6, babble: 0.35, lp: 3600, env: (t) => ahr(t, 0.22, 1.3, 2.4) }), 0.85, 0.35, 3200) },
   'crowd.ooh': { variants: 2, peak: 0.6, make: (r) => tail(crowd(r, 1.9, { voices: 18, pitch: 165, rise: 0.3, breath: 0.25, babble: 0.1, lp: 3000, vowels: ['oo', 'oh'], arc: true, env: (t) => ahr(t, 0.16, 0.45, 1.1) }), 0.8, 0.3, 2800) },
   'amb.crowd': { loop: true, peak: 0.45, make: (r) => loopable(crowd(r, 10, { voices: 20, pitch: 150, rise: 0, breath: 0.35, babble: 1, lp: 2200, env: () => 1 }), 1.2) },
+  // the Sun Relic's song, a low sung drone that follows it round the pitch
+  'relic.hum': { loop: true, peak: 0.4, make: (r) => relicHum(r, 6) },
   'relic.fumble': { variants: 2, peak: 0.7, make: (r) => layer([clang(r, 0.9, 660, { decay: 0.55, gain: 0.6 }), 1], [thump(r, 0.3, 120, 50, { click: 0.3 }), 0.8], [whoosh(r, 0.3, 2000, 700, { q: 1 }), 0.4, 0.04]) },
   // the big kill moments (multi-kills, shutdowns, streaks): a close thunderclap under a rising chorus and a bell
   // your ultimate: the world drops away under a rising surge of power
@@ -340,6 +342,28 @@ function coin(r: Rand): Float32Array {
   chime(r, 0.4, f, { out, gain: 0.7 });
   chime(r, 0.45, f * 1.335, { out, at: 0.06, gain: 0.8 });
   return out;
+}
+
+/**
+ * The Sun Relic's hum: a sung "oo" on D and the A above, a little under the
+ * goal gong's chord, with a faint glassy halo of slow-beating partials on top.
+ * Every tremolo makes whole cycles over the loop, so the seam can't be heard.
+ */
+function relicHum(r: Rand, len: number): Float32Array {
+  const halo = buf(len);
+  const ratios = [1, 1.5, 2, 3];
+  for (let v = 0; v < ratios.length; v++) {
+    const o = new Osc(r());
+    const f = 587.3 * ratios[v]! * (1 + (r() - 0.5) * 0.008);
+    const trem = (2 + v) / len;
+    const tp = r() * 6.283;
+    for (let i = 0; i < halo.length; i++) {
+      const t = i / RATE;
+      halo[i] = halo[i]! + o.sine(f) * (0.55 + 0.45 * Math.sin(t * trem * 6.283 + tp)) / (1 + v);
+    }
+  }
+  const steady = () => 1;
+  return loopable(layer([choir(r, len, 146.8, { vowelName: 'oo', env: steady }), 0.8], [choir(r, len, 220, { vowelName: 'oo', env: steady }), 0.45], [halo, 0.12]), 1);
 }
 
 /**

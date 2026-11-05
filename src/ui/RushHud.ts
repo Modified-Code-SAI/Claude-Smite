@@ -13,6 +13,8 @@ const HAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 58 V30 Q1
 
 /** Seconds the post-goal dip takes to close, and to open again on the kickoff. */
 const RUSH_CUT = { in: 0.3, out: 0.55 };
+/** Seconds the match card takes to fade once play starts. */
+const RUSH_INTRO_FADE = 0.7;
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
@@ -51,6 +53,12 @@ export class RushHud {
   /** The whole pitch at a glance, top right. */
   private readonly radar: RushRadar;
   private time = 0;
+  /** The match card over the first kickoff (who plays whom, and how to win), and how much of it is left as it fades. */
+  private readonly intro: HTMLElement;
+  private introLeft = 0;
+  private lastIntro = '';
+  private readonly introCount: HTMLElement;
+  private lastCount = '';
   /** Call-for-the-pass bubbles over teammates' heads, reused. */
   private readonly bubbles: { el: HTMLElement; name: HTMLElement; on: boolean; label: string }[] = [];
 
@@ -72,6 +80,7 @@ export class RushHud {
       </div>
       <div class="clash-state"></div>
       <div class="duel-big"></div>
+      <div class="rush-intro"><b>Relic Rush</b><small>First to ${RUSH.goals} goals: carry or throw the Sun Relic through their gate</small><div class="rush-intro-teams"><div class="ally">${this.lineUp(this.mine)}</div><i class="rush-intro-count"></i><div class="foe">${this.lineUp(this.foe)}</div></div></div>
       <div class="rush-pointer"><i></i></div>
       <div class="rush-calls"></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><div class="clash-end-table"></div><button class="clash-again">${online ? 'Back to the title screen' : 'Play again'}</button></div>`;
@@ -86,6 +95,13 @@ export class RushHud {
     this.end = this.root.querySelector('.clash-end')!;
     this.arrow = this.root.querySelector('.rush-pointer')!;
     this.cut = this.root.querySelector('.rush-cut')!;
+    this.intro = this.root.querySelector('.rush-intro')!;
+    this.introCount = this.root.querySelector('.rush-intro-count')!;
+    // only a match that's just starting gets the card (not a guest joining mid-game)
+    if (rush.phase === 'kickoff' && rush.goalCount === 0 && !rush.overtime) {
+      this.introLeft = 1;
+      this.intro.classList.add('show');
+    }
     this.radar = new RushRadar(rush, me, gods);
     this.root.querySelector('.clash-bar')!.after(this.radar.el);
     const calls = this.root.querySelector('.rush-calls')!;
@@ -135,6 +151,41 @@ export class RushHud {
     }
   }
 
+  /** One team's gods for the match card, this player first. */
+  private lineUp(side: Side): string {
+    return this.gods
+      .filter((u) => u.team === side)
+      .sort((a, b) => Number(b === this.me) - Number(a === this.me))
+      .map((u) => (u === this.me ? `<span class="me">${esc(u.name)} <em>(you)</em></span>` : `<span>${esc(u.name)}</span>`))
+      .join('');
+  }
+
+  /**
+   * The match card holds through the first countdown (which it shows between
+   * the two teams, in place of the big one), then fades as play starts.
+   */
+  private introFrame(dt: number): void {
+    if (this.introLeft <= 0) return;
+    const r = this.rush;
+    const kickoff = r.phase === 'kickoff' && r.goalCount === 0;
+    if (!kickoff) this.introLeft = Math.max(0, this.introLeft - dt / RUSH_INTRO_FADE);
+    const count = kickoff ? String(Math.max(1, Math.ceil(r.timer))) : 'Rush!';
+    if (count !== this.lastCount) {
+      this.lastCount = count;
+      this.introCount.textContent = count;
+      this.introCount.classList.toggle('go', !kickoff);
+      // each new number pops in
+      this.introCount.classList.remove('pop');
+      void this.introCount.offsetWidth;
+      this.introCount.classList.add('pop');
+    }
+    const v = this.introLeft.toFixed(2);
+    if (v === this.lastIntro) return;
+    this.lastIntro = v;
+    this.intro.style.opacity = v;
+    if (this.introLeft <= 0) this.intro.classList.remove('show');
+  }
+
   private who(u: Unit): string {
     return u === this.me ? 'You' : u.name;
   }
@@ -161,6 +212,8 @@ export class RushHud {
 
   private bigText(): { html: string; side: string } {
     const r = this.rush;
+    // the first countdown and its "Rush!" are on the match card
+    if (this.introLeft > 0) return { html: '', side: '' };
     if (r.phase === 'kickoff') return { html: String(Math.max(1, Math.ceil(r.timer))), side: '' };
     const g = r.lastGoal;
     if (this.goalShow > 0 && g) {
@@ -185,6 +238,7 @@ export class RushHud {
     this.wasKickoff = r.phase === 'kickoff';
     this.rushShow = Math.max(0, this.rushShow - dt);
     this.dip(dt);
+    this.introFrame(dt);
     this.time += dt;
     if (!this.shownEnd) this.radar.frame(dt, this.time);
 
