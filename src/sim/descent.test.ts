@@ -242,6 +242,10 @@ describe('Underworld Descent: the run', () => {
     jump.chamber = DESCENT.chambers - 1;
     jump.nextChamber();
     step(sim, run, DESCENT.enterTime + 0.1);
+    // its entrance: the chamber holds still, and the rain's clock waits for it
+    expect(run.intro).toBeGreaterThan(DESCENT.bossIntro - 0.2);
+    step(sim, run, DESCENT.bossIntro);
+    expect(run.intro).toBe(0);
     const k = run.boss!;
     expect(k.name).toBe('Ossuary King');
     expect(k.tag.endsWith(':ossuaryKing')).toBe(true);
@@ -500,6 +504,43 @@ describe('Underworld Descent: the run', () => {
       expect(run.curses.length).toBe(seen);
     }
     expect(new Set(run.curses.map((c) => c.id)).size).toBe(run.curses.length);
+  });
+
+  it('holds a boss chamber still while its boss rises: nothing acts, then the fight begins; a guest copy holds too', () => {
+    const { sim, run, team } = setup([zeus, thor, odin], 1, 5);
+    for (const g of team.slice(1)) g.brain = new DescentBot(sim, g, run);
+    const jump = run as unknown as { chamber: number; nextChamber(): void };
+    // an ordinary chamber has no entrance
+    step(sim, run, DESCENT.enterTime + 0.1);
+    expect(run.phase).toBe('fight');
+    expect(run.intro).toBe(0);
+    jump.chamber = DESCENT.bossEvery - 1;
+    jump.nextChamber();
+    step(sim, run, DESCENT.enterTime + 0.1);
+    const boss = run.boss!;
+    expect(run.intro).toBeGreaterThan(DESCENT.bossIntro - 0.2);
+    const at = { x: boss.x, z: boss.z };
+    const gods = team.map((g) => ({ x: g.x, z: g.z, hp: g.combatant.health }));
+    const guest = new Descent(new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(1)), zeus);
+    guest.applyNet(run.netState());
+    expect(guest.intro).toBeCloseTo(run.intro, 1);
+    step(sim, run, DESCENT.bossIntro - 0.3);
+    expect(Math.hypot(boss.x - at.x, boss.z - at.z)).toBeLessThan(0.01);
+    team.slice(1).forEach((g, i) => expect(Math.hypot(g.x - gods[i + 1]!.x, g.z - gods[i + 1]!.z)).toBeLessThan(0.01));
+    team.forEach((g, i) => expect(g.combatant.health).toBe(gods[i]!.hp));
+    // it turned to face the team as it rose
+    const facing = Math.atan2(-(team[0]!.x - boss.x), -(team[0]!.z - boss.z));
+    expect(Math.abs(Math.atan2(Math.sin(boss.body.yaw - facing), Math.cos(boss.body.yaw - facing)))).toBeLessThan(0.6);
+    // then it comes for them, and the bots go to meet it
+    step(sim, run, 2);
+    expect(run.intro).toBe(0);
+    expect(Math.hypot(boss.x - at.x, boss.z - at.z)).toBeGreaterThan(0.5);
+    expect(team.slice(1).some((g, i) => Math.hypot(g.x - gods[i + 1]!.x, g.z - gods[i + 1]!.z) > 0.5)).toBe(true);
+    // a guest runs the entrance down between snapshots, and the next one without it ends it
+    guest.follow(1);
+    expect(guest.intro).toBeLessThan(DESCENT.bossIntro - 0.9);
+    guest.applyNet(run.netState());
+    expect(guest.intro).toBe(0);
   });
 
   it('wins the run when the last boss falls', () => {

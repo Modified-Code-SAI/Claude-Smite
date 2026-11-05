@@ -36,6 +36,9 @@ export interface DescentDeps {
   cue?: DescentViewOptions['cue'];
   /** Builds the models of the monsters a chamber will raise ahead of time (UnitViews.stock). */
   stock?: (coming: readonly { tag: string; name: string }[]) => void;
+  /** Takes the camera for a boss's entrance, and a unit's drawn height to frame it (see DescentViewOptions). */
+  cameraShot?: DescentViewOptions['cameraShot'];
+  heightOf?: DescentViewOptions['heightOf'];
 }
 
 /**
@@ -101,7 +104,7 @@ export class DescentMode {
     const board = new Scoreboard(sim);
     board.track(this.gods);
     this.hud = new DescentHud(run, player, (i) => this.pick(i), board);
-    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, { team: run.sideOf(player), me: player, shake: deps.shake, cue: deps.cue });
+    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, { team: run.sideOf(player), me: player, shake: deps.shake, cue: deps.cue, cameraShot: deps.cameraShot, heightOf: deps.heightOf });
   }
 
   /** Votes for a reward, or drafts a skill (from its key or a click on its card). */

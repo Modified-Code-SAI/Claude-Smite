@@ -66,3 +66,12 @@
 @keyframes descent-relic-name { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes descent-relic-pop { from { transform: scale(1.3); box-shadow: 0 0 22px #ffe08a; } to { transform: scale(1); } }
 @keyframes descent-relic-rage { from { box-shadow: 0 0 6px rgba(255, 60, 40, 0.6); } to { box-shadow: 0 0 20px rgba(255, 60, 40, 1); } }
+/* a boss's entrance: the camera turns to it, the HUD stands aside and its name comes up beneath it */
+.descent-mode .combat-hud, .descent .clash-bar, .descent .clash-state { transition: opacity 0.35s ease-out; }
+body.descent-cine .combat-hud, body.descent-cine .hud-hint, body.descent-cine .coach, body.descent-cine .hud-crosshair, body.descent-cine .descent .clash-bar, body.descent-cine .descent .clash-state, body.descent-cine .descent-relics, body.descent-cine .descent-curses { opacity: 0; }
+.descent-boss { position: absolute; left: 50%; bottom: 11%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; pointer-events: none; transition: opacity 0.5s ease-in; text-align: center; white-space: nowrap; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.95), 0 0 2px #000; }
+.descent-boss.show { opacity: 1; transition: opacity 0.4s ease-out; animation: descent-boss-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.descent-boss small { font: 600 13px system-ui, sans-serif; letter-spacing: 0.34em; text-transform: uppercase; color: #ffb48a; opacity: 0.9; }
+.descent-boss b { font-family: 'Cinzel', Georgia, serif; font-weight: 700; font-size: clamp(40px, 7vw, 84px); letter-spacing: 0.1em; color: #ffe2c4; padding: 0 56px 6px; border-bottom: 1px solid; border-image: linear-gradient(90deg, transparent, rgba(255, 140, 90, 0.9), transparent) 1; }
+.descent-boss span { font-family: 'Cinzel', Georgia, serif; font-size: 18px; letter-spacing: 0.16em; color: #f2d6b0; }
+@keyframes descent-boss-in { from { opacity: 0; letter-spacing: 0.32em; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%); } }

@@ -52,6 +52,11 @@ export const DESCENT = {
   eruption: { every: 2.8, warn: 1.25, radius: 3.2, damage: 0.15 },
   /** Bosses call adds when they fall below these shares of their health. */
   bossAdds: [0.66, 0.33],
+  /**
+   * Seconds a boss chamber holds still as its boss rises (the camera turns to
+   * it and its name comes up): no monster or bot acts, and no soul fire falls.
+   */
+  bossIntro: 2.6,
   /** Champion's Obol: a whole-team wipe is undone this many times (it can be won as a reward). */
   obols: 0,
   /** A shared descent (team versus). */
@@ -370,6 +375,8 @@ export class DescentMonsterBrain extends MonsterBrain {
     private readonly obstacles: readonly (readonly [number, number, number])[] = [],
     /** The chamber it fights in: where a Shade may blink to. */
     private readonly chamber: ChamberDef | null = null,
+    /** While true (a boss's entrance), it only turns to face its foe. */
+    private readonly held: () => boolean = () => false,
   ) {
     super(s, self, camp);
     this.at = camp.camp.at as unknown as [number, number];
@@ -398,6 +405,12 @@ export class DescentMonsterBrain extends MonsterBrain {
       }
       // a monster whose foe is only far away keeps it rather than flip-flopping
       if (best || !foe?.alive || !foe.targetable) camp.foe = best;
+    }
+    if (this.held()) {
+      u.move = null;
+      const f = camp.foe;
+      if (f) u.body.yaw = Math.atan2(-(f.x - u.x), -(f.z - u.z));
+      return;
     }
     if (u.tag.endsWith(':shade') && (this.blinkIn -= dt) <= 0 && this.blink()) this.blinkIn = SHADE_BLINK.every;
     const keeper = u.tag.endsWith(':gravekeeper');
@@ -618,6 +631,8 @@ export class Descent {
   gildedFate: 'caught' | 'escaped' | null = null;
   boss: Unit | null = null;
   private bossAddsCalled = 0;
+  /** Seconds left of a boss's entrance (see DESCENT.bossIntro). */
+  private introLeft = 0;
   /** Seconds left on the Champion's spoils, and the team that took them. */
   spoils = 0;
   spoilsTeam: Side = 'order';
@@ -670,6 +685,11 @@ export class Descent {
     if (!this.versus) return 0;
     const mine = this.teamOf(side).length;
     return Math.max(0, this.gods.length - mine - mine);
+  }
+
+  /** Seconds left of a boss's entrance, while its chamber holds still (0 the rest of the time). */
+  get intro(): number {
+    return this.introLeft;
   }
 
   /** The chamber the team is in (or about to enter). */
@@ -838,8 +858,11 @@ export class Descent {
     for (let i = this.monsters.length - 1; i >= 0; i--) if (!this.monsters[i]!.alive) this.monsters.splice(i, 1);
     this.stepRevives(dt);
     if (this.checkWipe()) return;
-    this.stepEruptions(dt);
-    this.stepKing(dt);
+    if (this.introLeft > 0) this.introLeft = Math.max(0, this.introLeft - dt);
+    else {
+      this.stepEruptions(dt);
+      this.stepKing(dt);
+    }
     this.relics.step();
     switch (this.phase) {
       case 'enter':
@@ -900,6 +923,7 @@ export class Descent {
 
   private startFight(): void {
     this.phase = 'fight';
+    this.introLeft = this.current.kind === 'boss' ? DESCENT.bossIntro : 0;
     this.waves = chamberWaves(this.current, this.gods.length);
     this.wave = 0;
     this.champion = null;
@@ -1009,7 +1033,7 @@ export class Descent {
       u.home.x = x;
       u.home.z = z;
       const camp: CampState = { camp: { id: `descent:${n}:${label}:${i}`, kind: campKind, team: null, at: [x, z] }, members: [u], respawnAt: null, foe: null };
-      u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c), c);
+      u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c), c, () => this.introLeft > 0);
       if (boss) this.boss = u;
       if (king) this.rainIn = KING.rain.first;
       u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : champion ? 'champion' : '' } satisfies DescentSpawn };
@@ -1451,6 +1475,7 @@ export class Descent {
       e: this.eruptions.map((e) => [e.id, r2(e.x), r2(e.z), e.r, r2(e.left)]),
       b: this.boons.map((b) => b.id),
       ...(this.relics.held.length || this.relics.procs.length ? { rl: this.relics.netState(sideCode) } : {}),
+      ...(this.introLeft > 0 ? { it: r2(this.introLeft) } : {}),
       l: this.learned,
       h: [...this.humans].map(gi),
       ...(this.versus
@@ -1479,6 +1504,7 @@ export class Descent {
     this.timer = s.t;
     this.time = s.tm;
     if (s.pl && s.c > 0) this.plan[s.c - 1] = { n: s.c, layout: s.pl[0], kind: s.pl[1] };
+    this.introLeft = s.it ?? 0;
     this.kills = s.k;
     this.obols = s.o;
     this.obolUsed = s.ou;
@@ -1575,6 +1601,7 @@ export class Descent {
     this.time += dt;
     this.timer = Math.max(0, this.timer - dt);
     this.spoils = Math.max(0, this.spoils - dt);
+    this.introLeft = Math.max(0, this.introLeft - dt);
     for (const e of this.eruptions) e.left = Math.max(0, e.left - dt);
   }
 }
@@ -1613,6 +1640,8 @@ export interface DescentNet {
   b: string[];
   /** Relics held and their recent procs (left out while there are none). */
   rl?: RelicNet;
+  /** Seconds left of a boss's entrance (left out the rest of the time). */
+  it?: number;
   l: [number, number, number, string][];
   h: number[];
   /** A shared descent's score and team choices (teams as 'o' and 'c'). */

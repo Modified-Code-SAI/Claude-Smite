@@ -397,6 +397,11 @@ export class UnitViews {
     }
   }
 
+  /** A unit's height as drawn (a Champion's grown size included), or null before it has a view. */
+  heightOf(u: Unit): number | null {
+    return this.views.get(u)?.height ?? null;
+  }
+
   /** World position just above a unit's head (for health bars). */
   headOf(u: Unit, out: THREE.Vector3): THREE.Vector3 | null {
     const v = this.views.get(u);
