@@ -14,6 +14,7 @@ import { RushBot, RushCoach } from '../sim/RushBot';
 import type { Sim } from '../sim/Sim';
 import type { Unit } from '../sim/Unit';
 import { RushHud } from '../ui/RushHud';
+import { GOAL_CAM, goalCamSpot } from './goalCam';
 import { RushView } from './RushView';
 import type { GodPalette } from './palette';
 
@@ -185,7 +186,7 @@ export class RushMode {
       this.flyoverDone = true;
       if (this.flyover) set(null);
       this.flyover = null;
-      document.body.classList.remove('rush-flyover');
+      document.body.classList.remove('rush-cine');
       return;
     }
     const me = this.deps.player;
@@ -210,11 +211,58 @@ export class RushMode {
     shot.weight = 1 - back * back * (3 - 2 * back);
     set(shot.weight > 0.001 ? shot : null);
     // the action bar, health bars and nameplates stand aside while the camera is up in the stands
-    document.body.classList.toggle('rush-flyover', shot.weight > 0.4);
+    document.body.classList.toggle('rush-cine', shot.weight > 0.4);
+  }
+
+  /** The goal cam (see GOAL_CAM) for the goal it was set up for. */
+  private goalCam: { goal: number; shot: CameraShot } | null = null;
+
+  private goalCamFrame(dt: number): void {
+    const set = this.deps.cameraShot;
+    const r = this.rush;
+    const g = r.lastGoal;
+    if (!set) return;
+    if (r.phase !== 'goal' || !g) {
+      if (this.goalCam) {
+        set(null);
+        this.goalCam = null;
+        document.body.classList.remove('rush-cine');
+      }
+      return;
+    }
+    const ground = this.deps.groundAt;
+    const u = g.scorer;
+    if (!this.goalCam || this.goalCam.goal !== r.goalCount) {
+      const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
+      const best = goalCamSpot(u.x, u.z, gate);
+      this.goalCam = {
+        goal: r.goalCount,
+        shot: { pos: { x: best.x, y: ground(best.x, best.z) + GOAL_CAM.height, z: best.z }, look: { x: u.x, y: ground(u.x, u.z) + GOAL_CAM.look, z: u.z }, weight: 0 },
+      };
+    }
+    const shot = this.goalCam.shot;
+    // the look follows the scorer as they celebrate and their team mobs them
+    const k = 1 - Math.exp(-GOAL_CAM.follow * dt);
+    shot.look.x += (u.x - shot.look.x) * k;
+    shot.look.z += (u.z - shot.look.z) * k;
+    shot.look.y += (ground(u.x, u.z) + GOAL_CAM.look - shot.look.y) * k;
+    const dx = shot.look.x - shot.pos.x;
+    const dz = shot.look.z - shot.pos.z;
+    const gap = Math.hypot(dx, dz);
+    if (gap > GOAL_CAM.near && shot.weight > 0) {
+      const step = Math.min(GOAL_CAM.push * dt, gap - GOAL_CAM.near) / gap;
+      shot.pos.x += dx * step;
+      shot.pos.z += dz * step;
+    }
+    shot.pos.y += (ground(shot.pos.x, shot.pos.z) + GOAL_CAM.height - shot.pos.y) * k;
+    shot.weight = RUSH.celebrate - r.timer >= GOAL_CAM.cutAt ? 1 : 0;
+    set(shot.weight > 0 ? shot : null);
+    document.body.classList.toggle('rush-cine', shot.weight > 0.4);
   }
 
   frame(dt: number, time: number): void {
     this.flyoverFrame();
+    this.goalCamFrame(dt);
     this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time);
     this.beats();
     this.victory(dt);
