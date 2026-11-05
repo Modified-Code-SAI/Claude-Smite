@@ -74,11 +74,19 @@ export const DESCENT = {
 /** The Shade's blink: how close (edge to edge) a god gets before it goes, how often, and how far from them it reappears. */
 export const SHADE_BLINK = { near: 4.5, every: 5.5, first: 1.5, far: 9 } as const;
 
+/**
+ * The Gravekeeper's lantern: how often it mends, how far it reaches, how much
+ * (a share of the patient's health, capped at a share of its own), who counts
+ * as hurt, and how close a god gets before it backs away.
+ */
+export const KEEPER = { every: 4, first: 2, range: 13, share: 0.08, cap: 0.3, hurt: 0.92, near: 5 } as const;
+
 /** Souls a monster pays the team that slays it in a shared descent. */
 export const SOULS: Record<MonsterType, number> = {
   thornback: 1,
   thornSpitter: 1,
   shade: 2,
+  gravekeeper: 3,
   thornbackAlpha: 2,
   warden: 4,
   gildedThornback: 5,
@@ -226,12 +234,14 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     const add = (t: MonsterType, count: number) => {
       for (let i = 0; i < Math.round(count * k * many); i++) out.push(t);
     };
-    // Shades haunt the halls past the first boss, each in place of a Thornback
+    // Shades haunt the halls past the first boss and Gravekeepers the Abyss past the second, each in place of a Thornback
     const shades = n > DESCENT.bossEvery ? Math.min(3, 1 + Math.floor((n - DESCENT.bossEvery - 1) / 3)) : 0;
-    add('thornback', Math.min(9, 3 + Math.floor(n * 0.6)) - shades);
+    const keepers = n > 2 * DESCENT.bossEvery ? Math.min(2, 1 + Math.floor((n - 2 * DESCENT.bossEvery - 1) / 2)) : 0;
+    add('thornback', Math.min(9, 3 + Math.floor(n * 0.6)) - shades - 2 * keepers);
     add('thornSpitter', n >= 2 ? Math.min(4, Math.floor(n / 2)) : 0);
     add('thornbackAlpha', Math.min(4, Math.floor((n - 1) / 3)));
     add('shade', shades);
+    add('gravekeeper', keepers);
     return out;
   };
   // a big pack rises in two or three waves, the heavier monsters last
@@ -329,6 +339,8 @@ export class DescentMonsterBrain extends MonsterBrain {
   private readonly at: [number, number];
   /** A Shade's next blink, in seconds (never for anything else). */
   private blinkIn: number = SHADE_BLINK.first;
+  /** A Gravekeeper's next mend, in seconds. */
+  private mendIn: number = KEEPER.first;
 
   constructor(
     private readonly s: Sim,
@@ -358,6 +370,8 @@ export class DescentMonsterBrain extends MonsterBrain {
       if (best || !foe?.alive || !foe.targetable) camp.foe = best;
     }
     if (u.tag.endsWith(':shade') && (this.blinkIn -= dt) <= 0 && this.blink()) this.blinkIn = SHADE_BLINK.every;
+    const keeper = u.tag.endsWith(':gravekeeper');
+    if (keeper && (this.mendIn -= dt) <= 0) this.mendIn = this.mend() ? KEEPER.every : 0.4;
     // the camp travels with the fight, so the jungle's leash never pulls it home
     const t = camp.foe;
     this.at[0] = t ? t.x : u.x;
@@ -373,6 +387,59 @@ export class DescentMonsterBrain extends MonsterBrain {
         u.body.yaw = Math.atan2(-dx, -dz);
       }
     }
+    if (keeper) this.keepBack();
+  }
+
+  /**
+   * The Gravekeeper lifts its lantern and pours souls into the most hurt
+   * monster near it (never itself, another Gravekeeper or the Gilded
+   * Thornback). Stunned or silenced, it can't.
+   */
+  private mend(): boolean {
+    const u = this.self;
+    if (!u.alive || u.combatant.cc.locks().cast) return false;
+    let best: Unit | null = null;
+    let worst: number = KEEPER.hurt;
+    for (const m of this.s.units) {
+      if (m === u || m.kind !== 'monster' || !m.alive || m.tag.endsWith(':gravekeeper') || m.tag.endsWith(':gildedThornback')) continue;
+      const share = m.combatant.health / m.combatant.stats.maxHealth;
+      if (share >= worst || hypot(m.x - u.x, m.z - u.z) > KEEPER.range) continue;
+      [worst, best] = [share, m];
+    }
+    if (!best) return false;
+    this.s.mend(u, best, Math.min(best.combatant.stats.maxHealth * KEEPER.share, u.combatant.stats.maxHealth * KEEPER.cap));
+    u.sinceAction = 0;
+    u.body.yaw = Math.atan2(-(best.x - u.x), -(best.z - u.z));
+    return true;
+  }
+
+  /** The Gravekeeper backs away from a god who comes close, along a wall when it has its back to one. */
+  private keepBack(): void {
+    const u = this.self;
+    const c = this.chamber;
+    if (!c || !this.s.canMove(u)) return;
+    let near: Unit | null = null;
+    let nd: number = KEEPER.near;
+    for (const t of this.s.enemiesOf(u)) {
+      if (t.kind !== 'god' || !t.alive || !t.targetable) continue;
+      const d = hypot(t.x - u.x, t.z - u.z) - t.radius - u.radius;
+      if (d < nd) [nd, near] = [d, t];
+    }
+    if (!near) return;
+    const away = Math.max(0.01, hypot(u.x - near.x, u.z - near.z));
+    let dx = (u.x - near.x) / away;
+    let dz = (u.z - near.z) / away;
+    if (c.sd(u.x + dx * 3 - c.x, u.z + dz * 3 - c.z) < 2.5) {
+      // a wall behind it: slip along the wall, the way that leads toward the open middle
+      const side = -dz * (c.x - u.x) + dx * (c.z - u.z) >= 0 ? 1 : -1;
+      [dx, dz] = [-dz * side, dx * side];
+    }
+    const p = steer(this.obstacles, u.x, u.z, u.x + dx * 4, u.z + dz * 4, u.radius);
+    const mx = p.x - u.x;
+    const mz = p.z - u.z;
+    const d = Math.max(0.01, hypot(mx, mz));
+    u.move = { x: mx / d, z: mz / d };
+    u.body.yaw = Math.atan2(-mx, -mz);
   }
 
   /**

@@ -120,6 +120,16 @@ export class Sim {
     for (const l of this.listeners) l(e);
   }
 
+  /** `source` mends `target` (a monster's healer): healed, and reported so views and guests can show who did it. */
+  mend(source: Unit, target: Unit, amount: number): number {
+    const c = target.combatant;
+    const before = c.health;
+    c.heal(amount);
+    const healed = c.health - before;
+    if (healed > 0.05) this.emit({ type: 'heal', target, amount: healed, source });
+    return healed;
+  }
+
   /** An event that happened in the host's copy of a networked match (see src/net). */
   inject(e: SimEvent): void {
     this.emit(e);

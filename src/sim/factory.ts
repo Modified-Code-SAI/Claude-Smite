@@ -106,7 +106,7 @@ export function minionUnit(
   return u;
 }
 
-export type MonsterType = 'thornback' | 'thornbackAlpha' | 'thornSpitter' | 'shade' | 'gildedThornback' | 'warden' | 'treasureWyrm' | 'moltenColossus';
+export type MonsterType = 'thornback' | 'thornbackAlpha' | 'thornSpitter' | 'shade' | 'gravekeeper' | 'gildedThornback' | 'warden' | 'treasureWyrm' | 'moltenColossus';
 
 /** Jungle monsters, neutral to both sides. Bounty is XP and favor for the god who kills one. */
 const MONSTERS: Record<MonsterType, { name: string; health: number; power: number; speed: number; prot: number; range: number; radius: number; rate: number; xp: number; favor: number; projectile?: number }> = {
@@ -116,6 +116,8 @@ const MONSTERS: Record<MonsterType, { name: string; health: number; power: numbe
   thornSpitter: { name: 'Thornspitter', health: 240, power: 20, speed: 330, prot: 8, range: 6.5, radius: 0.55, rate: 0.75, xp: 60, favor: 8, projectile: 26 },
   // Underworld Descent's deeper chambers: hurls slow soul bolts you can sidestep, and blinks away from anyone who closes in
   shade: { name: 'Shade', health: 210, power: 18, speed: 330, prot: 6, range: 8, radius: 0.5, rate: 0.6, xp: 70, favor: 9, projectile: 15 },
+  // the Abyss (Underworld Descent's last depth): hangs back from the gods and mends the most hurt monster near it with its lantern
+  gravekeeper: { name: 'Gravekeeper', health: 240, power: 16, speed: 290, prot: 12, range: 6, radius: 0.55, rate: 0.7, xp: 80, favor: 10, projectile: 22 },
   // Temple Siege only: never fights, runs from the gods, and carries a second boon
   gildedThornback: { name: 'Gilded Thornback', health: 900, power: 0, speed: 345, prot: 25, range: 1.4, radius: 0.6, rate: 0.5, xp: 120, favor: 40 },
   treasureWyrm: { name: 'Treasure Wyrm', health: 5200, power: 70, speed: 280, prot: 35, range: 3.2, radius: 2.6, rate: 0.5, xp: 300, favor: 0 },
