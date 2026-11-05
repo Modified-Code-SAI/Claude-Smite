@@ -269,8 +269,11 @@ export class CombatHud {
         const onMe = e.target === this.player;
         if (onMe) {
           const share = e.amount / this.player.combatant.stats.maxHealth;
-          this.hurt = Math.min(1, this.hurt + 0.25 + share * 3);
-          if (e.source && e.source !== this.player) this.markHitFrom(e.source, share);
+          // a hit under 1% of your health flashes less: the Jötunn, chipped at by four
+          // gods at once, would otherwise see red all round (a god's hits are all bigger)
+          const weight = Math.min(1, share / 0.01);
+          this.hurt = Math.min(1, this.hurt + 0.25 * weight + share * 3);
+          if (e.source && e.source !== this.player) this.markHitFrom(e.source, share, weight);
         }
         if (mine && !onMe) this.markHit(e.crit ? 'crit' : 'hit');
         if (!mine && !onMe) break;
@@ -319,14 +322,14 @@ export class CombatHud {
     );
   }
 
-  private markHitFrom(src: Unit, share: number): void {
+  private markHitFrom(src: Unit, share: number, weight: number): void {
     let d = this.hitDirs.get(src);
     if (!d) {
       d = { el: el('div', 'ch-hitdir', this.hitDirBox), age: 0, strength: 0 };
       this.hitDirs.set(src, d);
     }
     d.age = 0;
-    d.strength = Math.min(1, Math.max(d.strength * 0.6, 0) + 0.55 + share * 4);
+    d.strength = Math.min(1, Math.max(d.strength * 0.6, 0) + 0.55 * weight + share * 4);
   }
 
   /** Point each damage arc at its source, in camera space, and fade it out. */
