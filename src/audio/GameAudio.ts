@@ -748,6 +748,7 @@ export class GameAudio {
     const mine = this.me.team;
     const relic = r.relic;
     const at = { x: relic.x, z: relic.z };
+    let roared = false;
     if (r.phase !== seen.phase) {
       if (r.phase === 'play' && seen.phase === 'kickoff') {
         this.engine.play('wave.horn', { gain: 0.6 }, 4);
@@ -769,6 +770,9 @@ export class GameAudio {
         const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
         const ours = g.team === mine;
         this.engine.play('relic.goal', { at: { x: gate.x, z: gate.z }, ref: 40, gain: ours ? 1 : 0.8, rate: ours ? 1 : 0.84 }, 6);
+        // and the scorers' end of the crowd is on its feet
+        this.crowdRoar(g.team, ours);
+        roared = true;
       }
       if (g && !r.winner) {
         const ours = g.team === mine;
@@ -787,6 +791,9 @@ export class GameAudio {
       seen.steal = r.beats.steal;
       this.engine.play('relic.catch', { at, ref: 10, rate: 0.9 }, 3);
       const b = r.lastBeat;
+      // a throw snatched out of the air in front of a gate: the whole crowd gasps
+      const home = b ? RUSH.gates[b.unit.team as 'order' | 'chaos'] : null;
+      if (seen.flying && home && Math.hypot(relic.x - home.x, relic.z - home.z) < RUSH.keeper.depth + 4) this.engine.play('crowd.ooh', { gain: 0.75, vary: 0.05 }, 3);
       if (b?.kind === 'steal') this.herald.say(b.unit.team === mine ? 'Stolen! The relic is ours.' : 'The enemy has the relic!', b.unit.team === mine ? 'good' : 'bad', 1);
     }
     if (r.beats.catch !== seen.catch) {
@@ -815,8 +822,16 @@ export class GameAudio {
     if (r.winner && !seen.winner) {
       seen.winner = r.winner;
       const won = r.winner === mine;
+      // (unless the winning goal already set the crowd off)
+      if (!roared) this.crowdRoar(r.winner as 'order' | 'chaos', won);
       this.herald.say(won ? 'Victory! The Sun Relic is yours.' : 'Defeat. The enemy takes the Sun Relic.', won ? 'epic' : 'bad', 5);
     }
+  }
+
+  /** One end of Relic Rush's crowd roaring: from behind the gate its team defends (Order's is at +z). */
+  private crowdRoar(team: 'order' | 'chaos', ours: boolean): void {
+    const z = (team === 'order' ? 1 : -1) * (RUSH.pitchRadius + 4);
+    this.engine.play('crowd.roar', { at: { x: 0, y: 2, z }, ref: 45, gain: ours ? 0.95 : 0.7, vary: 0.04 }, 5);
   }
 
   private watchMatch(): void {
@@ -895,6 +910,11 @@ export class GameAudio {
     add('amb.wind', { bus: 'ambience', gain: 0.45, pan: 0.5, rate: 0.93 });
     add('amb.leaves', { bus: 'ambience', gain: 0.35, pan: 0.2 });
     add('amb.jungle', { bus: 'ambience', gain: this.conquest ? 0.18 : 0.08, pan: -0.2 });
+    // Relic Rush: the spirits round the pitch murmuring, either side of you
+    if (this.game.rush) {
+      add('amb.crowd', { bus: 'ambience', gain: 0.32, pan: -0.45 });
+      add('amb.crowd', { bus: 'ambience', gain: 0.28, pan: 0.45, rate: 0.94 });
+    }
     for (const b of Object.values(this.game.sim.bases)) {
       add('amb.fountain', { bus: 'ambience', at: { x: b.x, y: 1, z: b.z }, gain: 0.8, ref: 7 });
       add('amb.fire', { bus: 'ambience', at: { x: b.x + 6, y: 2, z: b.z }, gain: 0.5, ref: 4 });
