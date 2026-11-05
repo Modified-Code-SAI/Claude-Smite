@@ -4,6 +4,7 @@ import { compatibilityMode, setCompatibilityMode } from './Fatal';
 import type { GpuAdvice } from '../render/gpuAdvice';
 import { skillIcon } from './icons';
 import { mountLobby } from '../net/LobbyPanel';
+import type { NetGameInfo, NetHostOption } from '../net/roster';
 import type { NetSession } from '../net/Session';
 import './start.css';
 import { DIFFICULTIES, parseDifficulty, type Difficulty } from '../game/difficulty';
@@ -29,8 +30,17 @@ export interface StartChoice {
 
 const STORAGE_KEY = 'ascendant.start';
 
-const MODES: { id: GameMode; name: string; text: string }[] = [
-  { id: 'conquest', name: 'Conquest', text: '5v5 against bots. Destroy the enemy Titan to win. About 15–20 minutes.' },
+/** A title-screen mode. `net` lists the lobbies it can host online (none: single player only). */
+const MODES: { id: GameMode; name: string; text: string; net?: NetHostOption[] }[] = [
+  {
+    id: 'conquest',
+    name: 'Conquest',
+    text: '5v5 against bots. Destroy the enemy Titan to win. About 15–20 minutes.',
+    net: [
+      { mode: 'coop', label: 'Host co-op', text: 'Friends together against bots', cap: 5 },
+      { mode: 'versus', label: 'Host versus', text: 'Friends on both teams, bots fill in', cap: 10 },
+    ],
+  },
   { id: 'clash', name: 'Temple Clash', text: '3v3 king of the hill. Hold the temple plaza and take down gods; the temple\'s blessing doubles points now and then. First to 115. About 4 minutes.' },
   { id: 'siege', name: 'Temple Siege', text: 'You and two bots hold the temple against endless monster waves, with a boss every fifth. Pick a team boon after each wave. How long can you last?' },
   { id: 'duel', name: 'Temple Duel', text: 'One on one against a bot god. Win a round by taking them down; a ring of fire closes in so nobody can hide. First to 3 rounds. About 2–3 minutes.' },
@@ -214,16 +224,32 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
   );
   root.querySelectorAll<HTMLButtonElement>('.sm-mode').forEach((b) =>
     b.addEventListener('click', () => {
+      if (b.parentElement!.classList.contains('held')) return;
       mode = b.dataset.mode as GameMode;
       render();
+      lobby.gameChanged();
     }),
   );
   const play = root.querySelector<HTMLButtonElement>('.sm-play')!;
   let started: ((c: StartChoice) => void) | null = null;
+  const gameInfo = (id: string = mode): NetGameInfo | null => {
+    const m = MODES.find((x) => x.id === id);
+    return m ? { id: m.id, name: m.name, hosts: m.net ?? [] } : null;
+  };
   const lobby = mountLobby(root.querySelector<HTMLDivElement>('.sm-net')!, {
     god: () => god,
-    inLobby: (on) => play.classList.toggle('held', on),
-    onStart: (net) => started?.({ mode: 'conquest', god: net.self()?.god ?? god, net }),
+    game: gameInfo,
+    inLobby: (on) => {
+      play.classList.toggle('held', on);
+      // a lobby plays one mode: the mode list waits until it closes
+      root.querySelector('.sm-modes')!.classList.toggle('held', on);
+    },
+    onGame: (id) => {
+      if (id === mode || !MODES.some((m) => m.id === id)) return;
+      mode = id as GameMode;
+      render();
+    },
+    onStart: (net) => started?.({ mode: (MODES.some((m) => m.id === net.game) ? net.game : 'conquest') as GameMode, god: net.self()?.god ?? god, net, difficulty }),
   });
   root.querySelectorAll<HTMLButtonElement>('.sm-god').forEach((b) =>
     b.addEventListener('click', () => {

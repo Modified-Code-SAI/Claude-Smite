@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { godById } from '../game/gods';
-import { godUnit } from '../sim/factory';
+import { body, godUnit } from '../sim/factory';
 import { LaneBot, spawnPoint } from '../sim/LaneBot';
 import { conquestBases, Match } from '../sim/Match';
 import { Sim, type SimTerrain } from '../sim/Sim';
-import type { SimEvent, Unit } from '../sim/Unit';
-import { GuestSync, HostSync, SNAPSHOT_EVERY, type Roster, type Snapshot } from './Replica';
+import { Unit, type SimEvent } from '../sim/Unit';
+import { Combatant } from '../game/combatant';
+import { GuestSync, HostSync, SNAPSHOT_EVERY, type NetMatch, type Roster, type Snapshot } from './Replica';
 import { roster, type NetPlayer } from './roster';
 import { encode } from './Session';
 
@@ -106,4 +107,55 @@ describe('networked match copy', () => {
     // a guest's download stays modest: well under 100 KB/s once the match is busy
     expect(bytes / 50).toBeLessThan(100_000);
   }, 30_000);
+
+  it('copies any mode: its own state, its own units and a god roster of any size', () => {
+    /** A made-up mode: a score, and totems it raises itself. */
+    class Totems implements NetMatch {
+      score = 0;
+      constructor(readonly sim: Sim) {}
+      raise(x: number, z: number): Unit {
+        const u = totem(x, z);
+        this.sim.add(u);
+        return u;
+      }
+      netState() {
+        return { score: this.score };
+      }
+      applyNet(s: unknown) {
+        this.score = (s as { score: number }).score;
+      }
+      netSpawn(o: { kind: string; data?: unknown }, _team: unknown, at: { x: number; z: number }) {
+        return o.kind === 'totem' ? totem(at.x, at.z) : null;
+      }
+    }
+    const totem = (x: number, z: number) => {
+      const u = new Unit('dummy', 'Totem', new Combatant(godById('zeus')!, 'neutral'), body(x, z), 1, { x, z, yaw: 0 });
+      u.origin = { f: 'mode', kind: 'totem' };
+      return u;
+    };
+    const make = () => {
+      const sim = new Sim(flat, conquestBases(), () => 0.5);
+      const mode = new Totems(sim);
+      // three gods: a 1 + 2 roster, nothing like Conquest's ten
+      const gods = ['zeus', 'thor', 'odin'].map((id, i) => sim.add(godUnit(godById(id)!, 'order', { x: i * 3, z: 0, yaw: 0 })));
+      return { sim, mode, roster: { slots: gods, structures: new Map() } as Roster };
+    };
+    const host = make();
+    const guest = make();
+    guest.sim.listeners.length = 0;
+    const sync = new HostSync(host.sim, host.mode, host.roster, () => 0);
+    sync.addGuest('g');
+    const copy = new GuestSync(guest.sim, guest.mode, guest.roster, guest.roster.slots[1]!);
+    host.mode.raise(5, -5);
+    host.mode.score = 7;
+    host.roster.slots[0]!.body.x = 4;
+    for (let i = 1; i <= 60; i++) {
+      host.sim.step(DT);
+      if (i % SNAPSHOT_EVERY === 0) for (const [, snap] of sync.snapshots()) copy.receive(JSON.parse(encode(snap)) as Snapshot);
+      copy.step(DT);
+    }
+    expect(guest.mode.score).toBe(7);
+    expect(guest.sim.units.filter((u) => u.name === 'Totem').map((u) => [u.x, u.z])).toEqual([[5, -5]]);
+    expect(guest.roster.slots[0]!.x).toBeCloseTo(4, 1);
+  });
 });

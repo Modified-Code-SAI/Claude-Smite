@@ -57,9 +57,10 @@ describe('networked players', () => {
     const hsim = new Sim(flat, conquestBases(), () => 0.5);
     const hmatch = new Match(hsim, godById('zeus')!);
     const host = new NetHost(net.host, hsim, () => undefined, () => undefined);
-    const h = build(hsim, hmatch, (s) => (s.player === 'g' ? host.bodyFor(s, spawnPoint(s.team, s.spot)) : undefined), true);
-    host.bind(hmatch, h.roster, h.slots);
+    const h = build(hsim, hmatch, () => undefined, true);
     const remote = h.units[h.slots.findIndex((s) => s.player === 'g')]!;
+    host.assign('g', remote);
+    host.bind(hmatch, h.roster);
 
     const gsim = new Sim(flat, conquestBases(), () => 0.5);
     const gmatch = new Match(gsim, godById('zeus')!);
@@ -114,5 +115,74 @@ describe('networked players', () => {
     guest.cast(0);
     step(10);
     expect(remote.combatant.mana).toBeLessThan(mana);
+  });
+
+  it('lets a mode move a guest to another unit, route its own messages, and take over basic attacks', () => {
+    const net = pair();
+    const hsim = new Sim(flat, conquestBases(), () => 0.5);
+    const hmatch = new Match(hsim, godById('zeus')!);
+    const host = new NetHost(net.host, hsim, () => undefined, () => undefined);
+    const h = build(hsim, hmatch, () => undefined, false);
+    const first = h.units[h.slots.findIndex((s) => s.player === 'g')]!;
+    host.assign('g', first);
+    host.bind(hmatch, h.roster);
+    const acts: [string, unknown][] = [];
+    host.onAct = (u, msg) => acts.push([u.name, msg.what]);
+    const basics: string[] = [];
+    host.basic = (u) => basics.push(u.name);
+
+    const gsim = new Sim(flat, conquestBases(), () => 0.5);
+    const gmatch = new Match(gsim, godById('zeus')!);
+    const g = build(gsim, gmatch, () => undefined, false);
+    gsim.listeners.length = 0;
+    let self = g.units[g.slots.findIndex((s) => s.player === 'g')]!;
+    const pos = { x: self.x, y: 0, z: self.z, set(x: number, y: number, z: number) { this.x = x; this.y = y; this.z = z; } };
+    const ctrl = { position: pos, yaw: self.body.yaw, spawn(x: number, z: number, yaw: number) { pos.set(x, 0, z); this.yaw = yaw; } };
+    const guest = new NetGuest(net.guest, gsim, gmatch, g.roster, self, ctrl as unknown as PlayerController);
+    const moved: string[] = [];
+    guest.onSelf = (u) => {
+      moved.push(u.name);
+      self = u;
+    };
+    const step = (n: number, move?: () => void) => {
+      for (let i = 0; i < n; i++) {
+        move?.();
+        self.body.x = pos.x;
+        self.body.z = pos.z;
+        guest.step(DT);
+        net.flush();
+        if (host.started) {
+          host.beforeStep();
+          hsim.step(DT);
+          host.afterStep(DT);
+        } else host.wait(DT);
+        net.flush();
+      }
+    };
+    host.ready();
+    guest.ready();
+    step(30);
+    expect(guest.live).toBe(true);
+
+    // the mode hands the guest a bot's god (a Jötunn-style rotation)
+    const next = h.units.find((u) => u !== first && u.team === 'order' && u.name !== h.units[0]!.name)!;
+    hsim.teleport(next, 30, 30, 0);
+    host.assign('g', next);
+    step(30);
+    expect(moved).toEqual([next.name]);
+    // the controller jumped to where the host has the new god, and walking moves that god now
+    expect(Math.hypot(pos.x - 30, pos.z - 30)).toBeLessThan(0.5);
+    step(60, () => (pos.z -= 5 * DT));
+    expect(next.z).toBeLessThan(30 - 3.5);
+    // the old god no longer follows the guest
+    expect(first.z).toBeCloseTo(spawnPoint(first.side, h.slots.find((s) => s.player === 'g')!.spot).z, 1);
+
+    // the mode's own messages reach it with the guest's unit, and a held basic goes through the mode's hook
+    guest.act({ what: 'throw' });
+    guest.basic = true;
+    step(5);
+    expect(acts).toEqual([[next.name, 'throw']]);
+    expect(basics.length).toBeGreaterThan(0);
+    expect(basics.every((n) => n === next.name)).toBe(true);
   });
 });

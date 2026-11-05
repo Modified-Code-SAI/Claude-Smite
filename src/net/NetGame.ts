@@ -1,10 +1,8 @@
 import type { Allocation } from '../game/trees';
 import type { PlayerController } from '../player/PlayerController';
-import type { Match } from '../sim/Match';
 import type { Sim } from '../sim/Sim';
-import type { Body, Unit } from '../sim/Unit';
-import { F, GuestSync, HostSync, SNAPSHOT_EVERY, type Roster, type Snapshot } from './Replica';
-import type { Slot } from './roster';
+import type { Unit } from '../sim/Unit';
+import { F, GuestSync, HostSync, SNAPSHOT_EVERY, type NetMatch, type Roster, type Snapshot } from './Replica';
 import { encode, type Msg, type NetSession } from './Session';
 import { showNetStatus } from './status';
 import { hypot } from '../core/math';
@@ -22,67 +20,87 @@ interface Input {
   b: 0 | 1;
 }
 
-/** A guest's god on the host: moved by the guest's inputs, one per step. */
+/** A guest's unit on the host: moved by the guest's inputs, one per step. */
 class RemotePlayer {
   readonly inputs: Input[] = [];
-  /** Bumped whenever the host moves the god itself (a teleport, or a dash or knockback ending); older inputs no longer move it. */
+  /**
+   * Bumped whenever the host moves the unit itself (a teleport, a dash or
+   * knockback ending, or the mode handing the player another unit); older
+   * inputs no longer move it.
+   */
   seq = 0;
   basic = false;
   wasForced = false;
-  unit!: Unit;
-  constructor(readonly id: string, readonly slot: Slot) {}
+  constructor(
+    readonly id: string,
+    public unit: Unit,
+  ) {}
 }
 
 /**
- * The hosting end of a networked match: applies guests' inputs to their gods
- * before each step and sends snapshots after.
+ * The hosting end of a networked match: applies guests' inputs to their units
+ * before each step and sends snapshots after. Any mode can use it: the mode
+ * builds its units, hands each guest theirs with `assign`, then calls `bind`.
  */
 export class NetHost {
   private readonly remotes = new Map<string, RemotePlayer>();
-  private sync!: HostSync;
+  private sync: HostSync | null = null;
   private readonly waiting = new Set<string>();
   private steps = 0;
   private waited = 0;
   private localReady = false;
   started = false;
+  /**
+   * Carries out a guest's held basic attack each step. A mode can take it over
+   * (a relic carrier's click throws instead of attacking).
+   */
+  basic: (u: Unit) => void = (u) => void this.sim.basic(u);
+  /** A mode's own messages from guests (`NetGuest.act`), with the unit that guest controls. */
+  onAct: ((u: Unit, msg: Msg, from: string) => void) | null = null;
 
   constructor(
     private readonly session: NetSession,
     private readonly sim: Sim,
-    /** Hands a slot whose player left to a bot. */
-    private readonly toBot: (u: Unit, slot: Slot) => void,
+    /** A guest left mid-match: hand the unit they controlled to a bot. */
+    private readonly toBot: (u: Unit, player: string) => void,
     private readonly toast: (text: string) => void,
   ) {
     for (const id of session.guests) this.waiting.add(id);
     session.listen((from, msg) => this.onMessage(from, msg));
     session.onLeave = (id) => this.left(id);
-  }
-
-  /** A body for a guest's god: a teleport bumps that player's authority sequence. */
-  bodyFor(slot: Slot, at: { x: number; z: number; yaw: number }): Body {
-    const rp = new RemotePlayer(slot.player!, slot);
-    this.remotes.set(rp.id, rp);
-    const body: Body = {
-      x: at.x,
-      y: 0,
-      z: at.z,
-      yaw: at.yaw,
-      teleport: (x, z, yaw) => {
-        body.x = x;
-        body.z = z;
-        if (yaw !== undefined) body.yaw = yaw;
-        rp.seq++;
-      },
-    };
-    return body;
-  }
-
-  /** Called once the roster exists; `slots` lines up with `roster.slots`. */
-  bind(match: Match, roster: Roster, slots: readonly Slot[]): void {
-    slots.forEach((s, i) => {
-      const rp = s.player ? this.remotes.get(s.player) : undefined;
-      if (rp) rp.unit = roster.slots[i]!;
+    // the host moving a guest's unit itself (respawn, recall, blink, a mode's teleport) makes their older inputs stale
+    sim.listeners.push((e) => {
+      if (e.type !== 'teleport') return;
+      for (const rp of this.remotes.values()) if (rp.unit === e.unit) rp.seq++;
     });
+  }
+
+  /**
+   * Give a guest control of a unit: at the start, or later when the mode moves
+   * them to another one (the guest is told with their next snapshot).
+   */
+  assign(player: string, u: Unit): void {
+    const rp = this.remotes.get(player);
+    if (!rp) {
+      this.remotes.set(player, new RemotePlayer(player, u));
+      return;
+    }
+    if (rp.unit === u) return;
+    rp.unit = u;
+    rp.seq++;
+    rp.inputs.length = 0;
+    rp.basic = false;
+    rp.wasForced = !!u.forced;
+    this.sync?.setSelf(player, u);
+  }
+
+  /** The unit a guest controls, if they are still in the match. */
+  unitOf(player: string): Unit | undefined {
+    return this.remotes.get(player)?.unit;
+  }
+
+  /** Called once every guest has their unit (see `assign`). */
+  bind(match: NetMatch, roster: Roster): void {
     this.sync = new HostSync(this.sim, match, roster, (u) => this.seqOf(u));
     // a guest who left while everyone loaded becomes a bot right away
     for (const rp of [...this.remotes.values()]) if (!this.session.guests.includes(rp.id)) this.left(rp.id);
@@ -120,7 +138,7 @@ export class NetHost {
       // the simulation only sees its own steps' movement, so a walking guest cancels their recall here
       if (moved > 0.02) this.sim.interruptRecall(u);
     }
-    for (const rp of this.remotes.values()) if (rp.basic && rp.unit.alive) this.sim.basic(rp.unit);
+    for (const rp of this.remotes.values()) if (rp.basic && rp.unit.alive) this.basic(rp.unit);
   }
 
   /** Where each guest's god stood before its input moved it, for its walking speed. */
@@ -140,7 +158,7 @@ export class NetHost {
       if (rp.wasForced && !u.forced) rp.seq++;
       rp.wasForced = !!u.forced;
     }
-    if (++this.steps % SNAPSHOT_EVERY !== 0) return;
+    if (++this.steps % SNAPSHOT_EVERY !== 0 || !this.sync) return;
     for (const [id, snap] of this.sync.snapshots()) this.session.send(id, encode(snap));
   }
 
@@ -154,7 +172,7 @@ export class NetHost {
     switch (msg.t) {
       case 'ready':
         this.waiting.delete(from);
-        if (this.started) this.sync.addGuest(from);
+        if (this.started) this.addGuest(from);
         this.tryStart();
         return;
       case 'in':
@@ -174,6 +192,9 @@ export class NetHost {
       case 'build':
         rp?.unit.combatant.setBuild(msg.loadout as readonly string[], msg.allocation as Allocation);
         return;
+      case 'act':
+        if (rp && this.started) this.onAct?.(rp.unit, msg, from);
+        return;
       default:
         return;
     }
@@ -189,8 +210,15 @@ export class NetHost {
   private begin(): void {
     this.started = true;
     showNetStatus(null);
-    for (const id of this.session.guests) if (!this.waiting.has(id)) this.sync.addGuest(id);
+    for (const id of this.session.guests) if (!this.waiting.has(id)) this.addGuest(id);
     this.session.broadcast({ t: 'go' });
+  }
+
+  private addGuest(id: string): void {
+    this.sync?.addGuest(id);
+    // a guest who finished loading after the mode moved them is told where they are
+    const u = this.remotes.get(id)?.unit;
+    if (u) this.sync?.setSelf(id, u);
   }
 
   private left(id: string): void {
@@ -203,7 +231,7 @@ export class NetHost {
     }
     this.remotes.delete(id);
     const name = this.session.players.find((p) => p.id === id)?.name ?? 'A player';
-    this.toBot(rp.unit, rp.slot);
+    this.toBot(rp.unit, id);
     this.toast(`${name} left; a bot took over their god`);
     this.tryStart();
   }
@@ -219,16 +247,26 @@ export class NetGuest {
   private lastBuild = '';
   /** Whether the basic attack button is held, as CombatGame decides it. */
   basic = false;
+  /**
+   * The host moved this player to another unit (a mode's rotation). The
+   * handler must move the controller's body onto it before returning.
+   */
+  onSelf: ((u: Unit) => void) | null = null;
 
   constructor(
     private readonly session: NetSession,
     sim: Sim,
-    match: Match,
+    match: NetMatch,
     roster: Roster,
-    private readonly self: Unit,
+    private self: Unit,
     private readonly ctrl: PlayerController,
   ) {
     this.sync = new GuestSync(sim, match, roster, self);
+    this.sync.onSelf = (u) => {
+      this.self = u;
+      this.lastBuild = '';
+      this.onSelf?.(u);
+    };
     session.listen((_from, msg) => {
       if (msg.t === 'snap') {
         this.sync.receive(msg as Snapshot);
@@ -277,6 +315,11 @@ export class NetGuest {
 
   recall(): void {
     this.session.send('host', { t: 'recall' });
+  }
+
+  /** A mode's own message to the host (its `NetHost.onAct` gets it, with this player's unit). */
+  act(msg: Record<string, unknown>): void {
+    this.session.send('host', { ...msg, t: 'act' });
   }
 
   /** Send this player's loadout and tree points when the skills menu changed them. */

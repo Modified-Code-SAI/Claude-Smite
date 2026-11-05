@@ -1,6 +1,6 @@
 import { godById } from '../game/gods';
 import { NetSession } from './Session';
-import type { NetMode } from './roster';
+import type { NetGameInfo, NetMode } from './roster';
 import './lobby.css';
 
 const MODE_NAMES: Record<NetMode, string> = { coop: 'Co-op', versus: 'Versus' };
@@ -19,32 +19,44 @@ function inviteLink(code: string): string {
 }
 
 /**
- * The title screen's "Play with friends" box: host a co-op or versus lobby
- * (and share its code), or join one with a code. Calls `onStart` when the
- * host starts the match. `inLobby` tells the title screen to hold its own
- * Play button while a lobby is open.
+ * The title screen's "Play with friends" box: host a lobby for the selected
+ * game mode (its co-op or versus options, and share its code), or join one
+ * with a code. Calls `onStart` when the host starts the match. `inLobby` tells
+ * the title screen to hold its own Play button (and its mode) while a lobby is
+ * open; `onGame` tells it which mode a joined lobby plays.
  */
 export function mountLobby(
   box: HTMLElement,
-  hooks: { god: () => string; inLobby: (on: boolean) => void; onStart: (s: NetSession) => void },
-): { godChanged: () => void } {
+  hooks: {
+    god: () => string;
+    /** The game mode the title screen has selected, or a joined lobby's mode by id. */
+    game: (id?: string) => NetGameInfo | null;
+    inLobby: (on: boolean) => void;
+    onGame: (id: string) => void;
+    onStart: (s: NetSession) => void;
+  },
+): { godChanged: () => void; gameChanged: () => void } {
   let session: NetSession | null = null;
   let busy = '';
   let error = '';
 
   const render = () => {
     hooks.inLobby(session !== null);
+    if (session) hooks.onGame(session.game);
     if (!session) {
+      const game = hooks.game();
+      const hosts = game?.hosts ?? [];
+      const most = Math.max(0, ...hosts.map((h) => h.cap));
+      const note = hosts.length ? `One player hosts and runs the match; up to ${most} players.` : `${game?.name ?? 'This mode'} is single player for now. Pick a mode above with online play to host, or join a friend's lobby.`;
       box.innerHTML = `
         <div class="lb-row">
-          <button class="lb-btn" data-host="coop"><b>Host co-op</b><span>Friends together against bots</span></button>
-          <button class="lb-btn" data-host="versus"><b>Host versus</b><span>Friends on both teams, bots fill in</span></button>
+          ${hosts.map((h) => `<button class="lb-btn" data-host="${h.mode}"><b>${esc(h.label)}</b><span>${esc(h.text)}</span></button>`).join('')}
         </div>
         <div class="lb-row lb-join">
           <input class="lb-code" maxlength="5" placeholder="Lobby code" spellcheck="false" autocomplete="off">
           <button class="lb-small lb-go">Join</button>
         </div>
-        <div class="lb-msg ${error ? 'lb-err' : ''}">${esc(busy || error || 'One player hosts and runs the match; up to 10 players.')}</div>`;
+        <div class="lb-msg ${error ? 'lb-err' : ''}">${esc(busy || error || note)}</div>`;
       box.querySelectorAll<HTMLButtonElement>('[data-host]').forEach((b) => b.addEventListener('click', () => void host(b.dataset.host as NetMode)));
       const input = box.querySelector<HTMLInputElement>('.lb-code')!;
       const go = () => void join(input.value);
@@ -67,7 +79,7 @@ export function mountLobby(
       .join('');
     box.innerHTML = `
       <div class="lb-head">
-        <span>${MODE_NAMES[s.mode]} lobby <b class="lb-show">${s.code}</b></span>
+        <span>${esc(hooks.game(s.game)?.name ?? s.game)} &middot; ${MODE_NAMES[s.mode]} lobby <b class="lb-show">${s.code}</b></span>
         <button class="lb-small lb-copy">Copy invite link</button>
       </div>
       <div class="lb-players">${rows}</div>
@@ -106,11 +118,14 @@ export function mountLobby(
   };
 
   const host = async (mode: NetMode) => {
+    const game = hooks.game();
+    const option = game?.hosts.find((h) => h.mode === mode);
+    if (!game || !option) return;
     busy = 'Opening a lobby…';
     error = '';
     render();
     try {
-      opened(await NetSession.host(mode, hooks.god()));
+      opened(await NetSession.host(mode, hooks.god(), game.id, option.cap));
     } catch (e) {
       busy = '';
       error = (e as Error).message;
@@ -139,5 +154,11 @@ export function mountLobby(
   render();
   const invited = new URLSearchParams(location.search).get('join');
   if (invited) void join(invited);
-  return { godChanged: () => session?.pick(hooks.god()) };
+  return {
+    godChanged: () => session?.pick(hooks.god()),
+    // the host buttons follow the title screen's mode (a lobby keeps its own)
+    gameChanged: () => {
+      if (!session) render();
+    },
+  };
 }

@@ -420,18 +420,20 @@ export class CombatGame implements Updatable {
    */
   private addRoster(net: NetSession, slots: readonly Slot[]): void {
     const match = this.match!;
-    const host = net.isHost ? new NetHost(net, this.sim, (u, s) => (u.brain = new LaneBot(this.sim, match, u, s.role)), (t) => this.hud.toast(t)) : null;
+    const slotOf = new Map<Unit, Slot>();
+    const host = net.isHost ? new NetHost(net, this.sim, (u) => (u.brain = new LaneBot(this.sim, match, u, slotOf.get(u)!.role)), (t) => this.hud.toast(t)) : null;
     const units = slots.map((s) => {
       if (s.player === net.me) return this.player;
-      const at = spawnPoint(s.team, s.spot);
-      const u = godUnit(godById(s.god) ?? GODS[0]!, s.team, at, host && s.player ? host.bodyFor(s, at) : undefined);
+      const u = godUnit(godById(s.god) ?? GODS[0]!, s.team, spawnPoint(s.team, s.spot));
+      slotOf.set(u, s);
+      if (host && s.player) host.assign(s.player, u);
       if (host && !s.player) u.brain = new LaneBot(this.sim, match, u, s.role);
       return u;
     });
     for (const u of units) match.addGod(u);
     const r: Roster = { slots: units, structures: match.structures };
     if (host) {
-      host.bind(match, r, slots);
+      host.bind(match, r);
       this.netHost = host;
     } else {
       // the host's events arrive ready-made: the match's own reactions to them would count everything twice

@@ -61,7 +61,9 @@ export type SpawnOrigin =
   | { f: 'summon'; kind: string; index: number }
   | { f: 'minion'; type: string; wave: number; empowered: boolean }
   | { f: 'monster'; type: string; minutes: number }
-  | { f: 'structure' };
+  | { f: 'structure' }
+  /** A unit a game mode makes itself; a guest builds it with the mode's NetMatch.netSpawn. */
+  | { f: 'mode'; kind: string; data?: unknown };
 
 /** Decides what a sim-driven unit does each step. */
 export interface Brain {
@@ -115,7 +117,8 @@ export class Unit {
     readonly kind: UnitKind,
     readonly name: string,
     readonly combatant: Combatant,
-    readonly body: Body,
+    /** Swapped only when control of the unit changes hands (a mode moving the player to another unit). */
+    public body: Body,
     readonly radius: number,
     readonly home: { x: number; z: number; yaw: number },
   ) {}
