@@ -61,6 +61,9 @@ export const BACKDOOR_SCALE = 0.3;
 
 export type CastResult = CastError | 'forced' | null;
 
+/** Seconds between one god's taunts. */
+export const TAUNT_GAP = 4;
+
 /**
  * The match simulation: positions, projectiles, areas, dashes and leaps on top
  * of the rules engine. It never touches three.js; the view reads its state and
@@ -268,6 +271,7 @@ export class Sim {
   }
 
   private readonly pingLimit = new PingLimiter();
+  private readonly tauntAt = new WeakMap<Unit, number>();
 
   /**
    * A quick call to `u`'s team (see Pings.ts): marked at (x, z), or on the
@@ -288,6 +292,15 @@ export class Sim {
     }
     if (kind === 'ult') this.emit({ type: 'ping', unit: u, kind, x, z, subject: s, ult: ultState(u.combatant) });
     else this.emit({ type: 'ping', unit: u, kind, x, z, subject: s });
+    return true;
+  }
+
+  /** A god taunts whoever is near: false while its last taunt is still fresh (TAUNT_GAP). */
+  taunt(u: Unit): boolean {
+    if (u.kind !== 'god' || !u.alive) return false;
+    if (this.time < (this.tauntAt.get(u) ?? -Infinity)) return false;
+    this.tauntAt.set(u, this.time + TAUNT_GAP);
+    this.emit({ type: 'taunt', unit: u, line: Math.floor(this.rng() * 1000) });
     return true;
   }
 

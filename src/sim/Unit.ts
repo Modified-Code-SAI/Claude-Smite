@@ -242,7 +242,9 @@ export type SimEvent =
    * A quick call to the pinger's team, marked at (x, z) or on `subject`.
    * `ult` is what an ultimate ping reports (see Pings.ts). Never sent to the other team.
    */
-  | { type: 'ping'; unit: Unit; kind: PingKind; x: number; z: number; subject: Unit | null; ult?: number };
+  | { type: 'ping'; unit: Unit; kind: PingKind; x: number; z: number; subject: Unit | null; ult?: number }
+  /** A god's taunt: `line` picks which of its lines (wrapped to how many it has), so everyone hears the same one. */
+  | { type: 'taunt'; unit: Unit; line: number };
 
 export function nextEntityId(): number {
   return nextId++;

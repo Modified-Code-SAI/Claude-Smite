@@ -118,7 +118,7 @@ describe('networked players', () => {
     expect(remote.combatant.mana).toBeLessThan(mana);
   });
 
-  it("carries a guest's pings to the host, the bots' answers back, and never the other team's calls", () => {
+  it("carries a guest's pings to the host, the bots' answers back, and never the other team's calls; and its taunts to everyone", () => {
     const net = pair();
     const hsim = new Sim(flat, conquestBases(), () => 0.5);
     const hmatch = new Match(hsim, godById('zeus')!);
@@ -130,6 +130,8 @@ describe('networked players', () => {
     const comms = new BotComms(hsim, () => hmatch);
     const heard: Extract<SimEvent, { type: 'ping' }>[] = [];
     hsim.listeners.push((e) => e.type === 'ping' && heard.push(e));
+    const taunts: Extract<SimEvent, { type: 'taunt' }>[] = [];
+    hsim.listeners.push((e) => e.type === 'taunt' && taunts.push(e));
 
     const gsim = new Sim(flat, conquestBases(), () => 0.5);
     const gmatch = new Match(gsim, godById('zeus')!);
@@ -137,6 +139,8 @@ describe('networked players', () => {
     gsim.listeners.length = 0;
     const seen: Extract<SimEvent, { type: 'ping' }>[] = [];
     gsim.listeners.push((e) => e.type === 'ping' && seen.push(e));
+    const echoed: Extract<SimEvent, { type: 'taunt' }>[] = [];
+    gsim.listeners.push((e) => e.type === 'taunt' && echoed.push(e));
     const self = g.units[g.slots.findIndex((s) => s.player === 'g')]!;
     const pos = { x: self.x, y: 0, z: self.z, set(x: number, y: number, z: number) { this.x = x; this.y = y; this.z = z; } };
     const ctrl = { position: pos, yaw: self.body.yaw, spawn(x: number, z: number, yaw: number) { pos.set(x, 0, z); this.yaw = yaw; } };
@@ -179,6 +183,14 @@ describe('networked players', () => {
     step(10);
     expect(heard.at(-1)!.unit).toBe(h.units[i]);
     expect(seen.length).toBe(before);
+
+    // a taunt goes up to the host and back down as the same line, and a second one too soon is refused
+    guest.taunt();
+    guest.taunt();
+    step(30);
+    expect(taunts.map((e) => e.unit)).toEqual([remote]);
+    expect(echoed).toHaveLength(1);
+    expect(echoed[0]).toMatchObject({ unit: self, line: taunts[0]!.line });
   });
 
   it('lets a mode move a guest to another unit, route its own messages, and take over basic attacks', () => {
