@@ -8,6 +8,7 @@ import { awardLine } from './ascension';
 import { relicById, type RelicId } from '../sim/Relics';
 import { relicIcon, skillIcon } from './icons';
 import { KillTally } from './killTally';
+import { BOSS_EPITHET } from './bossNames';
 import type { SimEvent } from '../sim/Unit';
 import './match.css';
 import './clash.css';
@@ -57,6 +58,9 @@ export class DescentHud {
   private bannerUntil = 0;
   /** The first chamber each new monster rose in this run, where the status line says how to fight it. */
   private readonly hintAt = new Map<string, number>();
+  /** A boss's name and title as it rises (see DESCENT.bossIntro). */
+  private readonly bossCard: HTMLElement;
+  private bossShown: Unit | null = null;
   /** The team's relics down the left edge, each lighting up as it goes off. */
   private readonly relicTray: HTMLElement;
   private readonly relicEls = new Map<RelicId, HTMLElement>();
@@ -78,16 +82,19 @@ export class DescentHud {
       <div class="clash-state"></div>
       <div class="descent-curses"></div>
       <div class="descent-card"><div class="descent-card-depth"></div><div class="descent-card-name"></div><div class="descent-card-kind"></div></div>
+      <div class="descent-boss"><small></small><b></b><span></span></div>
       <div class="siege-boons descent-cards"></div>
       <div class="descent-relics"></div>
       <div class="mh-banner"></div>
       <div class="descent-fade"></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><div class="clash-end-table"></div><button class="clash-again">Descend again</button></div>`;
     document.body.appendChild(this.root);
+    document.body.classList.add('descent-mode');
     this.where = this.root.querySelector('.descent-where')!;
     this.state = this.root.querySelector('.clash-state')!;
     this.curses = this.root.querySelector('.descent-curses')!;
     this.card = this.root.querySelector('.descent-card')!;
+    this.bossCard = this.root.querySelector('.descent-boss')!;
     this.cards = this.root.querySelector('.descent-cards')!;
     this.fade = this.root.querySelector('.descent-fade')!;
     this.end = this.root.querySelector('.clash-end')!;
@@ -106,6 +113,22 @@ export class DescentHud {
       this.soulNum.set(side, box.querySelector('b')!);
       this.soulGain.set(side, box.querySelector('i')!);
     }
+  }
+
+  /** A boss rising: its name and title under it, held while its chamber waits (they fade as the camera comes back). */
+  private bossIntro(): void {
+    const r = this.run;
+    const boss = r.intro > 0.4 ? r.boss : null;
+    if (boss === this.bossShown) return;
+    this.bossShown = boss;
+    if (boss) {
+      const key = boss.tag.split(':')[1] ?? '';
+      const last = r.chamber === DESCENT.chambers;
+      this.bossCard.querySelector('small')!.textContent = last ? 'The bottom of the underworld' : `The master of ${DEPTHS[r.depth]!.name}`;
+      this.bossCard.querySelector('b')!.textContent = boss.name;
+      this.bossCard.querySelector('span')!.textContent = BOSS_EPITHET[key] ?? '';
+    }
+    this.bossCard.classList.toggle('show', !!boss);
   }
 
   /** Takedown banners in a shared descent: the player's own downs of rival gods (and streaks), first blood, and the player falling. */
@@ -180,6 +203,7 @@ export class DescentHud {
       this.card.classList.toggle('show', !!cardKey);
       this.card.dataset.kind = plan.kind;
     }
+    this.bossIntro();
 
     const text = this.stateText();
     if (text !== this.lastText) {

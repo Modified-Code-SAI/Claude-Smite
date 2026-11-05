@@ -10,6 +10,7 @@ import { hex, TEAM_COLORS } from '../combat/palette';
 import { skillIcon } from './icons';
 import { hypot } from '../core/math';
 import './combat.css';
+import { BOSS_EPITHET } from './bossNames';
 
 const CC_LABEL: Partial<Record<CCKind, string>> = {
   stun: 'Stunned',
@@ -71,12 +72,6 @@ interface Floater {
   drift: number;
 }
 
-/** Original epithets for the jungle's big monsters, shown on the objective bar. */
-const EPITHET: Record<string, string> = {
-  treasureWyrm: 'Coiled Keeper of the Hoard',
-  moltenColossus: 'Heart of the Sunken Forge',
-  ossuaryKing: 'Lord of the Abyss',
-};
 const SPECIAL_NAME: Record<string, string> = { treasureWyrm: 'Tail Sweep', moltenColossus: 'Eruption', ossuaryKing: 'Grave Toll' };
 const OBJECTIVE_COLOR: Record<string, string> = { treasureWyrm: '#f5c542', moltenColossus: '#ff6a1a', ossuaryKing: '#ffa83a' };
 /** The objective bar shows the nearest boss or Warden within this range of the player. */
@@ -514,7 +509,7 @@ export class CombatHud {
       this.objectiveLag = 1;
       const color = OBJECTIVE_COLOR[kind] ?? hex(BUFF_GLOW[kind] ?? 0xffffff);
       o.root.style.setProperty('--c', color);
-      const title = boss ? (EPITHET[boss] ?? '') : `Guardian of ${BUFFS[kind as BuffKind].name}`;
+      const title = boss ? (BOSS_EPITHET[boss] ?? '') : `Guardian of ${BUFFS[kind as BuffKind].name}`;
       o.name.innerHTML = `${best.name}<small>${title}</small>`;
       o.root.classList.toggle('ch-boss-major', boss !== null);
       // a notch every thousand health

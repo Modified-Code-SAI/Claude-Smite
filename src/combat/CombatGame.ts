@@ -601,6 +601,8 @@ export class CombatGame implements Updatable {
       shake: this.deps.shake,
       cue: (name, at, k) => this.onCue?.(name, at, k),
       stock: (coming) => this.views.stock(coming),
+      cameraShot: this.deps.cameraShot,
+      heightOf: (u) => this.views.heightOf(u),
     });
     this.descentMode = mode;
     this.descent = mode.run;
@@ -748,8 +750,8 @@ export class CombatGame implements Updatable {
 
     this.deps.player.movement = {
       speed: this.sim.moveSpeed(this.player),
-      // a kickoff countdown holds everyone on their marks
-      canMove: this.sim.canMove(this.player) && !this.rushMode?.frozen && !this.jotunnMode?.piloting,
+      // a kickoff countdown holds everyone on their marks, and a boss's entrance holds the team while it rises
+      canMove: this.sim.canMove(this.player) && !this.rushMode?.frozen && !this.jotunnMode?.piloting && !this.descent?.intro,
     };
   }
 
@@ -795,6 +797,7 @@ export class CombatGame implements Updatable {
       this.cancelPreview();
     }
     if (this.inFight) this.handleCombatInput();
+    else this.cancelPreview();
     this.followBuild();
     this.netGuest?.syncBuild();
 
@@ -870,9 +873,9 @@ export class CombatGame implements Updatable {
 
   private wasInBase = true;
 
-  /** Whether the fight takes input: no menu up, and the match isn't over or counting down. */
+  /** Whether the fight takes input: no menu up, and the match isn't over, counting down or watching a boss rise. */
   private get inFight(): boolean {
-    return !this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && this.jotunn?.phase !== 'done';
+    return !this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && !this.descent?.intro && this.jotunn?.phase !== 'done';
   }
 
   /** Another god on the player's team, bot or human: someone to ping. */

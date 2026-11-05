@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { Side } from '../game/combatant';
-import { exitSpot } from '../map/UnderworldLayout';
+import { exitSpot, obstaclesOf, underworldField } from '../map/UnderworldLayout';
+import type { CameraShot } from '../player/ThirdPersonCamera';
 import { DESCENT, DEPTHS, SOULS, type Descent } from '../sim/Descent';
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { SimEvent, Unit } from '../sim/Unit';
@@ -8,6 +9,7 @@ import type { World } from '../scene/World';
 import { DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { ArcView } from './Arcs';
+import { introDistance, introShot, introSpot, type IntroSubject } from './bossIntro';
 import { GroundDecal } from './GroundDecal';
 import { KEEPER_CORE, KEEPER_GLOW } from './MonsterViews';
 import type { GodPalette } from './palette';
@@ -52,9 +54,13 @@ export interface DescentViewOptions {
    * dead climbing out of the floor (`k` 0 to 1 for how big).
    */
   cue?: (name: DescentCue, at: { x: number; y: number; z: number }, k: number) => void;
+  /** Takes the camera for a boss's entrance (null hands it back); see bossIntro. */
+  cameraShot?: (shot: CameraShot | null) => void;
+  /** A unit's height as drawn, for framing a boss. */
+  heightOf?: (u: Unit) => number | null;
 }
 
-export type DescentCue = 'soul' | 'emerge' | `relic.${RelicId}`;
+export type DescentCue = 'soul' | 'emerge' | 'boss' | `relic.${RelicId}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -87,6 +93,8 @@ export class DescentView {
   private sinkIn = 0;
   /** Monsters already seen climbing out of the floor. */
   private readonly risen = new WeakSet<Unit>();
+  /** A boss's entrance on camera: the boss, how long it has run, and where the camera stands. */
+  private intro: { boss: Unit; t: number; subject: IntroSubject; spot: { x: number; z: number }; shot: CameraShot } | null = null;
   /** The newest soul fire already marked (the Ossuary King's rain sends a bolt into each new one). */
   private lastErupt = 0;
   private clock = 0;
@@ -220,6 +228,7 @@ export class DescentView {
       this.risen.add(m);
       if (m.alive) this.emerge(m);
     }
+    this.introFrame(dt);
     this.streams();
     this.gate(dt, door);
     this.relicFx(dt);
@@ -327,6 +336,40 @@ export class DescentView {
     const near = me ? Math.hypot(me.x - m.x, me.z - m.z) : 99;
     if (boss && near < 40) this.opts.shake?.(0.45 * (1 - near / 40));
     this.opts.cue?.('emerge', { x: m.x, y: gy, z: m.z }, boss ? 1 : Math.min(0.7, 0.3 + m.radius * 0.15));
+    if (boss && this.run.intro > 0) this.startIntro(m, gy);
+  }
+
+  /** A boss rising while its chamber holds still: the camera turns to it (see bossIntro). */
+  private startIntro(boss: Unit, ground: number): void {
+    this.opts.cue?.('boss', { x: boss.x, y: ground, z: boss.z }, 1);
+    if (!this.opts.cameraShot) return;
+    const height = this.opts.heightOf?.(boss) ?? 4;
+    const subject = { x: boss.x, z: boss.z, ground, height };
+    const me = this.opts.me;
+    const toward = me ? { x: me.x, z: me.z } : exitSpot(this.run.layout);
+    const obstacles = obstaclesOf(this.run.layout);
+    const room = (x: number, z: number) => {
+      let r = underworldField(x, z);
+      for (const [ox, oz, or] of obstacles) r = Math.min(r, Math.hypot(x - ox, z - oz) - or);
+      return r;
+    };
+    const spot = introSpot(subject, toward, room, introDistance(height));
+    // in step with the sim's own clock (a guest may see the boss rise a moment late)
+    this.intro = { boss, t: DESCENT.bossIntro - this.run.intro, subject, spot, shot: { pos: { x: 0, y: 0, z: 0 }, look: { x: 0, y: 0, z: 0 }, weight: 0 } };
+  }
+
+  /** Runs the boss's entrance shot, handing the camera back as it ends (or if the fight ends first). */
+  private introFrame(dt: number): void {
+    const it = this.intro;
+    const set = this.opts.cameraShot;
+    if (!it || !set) return;
+    it.t += dt;
+    const total = DESCENT.bossIntro;
+    const shot = introShot(it.t, total, it.subject, it.spot, it.shot);
+    const over = shot.weight <= 0.001 || this.run.phase !== 'fight';
+    set(over ? null : shot);
+    document.body.classList.toggle('descent-cine', !over && shot.weight > 0.4);
+    if (over) this.intro = null;
   }
 
   /** A soul's color for a god: its team's in a shared descent, the depth's in co-op. */
