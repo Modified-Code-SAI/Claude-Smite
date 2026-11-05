@@ -160,6 +160,8 @@ const MAX_ANIM_DT = 1 / 20;
  * dozens of parts into them each frame: most of a frame's draw calls.
  */
 const SHADOW_RANGE = 55;
+/** Seconds a monster takes to climb out of the floor (Underworld Descent). */
+export const EMERGE_TIME = 0.6;
 
 interface UnitView {
   root: THREE.Group;
@@ -178,6 +180,8 @@ interface UnitView {
   windup: number;
   /** Seconds since a destroyed structure began to rise again, or -1. */
   rebirth: number;
+  /** Seconds since a monster began to climb out of the floor, or -1. */
+  emerge: number;
   monster: MonsterView | null;
   /** Built by the mode's own view (see the `custom` hook), the player's included. */
   custom: boolean;
@@ -203,6 +207,8 @@ export class UnitViews {
   private readonly views = new Map<Unit, UnitView>();
   /** Relic Rush: fallen gods are dazed, not dead, and lie where they fell instead of sinking away. */
   dazes = false;
+  /** Underworld Descent: the dead claw their way up out of the floor instead of appearing on it. */
+  emergeMonsters = false;
   private readonly prev = new Map<Unit, THREE.Vector3>();
   private readonly cur = new Map<Unit, THREE.Vector3>();
   /** When set, gods off screen or far away animate at a reduced rate. */
@@ -402,7 +408,7 @@ export class UnitViews {
       if (summoned) root.scale.setScalar(0.88);
       this.group.add(root);
     }
-    const v: UnitView = { root, model, height, wobble: 0, wobbleVel: 0, deathTime: -1, localDir: new THREE.Vector2(), lift: 0, structure, rebirth: -1, external, windup: 0, monster, custom: !!own, animDt: 0, stagger: this.created++ };
+    const v: UnitView = { root, model, height, wobble: 0, wobbleVel: 0, deathTime: -1, localDir: new THREE.Vector2(), lift: 0, structure, rebirth: -1, emerge: this.emergeMonsters && u.kind === 'monster' && u.alive ? 0 : -1, external, windup: 0, monster, custom: !!own, animDt: 0, stagger: this.created++ };
     this.views.set(u, v);
     return v;
   }
@@ -457,6 +463,12 @@ export class UnitViews {
     else v.root.position.set(u.x, u.body.y, u.z);
     v.root.position.y += v.lift;
     v.root.rotation.y = u.body.yaw + Math.PI;
+    if (v.emerge >= 0) {
+      // up out of the ground fast, slowing as it stands
+      const k = Math.min(1, (v.emerge += dt) / EMERGE_TIME);
+      v.root.position.y -= (1 - k) ** 2 * v.height * 1.05;
+      if (k >= 1) v.emerge = -1;
+    }
 
     const hidden = u.stealth > 0 && u.team !== this.player.team;
     if (u.kind === 'dummy') {

@@ -16,6 +16,8 @@ const SOULS_OF: Record<keyof typeof DEPTH_COLORS, number> = { ember: 0xbfefff, s
 /** Souls in a shared descent: the player's team's in cold blue, the rivals' in crimson (the HUD's colors). */
 const ALLY_SOUL = 0x5ab8ff;
 const FOE_SOUL = 0xff4060;
+/** The Gilded Thornback's burst of gold. */
+const GILDED: GodPalette = { cloth: 0, trim: 0, glow: 0xffc23a, vfx: 0xffb020, core: 0xfff0b0 };
 /** Seconds between the souls a god raising an ally pours into them. */
 const STREAM_EVERY = 0.09;
 
@@ -25,9 +27,15 @@ export interface DescentViewOptions {
   /** The local player: souls reaching them cue a sound, and soul fire landing near them shakes the camera. */
   me?: Unit;
   shake?: (amount: number) => void;
-  /** A run of souls reached the player; `k` counts up the run (0, 1, 2, ...) for a rising chime. */
-  absorbed?: (k: number) => void;
+  /**
+   * A moment with its own sound: `soul`, a soul reached the player (`k`
+   * counts up a run of them, 0, 1, 2, ..., for a rising chime); `emerge`, the
+   * dead climbing out of the floor (`k` 0 to 1 for how big).
+   */
+  cue?: (name: DescentCue, at: { x: number; y: number; z: number }, k: number) => void;
 }
+
+export type DescentCue = 'soul' | 'emerge';
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -47,16 +55,19 @@ export class DescentView {
   private readonly door: GroundDecal;
   private shownLayout = -1;
   private shownChamber = -1;
+  private phase = '';
   private shownDepth = -1;
   private open = 0;
   private burst: GodPalette = { cloth: 0, trim: 0, glow: 0, vfx: 0xff5a14, core: 0xffd08a };
   /** The depth's soul color, for souls that are nobody's in particular. */
   private soul = SOULS_OF.ember;
-  readonly wisps = new SoulWisps();
+  readonly wisps = new SoulWisps(96);
   private readonly team: Side;
   /** How far each downed god had been raised last frame, and when it last took a soul from its helpers. */
   private readonly raised = new Map<Unit, { p: number; at: number }>();
   private sinkIn = 0;
+  /** Monsters already seen climbing out of the floor. */
+  private readonly risen = new WeakSet<Unit>();
   private clock = 0;
   /** The run of souls reaching the player: its length and when the last landed. */
   private streak = { k: 0, at: -1 };
@@ -75,7 +86,7 @@ export class DescentView {
       const chain = this.clock - this.streak.at < 0.6;
       this.streak.k = chain ? this.streak.k + 1 : 0;
       this.streak.at = this.clock;
-      opts.absorbed?.(this.streak.k);
+      opts.cue?.('soul', { x: to.x, y: to.body.y + 1.2, z: to.z }, this.streak.k);
     };
     const content = world.content as Partial<UnderworldMap>;
     this.map = typeof content.show === 'function' ? (content as UnderworldMap) : null;
@@ -124,6 +135,11 @@ export class DescentView {
       for (const d of this.eruptions) d.setColors(c.glow, c.fire.high);
     }
     this.clock += dt;
+    if (r.phase !== this.phase) {
+      // the floor gives way beneath the team as it goes down
+      if (r.phase === 'descend') this.opts.shake?.(0.4);
+      this.phase = r.phase;
+    }
 
     // the exit's veil glows up once the way down is open
     const goal = r.phase === 'exit' || r.phase === 'descend' ? 1 : 0;
@@ -159,6 +175,11 @@ export class DescentView {
         const d = Math.hypot(me.x - e.x, me.z - e.z);
         if (d < 10) this.opts.shake(0.22 * (1 - d / 10));
       }
+    }
+    for (const m of r.monsters) {
+      if (this.risen.has(m)) continue;
+      this.risen.add(m);
+      if (m.alive) this.emerge(m);
     }
     this.streams();
     this.gate(dt, door);
@@ -209,6 +230,33 @@ export class DescentView {
       return;
     }
     this.wisps.swarm.release(u.x, y, u.z, Math.min(12, 1 + worth), to, to ? this.colorFor(to) : this.soul, worth >= 10 ? 1.1 : 0.85, worth >= 10 ? 0.6 : 0.28);
+  }
+
+  /**
+   * The dead claw up out of the floor (the unit views raise the body): the
+   * ground bursts in the depth's fire and loose souls gather into it. A boss
+   * erupts in a column of fire that shakes the chamber; the Gilded Thornback
+   * comes up in a flash of gold.
+   */
+  private emerge(m: Unit): void {
+    const role = m.origin?.f === 'mode' ? (m.origin.data as { role?: string } | undefined)?.role : undefined;
+    const boss = role === 'boss';
+    const gy = this.groundAt(m.x, m.z);
+    const palette = role === 'gilded' ? GILDED : this.burst;
+    this.vfx.burst(palette, m.x, gy + 0.3, m.z, boss ? 2.6 : Math.min(1.8, 0.8 + m.radius * 0.35));
+    if (boss) this.vfx.pillar(palette, m.x, m.z, 0.5, 2.4);
+    const n = boss ? 10 : 4;
+    const reach = 1.6 + m.radius;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.6;
+      const x = m.x + Math.cos(a) * reach;
+      const z = m.z + Math.sin(a) * reach;
+      this.wisps.swarm.send(x, this.groundAt(x, z) + 0.2, z, m, role === 'gilded' ? GILDED.core : this.soul, boss ? 0.8 : 0.5, boss ? 2.4 : 0.9);
+    }
+    const me = this.opts.me;
+    const near = me ? Math.hypot(me.x - m.x, me.z - m.z) : 99;
+    if (boss && near < 40) this.opts.shake?.(0.45 * (1 - near / 40));
+    this.opts.cue?.('emerge', { x: m.x, y: gy, z: m.z }, boss ? 1 : Math.min(0.7, 0.3 + m.radius * 0.15));
   }
 
   /** A soul's color for a god: its team's in a shared descent, the depth's in co-op. */
