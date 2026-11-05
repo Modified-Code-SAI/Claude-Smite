@@ -248,7 +248,6 @@ export class JotunnMode {
 
   prime(): () => void {
     const g = this.mode.giant;
-    this.view.prime(new THREE.Vector3(g.x, this.deps.groundAt(g.x, g.z), g.z));
-    return () => undefined;
+    return this.view.prime(new THREE.Vector3(g.x, this.deps.groundAt(g.x, g.z), g.z));
   }
 }
