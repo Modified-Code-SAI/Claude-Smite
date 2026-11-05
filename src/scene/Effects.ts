@@ -120,7 +120,6 @@ export class FireBatch {
   private readonly fires: Fire[] = [];
   private flames: FireCopies | null = null;
   private embers: FireCopies | null = null;
-  private readonly at = new THREE.Vector3();
 
   constructor() {
     this.group.name = 'fires';
@@ -132,23 +131,25 @@ export class FireBatch {
     const embers = this.embers;
     if (!flames || !embers) return;
     let moved = false;
+    const a = flames.at.array;
+    const st = flames.state.array;
     for (let i = 0; i < this.fires.length; i++) {
       const f = this.fires[i]!;
       const m = f.group.matrixWorld.elements;
-      const at = this.at.set(m[12]!, m[13]!, m[14]!);
-      const size = shown(f.group) ? f.size * Math.hypot(m[0]!, m[1]!, m[2]!) : 0;
-      const a = flames.at.array;
-      if (a[i * 4] === at.x && a[i * 4 + 1] === at.y && a[i * 4 + 2] === at.z && a[i * 4 + 3] === size && flames.state.array[i * 2 + 1] === f.strength) continue;
+      // compared as the float32s the attributes hold: a double almost never
+      // equals its float32 copy, which re-sent every fire to the GPU every frame
+      const x = Math.fround(m[12]!);
+      const y = Math.fround(m[13]!);
+      const z = Math.fround(m[14]!);
+      const size = Math.fround(shown(f.group) ? f.size * Math.hypot(m[0]!, m[1]!, m[2]!) : 0);
+      if (a[i * 4] === x && a[i * 4 + 1] === y && a[i * 4 + 2] === z && a[i * 4 + 3] === size && st[i * 2 + 1] === Math.fround(f.strength)) continue;
       moved = true;
-      for (const [copies, first, count] of [[flames, i, 1], [embers, i * EMBERS, EMBERS]] as const) {
-        for (let k = first; k < first + count; k++) {
-          copies.at.setXYZW(k, at.x, at.y, at.z, size);
-          copies.state.setXY(k, f.seed, f.strength);
-        }
-      }
+      place(flames, i, 1, f, x, y, z, size);
+      place(embers, i * EMBERS, EMBERS, f, x, y, z, size);
     }
     if (!moved) return;
-    for (const c of [flames, embers]) c.at.needsUpdate = c.state.needsUpdate = true;
+    flames.at.needsUpdate = flames.state.needsUpdate = true;
+    embers.at.needsUpdate = embers.state.needsUpdate = true;
   }
 
   /** Copies every fire's colors again, after a map recolors its fires (a new underworld depth). */
@@ -203,6 +204,14 @@ export class FireBatch {
 }
 
 /** True when the object and all its ancestors are visible, up to a scene. */
+/** Writes a fire's place, size and strength into `count` of a sprite's copies from `first`. */
+function place(copies: FireCopies, first: number, count: number, f: Fire, x: number, y: number, z: number, size: number): void {
+  for (let k = first; k < first + count; k++) {
+    copies.at.setXYZW(k, x, y, z, size);
+    copies.state.setXY(k, f.seed, f.strength);
+  }
+}
+
 function shown(o: THREE.Object3D | null): boolean {
   for (; o; o = o.parent) {
     if (!o.visible) return false;

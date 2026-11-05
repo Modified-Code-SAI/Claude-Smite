@@ -1193,7 +1193,7 @@ function ossuaryKing(): MonsterView {
 }
 
 /** The camp kind is encoded in the monster's tag: `<team>-<kind>-<i>:<type>`. */
-function campKindOf(u: Unit): CampKind {
+function campKindOf(u: Pick<Unit, 'tag'>): CampKind {
   return u.tag.split(':')[0]!.split('-')[1] as CampKind;
 }
 
@@ -1217,7 +1217,17 @@ export function monsterWarmup(): THREE.Object3D[] {
   ].map((v) => v.root);
 }
 
-export function createMonsterView(u: Unit): MonsterView {
+/**
+ * What a view built ahead of its monster must match to stand in for it: the
+ * type, a Warden's glow and a Champion's size (see createMonsterView).
+ */
+export function monsterViewKey(u: Pick<Unit, 'tag' | 'name'>): string {
+  const type = u.tag.split(':')[1] ?? '';
+  return `${type}${type === 'warden' ? `@${campKindOf(u)}` : ''}${u.name.startsWith('Champion ') ? '+' : ''}`;
+}
+
+/** Builds a monster's model from its tag and name alone, so it can be built before the monster exists. */
+export function createMonsterView(u: Pick<Unit, 'tag' | 'name'>): MonsterView {
   const v = createView(u);
   if (u.name.startsWith('Champion ')) {
     // Temple Siege Champions stand taller than the rest of the horde (a Warden
@@ -1229,7 +1239,7 @@ export function createMonsterView(u: Unit): MonsterView {
   return v;
 }
 
-function createView(u: Unit): MonsterView {
+function createView(u: Pick<Unit, 'tag'>): MonsterView {
   const type = u.tag.split(':')[1];
   if (type === 'warden') return giant({ glow: BUFF_GLOW[campKindOf(u)] ?? 0xffffff, stone: mats().stone, scale: 1 });
   if (type === 'moltenColossus') return giant({ glow: 0xff6a1a, stone: lavaStone(), scale: 2.1, molten: true });

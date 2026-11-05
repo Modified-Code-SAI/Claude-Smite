@@ -118,6 +118,13 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?:
 };
 
 /**
+ * Thousands separators for the boss bar. Made while the game loads: the first
+ * number format sets up the locale's data, a 10 ms hitch when it waited for
+ * the first boss bar.
+ */
+const GROUPED = new Intl.NumberFormat();
+
+/**
  * In-match HUD: the player's frame and ability bar (Smite layout, bottom
  * center), overhead health bars, floating damage numbers, crowd-control and
  * recall readouts, and the death screen. Plain DOM over the canvas.
@@ -519,7 +526,7 @@ export class CombatHud {
     this.objectiveLag = drain(this.objectiveLag, frac, dt);
     setStyle(o.hp, 'width', percent(frac));
     setStyle(o.lag, 'width', percent(this.objectiveLag));
-    setText(o.pct, `${Math.ceil(c.health).toLocaleString()} / ${Math.round(c.stats.maxHealth).toLocaleString()}`);
+    setText(o.pct, `${GROUPED.format(Math.ceil(c.health))} / ${GROUPED.format(Math.round(c.stats.maxHealth))}`);
     const cast = brain.specialProgress;
     o.cast.classList.toggle('show', cast > 0);
     setStyle(o.castFill, 'width', percent(cast));

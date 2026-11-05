@@ -600,6 +600,7 @@ export class CombatGame implements Updatable {
       learned: () => this.menu.refresh(),
       shake: this.deps.shake,
       cue: (name, at, k) => this.onCue?.(name, at, k),
+      stock: (coming) => this.views.stock(coming),
     });
     this.descentMode = mode;
     this.descent = mode.run;

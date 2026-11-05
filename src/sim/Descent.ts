@@ -5,7 +5,7 @@ import { FAVOR_THRESHOLDS, favorPoints, XP_TABLE } from '../game/progression';
 import type { GodDef, SkillDef, StatKey } from '../game/types';
 import type { CampKind } from '../map/ConquestLayout';
 import { BOSS_CHAMBER, CHAMBERS, entranceSpot, exitSpot, obstaclesOf, steer, type ChamberDef, type Palette } from '../map/UnderworldLayout';
-import { monsterUnit, type MonsterType } from './factory';
+import { monsterName, monsterUnit, type MonsterType } from './factory';
 import { MonsterBrain, type BossSpecial, type CampState } from './Jungle';
 import { Relics, relicById, type Relic, type RelicNet } from './Relics';
 import { BOONS, CHAMPION, CURSES, type Boon, type Curse } from './Siege';
@@ -919,21 +919,55 @@ export class Descent {
     this.spawn(roster, `w${this.wave}`);
   }
 
+  /** A wave as it rises: the Swarm curse brings extra Thornbacks ahead of it. */
+  private swarmed(roster: MonsterType[]): MonsterType[] {
+    const swarm = this.curses.find((k) => k.swarm)?.swarm;
+    if (!swarm) return roster;
+    const t = roster.filter((r) => r === 'thornback').length;
+    return [...Array<MonsterType>(Math.max(0, Math.min(t * (swarm.count - 1), 14 - t))).fill('thornback'), ...roster];
+  }
+
+  /** The title and camp of the `i`th monster of a wave, and its tag, which tells the views what to draw. */
+  private look(type: MonsterType, i: number, label: string): { title: string; champion: boolean; campKind: CampKind; tag: string } {
+    const n = this.chamber;
+    const boss = isBossType(type);
+    const king = type === 'ossuaryKing';
+    // the champion of a Champion chamber is the first monster of its first wave
+    const champion = this.current.kind === 'champion' && label === 'w1' && i === 0;
+    const title = champion ? 'Champion' : boss && !king && n === DESCENT.chambers ? 'Abyssal' : '';
+    // (the King's slam is its own, so it fights from a plain camp: see DescentMonsterBrain.specialSpec)
+    const campKind: CampKind = type === 'warden' ? WARDEN_GLOWS[(n + i) % 4]! : boss && !king ? (type as CampKind) : 'small';
+    return { title, champion, campKind, tag: `descent-${campKind}-${n}.${label}.${i}:${type}` };
+  }
+
+  /**
+   * Every monster this chamber will raise (its waves, a boss's adds, a
+   * treasure room's Gilded Thornback), by the tag and name the views will
+   * see, so their models can be built before they arrive. Works on a guest's
+   * copy too: it reads only the chamber's plan, the team and the curses.
+   */
+  upcoming(): { tag: string; name: string }[] {
+    if (!this.chamber) return [];
+    const n = this.chamber;
+    const out: { tag: string; name: string }[] = [];
+    const add = (roster: MonsterType[], label: string) =>
+      this.swarmed(roster).forEach((type, i) => {
+        const { title, tag } = this.look(type, i, label);
+        out.push({ tag, name: monsterName(type, title) });
+      });
+    chamberWaves(this.current, this.gods.length).forEach((w, k) => add(w, `w${k + 1}`));
+    if (this.current.kind === 'boss') for (let k = 0; k < DESCENT.bossAdds.length; k++) add(bossAdds(n), 'adds');
+    if (this.current.kind === 'treasure') out.push({ tag: `descent-small-${n}.g:gildedThornback`, name: monsterName('gildedThornback') });
+    return out;
+  }
+
   private spawn(roster0: MonsterType[], label: string): void {
     const n = this.chamber;
     const c = this.layout;
-    let roster = roster0;
-    const swarm = this.curses.find((k) => k.swarm)?.swarm;
-    if (swarm) {
-      const t = roster.filter((r) => r === 'thornback').length;
-      roster = [...Array<MonsterType>(Math.max(0, Math.min(t * (swarm.count - 1), 14 - t))).fill('thornback'), ...roster];
-    }
+    const roster = this.swarmed(roster0);
     const minutes = chamberMinutes(n);
     const scale = chamberScale(n, !this.versus);
     const team = teamScale(this.gods.length);
-    const kind = this.current.kind;
-    // the champion of a Champion chamber is the first monster of its first wave
-    const champ = kind === 'champion' && label === 'w1' ? 0 : -1;
     roster.forEach((type, i) => {
       const boss = isBossType(type);
       const spot = boss ? [0, -c.extent * 0.35] : c.spawns[(i + this.wave * 3) % c.spawns.length]!;
@@ -942,7 +976,7 @@ export class Descent {
       const x = c.x + spot[0]! + jx;
       const z = c.z + spot[1]! + jz;
       const king = type === 'ossuaryKing';
-      const title = i === champ ? 'Champion' : boss && !king && n === DESCENT.chambers ? 'Abyssal' : '';
+      const { title, champion, campKind, tag } = this.look(type, i, label);
       const u = monsterUnit(this.base, type, { x, z, yaw: 0 }, minutes, title);
       const cb = u.combatant;
       let hp = scale * team * DESCENT_TUNING.health * (this.versus ? DESCENT_TUNING.versusHealth : 1);
@@ -954,7 +988,7 @@ export class Descent {
         hp *= DESCENT_TUNING.lastBoss;
         power *= 1.15;
       }
-      if (i === champ) {
+      if (champion) {
         hp *= CHAMPION.health;
         power *= CHAMPION.power;
         this.champion = u;
@@ -971,16 +1005,14 @@ export class Descent {
       }
       cb.health = cb.stats.maxHealth;
       if (u.bounty) u.bounty = { xp: u.bounty.xp * DESCENT_TUNING.killXp, favor: u.bounty.favor * DESCENT_TUNING.favor };
-      // (the King's slam is its own, so it fights from a plain camp: see DescentMonsterBrain.specialSpec)
-      const campKind: CampKind = type === 'warden' ? WARDEN_GLOWS[(n + i) % 4]! : boss && !king ? (type as CampKind) : 'small';
-      u.tag = `descent-${campKind}-${n}.${label}.${i}:${type}`;
+      u.tag = tag;
       u.home.x = x;
       u.home.z = z;
       const camp: CampState = { camp: { id: `descent:${n}:${label}:${i}`, kind: campKind, team: null, at: [x, z] }, members: [u], respawnAt: null, foe: null };
       u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c), c);
       if (boss) this.boss = u;
       if (king) this.rainIn = KING.rain.first;
-      u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : i === champ ? 'champion' : '' } satisfies DescentSpawn };
+      u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : champion ? 'champion' : '' } satisfies DescentSpawn };
       this.monsters.push(u);
       this.sim.add(u);
     });

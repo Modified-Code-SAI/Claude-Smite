@@ -4,6 +4,7 @@ import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { BOSS_CHAMBER, CHAMBERS, chamberField, entranceSpot, exitSpot, steer, underworldField, obstaclesOf } from '../map/UnderworldLayout';
 import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, KEEPER, KING, learnSkill, planRun, SHADE_BLINK } from './Descent';
+import { CURSES } from './Siege';
 import { DescentBot } from './DescentBot';
 import { godUnit, monsterUnit } from './factory';
 import { CollisionWorld } from '../scene/Collision';
@@ -540,4 +541,42 @@ describe('Underworld Descent: the run', () => {
       for (const g of run.gods) expect(underworldField(g.x, g.z)).toBeGreaterThan(-0.2);
     }
   }, 20000);
+});
+
+describe('Underworld Descent: monster models built ahead', () => {
+  /** Plays a chamber to its end (a boss worn down in steps, so it calls its adds) and lists every monster that rose, by tag and name. */
+  const raised = (sim: Sim, run: Descent, by: Unit): string[] => {
+    const seen = new Set<Unit>();
+    step(sim, run, DESCENT.enterTime + 0.1);
+    for (let guard = 0; guard < 80 && run.phase === 'fight'; guard++) {
+      for (const m of run.monsters) seen.add(m);
+      for (const m of [...run.monsters]) {
+        if (!m.alive) continue;
+        const boss = run.boss === m;
+        sim.strike(by, m, boss ? m.combatant.stats.maxHealth * 0.3 : 1e7, 'true');
+      }
+      step(sim, run, 0.4);
+    }
+    for (const m of run.monsters) seen.add(m);
+    expect(run.phase).not.toBe('fight');
+    return [...seen].map((m) => `${m.tag} ${m.name}`).sort();
+  };
+
+  it('knows every monster a chamber will raise before the first one rises, for every kind of chamber and the Swarm curse', () => {
+    const kinds = new Set<string>();
+    for (const seed of [3, 11, 5, 8]) {
+      const { sim, run, team } = setup([zeus, thor, odin], 1, seed);
+      const jump = run as unknown as { chamber: number; nextChamber(): void };
+      for (let n = 1; n <= DESCENT.chambers; n++) {
+        jump.chamber = n - 1;
+        jump.nextChamber();
+        if (seed === 11 && n === 7 && !run.curses.some((c) => c.swarm)) run.curses.push(CURSES.find((c) => c.swarm)!);
+        for (const g of team) g.combatant.health = g.combatant.stats.maxHealth;
+        const coming = run.upcoming().map((m) => `${m.tag} ${m.name}`).sort();
+        expect(raised(sim, run, team[0]!)).toEqual(coming);
+        kinds.add(run.current.kind);
+      }
+    }
+    expect([...kinds].sort()).toEqual(['boss', 'champion', 'elite', 'pack', 'trap', 'treasure']);
+  });
 });

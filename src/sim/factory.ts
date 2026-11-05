@@ -128,13 +128,18 @@ const MONSTERS: Record<MonsterType, { name: string; health: number; power: numbe
 };
 
 /** A jungle monster; camps that grow back later in the match are tougher. */
+/** A monster's name, with a title (Champion, Abyssal) when it has one. */
+export function monsterName(type: MonsterType, title = ''): string {
+  return title ? `${title} ${MONSTERS[type].name}` : MONSTERS[type].name;
+}
+
 export function monsterUnit(base: GodDef, type: MonsterType, at: { x: number; z: number; yaw: number }, minutes: number, title = ''): Unit {
   const m = MONSTERS[type];
   const grow = 1 + Math.min(1.2, minutes * 0.06);
   const def = variant(
     base,
     `monster:${type}`,
-    title ? `${title} ${m.name}` : m.name,
+    monsterName(type, title),
     {
       maxHealth: Math.round(m.health * grow),
       attackPower: m.power * grow,
