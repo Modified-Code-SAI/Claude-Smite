@@ -319,6 +319,7 @@ export class RushBot implements Brain {
       // a defender standing on the throw's line, close to the thrower, blocks it
       if (this.onLine(e, target, 1.4)) return false;
     }
+    if (!rush.passRead(u, target).goal) return false;
     return rush.throwRelic(u, target);
   }
 
@@ -348,6 +349,7 @@ export class RushBot implements Brain {
       const d = dist(u, at);
       if (d < RUSH.relic.minThrow || d > Rush.maxThrow(u)) continue;
       if (this.enemies().some((e) => this.onLine(e, at, 0.9) || dist(e, at) < 3)) continue;
+      if (rush.passRead(u, at).catcher !== t) continue;
       // the latest call wins
       if (!best || ago < best.ago) best = { at, ago };
     }
@@ -396,6 +398,7 @@ export class RushBot implements Brain {
       const progress = toGate - dist(at, gate);
       const score = Math.min(open, 9) + progress * 0.35;
       if (open < 3.5 || progress < -6) continue;
+      if (rush.passRead(u, at).catcher !== t) continue;
       if (!best || score > best.score) best = { at, score };
     }
     if (!best) return false;
