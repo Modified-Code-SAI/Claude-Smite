@@ -9,6 +9,7 @@ import {
   chime, chirp, choir, clang, debris, filter, fire, impact, knock, layer, puff, roar, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
 } from './gestures';
 import { CREATURE_SOUNDS } from './creatures';
+import { JOTUNN_SOUNDS } from './jotunnSounds';
 import { VOICE_SOUNDS } from './voices';
 
 export interface Recipe {
@@ -200,6 +201,9 @@ export const SOUNDS: Record<string, Recipe> = {
 
   // -- camps, bosses and minion waves (creatures.ts)
   ...CREATURE_SOUNDS,
+
+  // -- the Jötunn: its steps, voice, weak points and braziers (jotunnSounds.ts)
+  ...JOTUNN_SOUNDS,
 };
 
 // ---------------------------------------------------------------------------

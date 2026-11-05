@@ -10,6 +10,7 @@ import { ahr, bell, buf, fill, glide, Osc, perc, type Rand } from './dsp';
 import {
   buzz, chime, choir, clang, debris, filter, fire, layer, puff, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
 } from './gestures';
+import { JOTUNN_SKILL_SOUNDS } from './jotunnSounds';
 import type { Recipe } from './sounds';
 
 export interface SkillSound {
@@ -350,6 +351,8 @@ export const SKILL_SOUNDS: Record<string, SkillSound> = {
   'anubis.judgment': {
     cast: (r) => layer([gong(r, 3, 65.4), 1], [choir(r, 3, 196, { env: (t) => ahr(t, 0.8, 1, 1.2) }), 0.7], [choir(r, 3, 293.7, { vowelName: 'oh', env: (t) => ahr(t, 1, 0.8, 1.2) }), 0.4], [shimmer(r, 2.4, 587.3, { rise: 1.5, peak: 0.6 }), 0.5]),
   },
+  // ===== the Jötunn: ice, stone and a bellowing voice (jotunnSounds.ts)
+  ...JOTUNN_SKILL_SOUNDS,
 };
 
 // ---------------------------------------------------------------------------

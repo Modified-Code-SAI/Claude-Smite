@@ -43,6 +43,8 @@ export interface JotunnDeps {
   reaction?: number;
   /** Online: up to five friends, bots filling the rest; each takes a turn as the giant. */
   net?: NetSession;
+  /** A moment of the giant's that has its own sound ('step': a footfall, k how hard). */
+  cue?: (name: 'step', at: THREE.Vector3, k: number) => void;
 }
 
 /** Radians a second the giant's body turns toward the camera when a player drives it. */
@@ -132,6 +134,7 @@ export class JotunnMode {
         deps.shake?.(amount * THREE.MathUtils.clamp(1.15 - d / 70, 0.15, 1));
       },
       burst: (at, power) => deps.burst(FROST, at.x, at.y, at.z, power),
+      footfall: (at, k) => deps.cue?.('step', at, k),
     });
     deps.vfx.add(this.view.group);
     this.hud = new JotunnHud(mode, player);

@@ -593,7 +593,13 @@ export class GiantModel {
   private readonly boulder = new Boulder();
   private readonly clubTip = new THREE.Object3D();
   private readonly clubBase = new THREE.Object3D();
-  private readonly feet: { bone: THREE.Bone; down: boolean; last: number }[] = [];
+  private readonly feet: THREE.Bone[] = [];
+  /** Which foot it stands on (the lower one), -1 before it is known. */
+  private planted = -1;
+  private lastStep = 0;
+  /** When it last walked, and how fast: the foot that comes down as it stops is a step too. */
+  private walkedAt = -1;
+  private pace = 0;
   private clock = 0;
   private state: GiantState | null = null;
   private wasKneeling = false;
@@ -617,7 +623,7 @@ export class GiantModel {
     this.buildParts();
     for (const s of ['L', 'R']) {
       const b = this.god.bone(`DEF-foot.${s}`);
-      if (b) this.feet.push({ bone: b, down: true, last: 0 });
+      if (b) this.feet.push(b);
     }
     this.god.poseHook = (dt) => this.layer(dt);
     // the head bone's rest orientation in the model, from the skin's bind
@@ -1044,18 +1050,34 @@ export class GiantModel {
     }
   }
 
+  /**
+   * A step lands each time the swinging foot comes down past the one it stood
+   * on. Comparing the two feet (not a fixed height) catches every step at any
+   * frame rate and on any slope.
+   */
   private footfalls(s: GiantState): void {
-    if (s.dead || this.kneel > 0.2) return;
-    const ground = this.root.position.y;
-    for (const f of this.feet) {
-      const y = f.bone.getWorldPosition(tmpV).y - ground;
-      const down = y < 0.14 * GIANT_SCALE;
-      if (down && !f.down && this.clock - f.last > 0.3 && s.speed > 0.5) {
-        f.last = this.clock;
-        this.onStep?.(tmpV.clone().setY(ground), THREE.MathUtils.clamp(s.speed / 5, 0.4, 1));
-      }
-      f.down = down;
+    const [a, b] = this.feet;
+    if (!a || !b || s.dead || this.kneel > 0.2) {
+      this.planted = -1;
+      return;
     }
+    if (s.speed > 0.5) {
+      this.walkedAt = this.clock;
+      this.pace = s.speed;
+    }
+    const ya = a.getWorldPosition(tmpV).y;
+    const yb = b.getWorldPosition(tmpV2).y;
+    const margin = 0.03 * GIANT_SCALE;
+    const low = ya < yb - margin ? 0 : yb < ya - margin ? 1 : this.planted;
+    if (low === this.planted) return;
+    const was = this.planted;
+    this.planted = low;
+    if (was < 0 || this.clock - this.walkedAt > 0.6 || this.clock - this.lastStep < 0.25) return;
+    // a stomp's foot lands with the blow's own sound
+    if (this.actions.some((x) => x.act === 'stomp' && x.weight > 0.1)) return;
+    this.lastStep = this.clock;
+    const at = (low === 0 ? tmpV : tmpV2).clone().setY(this.root.position.y);
+    this.onStep?.(at, THREE.MathUtils.clamp(this.pace / 5, 0.4, 1));
   }
 
   get windupAct(): GiantAct | null {

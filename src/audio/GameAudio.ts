@@ -18,6 +18,7 @@ import { hypot } from '../core/math';
 import { DUEL } from '../sim/Duel';
 import { RUSH } from '../sim/Rush';
 import { DESCENT, DEPTHS } from '../sim/Descent';
+import { JOTUNN, type PartId } from '../sim/Jotunn';
 
 /** A match's music only ever moves forward: dawn, then battle, then the siege. */
 const PHASES: SongName[] = ['dawn', 'battle', 'siege'];
@@ -31,7 +32,7 @@ interface Tracked {
 }
 
 /** Which god basic-hit sound each god makes. */
-const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand' };
+const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand', jotunn: 'hit.jotunn' };
 const GOD_TRAVEL: Record<string, string> = { zeus: 'travel.zeus', anubis: 'travel.anubis' };
 const BOSSES = ['Treasure Wyrm', 'Molten Colossus'];
 
@@ -79,7 +80,11 @@ export class GameAudio {
     game.sim.listeners.push((e) => this.onEvent(e));
     window.addEventListener('keydown', (e) => this.onKey(e));
     engine.onUnlock(() => this.startAmbience());
-    this.music.play(this.conquest ? 'dawn' : game.descent ? 'abyss' : 'battle');
+    this.music.play(this.conquest ? 'dawn' : game.descent ? 'abyss' : game.jotunn ? 'frost' : 'battle');
+    // the giant's footfalls come from its model, so each lands with the foot
+    game.onCue = (name, at, k) => {
+      if (name === 'step' && this.engine.ready) this.engine.play('step.giant', { at, gain: 0.45 + 0.55 * k, vary: 0.05, ref: 26 }, 3);
+    };
   }
 
   private get me(): Unit {
@@ -109,6 +114,8 @@ export class GameAudio {
         else if (e.target.kind === 'god' && this.dist(e.target) < 30) this.heat = Math.min(1.5, this.heat + 0.05);
         if (e.target.kind === 'god' && e.target.alive && e.amount >= e.target.combatant.stats.maxHealth * 0.07) this.voice(e.target, 'hurt', 0.75, 3, 0.9);
         if (!e.ability && e.source) this.onBasicHit(e.source, e.target, e.crit);
+        // the Jötunn's weak points crack under every blow
+        else if (e.ability && e.target.kind === 'weakpoint') this.at('jotunn.crack', e.target, { gain: e.source === me ? 0.75 : 0.5, vary: 0.08, ref: 10 }, 2, 0.08, e.source === me);
         else if (e.ability && e.target === me) this.engine.play('hit.flesh', { gain: 0.45, vary: 0.1 }, 2, 0.15);
         // your skill landing on an enemy god or boss: a thwack that cuts through the fight, harder for bigger chunks
         else if (e.ability && e.source === me && e.target.team !== me.team && (e.target.kind === 'god' || e.target.kind === 'monster')) {
@@ -222,6 +229,11 @@ export class GameAudio {
     let gain = src === this.me ? 1 : target === this.me ? 0.85 : 0.55;
     let gap = 0;
     if (isStructure(target)) name = 'hit.structure';
+    else if (target.kind === 'weakpoint') {
+      // four gods chip at it at once: theirs thin out, yours always crack
+      name = 'jotunn.crack';
+      gap = src === this.me ? 0 : 0.06;
+    }
     else if (src.kind === 'tower' || src.kind === 'phoenix') name = 'tower.hit';
     else if (src.kind === 'god' || src.kind === 'dummy') name = GOD_HIT[src.combatant.god.id] ?? 'hit.flesh';
     else if (src.kind === 'minion') {
@@ -262,7 +274,14 @@ export class GameAudio {
   private onDeath(u: Unit, killer: Unit | null): void {
     const me = this.me;
     switch (u.kind) {
+      case 'weakpoint':
+        this.at('jotunn.shatter', u, { gain: 1.1, ref: 18 }, 5);
+        break;
       case 'god':
+        if (u === this.game.jotunn?.giant) {
+          this.at('jotunn.fall', u, { gain: 1.3, ref: 40 }, 7);
+          break;
+        }
         this.at(this.game.rush ? 'god.daze' : 'god.death', u, { gain: u === me ? 1 : 0.8, ref: 10 }, 5);
         this.voice(u, 'death', 0.85, 5);
         const streak = this.endStreak(u, killer);
@@ -405,6 +424,7 @@ export class GameAudio {
     this.watchDuel();
     this.watchRush();
     this.watchDescent();
+    this.watchJotunn();
     this.updateMood(dt);
     // while dead, the world is heard as if from far away
     this.muffle += ((me.alive ? 0 : 1) - this.muffle) * Math.min(1, dt * (me.alive ? 6 : 2.5));
@@ -470,7 +490,8 @@ export class GameAudio {
     const lx = this.engine.listenerPos.x;
     const lz = this.engine.listenerPos.z;
     for (const u of this.game.sim.units) {
-      if (isStructure(u) || u.kind === 'dummy') continue;
+      // (the Jötunn's steps come from its model, its weak points ride on it)
+      if (isStructure(u) || u.kind === 'dummy' || u.kind === 'weakpoint' || u === this.game.jotunn?.giant) continue;
       const d = hypot(u.x - lx, u.z - lz);
       const range = u.kind === 'minion' ? 22 : u.radius > 2 ? 60 : 38;
       let s = this.strides.get(u);
@@ -998,6 +1019,91 @@ export class GameAudio {
   }
 
   // -------------------------------------------------------------------------
+
+  /** Last seen Jötunn state, so each beat is called once. */
+  private jotunnSeen = { round: 0, phase: '', tick: 0, kneeling: false, claims: 0, fury: false, braziers: [] as boolean[], parts: new Map<PartId, boolean>(), flashes: new Set<number>(), done: false };
+
+  /** The Jötunn: the giant's bellow and the round's call, the horn, smashed braziers, the kneel, shrines, regrowth and the result. */
+  private watchJotunn(): void {
+    const j = this.game.jotunn;
+    if (!j || !j.round) return;
+    const seen = this.jotunnSeen;
+    const g = j.giant;
+    const giantMe = this.me === g;
+    const who = j.giantPlayer.name;
+    if (j.round !== seen.round) {
+      seen.round = j.round;
+      seen.fury = false;
+      seen.claims = j.claims;
+      seen.braziers = j.braziers.map((b) => b.alive);
+      for (const [id, p] of j.parts) seen.parts.set(id, p.alive);
+      const last = j.round === j.rounds && j.rounds > 1 ? 'Final round. ' : '';
+      this.herald.say(giantMe ? `${last}You are the Jötunn. Smash the braziers!` : `${last}${who} is the Jötunn. Guard the braziers!`, 'epic', 4);
+      this.at('jotunn.roar', g, { gain: 1.2, ref: 45 }, 6, 0, true);
+    }
+    if (j.phase !== seen.phase) {
+      if (j.phase === 'fight' && seen.phase === 'countdown') this.engine.play('jotunn.horn', { gain: 0.8 }, 5);
+      if (j.phase === 'over') {
+        const giantWon = j.lastRound === 'giant';
+        const won = giantMe === giantWon;
+        const line = giantWon ? (giantMe ? 'The braziers are smashed! The round is yours.' : 'The braziers are smashed. The round is lost.') : giantMe ? 'You have fallen. The round is lost.' : 'The Jötunn has fallen! The round is yours.';
+        this.herald.say(line, won ? 'good' : 'bad', 5);
+      }
+      if (j.phase === 'done' && !seen.done) {
+        seen.done = true;
+        const champs = j.champions;
+        const won = champs.some((p) => p.god === this.game.ownGod);
+        this.music.sting(won ? 'victory' : 'defeat');
+        this.herald.say(won ? (champs.length > 1 ? 'A shared victory! The frost is broken.' : 'Victory! You are the champion of the temple.') : 'Defeat. Another claims the temple.', won ? 'epic' : 'bad', 9);
+      }
+      seen.phase = j.phase;
+    }
+    // the countdown out loud: a cold bell on 3, 2 and 1
+    const tick = j.phase === 'countdown' ? Math.ceil(j.timer) : 0;
+    if (tick !== seen.tick && tick >= 1 && tick <= 3) this.engine.play('ui.point', { gain: 0.5, rate: 0.7 + (3 - tick) * 0.06 }, 2);
+    seen.tick = tick;
+    if (j.phase !== 'fight') return;
+    j.braziers.forEach((b, i) => {
+      if (seen.braziers[i] && !b.alive) {
+        this.engine.play('jotunn.brazier', { at: { x: b.x, y: b.body.y + 1, z: b.z }, gain: 1.2, ref: 30 }, 6);
+        const smashed = JOTUNN.braziers.length - j.braziersLeft;
+        const need = JOTUNN.braziersToWin - smashed;
+        if (need > 0) this.herald.say(giantMe ? `A brazier is smashed! ${need} more.` : `A brazier is smashed! ${need === 1 ? 'Only one more and the temple falls.' : 'Hold the rest!'}`, giantMe ? 'good' : 'bad', 3);
+      }
+      seen.braziers[i] = b.alive;
+    });
+    for (const [id, p] of j.parts) {
+      const was = seen.parts.get(id);
+      // a part that grows back (the kneel's knees come back together, with the stand)
+      if (was === false && p.alive && id !== 'crown') this.at('jotunn.regrow', p, { gain: 0.8, ref: 14 }, 2, 0, giantMe);
+      if (was && !p.alive && id === 'rune') this.herald.say(giantMe ? 'Your back rune shatters! You are silenced.' : 'The back rune shatters! The giant is silenced.', giantMe ? 'bad' : 'good', 2);
+      seen.parts.set(id, p.alive);
+    }
+    const kneeling = j.kneeling > 0;
+    if (kneeling && !seen.kneeling) {
+      this.at('jotunn.kneel', g, { gain: 1.3, ref: 40 }, 6, 0, true);
+      this.herald.say(giantMe ? 'You are on your knees! Guard your crown.' : `The Jötunn kneels! Strike the crown!`, giantMe ? 'bad' : 'epic', 4);
+    }
+    seen.kneeling = kneeling;
+    if (j.claims > seen.claims) {
+      const s = j.shrines.reduce((a, b) => (b.dormant > a.dormant ? b : a));
+      this.engine.play('jotunn.claim', { at: { x: s.def.x, z: s.def.z }, gain: 1, ref: 30 }, 5);
+      const ult = this.game.player.combatant.god.skills.find((k) => k.id === s.def.ult)?.name ?? 'a new power';
+      this.herald.say(giantMe ? `The ${s.def.name} is yours: ${ult}!` : `The Jötunn claims the ${s.def.name}!`, giantMe ? 'good' : 'bad', 3);
+    }
+    seen.claims = j.claims;
+    if (j.fury > 0 && !seen.fury) {
+      seen.fury = true;
+      this.herald.say(giantMe ? 'Your fury grows. Every blow hits harder.' : "The Jötunn's fury grows!", giantMe ? 'good' : 'bad', 2);
+    }
+    // the giant rearing back for a blow: a strain and a breath drawn in, so gods hear it coming
+    for (const f of this.game.sim.flashes) {
+      if (f.owner !== g || !f.warn || seen.flashes.has(f.id)) continue;
+      seen.flashes.add(f.id);
+      this.at('jotunn.windup', g, { gain: f.act === 'basic' ? 0.55 : 0.95, vary: 0.05, ref: 24 }, 4, 0, true);
+    }
+    if (seen.flashes.size > 200) seen.flashes.clear();
+  }
 
   private dist(u: Unit): number {
     return hypot(u.x - this.engine.listenerPos.x, u.z - this.engine.listenerPos.z);
