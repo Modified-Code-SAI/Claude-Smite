@@ -301,4 +301,9 @@ export class RushMode {
   prime(): () => void {
     return this.view.prime();
   }
+
+  /** How excited one end of the crowd is right now (0 to 1), for its sound. */
+  crowdHeat(side: Side): number {
+    return this.view.crowd.excitement(side);
+  }
 }

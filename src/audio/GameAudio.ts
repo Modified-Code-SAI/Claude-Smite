@@ -757,6 +757,7 @@ export class GameAudio {
     const at = { x: relic.x, z: relic.z };
     let roared = false;
     this.humRelic(r);
+    this.crowdBeds();
     if (r.phase !== seen.phase) {
       if (r.phase === 'play' && seen.phase === 'kickoff') {
         this.engine.play('wave.horn', { gain: 0.6 }, 4);
@@ -833,6 +834,42 @@ export class GameAudio {
       // (unless the winning goal already set the crowd off)
       if (!roared) this.crowdRoar(r.winner as 'order' | 'chaos', won);
       this.herald.say(won ? 'Victory! The Sun Relic is yours.' : 'Defeat. The enemy takes the Sun Relic.', won ? 'epic' : 'bad', 5);
+    }
+  }
+
+  /** Each end of Relic Rush's crowd: its murmur, and its cheering faded in over it as the play heats up. */
+  private readonly crowdEnds = {
+    order: { murmur: null as LoopHandle | null, cheer: null as LoopHandle | null, heat: -1 },
+    chaos: { murmur: null as LoopHandle | null, cheer: null as LoopHandle | null, heat: -1 },
+  };
+
+  /**
+   * The crowd is heard from where it sits: a bed behind each gate, swelling
+   * with its own end's excitement (a carrier closing in, a goal, the win) and
+   * rising in pitch as it gets to its feet, then settling back to chatter.
+   */
+  private crowdBeds(): void {
+    for (const side of ['order', 'chaos'] as const) {
+      const end = this.crowdEnds[side];
+      const at = { x: 0, y: 3, z: (side === 'order' ? 1 : -1) * (RUSH.pitchRadius + 4) };
+      const tone = side === 'order' ? 1 : 0.95;
+      if (!end.murmur?.alive) {
+        end.murmur = this.engine.loop('amb.crowd', { bus: 'ambience', at, ref: 30, gain: 0, rate: tone });
+        end.heat = -1;
+      }
+      if (!end.cheer?.alive) {
+        end.cheer = this.engine.loop('amb.cheer', { bus: 'ambience', at, ref: 30, gain: 0, rate: tone });
+        end.heat = -1;
+      }
+      // steps of 1/40 so the ramps aren't re-aimed every frame
+      const heat = Math.round(this.game.crowdHeat(side) * 40) / 40;
+      if (heat === end.heat) continue;
+      end.heat = heat;
+      const up = Math.min(1, Math.max(0, (heat - 0.15) / 0.5));
+      end.murmur?.setGain(0.42 * (0.85 + 0.5 * heat) * (1 - 0.45 * up), 0.3);
+      end.murmur?.setRate(tone * (1 + 0.05 * heat));
+      end.cheer?.setGain(0.5 * up * up * (3 - 2 * up), 0.3);
+      end.cheer?.setRate(tone * (1 + 0.04 * heat));
     }
   }
 
@@ -945,11 +982,6 @@ export class GameAudio {
     add('amb.wind', { bus: 'ambience', gain: 0.45, pan: 0.5, rate: 0.93 });
     add('amb.leaves', { bus: 'ambience', gain: 0.35, pan: 0.2 });
     add('amb.jungle', { bus: 'ambience', gain: this.conquest ? 0.18 : 0.08, pan: -0.2 });
-    // Relic Rush: the spirits round the pitch murmuring, either side of you
-    if (this.game.rush) {
-      add('amb.crowd', { bus: 'ambience', gain: 0.32, pan: -0.45 });
-      add('amb.crowd', { bus: 'ambience', gain: 0.28, pan: 0.45, rate: 0.94 });
-    }
     for (const b of Object.values(this.game.sim.bases)) {
       add('amb.fountain', { bus: 'ambience', at: { x: b.x, y: 1, z: b.z }, gain: 0.8, ref: 7 });
       add('amb.fire', { bus: 'ambience', at: { x: b.x + 6, y: 2, z: b.z }, gain: 0.5, ref: 4 });
