@@ -31,3 +31,15 @@
 .ch-death.downed .ch-death-title { font-size: 0; }
 .ch-death.downed .ch-death-title::after { content: 'Downed'; font-size: 54px; }
 .ch-death.downed::after { content: 'Hold on: an ally standing over you raises you'; font-size: 16px; color: #f2e6cc; letter-spacing: 0.06em; }
+.descent .clash-state b.rivals { color: #ffd08a; }
+/* a shared descent: both teams' souls flank the depth and chamber */
+.descent-souls { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 74px; line-height: 1; }
+.descent-souls b { font-size: 24px; font-weight: 700; text-shadow: 0 2px 4px #000; transition: text-shadow 0.4s; }
+.descent-souls span { margin-top: 3px; font: 600 10px system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
+.descent-souls.ally b { color: #9fd4ff; }
+.descent-souls.foe b { color: #ff9f8a; }
+.descent-souls.ally.lead b { text-shadow: 0 0 12px rgba(110, 180, 255, 0.95), 0 2px 4px #000; }
+.descent-souls.foe.lead b { text-shadow: 0 0 12px rgba(255, 90, 70, 0.95), 0 2px 4px #000; }
+.descent-souls i { position: absolute; top: -4px; left: 50%; font: 700 14px system-ui, sans-serif; font-style: normal; color: #ffe08a; opacity: 0; pointer-events: none; text-shadow: 0 0 8px rgba(255, 200, 90, 0.9), 0 1px 2px #000; }
+.descent-souls i.pop { animation: descent-gain 1.1s ease-out; }
+@keyframes descent-gain { 0% { opacity: 0; transform: translate(-50%, 6px) scale(0.8); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -16px) scale(1); } }

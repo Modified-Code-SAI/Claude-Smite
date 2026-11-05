@@ -17,15 +17,20 @@ const players: NetPlayer[] = [
   { id: 'h', name: 'Player 1', god: 'zeus', team: 'order' },
   { id: 'g', name: 'Player 2', god: 'thor', team: 'order' },
 ];
+/** A shared descent: the host's team of three (bots fill it) against a guest alone. */
+const rivals: NetPlayer[] = [
+  { id: 'h', name: 'Player 1', god: 'zeus', team: 'order' },
+  { id: 'g', name: 'Player 2', god: 'thor', team: 'chaos' },
+];
 
-function build(host: boolean) {
+function build(host: boolean, versus = false) {
   const walls = new CollisionWorld(() => 0);
   addUnderworldColliders(walls);
   let s = 11;
   const sim = new Sim(walls, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, () => ((s = (s * 16807) % 2147483647) / 2147483647));
-  const run = new Descent(sim, godById('zeus')!);
-  const slots = descentRoster(players);
-  const gods = slots.map((sl) => sim.add(godUnit(godById(sl.god)!, 'order', { x: 0, z: 0, yaw: 0 })));
+  const run = new Descent(sim, godById('zeus')!, undefined, versus);
+  const slots = versus ? descentRoster(rivals, undefined, { versus: true, bots: { chaos: false } }) : descentRoster(players);
+  const gods = slots.map((sl) => sim.add(godUnit(godById(sl.god)!, sl.team, { x: 0, z: 0, yaw: 0 })));
   // every god plays itself on the host here (the humans' bots stand in for their inputs)
   if (host) for (const u of gods) u.brain = new DescentBot(sim, u, run);
   const humans = gods.filter((_, i) => slots[i]!.player);
@@ -107,5 +112,48 @@ describe('online Underworld Descent', () => {
     const state = JSON.stringify(host.run.netState() satisfies DescentNet);
     expect(state.length).toBeLessThan(1200);
     expect(bytes / snaps).toBeLessThan(6000);
+  });
+
+  it("copies a shared descent to a guest on the other team: souls, routs, each team's rewards and boons", () => {
+    const host = build(true, true);
+    const guest = build(false, true);
+    guest.sim.listeners.length = 0;
+    for (const u of host.gods) host.run.addGod(u, host.humans.includes(u));
+    host.run.begin();
+    guest.run.join(guest.gods, guest.humans);
+    const me = guest.gods[3]!;
+    expect(me.team).toBe('chaos');
+    expect(guest.run.short('chaos')).toBe(2);
+    expect(me.combatant.stats.damageBonus).toBeCloseTo(host.gods[3]!.combatant.stats.damageBonus, 5);
+    const sync = new HostSync(host.sim, host.run, host.roster, () => 0);
+    sync.addGuest('g');
+    const copy = new GuestSync(guest.sim, guest.run, guest.roster, me);
+    let sawOffer = false;
+    let waited = 0;
+    let was = '';
+    for (let i = 1; i <= Math.round(150 / DT) && host.run.chamber < 3; i++) {
+      waited = host.run.phase === was ? waited + DT : 0;
+      was = host.run.phase;
+      // each human votes for a boon if there is one: their own team's pick
+      if (waited > 1 && host.run.phase === 'reward') for (const h of host.humans) host.run.vote(h, Math.max(0, host.run.offer!.findIndex((r) => r.kind === 'boon')));
+      if (waited > 1 && host.run.phase === 'draft') for (const h of host.humans) host.run.draft(h, 0);
+      host.run.step(DT);
+      host.sim.step(DT);
+      if (i % SNAPSHOT_EVERY === 0) for (const [, snap] of sync.snapshots()) copy.receive(JSON.parse(encode(snap)) as Snapshot);
+      copy.step(DT);
+      guest.run.follow(DT);
+      if (guest.run.offer && guest.run.offerTeams.includes('chaos')) sawOffer = true;
+    }
+    expect(host.run.chamber).toBeGreaterThanOrEqual(2);
+    expect(sawOffer).toBe(true);
+    // the score and each team's spoils arrive as the host has them (souls to two decimals)
+    expect(host.run.souls.order + host.run.souls.chaos).toBeGreaterThan(0);
+    expect(guest.run.souls.order).toBeCloseTo(host.run.souls.order, 1);
+    expect(guest.run.souls.chaos).toBeCloseTo(host.run.souls.chaos, 1);
+    expect(guest.run.teamKills).toEqual(host.run.teamKills);
+    expect(guest.run.boonTeam).toEqual(host.run.boonTeam);
+    // boons lift only the team that took them, the same on both ends
+    for (let i = 0; i < host.gods.length; i++) expect(guest.gods[i]!.combatant.stats.maxHealth).toBeCloseTo(host.gods[i]!.combatant.stats.maxHealth, 0);
+    expect(JSON.stringify(host.run.netState()).length).toBeLessThan(1400);
   });
 });

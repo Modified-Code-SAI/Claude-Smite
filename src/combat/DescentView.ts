@@ -13,7 +13,8 @@ const ERUPTIONS = 10;
  * What Underworld Descent shows in the world: the chamber the team is in (and
  * the depth's colors), the exit gate's veil opening once a chamber is cleared,
  * a glowing ring on the gate's threshold, the soul fire's warning circles and
- * bursts, and a ring under every downed god that fills as an ally raises them.
+ * bursts, and a ring under every downed god of the player's team that fills
+ * as an ally raises them.
  * Every ring is a pooled ground decal sharing one material.
  */
 export class DescentView {
@@ -31,6 +32,8 @@ export class DescentView {
     private readonly world: World,
     private readonly vfx: CombatVfx,
     groundAt: (x: number, z: number) => number,
+    /** The player's team: in a shared descent the rivals' fallen get no ring (only their own team can raise them). */
+    private readonly team: 'order' | 'chaos' = 'order',
   ) {
     const content = world.content as Partial<UnderworldMap>;
     this.map = typeof content.show === 'function' ? (content as UnderworldMap) : null;
@@ -105,6 +108,7 @@ export class DescentView {
     // a ring under each downed god that fills as it is raised
     let k = 0;
     for (const [g, p] of r.downed) {
+      if (r.sideOf(g) !== this.team) continue;
       const d = this.revives[k++];
       if (!d) break;
       d.mesh.visible = true;

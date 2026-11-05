@@ -1,4 +1,5 @@
 import { hypot } from '../core/math';
+import type { Side } from '../game/combatant';
 import { SLOT_COUNT, ULTIMATE_SLOT } from '../game/loadout';
 import { FAVOR_THRESHOLDS, favorPoints, XP_TABLE } from '../game/progression';
 import type { GodDef, SkillDef, StatKey } from '../game/types';
@@ -19,6 +20,13 @@ import type { Brain, SimEvent, Unit } from './Unit';
  * and unseal the rest through the run. Curses stack the deeper the team goes.
  * A fallen god lies downed until an ally stands over them long enough to
  * revive them; when every god is down at once, the run ends.
+ *
+ * A shared descent (team versus) sends two teams down the same chambers. The
+ * monsters hunt everyone, gods can down their rivals, and every kill pays
+ * souls to the team that made it: the most souls at the bottom wins. A downed
+ * god rises at the gate on its own after a while, so nobody waits out a
+ * chamber, and a smaller team fights harder and scores more for each god it
+ * is short.
  */
 export const DESCENT = {
   chambers: 15,
@@ -45,7 +53,34 @@ export const DESCENT = {
   bossAdds: [0.66, 0.33],
   /** Champion's Obol: a whole-team wipe is undone this many times (it can be won as a reward). */
   obols: 0,
+  /** A shared descent (team versus). */
+  versus: {
+    /** Seconds a downed god lies before rising at the gate on its own (an ally raises it sooner). */
+    bleed: 12,
+    /** Health a god rises with at the gate. */
+    bleedHealth: 0.6,
+    /** Souls for downing a rival god, and for each god of a team routed (all down at once). */
+    god: 3,
+    rout: 1,
+    /** A Champion pays this many souls on top of its kind. */
+    champion: 5,
+    /** Gods hit rival gods this hard: skills are tuned for fights between gods, and here the monsters are the main foe. */
+    rivalDamage: 0.5,
+    /** For each god a team is short of its rival: more damage and less taken (and its souls count per head: see soulRate). */
+    underdog: { damage: 0.2, reduction: 0.12 },
+  },
 } as const;
+
+/** Souls a monster pays the team that slays it in a shared descent. */
+export const SOULS: Record<MonsterType, number> = {
+  thornback: 1,
+  thornSpitter: 1,
+  thornbackAlpha: 2,
+  warden: 4,
+  gildedThornback: 5,
+  treasureWyrm: 15,
+  moltenColossus: 15,
+};
 
 export type ChamberKind = 'pack' | 'trap' | 'elite' | 'champion' | 'treasure' | 'boss';
 
@@ -150,6 +185,8 @@ export const DESCENT_TUNING = {
   bossHealth: 0.55,
   /** How many monsters a pack brings, as a multiplier. */
   count: 2,
+  /** Monster health in a shared descent on top of the rest: each team fights its own half, and the rivals too. */
+  versusHealth: 0.65,
   /** XP and favor for kills and for each cleared chamber, as multipliers (the gods' growth). */
   killXp: 0.45,
   clearXp: 0.5,
@@ -158,16 +195,21 @@ export const DESCENT_TUNING = {
 
 /** How grown a chamber's monsters are, in jungle minutes. */
 export const chamberMinutes = (n: number): number => (n - 1) * DESCENT_TUNING.minutes;
-/** Deeper still, monsters get tougher than the jungle's growth alone: health and damage. */
-export const chamberScale = (n: number): number => {
+/**
+ * Deeper still, monsters get tougher than the jungle's growth alone: health
+ * and damage. A shared descent skips the last depth's climax ramp: nobody's
+ * run ends there, so the bottom has to stay winnable while the teams fight
+ * each other too.
+ */
+export const chamberScale = (n: number, climax = true): number => {
   const t = DESCENT_TUNING;
-  const late = Math.max(0, n - 2 * DESCENT.bossEvery);
+  const late = climax ? Math.max(0, n - 2 * DESCENT.bossEvery) : 0;
   return 1 + Math.max(0, n - t.scaleFrom) * t.scalePer + late * late * t.lateRamp;
 };
-/** Monster health for a team of this many gods (tuned for three; bots fill a team up to three). */
+/** Monster health for a team of this many gods (tuned for three; bots fill a team up to three; a shared descent has up to six). */
 export const teamScale = (gods: number): number => 0.4 + 0.2 * Math.max(1, gods);
 /** How many monsters come for a team of this many gods. */
-export const teamCount = (gods: number): number => [0.5, 0.75, 1, 1.3][Math.min(4, Math.max(1, gods)) - 1]!;
+export const teamCount = (gods: number): number => [0.5, 0.75, 1, 1.3, 1.45, 1.6][Math.min(6, Math.max(1, gods)) - 1]!;
 
 const isBossType = (t: string): boolean => t === 'treasureWyrm' || t === 'moltenColossus';
 
@@ -405,14 +447,19 @@ export class Descent {
   private waveSize = 0;
   kills = 0;
   readonly boons: Boon[] = [];
+  /** Which team took each of `boons` (always Order in co-op). */
+  readonly boonTeam: Side[] = [];
   readonly curses: DescentCurse[] = [];
   /** The curse joining the stack at the next chamber, shown during the reward. */
   nextCurse: DescentCurse | null = null;
   /** The three rewards on offer after a chamber, and each human's vote. */
   offer: Reward[] | null = null;
   readonly votes = new Map<Unit, number>();
-  /** Rewards still to be offered after this one (the Gilded Thornback's prize). */
-  bonusRewards = 0;
+  /** Rewards still to be offered to each team after this one (the Gilded Thornback's prize). */
+  readonly bonus: Record<Side, number> = { order: 0, chaos: 0 };
+  /** The teams voting on the offer on the table, and the picks already settled (a team of bots picks at once). */
+  offerTeams: Side[] = [];
+  readonly picks = new Map<Side, number>();
   /** Each god's open skill draft. */
   readonly drafts = new Map<Unit, Draft>();
   /** Downed gods and how far along their revive is (0..1). */
@@ -429,8 +476,16 @@ export class Descent {
   gildedFate: 'caught' | 'escaped' | null = null;
   boss: Unit | null = null;
   private bossAddsCalled = 0;
-  /** Seconds left on the Champion's spoils. */
+  /** Seconds left on the Champion's spoils, and the team that took them. */
   spoils = 0;
+  spoilsTeam: Side = 'order';
+  /** A shared descent's score: souls, monsters slain (the tie-break), routs suffered, and the team that slew this chamber's boss. */
+  readonly souls: Record<Side, number> = { order: 0, chaos: 0 };
+  readonly teamKills: Record<Side, number> = { order: 0, chaos: 0 };
+  readonly routs: Record<Side, number> = { order: 0, chaos: 0 };
+  bossBy: Side | null = null;
+  /** The team with the most souls once the last chamber falls ('draw' on a dead heat). */
+  winner: Side | 'draw' | null = null;
   /** Revives that need extra health after the sim respawns them. */
   private readonly reviving = new Map<Unit, number>();
 
@@ -439,9 +494,36 @@ export class Descent {
     /** The god whose shape monsters borrow (see factory.monsterUnit). */
     private readonly base: GodDef,
     plan?: ChamberPlan[],
+    /** A shared descent: Order and Chaos go down together, scored in souls. */
+    readonly versus = false,
   ) {
     this.plan = plan ?? planRun(sim.rng);
     sim.listeners.push((e) => this.on(e));
+  }
+
+  /** The teams on the run: Order alone in co-op, both in a shared descent. */
+  get sides(): Side[] {
+    return this.versus ? ['order', 'chaos'] : ['order'];
+  }
+
+  /** A god's team on the run (in co-op, everyone is one team). */
+  sideOf(g: Unit): Side {
+    return this.versus && g.team === 'chaos' ? 'chaos' : 'order';
+  }
+
+  teamOf(side: Side): Unit[] {
+    return this.gods.filter((g) => this.sideOf(g) === side);
+  }
+
+  humansOf(side: Side): Unit[] {
+    return [...this.humans].filter((g) => this.sideOf(g) === side);
+  }
+
+  /** How many gods a team is short of its rival (0 in co-op). */
+  short(side: Side): number {
+    if (!this.versus) return 0;
+    const mine = this.teamOf(side).length;
+    return Math.max(0, this.gods.length - mine - mine);
   }
 
   /** The chamber the team is in (or about to enter). */
@@ -483,45 +565,117 @@ export class Descent {
 
   /** Puts the team at the first chamber's gate. Call once every god is added. */
   begin(): void {
+    this.underdog();
     this.chamber = 1;
     this.phase = 'enter';
     this.timer = DESCENT.enterTime;
     this.placeTeam();
   }
 
+  /** A smaller team fights harder for each god it is short (lasting perks, the same on every end); rival gods hit each other softer. */
+  private underdog(): void {
+    const u = DESCENT.versus.underdog;
+    for (const g of this.gods) {
+      if (this.versus) {
+        const c = g.combatant;
+        const own = c.damageAmp;
+        c.damageAmp = (t, ability) => (own ? own(t, ability) : 1) * (this.sim.unitByCombatantUid(t.uid)?.kind === 'god' ? DESCENT.versus.rivalDamage : 1);
+      }
+      const n = this.short(this.sideOf(g));
+      if (!n) continue;
+      g.combatant.addPerk('damageBonus', u.damage * n);
+      g.combatant.addPerk('damageReduction', u.reduction * n);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Events
 
   private on(e: SimEvent): void {
-    if (e.type === 'respawn' && this.reviving.has(e.unit)) {
-      const c = e.unit.combatant;
-      c.health = Math.max(1, c.stats.maxHealth * this.reviving.get(e.unit)!);
+    if (e.type === 'respawn') {
+      // raised by an ally, or (a shared descent) risen at the gate after lying long enough
+      const share = this.reviving.get(e.unit) ?? (this.downed.has(e.unit) ? DESCENT.versus.bleedHealth : undefined);
+      if (share === undefined) return;
       this.reviving.delete(e.unit);
+      this.downed.delete(e.unit);
+      e.unit.downed = false;
+      const c = e.unit.combatant;
+      c.health = Math.max(1, c.stats.maxHealth * share);
       return;
     }
     if (e.type !== 'death') return;
     const u = e.unit;
     if (u.kind === 'god' && this.gods.includes(u)) {
-      // no respawn timer in the underworld: only an ally (or leaving the chamber) brings a god back
-      u.combatant.respawnTimer = 1e9;
-      u.downed = true;
-      this.downed.set(u, 0);
+      this.down(u, this.creditOf(u, e.killer, e.assists));
       return;
     }
     if (u.kind !== 'monster') return;
-    if (this.monsters.includes(u)) this.kills++;
-    if (u === this.champion) this.claimSpoils();
+    const ours = this.monsters.includes(u);
+    // in co-op every kill is the team's; in a shared descent the team that made it
+    const side = this.versus ? this.creditOf(u, e.killer, e.assists) : 'order';
+    if (ours) {
+      this.kills++;
+      if (side) {
+        this.teamKills[side]++;
+        const type = u.origin?.f === 'mode' ? (u.origin.data as DescentSpawn | undefined)?.type : undefined;
+        if (this.versus) this.score(side, (type ? SOULS[type] : 1) + (u === this.champion ? DESCENT.versus.champion : 0));
+      }
+    }
+    if (u === this.boss) this.bossBy = side;
+    if (u === this.champion) this.claimSpoils(side);
     if (u === this.gilded) {
       this.gilded = null;
       this.gildedFate = 'caught';
-      this.bonusRewards++;
+      if (side) this.bonus[side]++;
     }
   }
 
-  private claimSpoils(): void {
+  /** The team a kill counts for: the killer's, or (a monster's last blow, a burn) a rival god who helped. */
+  private creditOf(victim: Unit, killer: Unit | null, assists: readonly Unit[]): Side | null {
+    const team = (k: Unit | null | undefined): Side | null => (k && (k.team === 'order' || k.team === 'chaos') && k.team !== victim.team ? this.sideOf(k) : null);
+    return team(killer) ?? team(assists.find((a) => a.kind === 'god')) ?? null;
+  }
+
+  /** How much each soul a team earns counts: a smaller team's souls count per head, so two against three earn half as much again. */
+  soulRate(side: Side): number {
+    const mine = this.teamOf(side).length;
+    return this.short(side) && mine ? (this.gods.length - mine) / mine : 1;
+  }
+
+  private score(side: Side, n: number): void {
+    this.souls[side] += n * this.soulRate(side);
+  }
+
+  /** A god falls: it lies downed until an ally raises it (or, in a shared descent, it rises at the gate). */
+  private down(u: Unit, rival: Side | null): void {
+    u.downed = true;
+    this.downed.set(u, 0);
+    if (!this.versus) {
+      // no respawn timer in the underworld: only an ally (or leaving the chamber) brings a god back
+      u.combatant.respawnTimer = 1e9;
+      return;
+    }
+    u.combatant.respawnTimer = DESCENT.versus.bleed;
+    const at = this.gateOf(u);
+    u.home.x = at.x;
+    u.home.z = at.z;
+    u.home.yaw = at.yaw;
+    if (rival) this.score(rival, DESCENT.versus.god);
+    // a whole team down at once is a rout, worth souls to the rivals still standing
+    const side = this.sideOf(u);
+    const team = this.teamOf(side);
+    if (!team.every((g) => this.downed.has(g))) return;
+    this.routs[side]++;
+    const other: Side = side === 'order' ? 'chaos' : 'order';
+    if (this.teamOf(other).some((g) => g.alive)) this.score(other, DESCENT.versus.rout * team.length);
+  }
+
+  private claimSpoils(side: Side | null): void {
     this.champion = null;
+    if (!side) return;
     this.spoils = CHAMPION.time;
-    for (const g of this.gods) {
+    this.spoilsTeam = side;
+    for (const g of this.teamOf(side)) {
       if (!g.alive) continue;
       g.combatant.refreshTimedMod('damageBonus', CHAMPION.damage, CHAMPION.time);
       g.combatant.heal(g.combatant.stats.maxHealth * CHAMPION.heal);
@@ -602,6 +756,7 @@ export class Descent {
     this.wave = 0;
     this.champion = null;
     this.boss = null;
+    this.bossBy = null;
     this.bossAddsCalled = 0;
     this.gildedFate = null;
     this.eruptIn = 3;
@@ -623,10 +778,10 @@ export class Descent {
     const swarm = this.curses.find((k) => k.swarm)?.swarm;
     if (swarm) {
       const t = roster.filter((r) => r === 'thornback').length;
-      roster = [...Array<MonsterType>(Math.min(t * (swarm.count - 1), 14 - t)).fill('thornback'), ...roster];
+      roster = [...Array<MonsterType>(Math.max(0, Math.min(t * (swarm.count - 1), 14 - t))).fill('thornback'), ...roster];
     }
     const minutes = chamberMinutes(n);
-    const scale = chamberScale(n);
+    const scale = chamberScale(n, !this.versus);
     const team = teamScale(this.gods.length);
     const kind = this.current.kind;
     // the champion of a Champion chamber is the first monster of its first wave
@@ -641,7 +796,7 @@ export class Descent {
       const title = i === champ ? 'Champion' : boss && n === DESCENT.chambers ? 'Abyssal' : '';
       const u = monsterUnit(this.base, type, { x, z, yaw: 0 }, minutes, title);
       const cb = u.combatant;
-      let hp = scale * team * DESCENT_TUNING.health;
+      let hp = scale * team * DESCENT_TUNING.health * (this.versus ? DESCENT_TUNING.versusHealth : 1);
       let power = scale * DESCENT_TUNING.power;
       if (boss) hp *= DESCENT_TUNING.bossHealth;
       if (boss && n === DESCENT.bossEvery) hp *= 0.7;
@@ -719,10 +874,20 @@ export class Descent {
     }
     if (n >= DESCENT.chambers) {
       this.phase = 'won';
+      if (this.versus) this.winner = this.decide();
       return;
     }
     this.nextCurse = CURSE_AT.includes(n + 1) ? this.rollCurse() : null;
     this.offerReward();
+  }
+
+  /** The most souls wins (as the HUD shows them, in whole souls); then the most monsters slain. */
+  private decide(): Side | 'draw' {
+    const o = Math.floor(this.souls.order);
+    const c = Math.floor(this.souls.chaos);
+    if (o !== c) return o > c ? 'order' : 'chaos';
+    if (this.teamKills.order !== this.teamKills.chaos) return this.teamKills.order > this.teamKills.chaos ? 'order' : 'chaos';
+    return 'draw';
   }
 
   private rollCurse(): DescentCurse | null {
@@ -735,13 +900,15 @@ export class Descent {
     return this.gods.some((g) => g.combatant.sealed.size > 0);
   }
 
-  private offerReward(): void {
+  /** Three cards for these teams to vote on (both teams see the same three; each takes its own pick). */
+  private offerReward(sides: Side[] = this.sides): void {
     const rng = this.sim.rng;
     const cards: Reward[] = [];
     const hurt = this.gods.reduce((s, g) => s + (g.alive ? g.combatant.health / g.combatant.stats.maxHealth : 0), 0) / Math.max(1, this.gods.length);
     if (this.canLearn && (this.chamber <= 2 || rng() < 0.75)) cards.push(SKILL_REWARD);
     if ((this.downed.size > 0 || hurt < 0.55) && rng() < 0.85) cards.push(HEAL);
-    if (this.obols < 1 && this.chamber >= 3 && rng() < 0.12) cards.push(OBOL);
+    // nobody's run ends in a shared descent, so there is no wipe for an obol to undo
+    if (!this.versus && this.obols < 1 && this.chamber >= 3 && rng() < 0.12) cards.push(OBOL);
     if (cards.length < 3 && rng() < 0.4) cards.push(POINTS);
     const boons = shuffle(DESCENT_BOONS, rng);
     while (cards.length < 3) {
@@ -749,16 +916,20 @@ export class Descent {
       cards.push({ kind: 'boon', name: b.name, text: b.text, boon: b });
     }
     this.offer = shuffle(cards, rng);
+    this.offerTeams = sides;
     this.votes.clear();
+    this.picks.clear();
     this.phase = 'reward';
     this.timer = DESCENT.voteTime;
-    // with nobody to vote, the bots take what a team would usually want
-    if (this.humans.size === 0) this.resolveVote(this.botChoice());
+    // a team with nobody to vote takes what a team would usually want
+    for (const side of sides) if (!this.humansOf(side).length) this.picks.set(side, this.botChoice(side));
+    if (this.picks.size === sides.length) this.resolveVote();
   }
 
-  private botChoice(): number {
+  private botChoice(side: Side): number {
     const o = this.offer!;
-    const order: RewardKind[] = this.downed.size ? ['heal', 'skill', 'obol', 'boon', 'points'] : ['skill', 'obol', 'boon', 'points', 'heal'];
+    const down = [...this.downed.keys()].some((g) => this.sideOf(g) === side);
+    const order: RewardKind[] = down ? ['heal', 'skill', 'obol', 'boon', 'points'] : ['skill', 'obol', 'boon', 'points', 'heal'];
     for (const k of order) {
       const i = o.findIndex((r) => r.kind === k);
       if (i >= 0) return i;
@@ -767,54 +938,63 @@ export class Descent {
   }
 
   private allVoted(): boolean {
-    for (const h of this.humans) if (!this.votes.has(h)) return false;
-    return this.humans.size > 0;
+    return this.offerTeams.every((side) => this.picks.has(side) || this.humansOf(side).every((h) => this.votes.has(h)));
   }
 
   /** A human's vote for one of the offered rewards (they can change it until the vote closes). */
   vote(god: Unit, i: number): boolean {
-    if (this.phase !== 'reward' || !this.offer?.[i] || !this.gods.includes(god)) return false;
+    if (this.phase !== 'reward' || !this.offer?.[i] || !this.gods.includes(god) || !this.offerTeams.includes(this.sideOf(god))) return false;
     this.votes.set(god, i);
     return true;
   }
 
-  /** How many votes each card has. */
-  tally(): number[] {
+  /** How many votes each card has (from one team's gods, or everyone's). */
+  tally(side?: Side): number[] {
     const t = (this.offer ?? []).map(() => 0);
-    for (const v of this.votes.values()) t[v] = (t[v] ?? 0) + 1;
+    for (const [g, v] of this.votes) if (!side || this.sideOf(g) === side) t[v] = (t[v] ?? 0) + 1;
     return t;
   }
 
-  /** The most votes wins; a tie goes to the card voted first among the tied (no votes: the first card). */
-  private resolveVote(pick?: number): void {
+  /** Each team takes its pick: the most votes wins; a tie goes to the card voted first among the tied (no votes: the first card). */
+  private resolveVote(): void {
     const offer = this.offer;
     if (!offer) return;
-    let i = pick ?? 0;
-    if (pick === undefined) {
-      const t = this.tally();
+    const chosen = this.offerTeams.map((side): [Side, number] => {
+      const pick = this.picks.get(side);
+      if (pick !== undefined) return [side, pick];
+      const t = this.tally(side);
       const top = Math.max(...t);
-      if (top > 0) i = [...this.votes.values()].find((v) => t[v] === top) ?? 0;
-    }
+      const first = [...this.votes].find(([g, v]) => this.sideOf(g) === side && t[v] === top);
+      return [side, top > 0 && first ? first[1] : 0];
+    });
     this.offer = null;
+    this.offerTeams = [];
     this.votes.clear();
-    this.take(offer[i]!);
+    this.picks.clear();
+    for (const [side, i] of chosen) this.take(offer[i]!, side);
+    if (this.drafts.size) {
+      this.phase = 'draft';
+      this.timer = DESCENT.draftTime;
+    } else this.afterReward();
   }
 
-  /** The chosen reward takes effect for the whole team. */
-  private take(r: Reward): void {
+  /** The chosen reward takes effect for a whole team. */
+  private take(r: Reward, side: Side): void {
     this.lastReward = r;
+    const team = this.teamOf(side);
     switch (r.kind) {
       case 'boon': {
         const b = r.boon!;
         this.boons.push(b);
-        for (const g of this.gods) for (const [k, v] of Object.entries(b.stats ?? {}) as [StatKey, number][]) g.combatant.addPerk(k, v);
+        this.boonTeam.push(side);
+        for (const g of team) for (const [k, v] of Object.entries(b.stats ?? {}) as [StatKey, number][]) g.combatant.addPerk(k, v);
         break;
       }
       case 'points':
-        for (const g of this.gods) grantTreePoints(g, POINTS_REWARD);
+        for (const g of team) grantTreePoints(g, POINTS_REWARD);
         break;
       case 'heal':
-        for (const g of this.gods) {
+        for (const g of team) {
           if (!g.alive) this.revive(g, 1);
           else {
             const c = g.combatant;
@@ -827,18 +1007,12 @@ export class Descent {
         this.obols++;
         break;
       case 'skill':
-        for (const g of this.gods) {
+        for (const g of team) {
           const d = draftFor(g, this.sim.rng);
           if (d) this.drafts.set(g, d);
         }
-        if (this.drafts.size) {
-          this.phase = 'draft';
-          this.timer = DESCENT.draftTime;
-          return;
-        }
         break;
     }
-    this.afterReward();
   }
 
   /** The reward the team took last, for the HUD's toast. */
@@ -861,10 +1035,11 @@ export class Descent {
   private learnSerial = 0;
 
   private afterReward(): void {
-    // the Gilded Thornback's prize: another reward straight after
-    if (this.bonusRewards > 0) {
-      this.bonusRewards--;
-      this.offerReward();
+    // the Gilded Thornback's prize: another reward straight after, for the team that caught it
+    const more = this.sides.filter((side) => this.bonus[side] > 0);
+    if (more.length) {
+      for (const side of more) this.bonus[side]--;
+      this.offerReward(more);
       return;
     }
     this.phase = 'exit';
@@ -883,11 +1058,19 @@ export class Descent {
     this.placeTeam();
   }
 
+  /** Where a god stands at the current chamber's gate: a shared descent puts Order left of it and Chaos right, a gap between. */
+  gateOf(g: Unit): { x: number; z: number; yaw: number } {
+    const c = this.layout;
+    if (!this.versus) return entranceSpot(c, this.gods.indexOf(g), this.gods.length);
+    const side = this.sideOf(g);
+    const i = this.teamOf(side).indexOf(g);
+    return entranceSpot(c, side === 'order' ? 2 - i : 4 + i, 7, 2);
+  }
+
   /** Every god to the current chamber's gate; the fallen come along. */
   private placeTeam(): void {
-    const c = this.layout;
-    this.gods.forEach((g, i) => {
-      const at = entranceSpot(c, i, this.gods.length);
+    this.gods.forEach((g) => {
+      const at = this.gateOf(g);
       g.home.x = at.x;
       g.home.z = at.z;
       g.home.yaw = at.yaw;
@@ -909,7 +1092,8 @@ export class Descent {
     for (const [g, p] of this.downed) {
       let helpers = 0;
       for (const a of this.gods) {
-        if (a === g || !a.alive) continue;
+        // only a god's own team can raise it
+        if (a === g || !a.alive || this.sideOf(a) !== this.sideOf(g)) continue;
         if (hypot(a.x - g.x, a.z - g.z) <= DESCENT.revive.range + a.radius) helpers++;
       }
       const next = helpers ? p + (dt * (1 + 0.5 * (helpers - 1))) / this.reviveTime : Math.max(0, p - dt * 0.25);
@@ -933,9 +1117,9 @@ export class Descent {
     g.combatant.respawnTimer = 0;
   }
 
-  /** Every god down at once ends the run, unless an obol lifts them. */
+  /** Every god down at once ends the run, unless an obol lifts them (a shared descent never ends this way: the fallen rise at the gate). */
   private checkWipe(): boolean {
-    if (!this.gods.length || !this.gods.every((g) => this.downed.has(g))) return false;
+    if (this.versus || !this.gods.length || !this.gods.every((g) => this.downed.has(g))) return false;
     if (this.obols > 0) {
       this.obols--;
       this.obolUsed++;
@@ -1013,6 +1197,7 @@ export class Descent {
    */
   join(gods: readonly Unit[], humans: readonly Unit[]): void {
     for (const g of gods) this.addGod(g, humans.includes(g));
+    this.underdog();
   }
 
   netState(): DescentNet {
@@ -1029,7 +1214,7 @@ export class Descent {
       o: this.obols,
       ou: this.obolUsed,
       sp: Math.round(this.spoils * 10) / 10,
-      br: this.bonusRewards,
+      br: [this.bonus.order, this.bonus.chaos],
       gf: this.gildedFate,
       un: [this.boss?.alive ? 1 : 0, this.champion?.alive ? 1 : 0, this.gilded ? 1 : 0],
       cu: this.curses.map((c) => c.id),
@@ -1042,6 +1227,21 @@ export class Descent {
       b: this.boons.map((b) => b.id),
       l: this.learned,
       h: [...this.humans].map(gi),
+      ...(this.versus
+        ? {
+            vs: {
+              so: [r2(this.souls.order), r2(this.souls.chaos)],
+              tk: [this.teamKills.order, this.teamKills.chaos],
+              ro: [this.routs.order, this.routs.chaos],
+              bb: this.bossBy,
+              w: this.winner,
+              st: this.spoilsTeam,
+              ot: this.offerTeams.map(sideCode).join(''),
+              pk: [...this.picks].map(([side, i]) => sideCode(side) + i).join(''),
+              bt: this.boonTeam.map(sideCode).join(''),
+            },
+          }
+        : {}),
     };
   }
 
@@ -1057,7 +1257,20 @@ export class Descent {
     this.obols = s.o;
     this.obolUsed = s.ou;
     this.spoils = s.sp;
-    this.bonusRewards = s.br;
+    this.bonus.order = s.br[0];
+    this.bonus.chaos = s.br[1];
+    const vs = s.vs;
+    if (vs) {
+      [this.souls.order, this.souls.chaos] = vs.so;
+      [this.teamKills.order, this.teamKills.chaos] = vs.tk;
+      [this.routs.order, this.routs.chaos] = vs.ro;
+      this.bossBy = vs.bb;
+      this.winner = vs.w;
+      this.spoilsTeam = vs.st;
+      this.offerTeams = [...vs.ot].map(codeSide);
+      this.picks.clear();
+      for (let i = 0; i + 1 < vs.pk.length; i += 2) this.picks.set(codeSide(vs.pk[i]!), Number(vs.pk[i + 1]));
+    } else this.offerTeams = s.of ? ['order'] : [];
     this.gildedFate = s.gf;
     if (!s.un[0]) this.boss = null;
     if (!s.un[1]) this.champion = null;
@@ -1095,12 +1308,14 @@ export class Descent {
     for (const e of this.eruptions) if (!now.has(e.id) && e.left < 0.4) this.landed.push(e);
     this.eruptions.length = 0;
     for (const [id, x, z, r, left] of s.e) this.eruptions.push({ id, x, z, r, left });
-    // boons give every god the same perks on every end
+    // boons give the team's gods the same perks on every end
     for (let i = this.boons.length; i < s.b.length; i++) {
       const b = DESCENT_BOONS.find((k) => k.id === s.b[i]);
       if (!b) continue;
+      const side = codeSide(vs?.bt[i] ?? 'o');
       this.boons.push(b);
-      for (const g of this.gods) for (const [k, v] of Object.entries(b.stats ?? {}) as [StatKey, number][]) g.combatant.addPerk(k, v);
+      this.boonTeam.push(side);
+      for (const g of this.teamOf(side)) for (const [k, v] of Object.entries(b.stats ?? {}) as [StatKey, number][]) g.combatant.addPerk(k, v);
     }
     // a guest keeps its own loadout: learn what the host learned (a pick made here, or one the timer made)
     for (const [serial, i, slot, id] of s.l) {
@@ -1156,7 +1371,8 @@ export interface DescentNet {
   o: number;
   ou: number;
   sp: number;
-  br: number;
+  /** Bonus rewards still due to Order and to Chaos. */
+  br: [number, number];
   gf: 'caught' | 'escaped' | null;
   /** Whether the boss, the Champion and the Gilded Thornback still stand. */
   un: [number, number, number];
@@ -1170,7 +1386,24 @@ export interface DescentNet {
   b: string[];
   l: [number, number, number, string][];
   h: number[];
+  /** A shared descent's score and team choices (teams as 'o' and 'c'). */
+  vs?: {
+    so: [number, number];
+    tk: [number, number];
+    ro: [number, number];
+    bb: Side | null;
+    w: Side | 'draw' | null;
+    st: Side;
+    /** The teams voting on the offer, and the picks already settled ('o2' : Order took the third card). */
+    ot: string;
+    pk: string;
+    /** Which team took each boon. */
+    bt: string;
+  };
 }
+
+const sideCode = (s: Side): string => (s === 'order' ? 'o' : 'c');
+const codeSide = (c: string): Side => (c === 'c' ? 'chaos' : 'order');
 
 const REWARDS: readonly Reward[] = [SKILL_REWARD, POINTS, HEAL, OBOL];
 const rewardKey = (r: Reward): string => (r.kind === 'boon' ? `b:${r.boon!.id}` : r.kind);

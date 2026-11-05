@@ -168,8 +168,8 @@ export function chamberAt(x: number, z: number): number {
 }
 
 /** Where the team arrives in a chamber: just inside its south gate, facing north. */
-export function entranceSpot(c: ChamberDef, i = 0, n = 1): { x: number; z: number; yaw: number } {
-  const spread = (i - (n - 1) / 2) * 2.4;
+export function entranceSpot(c: ChamberDef, i = 0, n = 1, spacing = 2.4): { x: number; z: number; yaw: number } {
+  const spread = (i - (n - 1) / 2) * spacing;
   return { x: c.x + spread, z: c.z + c.extent - 3.5 - Math.abs(spread) * 0.3, yaw: 0 };
 }
 

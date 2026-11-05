@@ -69,6 +69,18 @@ export function mountLobby(
       return;
     }
     const s = session;
+    const option = hooks.game(s.game)?.hosts.find((h) => h.mode === s.mode);
+    const mine = s.self()?.team ?? 'order';
+    // a team that may choose: its own players (or the host) turn its bot teammates on or off
+    const teams = option?.bots ? (s.mode === 'versus' ? (['order', 'chaos'] as const) : (['order'] as const)) : [];
+    const botRow = teams
+      .map((t) => {
+        const on = s.bots[t];
+        const can = s.isHost || t === mine;
+        const name = s.mode === 'versus' ? `${t === 'order' ? 'Order' : 'Chaos'}: ` : '';
+        return `<button class="lb-small lb-bots${on ? ' on' : ''}" data-bots="${t}" ${can ? '' : 'disabled'} title="${can ? 'Click to change' : 'Only that team can change this'}">${name}${on ? 'Bots fill empty spots' : 'No bots'}</button>`;
+      })
+      .join('');
     const rows = s.players
       .map((p) => {
         const god = godById(p.god)?.name ?? p.god;
@@ -83,17 +95,19 @@ export function mountLobby(
         <button class="lb-small lb-copy">Copy invite link</button>
       </div>
       <div class="lb-players">${rows}</div>
+      ${botRow ? `<div class="lb-row">${botRow}</div>` : ''}
       <div class="lb-row">
         ${s.mode === 'versus' ? '<button class="lb-small lb-switch">Switch team</button>' : ''}
         <button class="lb-small lb-leave">Leave</button>
         ${s.isHost ? '<button class="lb-start">Start match</button>' : '<span class="lb-msg">Waiting for the host to start…</span>'}
       </div>
-      <div class="lb-msg">${s.isHost ? 'Share the code or link. Empty slots are played by bots.' : ''}</div>`;
+      <div class="lb-msg">${s.isHost ? (teams.length ? 'Share the code or link. Teams may be uneven: a smaller team hits harder and its souls count for more.' : 'Share the code or link. Empty slots are played by bots.') : ''}</div>`;
     box.querySelector('.lb-copy')!.addEventListener('click', (e) => {
       void navigator.clipboard?.writeText(inviteLink(s.code));
       (e.currentTarget as HTMLButtonElement).textContent = 'Copied';
     });
     box.querySelector('.lb-switch')?.addEventListener('click', () => s.switchTeam());
+    box.querySelectorAll<HTMLButtonElement>('[data-bots]').forEach((b) => b.addEventListener('click', () => s.setBots(b.dataset.bots as 'order' | 'chaos', !s.bots[b.dataset.bots as 'order' | 'chaos'])));
     box.querySelector('.lb-leave')!.addEventListener('click', () => {
       s.close();
       session = null;

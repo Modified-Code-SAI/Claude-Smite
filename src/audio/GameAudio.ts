@@ -17,7 +17,7 @@ import type { Music, SongName } from './music';
 import { hypot } from '../core/math';
 import { DUEL } from '../sim/Duel';
 import { RUSH } from '../sim/Rush';
-import { DESCENT, DEPTHS } from '../sim/Descent';
+import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import { JOTUNN, type PartId } from '../sim/Jotunn';
 
 /** A match's music only ever moves forward: dawn, then battle, then the siege. */
@@ -965,7 +965,7 @@ export class GameAudio {
   private lava: LoopHandle | null = null;
 
   /** Last seen Underworld Descent state, so each beat is called once. */
-  private descentSeen = { chamber: 0, phase: '', depth: -1, curses: 0, obols: -1, downed: 0, erupting: false, song: 'abyss' as SongName };
+  private descentSeen = { chamber: 0, phase: '', depth: -1, curses: 0, obols: -1, downed: 0, erupting: false, song: 'abyss' as SongName, lead: 0, routed: 0, routs: 0 };
 
   /** Underworld Descent: each chamber's arrival, the clear, the open gate, curses, revives, the obol and the end. */
   private watchDescent(): void {
@@ -979,7 +979,7 @@ export class GameAudio {
       const depth = DEPTHS[r.depth]!.name;
       if (r.depth !== seen.depth) {
         seen.depth = r.depth;
-        this.herald.say(r.chamber === 1 ? `Welcome to ${depth}. Descend, and do not look back.` : `You enter ${depth}.`, 'epic', 3);
+        this.herald.say(r.chamber === 1 ? (r.versus ? `Welcome to ${depth}. Two teams descend; the underworld pays in souls.` : `Welcome to ${depth}. Descend, and do not look back.`) : `You enter ${depth}.`, 'epic', 3);
         this.engine.play('wave.horn', { gain: 0.5, rate: 0.75 }, 3);
       } else if (plan.kind === 'boss') this.herald.say(r.chamber === DESCENT.chambers ? 'The lord of the underworld awaits. End this.' : `The master of ${depth} awaits.`, 'epic', 4);
       else if (plan.kind === 'trap') this.herald.say('Soul fire burns beneath this chamber. Watch the ground.', 'neutral', 2);
@@ -989,15 +989,17 @@ export class GameAudio {
     }
     if (r.phase !== seen.phase) {
       if (r.phase === 'reward' && seen.phase === 'fight') {
-        if (plan.kind === 'boss') this.herald.say('The master has fallen! The way down is yours.', 'epic', 4);
+        if (plan.kind === 'boss' && r.versus && r.bossBy) this.herald.say(r.bossBy === this.me.team ? 'Your team slew the master! Its souls are yours.' : 'The rivals slew the master.', r.bossBy === this.me.team ? 'epic' : 'bad', 4);
+        else if (plan.kind === 'boss') this.herald.say('The master has fallen! The way down is yours.', 'epic', 4);
         else this.herald.say('The chamber is cleared. Choose your reward.', 'good', 3);
       }
       if (r.phase === 'draft' && r.drafts.has(this.me)) this.herald.say('A forgotten rite. Learn a new power.', 'good', 2);
       if (r.phase === 'exit') this.engine.play('god.respawn', { gain: 0.5, rate: 0.7 }, 2);
       // the ground gives way beneath the team as it goes down
       if (r.phase === 'descend') this.engine.play('amb.groan', { gain: 0.9 }, 3);
-      if (r.over) this.music.sting(r.phase === 'won' ? 'victory' : 'defeat');
-      if (r.phase === 'won') this.herald.say('You rise again! The underworld could not hold you.', 'epic', 9);
+      if (r.over) this.music.sting(r.phase === 'won' && (!r.versus || r.winner === this.me.team) ? 'victory' : 'defeat');
+      if (r.phase === 'won' && r.versus) this.herald.say(r.winner === 'draw' ? 'A dead heat. The underworld keeps you both.' : r.winner === this.me.team ? 'Victory! Your team rules the underworld.' : 'The rivals rule the underworld.', r.winner === this.me.team ? 'epic' : 'bad', 9);
+      else if (r.phase === 'won') this.herald.say('You rise again! The underworld could not hold you.', 'epic', 9);
       if (r.phase === 'lost') this.herald.say('Your team is lost in the dark.', 'bad', 9);
       seen.phase = r.phase;
     }
@@ -1011,11 +1013,27 @@ export class GameAudio {
     seen.curses = r.curses.length;
     if (r.obols < seen.obols) this.herald.say("Charon's obol is spent. Death lets you go, this once.", 'epic', 5);
     seen.obols = r.obols;
-    const down = r.downed.size;
+    const down = [...r.downed.keys()].filter((g) => g.team === this.me.team).length;
     if (down < seen.downed && r.phase !== 'lost' && !r.downed.has(this.me)) this.herald.say('Your ally rises!', 'good', 1);
     seen.downed = down;
+    if (r.versus) this.watchSouls(r);
     if (r.erupting && !seen.erupting) this.herald.say('Soul fire rises!', 'bad', 1);
     seen.erupting = r.erupting;
+  }
+
+  /** A shared descent: the lead changing hands, and routs on either side. */
+  private watchSouls(r: Descent): void {
+    const seen = this.descentSeen;
+    const mine = r.sideOf(this.me);
+    const foe = mine === 'order' ? 'chaos' : 'order';
+    const gap = Math.floor(r.souls[mine]) - Math.floor(r.souls[foe]);
+    const lead = gap > 0 ? 1 : gap < 0 ? -1 : 0;
+    if (lead && lead !== seen.lead && !r.over && r.souls[mine] + r.souls[foe] >= 12) this.herald.say(lead > 0 ? 'Your team takes the lead!' : 'The rivals take the lead.', lead > 0 ? 'good' : 'bad', 2);
+    if (lead) seen.lead = lead;
+    if (r.routs[mine] > seen.routed) this.herald.say('Your team is routed! You rise at the gate.', 'bad', 3);
+    if (r.routs[foe] > seen.routs) this.herald.say('The rivals are routed!', 'good', 3);
+    seen.routed = r.routs[mine];
+    seen.routs = r.routs[foe];
   }
 
   // -------------------------------------------------------------------------

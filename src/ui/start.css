@@ -78,3 +78,5 @@ body:has(.mh-map) .hud-panel { top: auto; bottom: 12px; right: 12px; }
 .sm-dif.on { background: rgba(231, 194, 122, 0.18); border-color: #e7c27a; color: #ffe3a3; }
 .sm-rival { flex-wrap: wrap; }
 .sm-rival.hide, .sm-role.hide { display: none; }
+.sm-descent { flex-wrap: wrap; }
+.sm-descent.hide { display: none; }

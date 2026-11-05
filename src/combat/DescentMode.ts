@@ -1,6 +1,6 @@
 import { GODS, godById } from '../game/gods';
 import { NetGuest, NetHost } from '../net/NetGame';
-import { descentRoster } from '../net/descentRoster';
+import type { DescentSlot } from '../net/descentRoster';
 import type { NetSession } from '../net/Session';
 import type { PlayerController } from '../player/PlayerController';
 import type { World } from '../scene/World';
@@ -16,10 +16,12 @@ import type { CombatVfx } from './Vfx';
 
 export interface DescentDeps {
   sim: Sim;
-  /** The local player's unit, already in the sim. */
+  /** The local player's unit, already in the sim (on its slot's team). */
   player: Unit;
-  /** The local player's god, for the single-player roster. */
-  god: string;
+  /** Who plays which god, on which team (descentRoster), the same on every end. */
+  slots: readonly DescentSlot[];
+  /** A shared descent: two teams racing the same chambers for souls. */
+  versus: boolean;
   ctrl: PlayerController;
   net?: NetSession;
   world: World;
@@ -32,9 +34,10 @@ export interface DescentDeps {
 
 /**
  * Underworld Descent in a live game: builds the team (the humans, then bots
- * up to three gods), runs the rules alone or on the host, mirrors them on an
- * online guest, and owns the mode's HUD and view. Votes and skill picks go
- * through `pick`, which a guest sends to the host.
+ * up to three gods; in a shared descent, both teams), runs the rules alone or
+ * on the host, mirrors them on an online guest, and owns the mode's HUD and
+ * view. Votes and skill picks go through `pick`, which a guest sends to the
+ * host.
  */
 export class DescentMode {
   readonly run: Descent;
@@ -47,8 +50,8 @@ export class DescentMode {
   constructor(private readonly deps: DescentDeps) {
     const { sim, player, net, world } = deps;
     const me = net?.me ?? 'me';
-    const slots = descentRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god, team: 'order' }], net ? undefined : Math.random);
-    const run = (this.run = new Descent(sim, godById('zeus')!));
+    const slots = deps.slots;
+    const run = (this.run = new Descent(sim, godById('zeus')!, undefined, deps.versus));
     const bot = (u: Unit) => {
       u.brain = new DescentBot(sim, u, run);
       // a friend who left no longer holds up the vote or the way down
@@ -60,7 +63,7 @@ export class DescentMode {
     for (const s of slots) {
       let u = player;
       if (s.player !== me) {
-        u = godUnit(godById(s.god) ?? GODS[0]!, 'order', world.spawn);
+        u = godUnit(godById(s.god) ?? GODS[0]!, s.team, world.spawn);
         if (s.player) host?.assign(s.player, u);
         else if (!guest) bot(u);
         sim.add(u);
@@ -90,7 +93,7 @@ export class DescentMode {
     const board = new Scoreboard(sim);
     board.track(this.gods);
     this.hud = new DescentHud(run, player, (i) => this.pick(i), board);
-    this.view = new DescentView(run, world, deps.vfx, deps.groundAt);
+    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, run.sideOf(player));
   }
 
   /** Votes for a reward, or drafts a skill (from its key or a click on its card). */
