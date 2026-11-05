@@ -163,6 +163,8 @@ export const SOUNDS: Record<string, Recipe> = {
   'crowd.roar': { variants: 2, peak: 0.8, make: (r) => tail(crowd(r, 4.2, { voices: 24, pitch: 190, rise: 0.22, breath: 0.6, babble: 0.35, lp: 3600, env: (t) => ahr(t, 0.22, 1.3, 2.4) }), 0.85, 0.35, 3200) },
   'crowd.ooh': { variants: 2, peak: 0.6, make: (r) => tail(crowd(r, 1.9, { voices: 18, pitch: 165, rise: 0.3, breath: 0.25, babble: 0.1, lp: 3000, vowels: ['oo', 'oh'], arc: true, env: (t) => ahr(t, 0.16, 0.45, 1.1) }), 0.8, 0.3, 2800) },
   'amb.crowd': { loop: true, peak: 0.45, make: (r) => loopable(crowd(r, 10, { voices: 20, pitch: 150, rise: 0, breath: 0.35, babble: 1, lp: 2200, env: () => 1 }), 1.2) },
+  // the same crowd on its feet: higher, brighter, held shouts instead of chatter (faded in as the play heats up)
+  'amb.cheer': { loop: true, peak: 0.5, make: (r) => loopable(crowd(r, 6, { voices: 22, pitch: 205, rise: 0, breath: 0.55, babble: 0.45, lp: 3400, env: () => 1 }), 1.2) },
   // the Sun Relic's song, a low sung drone that follows it round the pitch
   'relic.hum': { loop: true, peak: 0.4, make: (r) => relicHum(r, 6) },
   'relic.fumble': { variants: 2, peak: 0.7, make: (r) => layer([clang(r, 0.9, 660, { decay: 0.55, gain: 0.6 }), 1], [thump(r, 0.3, 120, 50, { click: 0.3 }), 0.8], [whoosh(r, 0.3, 2000, 700, { q: 1 }), 0.4, 0.04]) },

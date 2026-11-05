@@ -124,6 +124,10 @@ export class CombatGame implements Updatable {
   /** Relic Rush's rules, and the mode around them (bots, view, HUD, online play). */
   rush: Rush | null = null;
   private rushMode: RushMode | null = null;
+  /** How excited one end of Relic Rush's crowd is (0 to 1), for its sound. */
+  crowdHeat(side: 'order' | 'chaos'): number {
+    return this.rushMode?.crowdHeat(side) ?? 0;
+  }
   /** Underworld Descent's rules, and the mode around them (bots, view, HUD, online play). */
   descent: Descent | null = null;
   private descentMode: DescentMode | null = null;
