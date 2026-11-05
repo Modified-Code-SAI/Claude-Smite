@@ -490,4 +490,30 @@ describe('Relic Rush: calling for the pass', () => {
     run(sim, rush, 6, () => rush.calledAgo(bot) !== null);
     expect(rush.calledAgo(bot)).not.toBeNull();
   });
+
+  it('a goal is celebrated: the scorer cheers twice and holds their spot while a bot teammate runs over', () => {
+    const { sim, rush } = match();
+    const coach = new RushCoach(sim, rush);
+    const me = god(sim, zeus, 'order', 0);
+    const mate = god(sim, odin, 'order', 1);
+    const foe = god(sim, thor, 'chaos', 0);
+    mate.brain = new RushBot(sim, mate, rush, coach, null);
+    rush.begin([me, mate, foe]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(foe, 25, 25);
+    sim.teleport(me, 0, 1.6);
+    run(sim, rush, 0.4, () => rush.holder === me);
+    expect(rush.holder).toBe(me);
+    sim.teleport(mate, 8, -12);
+    sim.teleport(me, 0, RUSH.gates.chaos.z);
+    run(sim, rush, 0.05, () => rush.phase === 'goal');
+    expect(rush.phase).toBe('goal');
+    expect(me.sinceAction).toBeLessThan(0.1);
+    const apart = Math.hypot(mate.x - me.x, mate.z - me.z);
+    run(sim, rush, RUSH.cheer.again + 0.05);
+    // the second fist pump
+    expect(me.sinceAction).toBeLessThan(0.1);
+    run(sim, rush, RUSH.cheer.mobUntil - RUSH.cheer.again - 0.2);
+    expect(Math.hypot(mate.x - me.x, mate.z - me.z)).toBeLessThan(Math.min(apart - 3, 3.5));
+  });
 });

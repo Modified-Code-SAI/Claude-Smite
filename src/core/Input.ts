@@ -11,6 +11,11 @@ export class Input {
   private wheel = 0;
   private buttons = 0;
   locked = false;
+  /**
+   * While set, mouse movement collects here instead of turning the camera
+   * (the ping wheel picks a call with it).
+   */
+  capture: { x: number; y: number } | null = null;
 
   constructor(element: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -32,6 +37,11 @@ export class Input {
     window.addEventListener('mouseup', (e) => (this.buttons &= ~(1 << e.button)));
     window.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
+      if (this.capture) {
+        this.capture.x += e.movementX;
+        this.capture.y += e.movementY;
+        return;
+      }
       this.mouseDX += e.movementX;
       this.mouseDY += e.movementY;
     });

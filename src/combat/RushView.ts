@@ -4,6 +4,8 @@ import { objectUniforms, useUniforms } from '../render/shared';
 import { Rush, RUSH } from '../sim/Rush';
 import type { Unit } from '../sim/Unit';
 import { GroundDecal } from './GroundDecal';
+import { PitchLines } from './PitchLines';
+import { RushCrowd } from './RushCrowd';
 import { RelicView } from './Vfx';
 
 type Ground = (x: number, z: number) => number;
@@ -222,7 +224,8 @@ class DazeStars {
  * Everything Relic Rush draws on top of the temple: the Sun Relic itself (a
  * gold orb inside a turning ring, with a halo), the gold column that marks
  * where it is from across the field, a ring where a throw will land, a veil
- * of light in each scoring gateway in its defenders' color, the pitch's edge,
+ * of light in each scoring gateway in its defenders' color, the pitch's edge
+ * and markings,
  * and the local carrier's throw preview. It borrows the temple's own relic
  * light, so the scene's light count (and every lit shader) stays the same.
  */
@@ -246,6 +249,8 @@ export class RushView {
   private light: THREE.PointLight | null = null;
   private readonly trail = new Trail();
   private readonly stars = new DazeStars();
+  /** The spirits watching round the pitch. */
+  readonly crowd: RushCrowd;
   /** The camera the trail ribbon faces. */
   camera: THREE.Camera | null = null;
 
@@ -291,6 +296,11 @@ export class RushView {
       this.veils.push({ side, mesh, values, floor });
       this.group.add(mesh, floor.mesh);
     }
+
+    // the markings inlaid in the plaza: center circle, halfway line, keepers' boxes, kickoff marks
+    this.group.add(new PitchLines(ground, mine, { ally: ALLY.main, foe: FOE.main, gold: GOLD.main }).mesh);
+    this.crowd = new RushCrowd(ground, mine, { ally: ALLY.main, foe: FOE.main });
+    this.group.add(this.crowd.mesh);
 
     this.edge = new GroundDecal(ground);
     this.edge.setStyle('zone');
@@ -366,6 +376,7 @@ export class RushView {
     // a thrown or knocked-loose relic streaks through the air
     this.trail.frame(r.phase === 'flying' ? this.relic.position : null, this.camera, dt);
     this.stars.frame(this.gods(rush), this.ground, this.camera, dt, t);
+    this.crowd.frame(rush, dt);
     this.orb.rotation.y = t * 0.8;
     this.ring.rotation.set(Math.PI / 2 + Math.sin(t * 0.9) * 0.5, t * 1.7, 0);
     const golden = rush.overtime;

@@ -14,9 +14,10 @@ import { dummyUnit, godUnit, summonUnit } from '../sim/factory';
 import { LaneBot, ROLES, spawnPoint, type BotRole } from '../sim/LaneBot';
 import { conquestBases, Match } from '../sim/Match';
 import { angleBetween, MELEE_ARC, Sim, type BaseZone, type SimTerrain } from '../sim/Sim';
-import { isStructure, Unit, WORLD_SCALE, type Body, type SimEvent } from '../sim/Unit';
+import { isStructure, Unit, WORLD_SCALE, type Body, type Point, type SimEvent } from '../sim/Unit';
 import { CombatHud } from '../ui/CombatHud';
 import { LoadoutMenu } from '../ui/LoadoutMenu';
+import { BuildBook } from '../game/builds';
 import { MatchHud } from '../ui/MatchHud';
 import { GroundDecal, type DecalShape } from './GroundDecal';
 import { paletteFor } from './palette';
@@ -49,6 +50,8 @@ import type { Descent } from '../sim/Descent';
 import { DescentMode } from './DescentMode';
 import type { DescentCue } from './DescentView';
 import { JOTUNN, type Jotunn } from '../sim/Jotunn';
+import { BotComms } from '../sim/BotComms';
+import { PingMode, type PingSound } from './PingMode';
 import { GIANT_CAMERA, JotunnMode, type JotunnRole } from './JotunnMode';
 import type { Fire } from '../scene/Effects';
 
@@ -106,6 +109,8 @@ export class CombatGame implements Updatable {
   ownGod!: Unit;
   /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls; souls reaching the player and the dead climbing out of the floor in Underworld Descent. */
   onCue: ((name: 'step' | DescentCue, at: { x: number; y: number; z: number }, k: number) => void) | null = null;
+  /** A ping went up for the player's team (set by GameAudio): its sound, and whether it was the player's own. */
+  onPing: ((sound: PingSound, mine: boolean) => void) | null = null;
   bot: Unit | null = null;
   readonly match: Match | null = null;
   private readonly matchHud: MatchHud | null = null;
@@ -119,6 +124,10 @@ export class CombatGame implements Updatable {
   /** Relic Rush's rules, and the mode around them (bots, view, HUD, online play). */
   rush: Rush | null = null;
   private rushMode: RushMode | null = null;
+  /** How excited one end of Relic Rush's crowd is (0 to 1), for its sound. */
+  crowdHeat(side: 'order' | 'chaos'): number {
+    return this.rushMode?.crowdHeat(side) ?? 0;
+  }
   /** Underworld Descent's rules, and the mode around them (bots, view, HUD, online play). */
   descent: Descent | null = null;
   private descentMode: DescentMode | null = null;
@@ -143,6 +152,8 @@ export class CombatGame implements Updatable {
   private readonly hud: CombatHud;
   private readonly coach: Coach;
   private readonly menu: LoadoutMenu;
+  /** The player's saved builds: the one in use spends new points, and the last bar comes back next match. */
+  private readonly builds: BuildBook;
   private readonly body: Body;
   private readonly bases: Record<'order' | 'chaos', BaseZone>;
   private preview: { slot: number; code: string } | null = null;
@@ -157,6 +168,12 @@ export class CombatGame implements Updatable {
   private netGuest: NetGuest | null = null;
   /** Whether the basic attack button is held this frame (sent to the host by a guest). */
   private basicHeld = false;
+  /** The ping wheel and the team's pings, and the bots answering them. */
+  private readonly pings: PingMode;
+  private readonly comms: BotComms;
+  /** The ground under the crosshair (unclamped, unlike the aim) and how far along the camera's ray it is. */
+  private crosshair: Point | null = null;
+  private crossT = 140;
 
   constructor(private readonly deps: CombatDeps) {
     const { world, player } = deps;
@@ -250,6 +267,9 @@ export class CombatGame implements Updatable {
     this.player = godUnit(mine, myTeam, { x: spawn.x, z: spawn.z, yaw: spawn.yaw }, this.body);
     this.ownGod = this.player;
     this.sim.add(this.player);
+    // Underworld Descent deals the skills, and Relic Rush's Playmaker tree is spent by hand
+    this.builds = new BuildBook({ skills: !descent, follow: !rush });
+    this.builds.restoreBar(this.player.combatant);
     // the Conquest map builds and places its own Tower, Phoenix and Titan models
     // the map dims a buff altar's crystal while its Warden is down (when the map supports it)
     const content = (world as unknown as { content?: { setCampActive?: (id: string, active: boolean) => void } }).content;
@@ -271,13 +291,14 @@ export class CombatGame implements Updatable {
     this.setPlayerModel(mine.id);
 
     this.hud = new CombatHud(this.player, deps.camera, (u, out) => this.views.headOf(u, out));
-    this.coach = new Coach(this.player, () => this.menu.isOpen, !duel, rush);
+    this.coach = new Coach(this.player, () => this.menu.isOpen, !duel, rush, () => this.hasAllies());
     this.menu = new LoadoutMenu(
       conquest || clash || siege || duel || rush || descent || jotunn
-        ? { combatant: () => this.player.combatant, gods: GODS, onClose: () => undefined }
+        ? { combatant: () => this.player.combatant, gods: GODS, builds: this.builds, onClose: () => undefined }
         : {
             combatant: () => this.player.combatant,
             gods: GODS,
+            builds: this.builds,
             switchGod: (id) => this.switchGod(id),
             practiceLevel: (lvl) => this.practiceLevel(lvl),
             practiceFavor: () => {
@@ -287,6 +308,29 @@ export class CombatGame implements Updatable {
             onClose: () => undefined,
           },
     );
+
+    // the host's (or a lone player's) bots answer pings; a guest's copy only shows them
+    this.comms = new BotComms(this.sim, () => this.match, () => !this.netGuest);
+    this.pings = new PingMode({
+      sim: this.sim,
+      input: deps.input,
+      camera: deps.camera,
+      groundAt: this.groundAt,
+      parent: world.vfx,
+      player: () => this.player,
+      headOf: (u, out) => this.views.headOf(u, out),
+      aim: () => this.pingAim(),
+      send: (k, x, z, subject) => {
+        if (!this.netGuest) return this.sim.ping(this.player, k, x, z, subject);
+        this.netGuest.ping(k, x, z, subject);
+        return null;
+      },
+      guest: () => !!this.netGuest,
+      enabled: () => this.inFight && !this.jotunnMode?.piloting,
+      pillar: (p, x, z, size, width) => this.vfx.pillar(p, x, z, size, width),
+      deny: (text) => this.hud.toast(text, 'warn'),
+    });
+    this.pings.onSound = (sound, mine) => this.onPing?.(sound, mine);
 
     if (conquest) {
       this.match = new Match(this.sim, godById('zeus')!);
@@ -301,6 +345,7 @@ export class CombatGame implements Updatable {
         this.addTeam('chaos', GODS, ROLES, [0, 1, 2, 3, 4]);
       }
       this.matchHud = new MatchHud(this.match, this.player);
+      this.matchHud.pings = this.pings.mapMarks;
       this.sim.drainEvents();
       return;
     }
@@ -426,7 +471,7 @@ export class CombatGame implements Updatable {
       camera: this.deps.camera,
       burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
       shake: this.deps.shake,
-      swing: (u) => this.views.swing(u),
+      swing: (u, kind) => this.views.swing(u, kind),
     });
     // nobody dies here: a god knocked out lies dazed where it fell (no soul pillar) until it stands up at its gate
     this.views.dazes = true;
@@ -456,6 +501,7 @@ export class CombatGame implements Updatable {
       control: (u, giant) => this.control(u, giant),
       toast: (t) => this.hud.toast(t),
       reaction: d === 'easy' ? 0.55 : d === 'hard' ? 0.18 : undefined,
+      giantPower: d === 'easy' ? 0.85 : d === 'hard' ? 1.2 : undefined,
       net,
       cue: (name, at, k) => this.onCue?.(name, at, k),
     });
@@ -648,7 +694,7 @@ export class CombatGame implements Updatable {
   prime(): () => void {
     this.views.prime(this.sim.units);
     // (lane minions only march in Conquest)
-    const restore = [this.vfx.prime(), this.status.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : []), ...(this.descentMode ? [this.descentMode.view.prime()] : []), ...(this.jotunnMode ? [this.jotunnMode.prime()] : [])];
+    const restore = [this.vfx.prime(), this.status.prime(), this.pings.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : []), ...(this.descentMode ? [this.descentMode.view.prime()] : []), ...(this.jotunnMode ? [this.jotunnMode.prime()] : [])];
     return () => {
       for (const r of restore) r();
     };
@@ -682,6 +728,7 @@ export class CombatGame implements Updatable {
       this.descentMode?.step(dt);
       this.jotunnMode?.step(dt);
       this.sim.step(dt);
+      this.comms.step();
       this.jotunnMode?.afterStep();
       this.netHost?.afterStep(dt);
       this.views.afterStep(this.sim.units);
@@ -715,6 +762,11 @@ export class CombatGame implements Updatable {
 
     // the giant has no skill trees to grow
     if (input.wasPressed('KeyK') && !this.jotunnMode?.piloting) this.toggleMenu();
+    // a taunt: your god says something cutting, and everyone near hears it (the giant has no words)
+    if (input.wasPressed('KeyV') && this.inFight && !this.jotunnMode?.piloting) {
+      if (this.netGuest) this.netGuest.taunt();
+      else this.sim.taunt(this.player);
+    }
     if (this.siege?.offer) {
       const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
       if (pick >= 0) this.takeBoon(pick);
@@ -730,7 +782,15 @@ export class CombatGame implements Updatable {
     if (this.menu.isOpen && input.wasPressed('Escape')) this.menu.close();
 
     this.basicHeld = false;
-    if (!this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && this.jotunn?.phase !== 'done') this.handleCombatInput();
+    // the ping wheel takes the mouse while it is up: no basic attack, and the click that sends a call doesn't swing
+    const pinging = this.pings.busy;
+    this.pings.controls(dt);
+    if (pinging || this.pings.busy) {
+      this.suppressBasic = true;
+      this.cancelPreview();
+    }
+    if (this.inFight) this.handleCombatInput();
+    this.followBuild();
     this.netGuest?.syncBuild();
 
     for (const e of this.sim.drainEvents()) {
@@ -741,11 +801,13 @@ export class CombatGame implements Updatable {
       this.clashHud?.onEvent(e);
       this.descentMode?.onEvent(e);
       this.jotunnMode?.onEvent(e);
+      this.pings.onEvent(e);
       this.feel(e);
       if ((e.type === 'levelUp' || e.type === 'reward' || e.type === 'recall') && e.unit === this.player) this.menu.refresh();
     }
 
     this.views.frame(this.sim.units, dt, alpha, time);
+    this.pings.frame(dt);
     this.matchHud?.frame(dt, this.sim.units, input.isDown('Tab'));
     this.clashHud?.frame(dt);
     this.siegeHud?.frame();
@@ -782,7 +844,8 @@ export class CombatGame implements Updatable {
       const mine = relic?.claimer === this.player.team;
       this.relicView?.set(relic, CLASH.relic.radius, relic?.progress ?? 0, time, mine ? 0x4fb2ff : 0xff3524, mine ? 0xe6f4ff : 0xffe0c8);
     }
-    if (this.match?.winner) this.hud.setVisible(false);
+    // the end screens take the place of your god's bars and skills
+    if (this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner) this.hud.setVisible(false);
     this.vfx.player = this.player;
     this.vfx.frame(this.sim, dt, time);
     this.syncCamps();
@@ -801,6 +864,46 @@ export class CombatGame implements Updatable {
   }
 
   private wasInBase = true;
+
+  /** Whether the fight takes input: no menu up, and the match isn't over or counting down. */
+  private get inFight(): boolean {
+    return !this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && this.jotunn?.phase !== 'done';
+  }
+
+  /** Another god on the player's team, bot or human: someone to ping. */
+  private hasAllies(): boolean {
+    const me = this.player;
+    return this.sim.units.some((u) => u !== me && u.kind === 'god' && u.team === me.team);
+  }
+
+  /**
+   * What a ping marks: the ground under the crosshair, and the unit the
+   * camera's center ray passes through first (an ally, or a visible enemy).
+   */
+  private pingAim(): { point: Point; unit: Unit | null } {
+    const cam = this.deps.camera;
+    const dir = cam.getWorldDirection(this.ray);
+    const o = cam.position;
+    const me = this.player;
+    let best: Unit | null = null;
+    let bestT = Infinity;
+    for (const u of this.sim.units) {
+      if (u === me || !u.alive) continue;
+      if (u.team !== me.team && (u.stealth > 0 || !u.targetable)) continue;
+      // the ray's closest pass by the middle of the unit's body
+      const px = u.x - o.x;
+      const py = u.body.y + Math.min(2.4, Math.max(1, u.radius * 1.4)) - o.y;
+      const pz = u.z - o.z;
+      const t = px * dir.x + py * dir.y + pz * dir.z;
+      if (t < 1 || t > this.crossT + u.radius + 2) continue;
+      const mx = px - dir.x * t;
+      const my = py - dir.y * t;
+      const mz = pz - dir.z * t;
+      if (Math.sqrt(mx * mx + my * my + mz * mz) > u.radius + 0.6 + t * 0.012) continue;
+      if (t < bestT) [bestT, best] = [t, u];
+    }
+    return { point: this.crosshair ?? { x: me.aim.x, z: me.aim.z }, unit: best };
+  }
 
   private toggleMenu(): void {
     if (this.menu.isOpen) {
@@ -1016,15 +1119,19 @@ export class CombatGame implements Updatable {
     const dir = cam.getWorldDirection(this.ray);
     const o = cam.position;
     let hit: { x: number; z: number } | null = null;
+    let at = 140;
     for (let t = 1; t < 140; t += 0.5) {
       const x = o.x + dir.x * t;
       const y = o.y + dir.y * t;
       const z = o.z + dir.z * t;
       if (y <= this.groundAt(x, z)) {
         hit = { x, z };
+        at = t;
         break;
       }
     }
+    this.crosshair = hit && { ...hit };
+    this.crossT = at;
     const f = u.forward;
     if (!hit) hit = { x: u.x + f.x * 60, z: u.z + f.z * 60 };
     // never aim behind the god (steep camera angles can hit the ground between camera and god)
@@ -1115,9 +1222,24 @@ export class CombatGame implements Updatable {
     this.sim.remove(old);
     this.sim.add(next);
     this.player = this.ownGod = next;
+    this.builds.restoreBar(next.combatant);
     this.setPlayerModel(id);
     this.hud.setPlayer(next);
     return null;
+  }
+
+  /** New points go along the build in use (the player's own god, even while driving the Jötunn), with a word on what was learned. */
+  private followBuild(): void {
+    const c = this.ownGod.combatant;
+    const before = c.unspentPoints > 0 ? { ...c.allocation } : null;
+    const how = this.builds.follow(c);
+    if (!how) return;
+    this.menu.refresh();
+    if (c !== this.player.combatant) return;
+    const name = this.builds.active(c.god)?.name ?? 'Build';
+    const learned = before ? Object.entries(c.allocation).filter(([id, r]) => r > (before[id] ?? 0)) : [];
+    const one = learned.length === 1 ? c.trees.node.get(learned[0]![0])?.node : undefined;
+    this.hud.toast(how === 'setup' ? `${name} set up` : one ? `${name}: ${one.name} ${c.allocation[one.id]}/${one.maxRank}` : `${name}: ${learned.length} talents learned`);
   }
 
   private practiceLevel(level: number): void {

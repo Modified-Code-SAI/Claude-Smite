@@ -11,6 +11,12 @@ const none = (id: string, name: string): SkillTree => ({ id, name, theme: '', no
  * damage and crowd control; its knees, back rune, wrists and crown are where
  * it breaks (see src/sim/Jotunn.ts). Shrines in the valley swap its
  * ultimate for a new attack.
+ *
+ * Its blows are tuned to feel like a giant's (bot-vs-bot rounds, 2026-11-05):
+ * a club swing takes about a fifth of a god's health and a slam well over a
+ * third, so a god caught by two or three in a row goes down. With these
+ * numbers and the rules' Might and brazier toughness, bots win about half
+ * their rounds on each side and the gods fall about six times a round.
  */
 export const jotunn: GodDef = {
   id: 'jotunn',
@@ -27,7 +33,7 @@ export const jotunn: GodDef = {
     physicalProtection: 150,
     magicalProtection: 150,
     attackSpeed: 0.5,
-    attackPower: 450,
+    attackPower: 600,
     moveSpeed: 290,
   },
   growth: {},
@@ -48,7 +54,7 @@ export const jotunn: GodDef = {
       cooldown: 6,
       cost: 0,
       windup: 0.6,
-      effects: [dmg(400, 'strength', 0, 'physical'), cc('knockback', 0.4)],
+      effects: [dmg(720, 'strength', 0, 'physical'), cc('knockback', 0.4)],
     },
     {
       id: 'jotunn.boulder',
@@ -60,7 +66,7 @@ export const jotunn: GodDef = {
       cooldown: 7,
       cost: 0,
       windup: 0.9,
-      effects: [dmg(420, 'strength', 0, 'physical'), slow(0.3, 2)],
+      effects: [dmg(760, 'strength', 0, 'physical'), slow(0.3, 2)],
     },
     {
       id: 'jotunn.slam',
@@ -73,7 +79,7 @@ export const jotunn: GodDef = {
       cooldown: 9,
       cost: 0,
       windup: 0.85,
-      effects: [dmg(600, 'strength', 0, 'physical'), cc('stun', 1)],
+      effects: [dmg(1080, 'strength', 0, 'physical'), cc('stun', 1)],
     },
     {
       id: 'jotunn.roar',
@@ -85,7 +91,7 @@ export const jotunn: GodDef = {
       cooldown: 45,
       cost: 0,
       windup: 0.8,
-      effects: [dmg(400, 'strength', 0, 'physical'), cc('fear', 1.5)],
+      effects: [dmg(720, 'strength', 0, 'physical'), cc('fear', 1.5)],
     },
     {
       id: 'jotunn.frost-breath',
@@ -97,7 +103,7 @@ export const jotunn: GodDef = {
       cooldown: 30,
       cost: 0,
       windup: 0.7,
-      effects: [dmg(180, 'strength', 0, 'physical', 4, 0.5), slow(0.4, 2.5)],
+      effects: [dmg(320, 'strength', 0, 'physical', 4, 0.5), slow(0.4, 2.5)],
     },
     {
       id: 'jotunn.avalanche',
@@ -109,7 +115,7 @@ export const jotunn: GodDef = {
       cooldown: 35,
       cost: 0,
       windup: 1,
-      effects: [dmg(700, 'strength', 0, 'physical'), cc('knockup', 1)],
+      effects: [dmg(1260, 'strength', 0, 'physical'), cc('knockup', 1)],
     },
     {
       id: 'jotunn.hailstorm',
@@ -121,7 +127,7 @@ export const jotunn: GodDef = {
       cooldown: 30,
       cost: 0,
       windup: 0.6,
-      effects: [dmg(150, 'strength', 0, 'physical', 6, 0.5), slow(0.25, 1)],
+      effects: [dmg(270, 'strength', 0, 'physical', 6, 0.5), slow(0.25, 1)],
     },
   ],
   trees: [none('jotunn.might', 'Might'), none('jotunn.frost', 'Frost'), none('jotunn.stone', 'Stone')],

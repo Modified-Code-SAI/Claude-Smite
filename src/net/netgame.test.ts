@@ -5,7 +5,8 @@ import { godUnit } from '../sim/factory';
 import { LaneBot, spawnPoint } from '../sim/LaneBot';
 import { conquestBases, Match } from '../sim/Match';
 import { Sim, type SimTerrain } from '../sim/Sim';
-import type { Body } from '../sim/Unit';
+import type { Body, SimEvent } from '../sim/Unit';
+import { BotComms } from '../sim/BotComms';
 import { NetGuest, NetHost } from './NetGame';
 import type { Roster } from './Replica';
 import { roster, type NetPlayer } from './roster';
@@ -115,6 +116,81 @@ describe('networked players', () => {
     guest.cast(0);
     step(10);
     expect(remote.combatant.mana).toBeLessThan(mana);
+  });
+
+  it("carries a guest's pings to the host, the bots' answers back, and never the other team's calls; and its taunts to everyone", () => {
+    const net = pair();
+    const hsim = new Sim(flat, conquestBases(), () => 0.5);
+    const hmatch = new Match(hsim, godById('zeus')!);
+    const host = new NetHost(net.host, hsim, () => undefined, () => undefined);
+    const h = build(hsim, hmatch, () => undefined, true);
+    const remote = h.units[h.slots.findIndex((s) => s.player === 'g')]!;
+    host.assign('g', remote);
+    host.bind(hmatch, h.roster);
+    const comms = new BotComms(hsim, () => hmatch);
+    const heard: Extract<SimEvent, { type: 'ping' }>[] = [];
+    hsim.listeners.push((e) => e.type === 'ping' && heard.push(e));
+    const taunts: Extract<SimEvent, { type: 'taunt' }>[] = [];
+    hsim.listeners.push((e) => e.type === 'taunt' && taunts.push(e));
+
+    const gsim = new Sim(flat, conquestBases(), () => 0.5);
+    const gmatch = new Match(gsim, godById('zeus')!);
+    const g = build(gsim, gmatch, () => undefined, false);
+    gsim.listeners.length = 0;
+    const seen: Extract<SimEvent, { type: 'ping' }>[] = [];
+    gsim.listeners.push((e) => e.type === 'ping' && seen.push(e));
+    const echoed: Extract<SimEvent, { type: 'taunt' }>[] = [];
+    gsim.listeners.push((e) => e.type === 'taunt' && echoed.push(e));
+    const self = g.units[g.slots.findIndex((s) => s.player === 'g')]!;
+    const pos = { x: self.x, y: 0, z: self.z, set(x: number, y: number, z: number) { this.x = x; this.y = y; this.z = z; } };
+    const ctrl = { position: pos, yaw: self.body.yaw, spawn(x: number, z: number, yaw: number) { pos.set(x, 0, z); this.yaw = yaw; } };
+    const guest = new NetGuest(net.guest, gsim, gmatch, g.roster, self, ctrl as unknown as PlayerController);
+    const step = (n: number) => {
+      for (let i = 0; i < n; i++) {
+        self.body.x = pos.x;
+        self.body.z = pos.z;
+        guest.step(DT);
+        net.flush();
+        if (host.started) {
+          host.beforeStep();
+          hsim.step(DT);
+          comms.step();
+          host.afterStep(DT);
+        } else host.wait(DT);
+        net.flush();
+      }
+    };
+    host.ready();
+    guest.ready();
+    step(30);
+    expect(guest.live).toBe(true);
+
+    // the guest calls an attack on an enemy god: the host gets it about its own copy of that god
+    const i = h.units.findIndex((u) => u.team === 'chaos');
+    guest.ping('attack', 0, 0, g.units[i]!);
+    step(3);
+    const call = heard.find((e) => e.unit === remote)!;
+    expect(call).toMatchObject({ kind: 'attack', subject: h.units[i] });
+    // two bots answer, and their "on my way" reaches the guest about the guest's copy of the target
+    step(150);
+    const answers = seen.filter((e) => e.kind === 'omw');
+    expect(answers.length).toBe(2);
+    expect(answers.every((e) => e.subject === g.units[i] && e.unit.team === 'order')).toBe(true);
+
+    // the enemy team's calls stay on their side
+    const before = seen.length;
+    hsim.ping(h.units[i]!, 'group', 0, 0);
+    step(10);
+    expect(heard.at(-1)!.unit).toBe(h.units[i]);
+    expect(seen.length).toBe(before);
+
+    // a taunt goes up to the host and back down as the same line, and a second one too soon is refused
+    guest.taunt();
+    guest.taunt();
+    step(30);
+    expect(taunts.map((e) => e.unit)).toEqual([remote]);
+    expect(echoed).toHaveLength(1);
+    expect(echoed[0]).toMatchObject({ unit: self, line: taunts[0]!.line });
   });
 
   it('lets a mode move a guest to another unit, route its own messages, and take over basic attacks', () => {

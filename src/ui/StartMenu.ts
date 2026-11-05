@@ -103,6 +103,8 @@ export const CONTROLS: [string, string][] = [
   ['1  2  3', 'Skills: press to aim, press again or click to cast, right click cancels'],
   ['4 or R', 'Ultimate (unlocks at level 5)'],
   ['B', 'Recall to the fountain'],
+  ['G (hold)', 'Ping wheel: attack, on my way, group up, fall back and more. Tap G or middle click to ping what you aim at'],
+  ['V', 'Taunt: your god says something cutting to everyone near'],
   ['F', 'Relic Rush: call for the pass'],
   ['Z  X  C', 'Temple Siege and Underworld Descent: pick a boon, a reward or a skill'],
   ['K', 'Skills & trees: spend points; swap skills at the fountain'],
@@ -195,7 +197,8 @@ export interface GraphicsInfo {
   advice: GpuAdvice | null;
 }
 
-export function showStartMenu(gods: readonly GodDef[], graphics: Promise<GraphicsInfo>): Promise<StartChoice> {
+/** `picked` hears each god the player clicks (it says its line). */
+export function showStartMenu(gods: readonly GodDef[], graphics: Promise<GraphicsInfo>, picked?: (god: string) => void): Promise<StartChoice> {
   const prev = load();
   let mode = savedMode();
   let god = gods.some((g) => g.id === prev.god) ? prev.god! : gods[0]!.id;
@@ -333,6 +336,7 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
       god = b.dataset.god!;
       render();
       lobby.godChanged();
+      picked?.(god);
     }),
   );
 

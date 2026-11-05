@@ -16,6 +16,8 @@ import { RushHud } from '../ui/RushHud';
 import { RushView } from './RushView';
 import type { GodPalette } from './palette';
 
+/** Seconds after the winning moment that the winners pump their fists (the world stills at 4 s). */
+const VICTORY_PUMPS = [0.45, 1.55, 2.65, 3.6];
 const tone = (main: number, core: number): GodPalette => ({ cloth: main, trim: core, glow: main, vfx: main, core });
 const GOLD = tone(0xffc23a, 0xfff2c4);
 const ALLY = tone(0x4fb2ff, 0xe6f4ff);
@@ -41,8 +43,8 @@ export interface RushDeps {
   /** A burst of light and sparks (CombatVfx.burst). */
   burst: (p: GodPalette, x: number, y: number, z: number, power: number) => void;
   shake?: (amount: number) => void;
-  /** Plays a god's throwing arm (the basic-attack swing). */
-  swing?: (u: Unit) => void;
+  /** Plays a god's throwing arm (the basic-attack swing), or a scorer's cheer ('ult': chest up, a hand to the sky). */
+  swing?: (u: Unit, kind?: 'basic' | 'ult') => void;
 }
 
 /** A teammate's call for the pass, placed over their head on screen. */
@@ -73,6 +75,10 @@ export class RushMode {
   private readonly fwd = new THREE.Vector3();
   private readonly toHead = new THREE.Vector3();
   private lastThrower: Unit | null = null;
+  /** Seconds into the goal celebration at the last frame (-1 outside one), to catch the scorer's second fist pump. */
+  private cheerAt = -1;
+  /** Seconds since the match was won (-1 before), for the winners' fist pumps. */
+  private wonFor = -1;
 
   constructor(private readonly deps: RushDeps) {
     const { sim, player, slots, net } = deps;
@@ -159,6 +165,7 @@ export class RushMode {
   frame(dt: number, time: number): void {
     this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time);
     this.beats();
+    this.victory(dt);
     this.throws();
     this.hud.pointer(this.pointer());
     this.hud.calls(this.callouts());
@@ -189,11 +196,39 @@ export class RushMode {
       const y = this.deps.groundAt(gate.x, gate.z);
       burst(g.team === me.team ? ALLY : FOE, gate.x, y + 2.4, gate.z, 1.9);
       burst(GOLD, gate.x, y + 0.5, gate.z, 1.2);
+      // the scorer throws a fist to the sky (Rush.goal marked it as an action, so every end holds the pose)
+      this.deps.swing?.(g.scorer, 'ult');
+      this.cheerAt = 0;
       const near = Math.max(0, 1 - Math.hypot(me.x - gate.x, me.z - gate.z) / 30);
       this.deps.shake?.(0.15 + near * 0.35);
     }
     if (r.phase === 'play' && seen.phase === 'kickoff' && at) burst(GOLD, at.x, at.y, at.z, 0.9);
+    // and again a moment later
+    const cheer = r.phase === 'goal' && r.lastGoal ? RUSH.celebrate - r.timer : -1;
+    if (r.lastGoal && this.cheerAt >= 0 && this.cheerAt < RUSH.cheer.again && cheer >= RUSH.cheer.again) this.deps.swing?.(r.lastGoal.scorer, 'ult');
+    this.cheerAt = cheer;
     this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, goals: r.goalCount, phase: r.phase };
+  }
+
+  /**
+   * The winners throw their fists to the sky together, again and again, until
+   * the world stills behind the result (the last pump holds as their pose).
+   */
+  private victory(dt: number): void {
+    const r = this.rush;
+    if (!r.winner) return;
+    const was = this.wonFor;
+    this.wonFor = was < 0 ? 0 : was + dt;
+    r.team(r.winner).forEach((g, i) => {
+      if (!g.alive) return;
+      for (const at of VICTORY_PUMPS) {
+        const t = at + i * 0.18;
+        if (was < t && this.wonFor >= t) {
+          g.sinceAction = 0;
+          this.deps.swing?.(g, 'ult');
+        }
+      }
+    });
   }
 
   /** A new throw swings its thrower's arm (on every end: the relic's state says who threw). */
@@ -265,5 +300,10 @@ export class RushMode {
 
   prime(): () => void {
     return this.view.prime();
+  }
+
+  /** How excited one end of the crowd is right now (0 to 1), for its sound. */
+  crowdHeat(side: Side): number {
+    return this.view.crowd.excitement(side);
   }
 }

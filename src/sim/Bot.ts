@@ -44,6 +44,19 @@ export interface BotOptions {
 }
 
 /**
+ * A teammate's ping the bot is answering (see BotComms): come to a point and
+ * fight what is there, or get away from it, until `until` (sim seconds).
+ */
+export interface BotOrder {
+  kind: 'come' | 'back';
+  /** Where to go, or what to get away from. */
+  at: Point;
+  /** The unit the ping was about: followed while it lives, and fought when it is an enemy. */
+  subject: Unit | null;
+  until: number;
+}
+
+/**
  * A simple god bot: holds a position, engages enemies that come close, keeps
  * its preferred range, strafes, basic attacks, and casts skills whose reach
  * covers the target. Retreats to base when low and heals at the fountain.
@@ -55,6 +68,8 @@ export class GodBot implements Brain {
   private retreating = false;
   /** Talent order: each bot commits to one playstyle tree, chosen by its id. */
   private readonly build: string[];
+  /** A teammate's call it is following, over its own plan. */
+  order: BotOrder | null = null;
 
   constructor(
     private readonly sim: Sim,
@@ -94,10 +109,17 @@ export class GodBot implements Brain {
       }
     }
     if (u.recall > 0) return;
+    const order = this.currentOrder();
+    if (order?.kind === 'back') {
+      // a teammate called danger: break off toward home for a few seconds
+      if (sim.enemiesOf(u).some((t) => t.kind === 'god' && hypot(t.x - u.x, t.z - u.z) < 10)) this.flee();
+      this.moveToward(u.home, 1.5);
+      return;
+    }
 
-    const target = this.options.choose ? this.options.choose() : this.pickTarget();
+    const target = order ? this.orderTarget(order) : this.options.choose ? this.options.choose() : this.pickTarget();
     if (!target) {
-      this.moveToward(this.options.anchor, 3);
+      this.moveToward(order ? (order.subject ?? order.at) : this.options.anchor, order ? 4 : 3);
       return;
     }
 
@@ -132,6 +154,44 @@ export class GodBot implements Brain {
       const chance = target.kind === 'god' || this.options.castOn?.(target) ? this.options.aggression : farm ? this.options.aggression * (target.kind === 'monster' ? 0.6 : 0.3) : 0;
       if (sim.rng() < chance) this.tryCast(dist, target);
     }
+  }
+
+  /** The order still standing: it lapses with time, when its unit dies, or (falling back) once well away. */
+  private currentOrder(): BotOrder | null {
+    const o = this.order;
+    if (!o) return null;
+    const u = this.u;
+    const done =
+      this.sim.time > o.until ||
+      (o.subject !== null && !o.subject.alive) ||
+      (o.subject !== null && o.subject.team !== u.team && o.subject.stealth > 0) ||
+      (o.kind === 'back' && hypot(o.at.x - u.x, o.at.z - u.z) > 34);
+    if (done) this.order = null;
+    return this.order;
+  }
+
+  /**
+   * What to fight while answering a call: its enemy unit once in reach, else
+   * whatever is at the called spot; on the way there, only a god that jumps it.
+   */
+  private orderTarget(o: BotOrder): Unit | null {
+    const { u, sim } = this;
+    const s = o.subject;
+    if (s && s.team !== u.team && s.targetable && hypot(s.x - u.x, s.z - u.z) < 30) return s;
+    const goal = s ?? o.at;
+    const there = hypot(goal.x - u.x, goal.z - u.z) < 12;
+    let best: Unit | null = null;
+    let bestD = there ? this.options.aggro : 7;
+    for (const t of sim.enemiesOf(u)) {
+      if (t.kind === 'dummy' || t.stealth > 0) continue;
+      if (there ? hypot(t.x - goal.x, t.z - goal.z) > 16 : t.kind !== 'god') continue;
+      const d = hypot(t.x - u.x, t.z - u.z);
+      if (d < bestD) {
+        best = t;
+        bestD = d;
+      }
+    }
+    return best;
   }
 
   /** Allied gods minus enemy gods within fighting distance. */

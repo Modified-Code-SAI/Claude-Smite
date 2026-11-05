@@ -20,6 +20,28 @@
 .lm-close { width: 30px; height: 30px; padding: 0; font-size: 20px !important; line-height: 1; background: linear-gradient(180deg, #8a2a1c, #4a120c); border: 1px solid #e7a77a; border-radius: 50%; box-shadow: 0 0 0 2px #3a2a12; }
 .lm-close:hover { filter: brightness(1.25); }
 
+/* builds: ready-made per tree, the player's own, and spending by hand */
+.lm-builds { display: flex; align-items: center; gap: 12px; padding: 7px 16px; border-bottom: 1px solid rgba(231, 194, 122, 0.2); background: rgba(0, 0, 0, 0.22); }
+.lm-builds h3 { margin: 0; flex: none; }
+.lm-build-list { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.lm-build { --accent: #e7c27a; position: relative; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px 0 9px; font-size: 12px !important; letter-spacing: 0.07em; white-space: nowrap; background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.2)); border: 1px solid color-mix(in srgb, var(--accent) 40%, #5a4420); border-radius: 14px; transition: filter 0.12s, border-color 0.12s; }
+.lm-build:hover:not(:disabled) { filter: brightness(1.2); border-color: var(--accent); }
+.lm-build-gem { width: 10px; height: 10px; flex: none; transform: rotate(45deg); background: radial-gradient(circle at 35% 35%, #fff6d8, var(--accent) 55%, color-mix(in srgb, var(--accent) 50%, #000)); border-radius: 2px; box-shadow: 0 0 5px color-mix(in srgb, var(--accent) 70%, transparent); }
+.lm-build.on { color: #fff4d0; border-color: var(--accent); background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 38%, transparent), color-mix(in srgb, var(--accent) 14%, rgba(0, 0, 0, 0.3))); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); }
+.lm-build.mine { padding-right: 6px; }
+.lm-unsave { display: grid; place-items: center; width: 18px; height: 18px; margin-left: 2px; font-size: 14px; line-height: 1; border-radius: 50%; opacity: 0.55; }
+.lm-unsave:hover { opacity: 1; background: rgba(255, 90, 60, 0.35); }
+.lm-build.hand { padding: 0 12px; border-style: dashed; }
+.lm-build.hand.on { border-style: solid; }
+.lm-build.save { padding: 0 12px; color: #ffe3a3; border-color: rgba(231, 194, 122, 0.55); background: rgba(231, 194, 122, 0.08); }
+.lm-build.save:disabled { opacity: 0.35; }
+.lm-follow { white-space: nowrap; font-size: 12px; color: #cfc6b4; }
+.lm-follow b { font-weight: 400; color: #7ee27a; }
+.lm-follow em { font-style: normal; font-size: 11px; color: #ffb08a; }
+.lm-msg.good { color: #ffe3a3; }
+.lm-build-note { font-family: Georgia, serif; font-size: 12px; color: #cfc6b4; }
+.lm-tip-skills { font-size: 11px; letter-spacing: 0.04em; color: #e7c27a; }
+
 /* the three tree columns */
 .lm-trees { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 12px 14px 8px; }
 .lm-panel:has(.lm-trees.four) { width: min(1320px, 98vw); }
@@ -111,6 +133,8 @@
   .lm-tree-head h2 { font-size: 14px; }
   .lm-tree-pts { min-width: 28px; height: 28px; font-size: 14px; }
   .lm-foot { padding: 4px 14px; }
+  .lm-builds { padding: 4px 14px; }
+  .lm-build { height: 24px; }
   .lm-loadout { padding: 6px 14px 10px; }
   .lm-slot { width: 44px; height: 44px; }
   .lm-skill { width: 38px; height: 38px; }
@@ -126,7 +150,7 @@
 }
 @media (max-width: 860px) {
   .lm-trees, .lm-trees.four { grid-template-columns: minmax(0, 1fr); }
-  .lm-foot { flex-wrap: wrap; }
+  .lm-foot, .lm-builds { flex-wrap: wrap; }
   .lm-loadout { flex-direction: column; }
 }
 .lm-aug { position: absolute; left: -5px; top: -6px; width: 16px; height: 16px; display: grid; place-items: center; font-size: 10px; line-height: 1; color: #1a120a; background: radial-gradient(circle at 40% 35%, #fff4cf, #ffb43a); border-radius: 50%; box-shadow: 0 0 6px rgba(255, 190, 80, 0.8); pointer-events: none; }

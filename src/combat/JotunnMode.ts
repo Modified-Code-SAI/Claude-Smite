@@ -39,8 +39,10 @@ export interface JotunnDeps {
   /** Hands the local player a unit to play: the giant, or their god again. */
   control: (u: Unit, giant: boolean) => void;
   toast: (text: string) => void;
-  /** How quickly the bot gods notice a warning (difficulty); see jotunnBots. */
+  /** How quickly bot gods notice a warning when a person plays the giant (difficulty); see jotunnBots. */
   reaction?: number;
+  /** How hard a bot giant's blows land on gods (difficulty), 1 as tuned. */
+  giantPower?: number;
   /** Online: up to five friends, bots filling the rest; each takes a turn as the giant. */
   net?: NetSession;
   /** A moment of the giant's that has its own sound ('step': a footfall, k how hard). */
@@ -87,7 +89,11 @@ export class JotunnMode {
     // alone, the local player is first and a bot second (see jotunnRoster)
     const order = net ? undefined : deps.role === 'giant' ? [0] : deps.role === 'god' ? [1] : undefined;
     const guest = !!net && !net.isHost;
-    this.brains = guest ? null : jotunnBots(sim, { reaction: deps.reaction });
+    // difficulty shapes the bots the people face, never their allies: bot gods are
+    // quicker or slower only against a person's giant, a bot giant hits harder or softer
+    const fair = jotunnBots(sim);
+    const foes = jotunnBots(sim, { reaction: deps.reaction });
+    this.brains = guest ? null : { giant: fair.giant, god: (m, u) => (m.giantPlayer.id !== null ? foes : fair).god(m, u) };
     this.mode = new Jotunn(sim, players, { order, brains: this.brains ?? undefined });
     const mode = this.mode;
     mode.onRound = (p) => this.round(p);
@@ -154,6 +160,7 @@ export class JotunnMode {
     this.remote = null;
     const me = this.deps.net?.me ?? '';
     if (this.host) for (const x of mode.players) if (x.id && x.id !== me) this.host.assign(x.id, x === p ? g : x.god);
+    this.handicap();
     this.deps.control(mine ? g : this.deps.player, mine);
     if (mine) {
       this.deps.ctrl.spawn(g.x, g.z, g.body.yaw);
@@ -173,7 +180,18 @@ export class JotunnMode {
     if (u === mode.giant) {
       this.remote = null;
       u.brain = this.brains.giant(mode);
+      this.handicap();
     } else u.brain = this.brains.god(mode, u);
+  }
+
+  /** The difficulty's hold on the giant: a bot giant's blows on gods land harder or softer; a person's giant hits as tuned. */
+  private handicap(): void {
+    if (this.guest) return;
+    const mode = this.mode;
+    const k = mode.giantPlayer.id === null ? (this.deps.giantPower ?? 1) : 1;
+    const sim = this.deps.sim;
+    // braziers take the same blows whatever the difficulty
+    mode.giant.combatant.damageAmp = k === 1 ? null : (t) => (sim.unitByCombatantUid(t.uid)?.kind === 'god' ? k : 1);
   }
 
   /** The fixed step, before the simulation's: drive the giant from the keys when it is ours (or from a guest's word), then the rules. */

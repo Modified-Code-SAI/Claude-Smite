@@ -3,6 +3,7 @@ import { FAVOR_REWARDS, ranked } from '../game/progression';
 import type { DamageType } from '../game/types';
 import { WISDOM_XP } from './Jungle';
 import { Passives } from './Passives';
+import { PINGS, PingLimiter, ultState, type PingKind } from './Pings';
 import { hypot } from '../core/math';
 import {
   isStructure,
@@ -59,6 +60,9 @@ const MONSTER_CORPSE_TIME = 3;
 export const BACKDOOR_SCALE = 0.3;
 
 export type CastResult = CastError | 'forced' | null;
+
+/** Seconds between one god's taunts. */
+export const TAUNT_GAP = 4;
 
 /**
  * The match simulation: positions, projectiles, areas, dashes and leaps on top
@@ -273,6 +277,40 @@ export class Sim {
     if (!u.alive || u.recall > 0 || this.inBase(u)) return false;
     u.recall = RECALL_TIME;
     this.emit({ type: 'recall', unit: u, state: 'start' });
+    return true;
+  }
+
+  private readonly pingLimit = new PingLimiter();
+  private readonly tauntAt = new WeakMap<Unit, number>();
+
+  /**
+   * A quick call to `u`'s team (see Pings.ts): marked at (x, z), or on the
+   * pinger for calls about themselves, and on `subject` when it is about a
+   * unit. False when `u` is pinging too fast. A hidden enemy is never named.
+   */
+  ping(u: Unit, kind: PingKind, x: number, z: number, subject: Unit | null = null): boolean {
+    if (u.kind !== 'god' || !Number.isFinite(x) || !Number.isFinite(z)) return false;
+    if (!this.pingLimit.take(u, this.time)) return false;
+    let s = subject && subject !== u && subject.alive && this.units.includes(subject) ? subject : null;
+    if (s && s.team !== u.team && (s.stealth > 0 || !s.targetable)) s = null;
+    if (s) {
+      x = s.x;
+      z = s.z;
+    } else if (PINGS[kind].at === 'self') {
+      x = u.x;
+      z = u.z;
+    }
+    if (kind === 'ult') this.emit({ type: 'ping', unit: u, kind, x, z, subject: s, ult: ultState(u.combatant) });
+    else this.emit({ type: 'ping', unit: u, kind, x, z, subject: s });
+    return true;
+  }
+
+  /** A god taunts whoever is near: false while its last taunt is still fresh (TAUNT_GAP). */
+  taunt(u: Unit): boolean {
+    if (u.kind !== 'god' || !u.alive) return false;
+    if (this.time < (this.tauntAt.get(u) ?? -Infinity)) return false;
+    this.tauntAt.set(u, this.time + TAUNT_GAP);
+    this.emit({ type: 'taunt', unit: u, line: Math.floor(this.rng() * 1000) });
     return true;
   }
 

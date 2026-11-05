@@ -21,6 +21,8 @@ const STINGS: Record<Mood, string> = { good: 'sting.good', bad: 'sting.bad', neu
 export class Announcer {
   private queue: Line[] = [];
   private speaking = false;
+  private holdUntil = 0;
+  private holdTimer: ReturnType<typeof setTimeout> | 0 = 0;
   private voice: SpeechSynthesisVoice | null = null;
   private readonly synth: SpeechSynthesis | null = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null;
 
@@ -46,9 +48,21 @@ export class Announcer {
     this.next();
   }
 
+  /** Keep quiet for a moment (a god is speaking); queued lines wait, then follow. */
+  hold(seconds: number): void {
+    this.holdUntil = Math.max(this.holdUntil, performance.now() + seconds * 1000);
+  }
+
   private next(): void {
     if (this.speaking) return;
     const now = performance.now();
+    if (now < this.holdUntil) {
+      if (!this.holdTimer) this.holdTimer = setTimeout(() => {
+        this.holdTimer = 0;
+        this.next();
+      }, this.holdUntil - now);
+      return;
+    }
     this.queue = this.queue.filter((l) => now - l.at < 5000);
     const line = this.queue.shift();
     if (!line) return;
