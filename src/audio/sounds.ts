@@ -36,6 +36,13 @@ const step = (r: Rand, tone: number, soft: number, weight: number): Float32Array
 const hitFlesh = (r: Rand, weight: number): Float32Array =>
   layer([impact(r, weight, { tone: 140 + r() * 30, crunch: 0.6 }), 1], [filter(puff(r, 0.12, { tone: 1600 }), 'highpass', 300), 0.35]);
 
+/** A short burst of fire crackle. */
+const crackles = (r: Rand, len: number, density: number): Float32Array => {
+  const out = buf(len);
+  crackle(out, r, density, (t) => ahr(t, 0.01, len * 0.3, len * 0.6));
+  return out;
+};
+
 export const SOUNDS: Record<string, Recipe> = {
   // -- footsteps
   'step.stone': { variants: 6, peak: 0.5, make: (r) => step(r, 1700, 0.1, 1) },
@@ -66,6 +73,10 @@ export const SOUNDS: Record<string, Recipe> = {
   'hit.shade': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.14, { tone: 1100 }), 0.7], [shimmer(r, 0.4, 1046.5, { rise: 0.75, peak: 0.04 }), 0.6, 0.01], [vowel(r, 0.25, (t) => glide(260, 160, t, 0.25), VOWELS.oh, { breath: 2.5, gain: 0.3, env: (t) => ahr(t, 0.01, 0.04, 0.2) }), 0.5]) },
   'shade.vanish': { variants: 2, peak: 0.5, make: (r) => layer([whoosh(r, 0.32, 3200, 450, { q: 1.2 }), 1], [vowel(r, 0.3, (t) => glide(200, 340, t, 0.3), VOWELS.eh, { breath: 3, gain: 0.3, env: (t) => ahr(t, 0.12, 0.05, 0.12) }), 0.6]) },
   'shade.appear': { variants: 2, peak: 0.5, make: (r) => layer([whoosh(r, 0.35, 600, 2800, { q: 1.4 }), 0.7], [vowel(r, 0.4, (t) => glide(380, 240, t, 0.4), VOWELS.ah, { breath: 2.8, gain: 0.32, env: (t) => ahr(t, 0.03, 0.08, 0.3) }), 0.8, 0.02], [shimmer(r, 0.5, 880, { rise: 0.5, peak: 0.1 }), 0.4, 0.05]) },
+  // the Gravekeeper: a flick of lantern fire, its scorch, and the murmur and rising shimmer of a mend
+  'basic.keeper': { variants: 3, peak: 0.55, make: (r) => layer([fire(r, 0.35, { gain: 0.8 }), 0.7], [whoosh(r, 0.3, 900, 2200, { q: 1.3 }), 0.7, 0.02], [crackles(r, 0.3, 14), 0.25, 0.03]) },
+  'hit.keeper': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.12, { tone: 1500 }), 0.7], [crackles(r, 0.25, 18), 0.4, 0.01]) },
+  'keeper.mend': { variants: 2, peak: 0.55, make: (r) => layer([choir(r, 1.1, r() < 0.5 ? 98 : 110, { vowelName: 'oh', env: (t) => ahr(t, 0.25, 0.3, 0.5) }), 0.5], [shimmer(r, 1, 587.3, { rise: 1.5, peak: 0.6 }), 0.8, 0.1], [fire(r, 0.6, { gain: 0.6 }), 0.45], [vowel(r, 0.7, (t) => glide(140, 120, t, 0.7), VOWELS.oo, { breath: 2.4, gain: 0.3 }), 0.4, 0.05]) },
   'hit.acid': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.1, { tone: 900 }), 0.7], [sand(r, 0.35, { tone: 3000, peak: 0.5 }), 0.8, 0.03]) },
   'basic.monster': { variants: 3, peak: 0.6, make: (r) => layer([whoosh(r, 0.22, 500, 1200, { q: 1 }), 1], [vowel(r, 0.25, (t) => glide(220, 150, t, 0.25), VOWELS.ah, { breath: 0.5, growl: 0.2, gain: 0.5 }), 1]) },
   'basic.warden': { variants: 2, peak: 0.85, make: (r) => layer([whoosh(r, 0.45, 160, 500, { q: 0.8, peak: 0.75, gain: 1.4 }), 1], [roar(r, 0.5, 90), 0.5]) },

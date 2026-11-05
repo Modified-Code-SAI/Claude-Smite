@@ -8,7 +8,7 @@ import { PROJECTILE_HEIGHT } from '../sim/Sim';
 import { isStructure, WORLD_SCALE, type Unit, type Flash, type FlashShape, type Projectile, type SimEvent } from '../sim/Unit';
 import { ArcView } from './Arcs';
 import { GroundDecal, type DecalShape } from './GroundDecal';
-import { ACID, SHADE_CORE, SHADE_GLOW, BUFF_GLOW } from './MonsterViews';
+import { ACID, KEEPER_CORE, KEEPER_GLOW, SHADE_CORE, SHADE_GLOW, BUFF_GLOW } from './MonsterViews';
 import { paletteFor, paletteOf, type GodPalette } from './palette';
 import { hypot } from '../core/math';
 
@@ -947,6 +947,7 @@ function monsterPalette(u: Unit): GodPalette {
   if (u.tag.endsWith('moltenColossus')) return { ...p, vfx: 0xff4a10, core: 0xffd080 };
   if (u.tag.endsWith('thornSpitter')) return { ...p, vfx: ACID, core: 0xe8ffc0 };
   if (u.tag.endsWith(':shade')) return { ...p, vfx: SHADE_GLOW, core: SHADE_CORE };
+  if (u.tag.endsWith(':gravekeeper')) return { ...p, vfx: KEEPER_GLOW, core: KEEPER_CORE };
   if (u.kind !== 'monster' || !u.tag.endsWith('warden')) return p;
   const kind = u.tag.split(':')[0]!.split('-')[1] as keyof typeof BUFF_GLOW;
   const c = BUFF_GLOW[kind];

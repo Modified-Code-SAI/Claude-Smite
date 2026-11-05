@@ -234,7 +234,8 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     const add = (t: MonsterType, count: number) => {
       for (let i = 0; i < Math.round(count * k * many); i++) out.push(t);
     };
-    // Shades haunt the halls past the first boss and Gravekeepers the Abyss past the second, each in place of a Thornback
+    // Shades haunt the halls past the first boss, each in place of a Thornback, and Gravekeepers the Abyss
+    // past the second, each in place of two (a healer in a pack is worth more than a body)
     const shades = n > DESCENT.bossEvery ? Math.min(3, 1 + Math.floor((n - DESCENT.bossEvery - 1) / 3)) : 0;
     const keepers = n > 2 * DESCENT.bossEvery ? Math.min(2, 1 + Math.floor((n - 2 * DESCENT.bossEvery - 1) / 2)) : 0;
     add('thornback', Math.min(9, 3 + Math.floor(n * 0.6)) - shades - 2 * keepers);

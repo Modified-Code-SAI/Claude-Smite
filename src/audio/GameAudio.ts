@@ -149,6 +149,10 @@ export class GameAudio {
           this.herald.say('Your ultimate has awakened.', 'good', 1);
         } else this.engine.play('god.levelup', { gain: 0.7 }, 4);
         break;
+      case 'heal':
+        // a Gravekeeper's lantern flaring as it pours souls into a monster
+        if (e.source?.tag.endsWith(':gravekeeper') && this.dist(e.source) < 45) this.at('keeper.mend', e.source, { gain: 0.6, vary: 0.05 }, 2, 0.2);
+        break;
       case 'reward':
         if (e.unit === me && e.favor > 0) this.engine.play('favor', { gain: 0.35, vary: 0.05 }, 2, 0.08);
         break;
@@ -221,7 +225,7 @@ export class GameAudio {
         ref = 20;
         break;
       case 'monster':
-        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : 'basic.monster';
+        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : 'basic.monster';
         ref = u.radius > 2 ? 16 : 7;
         gain = u.radius > 2 ? 1.1 : 0.7;
         break;
@@ -250,7 +254,7 @@ export class GameAudio {
       name = t === 'brute' ? 'hit.blunt' : t === 'archer' ? 'hit.flesh' : 'hit.blade';
       gain *= 0.6;
       gap = 0.05;
-    } else if (src.kind === 'monster') name = src.radius > 2 ? 'hit.blunt' : src.tag.endsWith('thornSpitter') ? 'hit.acid' : src.tag.endsWith(':shade') ? 'hit.shade' : 'hit.monster';
+    } else if (src.kind === 'monster') name = src.radius > 2 ? 'hit.blunt' : src.tag.endsWith('thornSpitter') ? 'hit.acid' : src.tag.endsWith(':shade') ? 'hit.shade' : src.tag.endsWith(':gravekeeper') ? 'hit.keeper' : 'hit.monster';
     else name = 'hit.flesh';
     const mine = src === this.me || target === this.me;
     this.at(name, target, { gain, vary: 0.08 }, src === this.me ? 4 : 2, gap, mine);
