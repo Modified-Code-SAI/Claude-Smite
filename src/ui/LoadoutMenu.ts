@@ -21,8 +21,8 @@ const ERRORS: Record<AllocationError | LoadoutError | 'notInBase', string> = {
   notInBase: 'Only in base. Recall with B.',
 };
 
-/** Accent per tree column, in tree order. */
-const TREE_ACCENTS = ['#ff7a3d', '#ffc94a', '#4fc3ff'] as const;
+/** Accent per tree column, in tree order (the fourth: a mode's own tree, Relic Rush's Playmaker). */
+const TREE_ACCENTS = ['#ff7a3d', '#ffc94a', '#4fc3ff', '#5fe3a1'] as const;
 
 export interface LoadoutMenuHooks {
   /** The combatant the menu edits (changes when the god is switched). */
@@ -154,7 +154,7 @@ export class LoadoutMenu {
             .join('')}</div>` : '<div class="lm-gods"></div>'}
           <button class="lm-close" data-act="close" aria-label="Close">&times;</button>
         </header>
-        <div class="lm-trees">${g.trees.map((t, i) => this.treeHtml(c, t, i)).join('')}</div>
+        <div class="lm-trees${c.treeList.length > 3 ? ' four' : ''}">${c.treeList.map((t, i) => this.treeHtml(c, t, i)).join('')}</div>
         <div class="lm-foot">
           <div class="lm-points">
             <span>Level <b>${c.level}</b></span>
@@ -228,7 +228,7 @@ export class LoadoutMenu {
       n.requires ? `arrow${prereqMet(c.trees, c.allocation, n) ? ' arrow-on' : ''}` : '',
     ].join(' ');
     return `<button class="${cls}" style="grid-row:${tier};grid-column:${col}" data-act="node" data-v="${n.id}" data-tip="n:${n.id}" aria-label="${n.name} ${r} of ${n.maxRank}">
-      ${talentIcon(c.god.id, n, c.god.skills, TREE_ACCENTS[c.god.trees.indexOf(tree)] ?? TREE_ACCENTS[0])}
+      ${talentIcon(c.god.id, n, c.god.skills, TREE_ACCENTS[c.treeList.indexOf(tree)] ?? TREE_ACCENTS[0])}
       <span class="lm-rank">${r}/${n.maxRank}</span>
       ${changesSkill(n) && tier !== 4 ? '<span class="lm-aug" title="Changes how the skill works">&#10022;</span>' : ''}
     </button>`;

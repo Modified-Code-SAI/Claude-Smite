@@ -255,3 +255,163 @@ describe('Relic Rush', () => {
     expect(rushRoster(lobby)).toEqual(slots);
   });
 });
+
+describe('Relic Rush: the Playmaker tree', () => {
+  /** Max level and Favor, then the named sport nodes learned in order (a bare name takes every rank). */
+  function learn(u: Unit, ...ids: string[]): void {
+    const c = u.combatant;
+    c.gainXp(XP_TABLE[XP_TABLE.length - 1]!);
+    c.gainFavor(1e6);
+    for (const id of ids) {
+      const n = c.trees.node.get(`sport.${id}`)!.node;
+      for (let r = 0; r < n.maxRank; r++) expect(c.allocate(n.id), n.id).toBeNull();
+    }
+  }
+  const TIER_ONE = ['stride', 'arm', 'hands'];
+  const TIER_TWO = ['bearer', 'rise', 'strip'];
+
+  /** Two gods, order's `a` holding the relic at the center. */
+  function carrying(def: GodDef = zeus) {
+    const { sim, rush } = match();
+    const a = god(sim, def, 'order', 0);
+    const t = god(sim, thor, 'chaos', 0);
+    rush.begin([a, t]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(a, 0, 1.6);
+    sim.teleport(t, -20, 20);
+    run(sim, rush, 0.3);
+    expect(rush.holder).toBe(a);
+    return { sim, rush, a, t };
+  }
+
+  /** Thor slams the carrier from 2 m north of them. */
+  function slam(sim: Sim, rush: Rush, t: Unit, a: Unit): void {
+    sim.teleport(t, a.x, a.z + 2, 0);
+    t.aim.x = a.x;
+    t.aim.z = a.z;
+    t.combatant.mana = t.combatant.stats.maxMana;
+    expect(sim.cast(t, t.combatant.loadout.indexOf('thor.mjolnir-slam'))).toBeNull();
+    run(sim, rush, 0.05);
+  }
+
+  it('opens as a fourth tree for every god in the match, and only there', () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    expect(a.combatant.treeList).toHaveLength(3);
+    expect(a.combatant.allocate('sport.arm')).toBe('unknownNode');
+    rush.begin([a]);
+    expect(a.combatant.treeList.map((t) => t.id)).toEqual([...zeus.trees.map((t) => t.id), 'sport']);
+    expect(a.combatant.allocate('sport.arm')).toBeNull();
+    expect(a.combatant.sport('throwRange')).toBe(1.5);
+  });
+
+  it('Long Arm throws farther and Bullet Pass flies faster', () => {
+    const { sim, rush, a } = carrying();
+    const far = { x: 0, z: -40 };
+    const plain = rush.throwTarget(a, far);
+    expect(Math.hypot(plain.x - a.x, plain.z - a.z)).toBeCloseTo(RUSH.relic.maxThrow);
+    learn(a, ...TIER_ONE, ...TIER_TWO, 'bullet');
+    const long = rush.throwTarget(a, far);
+    const d = Math.hypot(long.x - a.x, long.z - a.z);
+    expect(d).toBeCloseTo(RUSH.relic.maxThrow + 4.5);
+    run(sim, rush, 0.3);
+    expect(rush.throwRelic(a, far)).toBe(true);
+    expect(rush.relic.duration).toBeCloseTo(Rush.flightTime(d, 0.3));
+    expect(rush.relic.duration).toBeLessThan(Rush.flightTime(d));
+  });
+
+  it("Bearer's Stride halves the carrier's slow, and Quick to Rise stands up sooner", () => {
+    const { sim, rush, a, t } = carrying();
+    const slowed = a.combatant.moveSpeed;
+    learn(a, ...TIER_ONE, 'bearer', 'rise');
+    run(sim, rush, 0.4);
+    const free = a.combatant.moveSpeed;
+    // Fleet Foot's +9% and half the carrier's slow
+    expect(free / slowed).toBeCloseTo((1 + 0.09 - RUSH.carrierSlow / 2) / (1 - RUSH.carrierSlow), 2);
+    sim.strike(t, a, 1e6, 'true');
+    run(sim, rush, 0.05);
+    expect(a.alive).toBe(false);
+    expect(a.combatant.respawnTimer).toBeCloseTo(RUSH.daze - 1, 1);
+  });
+
+  it('Strip Tackle pops a knocked-loose relic toward the tackler', () => {
+    const plain = carrying();
+    slam(plain.sim, plain.rush, plain.t, plain.a);
+    // away from Thor (north of the carrier): it lands south
+    expect(plain.rush.relic.tz).toBeLessThan(plain.a.z);
+    const { sim, rush, a, t } = carrying();
+    learn(t, ...TIER_ONE, 'strip');
+    slam(sim, rush, t, a);
+    expect(rush.relic.phase).toBe('flying');
+    expect(rush.relic.tz).toBeGreaterThan(a.z);
+    expect(Math.hypot(rush.relic.tx - t.x, rush.relic.tz - t.z)).toBeLessThan(Math.hypot(a.x - t.x, a.z - t.z));
+    run(sim, rush, 1, () => rush.holder !== null);
+    expect(rush.holder).toBe(t);
+    expect(rush.lines.get(t)!.steals).toBe(1);
+  });
+
+  it('Bulldozer knocks gods farther, and Iron Footing holds them', () => {
+    const shove = (push: boolean, footing: boolean): number => {
+      const { sim, rush } = match();
+      const o = god(sim, odin, 'order', 0);
+      const v = god(sim, zeus, 'chaos', 0);
+      rush.begin([o, v]);
+      run(sim, rush, RUSH.countdown + 0.1);
+      if (push) learn(o, ...TIER_ONE, ...TIER_TWO, 'shove');
+      if (footing) learn(v, ...TIER_ONE, ...TIER_TWO, 'footing');
+      sim.teleport(o, 0, 0, Math.PI);
+      sim.teleport(v, 0, -2.5);
+      o.aim.x = 0;
+      o.aim.z = -2.5;
+      const loadout = [...o.combatant.loadout];
+      loadout[0] = 'odin.gungnir-sweep';
+      o.combatant.setBuild(loadout, o.combatant.allocation);
+      o.combatant.mana = o.combatant.stats.maxMana;
+      expect(sim.cast(o, 0)).toBeNull();
+      run(sim, rush, 1.2);
+      return Math.hypot(v.x, v.z + 2.5);
+    };
+    const base = shove(false, false);
+    expect(base).toBeGreaterThan(RUSH.knockback * 0.8);
+    expect(shove(true, false) / base).toBeCloseTo(1.36, 1);
+    expect(shove(false, true) / base).toBeCloseTo(0.64, 1);
+  });
+
+  it('a Captain shrugs off the first hit each time they take the relic, and their passes speed the catcher up', () => {
+    const { sim, rush, a, t } = carrying();
+    const b = god(sim, odin, 'order', 1);
+    rush.join([b]);
+    learn(a, ...TIER_ONE, ...TIER_TWO, 'bullet', 'shove', 'footing', 'captain');
+    expect(a.combatant.sport('captain')).toBe(1);
+    slam(sim, rush, t, a);
+    expect(rush.holder).toBe(a);
+    expect(rush.beats.shrug).toBe(1);
+    expect(rush.lastBeat).toMatchObject({ kind: 'shrug', unit: a, by: t });
+    // still holding once the stun wears off; the next hit takes it
+    run(sim, rush, 1.5);
+    expect(rush.holder).toBe(a);
+    const t2 = god(sim, thor, 'chaos', 1);
+    rush.join([t2]);
+    slam(sim, rush, t2, a);
+    expect(rush.holder).toBeNull();
+    // a fresh possession, a pass: the catcher runs faster
+    run(sim, rush, 2, () => rush.holder !== null);
+    sim.teleport(t, -20, 20);
+    sim.teleport(t2, 20, 20);
+    sim.teleport(a, 0, 1.6);
+    sim.teleport(b, 10, 1.6);
+    run(sim, rush, 1, () => rush.holder === a);
+    if (rush.holder !== a) {
+      // the relic landed somewhere else: hand it over
+      sim.teleport(a, rush.relic.x, rush.relic.z);
+      run(sim, rush, 1, () => rush.holder === a);
+    }
+    expect(rush.holder).toBe(a);
+    run(sim, rush, 0.3);
+    const before = b.combatant.moveSpeed;
+    expect(rush.throwRelic(a, { x: b.x, z: b.z })).toBe(true);
+    run(sim, rush, 2, () => rush.holder !== null);
+    expect(rush.holder).toBe(b);
+    expect(b.combatant.moveSpeed / before).toBeGreaterThan(1.2);
+  });
+});

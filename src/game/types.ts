@@ -186,8 +186,33 @@ export type Keystone =
   /** Each skill cast restores this fraction of its mana cost and heals you for a share of max health. */
   | { type: 'manaSurge'; refundPct: number; healMaxHealthPct: number };
 
+/**
+ * Relic Rush's sport numbers (the Playmaker tree, src/game/sport.ts): read by
+ * the mode's rules and the sim's knockbacks, worth nothing anywhere else.
+ */
+export type SportKey =
+  /** Meters added to a pass's longest throw. */
+  | 'throwRange'
+  /** Fraction faster a pass flies. */
+  | 'throwSpeed'
+  /** Meters added to the reach for catching and picking up the relic. */
+  | 'catchReach'
+  /** Fraction of the carrier's slow taken away (1 = none). */
+  | 'carrierSpeed'
+  /** Seconds off a daze. */
+  | 'dazeCut'
+  /** A relic this god knocks loose pops toward them (1) instead of away. */
+  | 'strip'
+  /** Fraction farther this god's knockbacks throw. */
+  | 'push'
+  /** Fraction shorter knockbacks throw this god. */
+  | 'footing'
+  /** The keystone: shrugs off the first knock each possession, and a pass caught speeds the catcher up. */
+  | 'captain';
+
 export type NodeEffect =
   | { type: 'stat'; stat: StatKey; perRank: number }
+  | { type: 'sport'; key: SportKey; perRank: number }
   | { type: 'skill'; skill: string; field: SkillModField; perRank: number }
   | { type: 'keystone'; keystone: Keystone }
   /** Changes what a skill does: these effects are added to every cast of it. */

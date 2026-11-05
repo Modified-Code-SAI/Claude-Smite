@@ -1,6 +1,7 @@
 import type { Side } from '../game/combatant';
 import { SLOT_COUNT, ULTIMATE_SLOT } from '../game/loadout';
-import { botBuildOrder } from '../game/trees';
+import { PLAYMAKER } from '../game/sport';
+import { treeOrder } from '../game/trees';
 import { hypot } from '../core/math';
 import { reachOf, skillRole } from './Bot';
 import type { Nav } from './Nav';
@@ -90,7 +91,8 @@ export interface RushBotOptions {
 export class RushBot implements Brain {
   private decide = 0;
   private passCheck = 0;
-  private readonly build: string[];
+  /** The order this bot spends tree points, chosen once the line-up is known (see plan). */
+  private build: string[] | null = null;
   /** Which flank this bot runs when leading the attack. */
   private readonly side: number;
   private route: { goal: Point; next: Point; at: number } | null = null;
@@ -103,14 +105,26 @@ export class RushBot implements Brain {
     private readonly nav: Nav | null,
     readonly options: RushBotOptions = { aggression: 0.45 },
   ) {
-    this.build = botBuildOrder(u.combatant.god, u.combatant.uid);
     this.side = u.combatant.uid % 2 === 0 ? 1 : -1;
+  }
+
+  /**
+   * The wings of each line-up (first and third) are playmakers who fill the
+   * sport tree first; the middle fights first and adds sport after, so both
+   * teams field the same mix.
+   */
+  private plan(): string[] {
+    const c = this.u.combatant;
+    const main = treeOrder(c.god.trees[c.uid % 3]!, true);
+    const wing = this.rush.team(this.u.team as Side).indexOf(this.u) !== 1;
+    return wing ? [...treeOrder(PLAYMAKER, true), ...main] : [...main, ...treeOrder(PLAYMAKER, false)];
   }
 
   update(dt: number): void {
     const { u, rush } = this;
     u.move = null;
     const c = u.combatant;
+    this.build ??= this.plan();
     while (c.unspentPoints > 0 && this.build.some((id) => c.allocate(id) === null));
     if (!u.alive || u.forced || rush.frozen) return;
     if (rush.phase === 'goal') {
@@ -324,10 +338,10 @@ export class RushBot implements Brain {
     let best: { at: Point; score: number } | null = null;
     for (const t of this.allies()) {
       if (t.forced) continue;
-      const guess = Rush.flightTime(dist(u, t));
+      const guess = Rush.flightTime(dist(u, t), u.combatant.sport('throwSpeed'));
       const at = clampToPitch(t.x + t.vx * guess, t.z + t.vz * guess, 1.5);
       const d = dist(u, at);
-      if (d < R.minThrow + 1 || d > R.maxThrow) continue;
+      if (d < R.minThrow + 1 || d > Rush.maxThrow(u)) continue;
       let open = Infinity;
       for (const e of this.enemies()) {
         open = Math.min(open, dist(e, at));
