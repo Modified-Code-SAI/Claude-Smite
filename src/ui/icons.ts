@@ -270,10 +270,119 @@ function ccOf(effects: readonly SkillDef['effects'][number][]): string | null {
   return order.find((c) => ccs.includes(c)) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// The Jötunn's blows. It towers over the gods, so its icons show the blow
+// itself (a foot, a fist, its roaring head, a boulder) with the gods tiny
+// around it.
+
+const ICE = '#9eeaff';
+const HIDE = 'stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"';
+
+/** A six-armed snowflake. */
+function flake(x: number, y: number, r: number, o = 1): string {
+  const a = r * 0.87;
+  const b = r / 2;
+  return `<path transform="translate(${x} ${y})" d="M0 ${-r} V${r} M${-a} ${-b} L${a} ${b} M${-a} ${b} L${a} ${-b}" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="${o}"/>`;
+}
+
+/** A god thrown through the air, tilted. */
+function flung(x: number, y: number, tilt: number, s = 0.55): string {
+  return `<g transform="rotate(${tilt} ${x} ${y})">${foe(x, y, s)}</g>`;
+}
+
+/** An ice shard standing up from (x, y). */
+function shard(x: number, y: number, w: number, h: number): string {
+  return `<path d="M${x - w} ${y} L${x - w * 0.2} ${y - h} L${x + w} ${y} Z" fill="${ICE}" ${HIDE}/>`;
+}
+
+const GIANT_SCENES: Record<string, (core: string) => string> = {
+  // a foot comes down, the ground rings and the gods fly off
+  stomp: (c) =>
+    `<ellipse cx="30" cy="54" rx="28" ry="8" fill="${c}" opacity="0.16" stroke="${c}" stroke-width="2"/>` +
+    `<ellipse cx="30" cy="54" rx="17" ry="4.6" fill="none" stroke="${c}" stroke-width="1.4" opacity="0.7"/>` +
+    `<path d="M18 50 Q8 42 8 32 M44 50 Q54 44 54 36" stroke="${c}" stroke-width="1.8" fill="none" stroke-dasharray="3 3" opacity="0.8"/>` +
+    `<path d="M24 0 H40 V36 Q41 50 34 52 H14 Q8 52 8 46.5 Q8 41 16 40 L24 37 Z" fill="${c}" ${HIDE}/>` +
+    `<path d="M24 30 H40" stroke="${ICE}" stroke-width="3"/><path d="M13 46 H17 M19.5 47 H23.5" stroke="#4fa8c8" stroke-width="1.5"/>` +
+    `<path d="M17 4 V14 M47 4 V16 M52 12 V22" stroke="${c}" stroke-width="2.2" stroke-linecap="round" opacity="0.7"/>` +
+    flung(8, 24, -35) +
+    flung(55, 28, 35),
+  // a boulder on a high arc, landing among the gods
+  boulder: (c) =>
+    `<path d="M4 58 Q18 2 50 44" stroke="${c}" stroke-width="2.4" fill="none" stroke-dasharray="4 3" opacity="0.8"/>` +
+    `<ellipse cx="45" cy="48" rx="15" ry="5.5" fill="${c}" opacity="0.22" stroke="${c}" stroke-width="2"/>` +
+    foe(38, 50, 0.6) +
+    foe(52, 47, 0.6) +
+    `<path d="M6 30 L13 26 M4 21 L11 19 M9 39 L15 34" stroke="${c}" stroke-width="2" stroke-linecap="round" opacity="0.6"/>` +
+    `<path d="M14 19 L22 9 L34 7 L41 15 L39 28 L28 34 L17 30 Z" fill="#8797a8" ${HIDE}/>` +
+    `<path d="M22 9 L34 7 L41 15 L33 13.5 L27 17 L19 13 Z" fill="${ICE}"/>` +
+    `<path d="M23 20 L29 24 L27 30 M33 18 L37 23" stroke="#3d4a58" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+  // a fist driven into the ground, ice bursting up around it
+  slam: (c) =>
+    `<ellipse cx="32" cy="47" rx="29" ry="9" fill="${c}" opacity="0.15" stroke="${c}" stroke-width="2"/>` +
+    `<path d="M32 46 L17 52 L7 50 M32 46 L45 55 M32 46 L52 42 L61 44 M32 46 L12 41" stroke="${ICE}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
+    shard(11, 44, 3.5, 11) +
+    shard(52, 42, 3.5, 13) +
+    shard(21, 51, 2.6, 7) +
+    `<path d="M25 0 H39 V12 H25 Z" fill="${c}" ${HIDE}/>` +
+    `<path d="M18 15 Q18 10 23 10 H41 Q46 10 46 15 V31 H18 Z" fill="${c}" ${HIDE}/>` +
+    [18, 25, 32, 39].map((x) => `<rect x="${x}" y="27" width="7" height="16" rx="3.5" fill="${c}" ${HIDE}/>`).join('') +
+    `<path d="M19 19 Q12 19 12 25.5 Q12 32 19 32 H26" fill="${c}" ${HIDE}/>` +
+    `<path d="M12 34 L6 30 M52 34 L58 29 M16 26 L11 20 M48 26 L53 20" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>` +
+    foe(10, 59, 0.5) +
+    foe(34, 60, 0.5),
+  // its roaring head, the sound rolling out and the gods running from it
+  roar: (c) =>
+    `<path d="M14 12 Q7 22 14 32 M8 6 Q-1 22 8 38 M50 12 Q57 22 50 32 M56 6 Q65 22 56 38" stroke="${c}" stroke-width="2.6" fill="none" stroke-linecap="round"/>` +
+    `<path d="M21 16 Q21 5 32 5 Q43 5 43 16 V25 Q43 31 38 33 H26 Q21 31 21 25 Z" fill="${c}" ${HIDE}/>` +
+    `<path d="M22 27 Q24 41 32 45 Q40 41 42 27 Q38 34 32 34 Q26 34 22 27 Z" fill="${ICE}" ${HIDE}/>` +
+    `<ellipse cx="32" cy="26" rx="5" ry="5.5" fill="#07060a"/>` +
+    `<path d="M24 14 L30 17 M40 14 L34 17" stroke="#07060a" stroke-width="2.2" stroke-linecap="round"/>` +
+    `<circle cx="27.5" cy="19" r="1.6" fill="#4fcfff"/><circle cx="36.5" cy="19" r="1.6" fill="#4fcfff"/>` +
+    foe(9, 55, 0.55) +
+    foe(25, 58, 0.55) +
+    foe(44, 48, 0.5) +
+    `<path d="M14 50 H20 M14 56 H19 M30 53 H36 M30 59 H35" stroke="${c}" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>`,
+  // a cone of frost breathed across the gods
+  'frost-breath': (c) =>
+    `<path d="M22 25 L62 5 Q68 28 62 50 Z" fill="${c}" opacity="0.24"/>` +
+    `<path d="M22 25 L62 5 M22 25 L62 50" stroke="${c}" stroke-width="1.4" opacity="0.7"/>` +
+    `<path d="M26 25 Q37 18 47 22 Q55 26 61 20 M26 27 Q39 33 49 31 Q56 30 61 37" stroke="#ffffff" stroke-width="1.6" fill="none" opacity="0.7"/>` +
+    foe(41, 33, 0.55) +
+    foe(55, 24, 0.55) +
+    flake(37, 17, 3) +
+    flake(50, 39, 3.2) +
+    flake(31, 31, 2.2, 0.8) +
+    flake(57, 11, 2.2, 0.8) +
+    `<path d="M2 26 Q1 8 12 5 Q20 4 21 11 L20.5 14 L24.5 19.5 L21 21 L23.5 23 L18.5 25 L23.5 28.5 Q21 35 13 37 Q3 37 2 26 Z" fill="${c}" ${HIDE}/>` +
+    `<path d="M5 32 Q7 46 13 51 Q16 43 21 31 Q17 36 12 36.5 Q8 36.5 5 32 Z" fill="${ICE}" ${HIDE}/>` +
+    `<path d="M11 11.5 L20 13" stroke="#07060a" stroke-width="2.2" stroke-linecap="round"/><circle cx="15.5" cy="15.5" r="1.5" fill="#4fcfff"/>` +
+    `<path d="M3 7 L1 0 L7 4 M9 4 L9 -2 L13 3" fill="${ICE}" ${HIDE}/>`,
+  // a wall of ice tearing down a long line, tossing the gods up
+  avalanche: (c) =>
+    `<path d="M6 58 L60 8" stroke="${c}" stroke-width="12" stroke-linecap="round" opacity="0.2"/>` +
+    shard(15.7, 49, 4, 8) +
+    shard(25.4, 40, 4.5, 12) +
+    shard(35.2, 31, 5, 15) +
+    shard(44.9, 22, 5, 17) +
+    shard(54.6, 13, 4.5, 12) +
+    flung(16, 25, -20) +
+    flung(38, 50, 25) +
+    `<path d="M20 38 V33 M17 35 L20 32 L23 35 M42 63 V58 M39 60 L42 57 L45 60" stroke="${c}" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  // a storm cloud pounding a wide circle with hail
+  hailstorm: (c) =>
+    `<ellipse cx="32" cy="49" rx="27" ry="10" fill="${c}" opacity="0.16" stroke="${c}" stroke-width="2" stroke-dasharray="4 3"/>` +
+    foe(19, 54, 0.55) +
+    foe(41, 56, 0.55) +
+    [[15, 31], [27, 38], [39, 29], [50, 39], [22, 47], [34, 49], [47, 25]].map(([x, y]) => `<path d="M${x! + 1.5} ${y! - 7} L${x} ${y}" stroke="${c}" stroke-width="1.4" opacity="0.6"/><circle cx="${x}" cy="${y}" r="2.3" fill="${ICE}" stroke="#ffffff" stroke-width="0.8"/>`).join('') +
+    `<path d="M10 22 A8 8 0 0 1 14 8 A11 11 0 0 1 34 5 A10 10 0 0 1 52 10 A7 7 0 0 1 54 22 Z" fill="#5c7690" stroke="${c}" stroke-width="1.4"/>` +
+    `<path d="M16 18 Q24 14 30 18 M34 14 Q42 11 48 15" stroke="#9fb4c8" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+};
+
 function skillArt(godId: string, skill: SkillDef, withBadge: boolean): { vfx: string; core: string; body: string } {
   const p = paletteFor(godId);
   const core = hex(p.core);
-  let body = scene(shapeOf(skill), glyphFor(skill), core);
+  const giant = godId === 'jotunn' ? GIANT_SCENES[skill.id.replace(/^jotunn\./, '')] : undefined;
+  let body = giant ? giant(core) : scene(shapeOf(skill), glyphFor(skill), core);
   const cc = withBadge ? ccOf(skill.effects) : null;
   if (cc && CC_BADGES[cc]) body += badge(CC_BADGES[cc]!);
   return { vfx: hex(p.vfx), core, body };
