@@ -9,7 +9,7 @@ import { DescentBot } from '../sim/DescentBot';
 import { godUnit } from '../sim/factory';
 import { Scoreboard } from '../sim/Scoreboard';
 import type { Sim } from '../sim/Sim';
-import type { Unit } from '../sim/Unit';
+import type { SimEvent, Unit } from '../sim/Unit';
 import { DescentHud } from '../ui/DescentHud';
 import { DescentView } from './DescentView';
 import type { CombatVfx } from './Vfx';
@@ -30,6 +30,10 @@ export interface DescentDeps {
   toast: (text: string, tone?: 'gold') => void;
   /** The player learned a skill (the loadout menu redraws). */
   learned: () => void;
+  /** Adds camera shake (0..1 trauma). */
+  shake?: (amount: number) => void;
+  /** A run of souls reached the player (`k` counts up the run). */
+  absorbed?: (k: number) => void;
 }
 
 /**
@@ -93,7 +97,7 @@ export class DescentMode {
     const board = new Scoreboard(sim);
     board.track(this.gods);
     this.hud = new DescentHud(run, player, (i) => this.pick(i), board);
-    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, run.sideOf(player));
+    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, { team: run.sideOf(player), me: player, shake: deps.shake, absorbed: deps.absorbed });
   }
 
   /** Votes for a reward, or drafts a skill (from its key or a click on its card). */
@@ -125,6 +129,11 @@ export class DescentMode {
   step(dt: number): void {
     if (this.guest) this.run.follow(dt);
     else this.run.step(dt);
+  }
+
+  onEvent(e: SimEvent): void {
+    this.hud.onEvent(e);
+    this.view.onEvent(e);
   }
 
   frame(dt: number, time: number): void {
