@@ -756,6 +756,7 @@ export class GameAudio {
     const relic = r.relic;
     const at = { x: relic.x, z: relic.z };
     let roared = false;
+    this.humRelic(r);
     if (r.phase !== seen.phase) {
       if (r.phase === 'play' && seen.phase === 'kickoff') {
         this.engine.play('wave.horn', { gain: 0.6 }, 4);
@@ -833,6 +834,33 @@ export class GameAudio {
       if (!roared) this.crowdRoar(r.winner as 'order' | 'chaos', won);
       this.herald.say(won ? 'Victory! The Sun Relic is yours.' : 'Defeat. The enemy takes the Sun Relic.', won ? 'epic' : 'bad', 5);
     }
+  }
+
+  private relicHum: LoopHandle | null = null;
+  private humSet = { gain: -1, rate: -1 };
+
+  /**
+   * The Sun Relic sings wherever it is, so you can hear it loose behind you:
+   * softer in your own hands, a touch higher while it flies or in overtime,
+   * and silent once it's scored or the match is over.
+   */
+  private humRelic(r: NonNullable<CombatGame['rush']>): void {
+    const relic = r.relic;
+    if (!this.relicHum?.alive) {
+      this.relicHum = this.engine.loop('relic.hum', { at: { x: relic.x, y: 1, z: relic.z }, ref: 7, gain: 0 });
+      this.humSet.gain = this.humSet.rate = -1;
+      if (!this.relicHum) return;
+    }
+    const hum = this.relicHum;
+    const y = (relic.holder ?? this.me).body.y + relic.h + (relic.holder ? 0 : 0.6);
+    hum.setPosition(relic.x, y, relic.z);
+    const gone = relic.phase === 'gone' || !!r.winner;
+    const gain = gone ? 0 : relic.holder === this.me ? 0.3 : 0.65;
+    if (gain !== this.humSet.gain) hum.setGain(gain, gone ? 0.12 : 0.35);
+    const rate = relic.phase === 'flying' ? 1.12 : r.overtime ? 1.06 : 1;
+    if (rate !== this.humSet.rate) hum.setRate(rate);
+    this.humSet.gain = gain;
+    this.humSet.rate = rate;
   }
 
   /** One end of Relic Rush's crowd roaring: from behind the gate its team defends (Order's is at +z). */
