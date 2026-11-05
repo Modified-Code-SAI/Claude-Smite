@@ -1,21 +1,44 @@
+import type { Side } from '../game/combatant';
 import { exitSpot } from '../map/UnderworldLayout';
-import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
+import { DESCENT, DEPTHS, SOULS, type Descent } from '../sim/Descent';
+import type { SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
 import { DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { GroundDecal } from './GroundDecal';
 import type { GodPalette } from './palette';
+import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
 
 const ERUPTIONS = 10;
+/** Souls that are nobody's in particular, pale and ghostly in each depth's light (cyan against the Ashen Depths' fire). */
+const SOULS_OF: Record<keyof typeof DEPTH_COLORS, number> = { ember: 0xbfefff, soul: 0xe0f6ff, spirit: 0xd4ffb0 };
+/** Souls in a shared descent: the player's team's in cold blue, the rivals' in crimson (the HUD's colors). */
+const ALLY_SOUL = 0x5ab8ff;
+const FOE_SOUL = 0xff4060;
+/** Seconds between the souls a god raising an ally pours into them. */
+const STREAM_EVERY = 0.09;
+
+export interface DescentViewOptions {
+  /** The player's team: in a shared descent the rivals' fallen get no ring (only their own team can raise them). */
+  team?: Side;
+  /** The local player: souls reaching them cue a sound, and soul fire landing near them shakes the camera. */
+  me?: Unit;
+  shake?: (amount: number) => void;
+  /** A run of souls reached the player; `k` counts up the run (0, 1, 2, ...) for a rising chime. */
+  absorbed?: (k: number) => void;
+}
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
  * the depth's colors), the exit gate's veil opening once a chamber is cleared,
  * a glowing ring on the gate's threshold, the soul fire's warning circles and
  * bursts, and a ring under every downed god of the player's team that fills
- * as an ally raises them.
- * Every ring is a pooled ground decal sharing one material.
+ * as an ally raises them. Souls fly: out of each slain monster into the god
+ * who landed the blow, from a god raising an ally into the fallen one, back
+ * into a god as it rises, and into the open gate's veil.
+ * Every ring is a pooled ground decal sharing one material; every soul is a
+ * copy of one instanced sprite.
  */
 export class DescentView {
   private readonly map: UnderworldMap | null;
@@ -23,18 +46,37 @@ export class DescentView {
   private readonly revives: GroundDecal[] = [];
   private readonly door: GroundDecal;
   private shownLayout = -1;
+  private shownChamber = -1;
   private shownDepth = -1;
   private open = 0;
   private burst: GodPalette = { cloth: 0, trim: 0, glow: 0, vfx: 0xff5a14, core: 0xffd08a };
+  /** The depth's soul color, for souls that are nobody's in particular. */
+  private soul = SOULS_OF.ember;
+  readonly wisps = new SoulWisps();
+  private readonly team: Side;
+  /** How far each downed god had been raised last frame, and when it last took a soul from its helpers. */
+  private readonly raised = new Map<Unit, { p: number; at: number }>();
+  private sinkIn = 0;
+  private clock = 0;
+  /** The run of souls reaching the player: its length and when the last landed. */
+  private streak = { k: 0, at: -1 };
 
   constructor(
     private readonly run: Descent,
     private readonly world: World,
     private readonly vfx: CombatVfx,
-    groundAt: (x: number, z: number) => number,
-    /** The player's team: in a shared descent the rivals' fallen get no ring (only their own team can raise them). */
-    private readonly team: 'order' | 'chaos' = 'order',
+    private readonly groundAt: (x: number, z: number) => number,
+    private readonly opts: DescentViewOptions = {},
   ) {
+    this.team = opts.team ?? 'order';
+    world.vfx.add(this.wisps.sprite);
+    this.wisps.onAbsorb = (to) => {
+      if (to !== opts.me) return;
+      const chain = this.clock - this.streak.at < 0.6;
+      this.streak.k = chain ? this.streak.k + 1 : 0;
+      this.streak.at = this.clock;
+      opts.absorbed?.(this.streak.k);
+    };
     const content = world.content as Partial<UnderworldMap>;
     this.map = typeof content.show === 'function' ? (content as UnderworldMap) : null;
     for (let i = 0; i < ERUPTIONS; i++) {
@@ -61,6 +103,12 @@ export class DescentView {
   frame(dt: number, time: number): void {
     const r = this.run;
     if (!r.chamber) return;
+    if (r.chamber !== this.shownChamber) {
+      // the team has moved on: souls still flying in the last chamber would streak across the world
+      this.shownChamber = r.chamber;
+      this.wisps.swarm.clear();
+      this.raised.clear();
+    }
     if (r.current.layout !== this.shownLayout) {
       this.shownLayout = r.current.layout;
       this.map?.show(this.shownLayout);
@@ -72,8 +120,10 @@ export class DescentView {
       if (this.map?.setPalette(palette)) this.world.recolorFires();
       this.world.environment.setDepth(c);
       this.burst = { cloth: 0, trim: 0, glow: c.glow, vfx: c.glow, core: c.fire.high };
+      this.soul = SOULS_OF[palette];
       for (const d of this.eruptions) d.setColors(c.glow, c.fire.high);
     }
+    this.clock += dt;
 
     // the exit's veil glows up once the way down is open
     const goal = r.phase === 'exit' || r.phase === 'descend' ? 1 : 0;
@@ -99,11 +149,20 @@ export class DescentView {
       d.place({ type: 'circle', radius: e.r }, e.x, e.z, 0, 0.09);
     });
     for (let i = r.eruptions.length; i < this.eruptions.length; i++) this.eruptions[i]!.mesh.visible = false;
-    // each landing: a column of soul fire bursting from the ground
+    // each landing: a column of soul fire bursting from the ground, spitting loose souls
+    const me = this.opts.me;
     for (const e of r.landed.splice(0)) {
       this.vfx.pillar(this.burst, e.x, e.z, 0.3, 1.3);
       this.vfx.burst(this.burst, e.x, 0.4, e.z, 1.3);
+      this.wisps.swarm.release(e.x, this.groundAt(e.x, e.z) + 0.6, e.z, 4, null, this.soul, 0.6, 0.15);
+      if (me && this.opts.shake) {
+        const d = Math.hypot(me.x - e.x, me.z - e.z);
+        if (d < 10) this.opts.shake(0.22 * (1 - d / 10));
+      }
     }
+    this.streams();
+    this.gate(dt, door);
+    this.wisps.frame(dt);
 
     // a ring under each downed god that fills as it is raised
     let k = 0;
@@ -119,12 +178,85 @@ export class DescentView {
     for (; k < this.revives.length; k++) this.revives[k]!.mesh.visible = false;
   }
 
-  /** Shows every decal for the loading frames that prepare shaders; returns the undo. */
+  /** Souls leave the slain: a monster's into the god who landed the blow (as many as it was worth), a downed god's to the rival who downed it or away; a god rising takes souls back in. */
+  onEvent(e: SimEvent): void {
+    const r = this.run;
+    if (!r.chamber) return;
+    if (e.type === 'respawn' && r.gods.includes(e.unit)) {
+      const g = e.unit;
+      const color = this.colorFor(g);
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        const x = g.x + Math.cos(a) * 2.6;
+        const z = g.z + Math.sin(a) * 2.6;
+        this.wisps.swarm.send(x, this.groundAt(x, z) + 0.3, z, g, color, 0.6, 1.1);
+      }
+      this.vfx.burst({ cloth: 0, trim: 0, glow: color, vfx: color, core: 0xffffff }, g.x, g.body.y + 1.1, g.z, 0.9);
+      return;
+    }
+    if (e.type !== 'death') return;
+    const u = e.unit;
+    const isGod = u.kind === 'god' && r.gods.includes(u);
+    if (!isGod && u.kind !== 'monster') return;
+    const foe = (k: Unit | null | undefined) => (k && k.kind === 'god' && k.alive && k.team !== u.team ? k : null);
+    const to = foe(e.killer) ?? foe(e.assists.find((a) => a.kind === 'god')) ?? null;
+    const type = u.origin?.f === 'mode' ? (u.origin.data as { type?: keyof typeof SOULS } | undefined)?.type : undefined;
+    const worth = isGod ? (r.versus ? DESCENT.versus.god : 0) : type ? SOULS[type] : 1;
+    const y = u.body.y + Math.min(3.2, 0.9 + u.radius * 0.5);
+    if (isGod && !(r.versus && to)) {
+      // no rival to take them: a few souls slip away upward as the god goes down
+      this.wisps.swarm.release(u.x, y, u.z, 3, null, this.colorFor(u), 0.6, 0.3);
+      return;
+    }
+    this.wisps.swarm.release(u.x, y, u.z, Math.min(12, 1 + worth), to, to ? this.colorFor(to) : this.soul, worth >= 10 ? 1.1 : 0.85, worth >= 10 ? 0.6 : 0.28);
+  }
+
+  /** A soul's color for a god: its team's in a shared descent, the depth's in co-op. */
+  private colorFor(g: Unit): number {
+    if (!this.run.versus) return this.soul;
+    return this.run.sideOf(g) === this.team ? ALLY_SOUL : FOE_SOUL;
+  }
+
+  /** Each god raising a fallen ally pours a stream of souls into them while the raising goes on. */
+  private streams(): void {
+    const r = this.run;
+    for (const g of this.raised.keys()) if (!r.downed.has(g)) this.raised.delete(g);
+    for (const [g, p] of r.downed) {
+      const seen = this.raised.get(g) ?? { p: 0, at: -1 };
+      this.raised.set(g, seen);
+      const rising = p > seen.p;
+      seen.p = p;
+      if (!rising || this.clock - seen.at < STREAM_EVERY) continue;
+      seen.at = this.clock;
+      const side = r.sideOf(g);
+      const range = DESCENT.revive.range + 0.5;
+      for (const h of r.gods) {
+        if (h === g || !h.alive || r.sideOf(h) !== side || Math.hypot(h.x - g.x, h.z - g.z) > range) continue;
+        this.wisps.swarm.send(h.x, h.body.y + 1.2, h.z, g, this.colorFor(g), 0.45, 0.45, true);
+      }
+    }
+  }
+
+  /** While the way down is open, loose souls drift across the chamber into the gate's veil. */
+  private gate(dt: number, door: { x: number; z: number }): void {
+    if (this.open < 0.3) return;
+    this.sinkIn -= dt * this.open;
+    while (this.sinkIn <= 0) {
+      this.sinkIn += 0.16;
+      const x = door.x + (Math.random() - 0.5) * 16;
+      const z = door.z + 3 + Math.random() * 12;
+      this.wisps.swarm.sink(x, this.groundAt(x, z) + 0.4 + Math.random() * 1.6, z, door.x + (Math.random() - 0.5) * 3, 1.4 + Math.random() * 3.6, door.z - 1, this.soul, 0.4 + Math.random() * 0.25);
+    }
+  }
+
+  /** Shows every decal and the souls for the loading frames that prepare shaders; returns the undo. */
   prime(): () => void {
     const all = [...this.eruptions, ...this.revives, this.door];
     for (const d of all) d.mesh.visible = true;
+    const wisps = this.wisps.prime();
     return () => {
       for (const d of all) d.mesh.visible = false;
+      wisps();
     };
   }
 }

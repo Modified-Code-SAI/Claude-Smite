@@ -81,9 +81,11 @@ export class GameAudio {
     window.addEventListener('keydown', (e) => this.onKey(e));
     engine.onUnlock(() => this.startAmbience());
     this.music.play(this.conquest ? 'dawn' : game.descent ? 'abyss' : game.jotunn ? 'frost' : 'battle');
-    // the giant's footfalls come from its model, so each lands with the foot
+    // the giant's footfalls come from its model, so each lands with the foot; souls reaching you rise in pitch along a run
     game.onCue = (name, at, k) => {
-      if (name === 'step' && this.engine.ready) this.engine.play('step.giant', { at, gain: 0.45 + 0.55 * k, vary: 0.05, ref: 26 }, 3);
+      if (!this.engine.ready) return;
+      if (name === 'step') this.engine.play('step.giant', { at, gain: 0.45 + 0.55 * k, vary: 0.05, ref: 26 }, 3);
+      else if (name === 'soul') this.engine.play('soul.absorb', { gain: 0.32, rate: 1 + Math.min(k, 10) * 0.055, vary: 0.03 }, 1, 0.05);
     };
   }
 

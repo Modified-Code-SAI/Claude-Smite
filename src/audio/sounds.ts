@@ -195,6 +195,8 @@ export const SOUNDS: Record<string, Recipe> = {
   'amb.drip': { variants: 5, peak: 0.3, make: (r) => tail(drip(r), 0.95, 0.55, 2600) },
   'amb.groan': { variants: 2, peak: 0.6, make: (r) => tail(layer([rumble(r, 3.2, { tone: 90, attack: 1.1 }), 1], [debris(r, 2.4, { density: 10, gain: 0.25, tone: 500 }), 0.6, 0.8]), 0.9, 0.4, 1800) },
   'amb.souls': { variants: 2, peak: 0.4, make: (r) => tail(choir(r, 3.4, r() < 0.5 ? 110 : 98, { vowelName: 'oo', env: (t) => ahr(t, 1.2, 0.6, 1.6) }), 0.95, 0.6, 2200) },
+  // a soul reaching you: an airy rush drawn in, a ghostly glint and a breath of a choir
+  'soul.absorb': { variants: 3, peak: 0.35, make: (r) => layer([whoosh(r, 0.3, 700, 3400, { q: 1.4, peak: 0.85, gain: 0.7 }), 0.6], [shimmer(r, 0.55, 1046.5, { rise: 1.3, peak: 0.15 }), 1, 0.07], [choir(r, 0.6, 523.3, { vowelName: 'oo', env: (t) => ahr(t, 0.06, 0.08, 0.4) }), 0.35, 0.05]) },
 
   // -- the gods' own voices (voices.ts)
   ...VOICE_SOUNDS,
