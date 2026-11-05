@@ -674,6 +674,7 @@ export class Descent {
       const camp: CampState = { camp: { id: `descent:${n}:${label}:${i}`, kind: campKind, team: null, at: [x, z] }, members: [u], respawnAt: null, foe: null };
       u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c));
       if (boss) this.boss = u;
+      u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : i === champ ? 'champion' : '' } satisfies DescentSpawn };
       this.monsters.push(u);
       this.sim.add(u);
     });
@@ -687,6 +688,7 @@ export class Descent {
     u.combatant.health = u.combatant.stats.maxHealth;
     u.tag = `descent-small-${this.chamber}.g:gildedThornback`;
     u.brain = new FleeBrain(this.sim, u, { x: c.x, z: c.z }, Math.max(8, c.extent * 0.6));
+    u.origin = { f: 'mode', kind: 'descent', data: { type: 'gildedThornback', min: chamberMinutes(this.chamber), title: '', role: 'gilded' } satisfies DescentSpawn };
     this.gilded = u;
     this.monsters.push(u);
     this.sim.add(u);
@@ -849,8 +851,14 @@ export class Descent {
     if (!d || !skill) return null;
     this.drafts.delete(god);
     learnSkill(god, d.slot, skill);
+    this.learned.push([++this.learnSerial, this.gods.indexOf(god), d.slot, skill.id]);
+    if (this.learned.length > 8) this.learned.shift();
     return skill;
   }
+
+  /** The latest skills learned, as [serial, god index, slot, skill id] (sent to guests, who keep their own loadouts). */
+  private readonly learned: [number, number, number, string][] = [];
+  private learnSerial = 0;
 
   private afterReward(): void {
     // the Gilded Thornback's prize: another reward straight after
@@ -995,6 +1003,183 @@ export class Descent {
 
   /** Eruptions that landed since the view last took them (for the burst effect). */
   readonly landed: Eruption[] = [];
+
+  // -------------------------------------------------------------------------
+  // Online co-op: the host runs the rules; guests copy them (see NetMatch in src/net/Replica.ts)
+
+  /**
+   * A guest's copy: the same gods in the same order as the host's, with no
+   * rules of its own. Everything else arrives through applyNet and netSpawn.
+   */
+  join(gods: readonly Unit[], humans: readonly Unit[]): void {
+    for (const g of gods) this.addGod(g, humans.includes(g));
+  }
+
+  netState(): DescentNet {
+    const gi = (u: Unit) => this.gods.indexOf(u);
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const plan = this.chamber ? this.current : null;
+    return {
+      c: this.chamber,
+      p: this.phase,
+      t: r2(this.timer),
+      tm: Math.round(this.time * 10) / 10,
+      pl: plan ? [plan.layout, plan.kind] : null,
+      k: this.kills,
+      o: this.obols,
+      ou: this.obolUsed,
+      sp: Math.round(this.spoils * 10) / 10,
+      br: this.bonusRewards,
+      gf: this.gildedFate,
+      un: [this.boss?.alive ? 1 : 0, this.champion?.alive ? 1 : 0, this.gilded ? 1 : 0],
+      cu: this.curses.map((c) => c.id),
+      nc: this.nextCurse?.id ?? null,
+      of: this.offer?.map(rewardKey) ?? null,
+      v: [...this.votes].map(([u, i]) => [gi(u), i]),
+      dr: [...this.drafts].map(([u, d]) => [gi(u), d.slot, d.options.map((s) => s.id)]),
+      dn: [...this.downed].map(([u, p]) => [gi(u), r2(p)]),
+      e: this.eruptions.map((e) => [e.id, r2(e.x), r2(e.z), e.r, r2(e.left)]),
+      b: this.boons.map((b) => b.id),
+      l: this.learned,
+      h: [...this.humans].map(gi),
+    };
+  }
+
+  applyNet(state: unknown): void {
+    const s = state as DescentNet;
+    const god = (i: number) => this.gods[i] ?? null;
+    this.chamber = s.c;
+    this.phase = s.p;
+    this.timer = s.t;
+    this.time = s.tm;
+    if (s.pl && s.c > 0) this.plan[s.c - 1] = { n: s.c, layout: s.pl[0], kind: s.pl[1] };
+    this.kills = s.k;
+    this.obols = s.o;
+    this.obolUsed = s.ou;
+    this.spoils = s.sp;
+    this.bonusRewards = s.br;
+    this.gildedFate = s.gf;
+    if (!s.un[0]) this.boss = null;
+    if (!s.un[1]) this.champion = null;
+    if (!s.un[2]) this.gilded = null;
+    if (s.cu.join() !== this.curses.map((c) => c.id).join()) {
+      this.curses.length = 0;
+      for (const id of s.cu) {
+        const c = DESCENT_CURSES.find((k) => k.id === id);
+        if (c) this.curses.push(c);
+      }
+    }
+    this.nextCurse = DESCENT_CURSES.find((k) => k.id === s.nc) ?? null;
+    // the same objects while nothing changes, so the HUD only redraws its cards on a change
+    const offerKey = s.of?.join() ?? '';
+    if (offerKey !== (this.offer?.map(rewardKey).join() ?? '')) this.offer = s.of ? s.of.map(rewardFromKey) : null;
+    this.votes.clear();
+    for (const [i, v] of s.v) if (god(i)) this.votes.set(god(i)!, v);
+    const drafts = new Map<Unit, Draft>();
+    for (const [i, slot, ids] of s.dr) {
+      const g = god(i);
+      // a pick this end already made (and learned) before the host heard of it
+      if (!g || !g.combatant.sealed.has(slot)) continue;
+      const had = this.drafts.get(g);
+      const same = had && had.slot === slot && had.options.map((o) => o.id).join() === ids.join();
+      const options = ids.map((id) => g.combatant.god.skills.find((k) => k.id === id)).filter((k): k is SkillDef => !!k);
+      drafts.set(g, same ? had : { slot, options });
+    }
+    this.drafts.clear();
+    for (const [g, d] of drafts) this.drafts.set(g, d);
+    this.downed.clear();
+    for (const [i, p] of s.dn) if (god(i)) this.downed.set(god(i)!, p);
+    for (const g of this.gods) g.downed = this.downed.has(g);
+    // an eruption that vanished on its last moments landed: burst it here too
+    const now = new Set(s.e.map((e) => e[0]));
+    for (const e of this.eruptions) if (!now.has(e.id) && e.left < 0.4) this.landed.push(e);
+    this.eruptions.length = 0;
+    for (const [id, x, z, r, left] of s.e) this.eruptions.push({ id, x, z, r, left });
+    // boons give every god the same perks on every end
+    for (let i = this.boons.length; i < s.b.length; i++) {
+      const b = DESCENT_BOONS.find((k) => k.id === s.b[i]);
+      if (!b) continue;
+      this.boons.push(b);
+      for (const g of this.gods) for (const [k, v] of Object.entries(b.stats ?? {}) as [StatKey, number][]) g.combatant.addPerk(k, v);
+    }
+    // a guest keeps its own loadout: learn what the host learned (a pick made here, or one the timer made)
+    for (const [serial, i, slot, id] of s.l) {
+      if (serial <= this.learnSerial) continue;
+      this.learnSerial = serial;
+      const g = god(i);
+      const skill = g?.combatant.god.skills.find((k) => k.id === id);
+      if (g && skill && (g.combatant.sealed.has(slot) || g.combatant.loadout[slot] !== id)) learnSkill(g, slot, skill);
+    }
+    this.humans.clear();
+    for (const i of s.h) if (god(i)) this.humans.add(god(i)!);
+  }
+
+  /** On a guest: one of the host's monsters, built the same way (its health and buffs arrive with its state). */
+  netSpawn(origin: { kind: string; data?: unknown }, _team: unknown, at: { x: number; z: number; yaw: number }): Unit | null {
+    if (origin.kind !== 'descent') return null;
+    const d = origin.data as DescentSpawn;
+    const u = monsterUnit(this.base, d.type, at, d.min, d.title);
+    if (d.role === 'boss') this.boss = u;
+    else if (d.role === 'champion') this.champion = u;
+    else if (d.role === 'gilded') this.gilded = u;
+    this.monsters.push(u);
+    return u;
+  }
+
+  /** On a guest, between snapshots: drop the fallen and run the clocks down so countdowns stay smooth. */
+  follow(dt: number): void {
+    for (let i = this.monsters.length - 1; i >= 0; i--) if (!this.monsters[i]!.alive) this.monsters.splice(i, 1);
+    if (this.over || !this.chamber) return;
+    this.time += dt;
+    this.timer = Math.max(0, this.timer - dt);
+    this.spoils = Math.max(0, this.spoils - dt);
+    for (const e of this.eruptions) e.left = Math.max(0, e.left - dt);
+  }
+}
+
+/** How a monster the run spawned is rebuilt on a guest. */
+interface DescentSpawn {
+  type: MonsterType;
+  min: number;
+  title: string;
+  role: '' | 'boss' | 'champion' | 'gilded';
+}
+
+/** The run's state on the wire (Descent.netState): gods travel as their index in the line-up. */
+export interface DescentNet {
+  c: number;
+  p: DescentPhase;
+  t: number;
+  tm: number;
+  pl: [number, ChamberKind] | null;
+  k: number;
+  o: number;
+  ou: number;
+  sp: number;
+  br: number;
+  gf: 'caught' | 'escaped' | null;
+  /** Whether the boss, the Champion and the Gilded Thornback still stand. */
+  un: [number, number, number];
+  cu: string[];
+  nc: string | null;
+  of: string[] | null;
+  v: [number, number][];
+  dr: [number, number, string[]][];
+  dn: [number, number][];
+  e: [number, number, number, number, number][];
+  b: string[];
+  l: [number, number, number, string][];
+  h: number[];
+}
+
+const REWARDS: readonly Reward[] = [SKILL_REWARD, POINTS, HEAL, OBOL];
+const rewardKey = (r: Reward): string => (r.kind === 'boon' ? `b:${r.boon!.id}` : r.kind);
+function rewardFromKey(key: string): Reward {
+  if (key.startsWith('b:')) {
+    const b = DESCENT_BOONS.find((k) => k.id === key.slice(2))!;
+    return { kind: 'boon', name: b?.name ?? '', text: b?.text ?? '', boon: b };
+  }
+  return REWARDS.find((r) => r.kind === key) ?? SKILL_REWARD;
 }
 
 /** Favor enough for this many more tree points (each god's points come from levels and favor). */

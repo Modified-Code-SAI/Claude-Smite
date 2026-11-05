@@ -158,6 +158,11 @@ export const SOUNDS: Record<string, Recipe> = {
   'amb.fountain': { loop: true, peak: 0.5, make: (r) => water(r, 6) },
   'amb.fire': { loop: true, peak: 0.45, make: (r) => fire(r, 5) },
   'amb.jungle': { loop: true, peak: 0.3, make: (r) => insects(r, 8) },
+  // the underworld: a deep cavern drone, drips in the dark, a far groan of rock, a souls' moan
+  'amb.cave': { loop: true, peak: 0.5, make: (r) => caveBed(r, 14) },
+  'amb.drip': { variants: 5, peak: 0.3, make: (r) => tail(drip(r), 0.95, 0.55, 2600) },
+  'amb.groan': { variants: 2, peak: 0.6, make: (r) => tail(layer([rumble(r, 3.2, { tone: 90, attack: 1.1 }), 1], [debris(r, 2.4, { density: 10, gain: 0.25, tone: 500 }), 0.6, 0.8]), 0.9, 0.4, 1800) },
+  'amb.souls': { variants: 2, peak: 0.4, make: (r) => tail(choir(r, 3.4, r() < 0.5 ? 110 : 98, { vowelName: 'oo', env: (t) => ahr(t, 1.2, 0.6, 1.6) }), 0.95, 0.6, 2200) },
 
   // -- the gods' own voices (voices.ts)
   ...VOICE_SOUNDS,
@@ -324,6 +329,34 @@ function water(r: Rand, len: number): Float32Array {
     fill(out, (t) => o.sine(f * (1 + t * 12)) * perc(t, 0.001, d) * g, at, at + d * 1.5);
   }
   return loopable(out, 0.5);
+}
+
+/** A cavern's breath: low brown noise that swells and sinks, over two faint beating tones. */
+function caveBed(r: Rand, len: number): Float32Array {
+  const out = buf(len + 1);
+  let v = 0;
+  const lp = new Biquad('lowpass', 140, 0.7);
+  const bp = new Biquad('bandpass', 260, 1.2);
+  const swell = wander(r, 0.12);
+  const a = new Osc();
+  const b = new Osc();
+  for (let i = 0; i < out.length; i++) {
+    v = (v + (r() * 2 - 1) * 0.04) * 0.997;
+    const g = 0.6 + 0.4 * swell();
+    const t = i / RATE;
+    out[i] = (lp.run(v * 3) * 1.4 + bp.run(v * 3) * 0.35 * g) * g + (a.sine(41) + b.sine(61.5) * 0.7) * 0.05 * (0.6 + 0.4 * Math.sin(t * 0.45));
+  }
+  return loopable(dcBlock(out), 1.5);
+}
+
+/** One drop falling into a still pool far off: a quick rising plink. */
+function drip(r: Rand): Float32Array {
+  const len = 0.18;
+  const out = buf(len);
+  const o = new Osc();
+  const f = 900 + r() * 900;
+  fill(out, (t) => o.sine(f * (1 + t * 9)) * perc(t, 0.001, 0.05) * 0.8);
+  return out;
 }
 
 function insects(r: Rand, len: number): Float32Array {

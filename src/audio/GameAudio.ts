@@ -16,6 +16,7 @@ import { skillPart, skillSound } from './bank';
 import type { Music, SongName } from './music';
 import { hypot } from '../core/math';
 import { DUEL } from '../sim/Duel';
+import { DESCENT, DEPTHS } from '../sim/Descent';
 
 /** A match's music only ever moves forward: dawn, then battle, then the siege. */
 const PHASES: SongName[] = ['dawn', 'battle', 'siege'];
@@ -77,7 +78,7 @@ export class GameAudio {
     game.sim.listeners.push((e) => this.onEvent(e));
     window.addEventListener('keydown', (e) => this.onKey(e));
     engine.onUnlock(() => this.startAmbience());
-    this.music.play(this.conquest ? 'dawn' : 'battle');
+    this.music.play(this.conquest ? 'dawn' : game.descent ? 'abyss' : 'battle');
   }
 
   private get me(): Unit {
@@ -402,6 +403,7 @@ export class GameAudio {
     this.watchModes();
     this.watchDuel();
     this.watchRush();
+    this.watchDescent();
     this.updateMood(dt);
     // while dead, the world is heard as if from far away
     this.muffle += ((me.alive ? 0 : 1) - this.muffle) * Math.min(1, dt * (me.alive ? 6 : 2.5));
@@ -828,6 +830,15 @@ export class GameAudio {
   private startAmbience(): void {
     const specs: [string, Parameters<AudioEngine['loop']>[1]][] = [];
     const add = (name: string, o: Parameters<AudioEngine['loop']>[1]) => specs.push([name, o]);
+    if (this.game.descent) {
+      // the underworld: a cavern's breath and a deep moan of air through the rock, nothing living
+      add('amb.cave', { bus: 'ambience', gain: 0.8 });
+      add('amb.wind', { bus: 'ambience', gain: 0.22, pan: -0.4, rate: 0.55 });
+      add('amb.wind', { bus: 'ambience', gain: 0.18, pan: 0.4, rate: 0.5 });
+      this.ambiencePending = specs;
+      this.retryAmbience();
+      return;
+    }
     add('amb.wind', { bus: 'ambience', gain: 0.55, pan: -0.5 });
     add('amb.wind', { bus: 'ambience', gain: 0.45, pan: 0.5, rate: 0.93 });
     add('amb.leaves', { bus: 'ambience', gain: 0.35, pan: 0.2 });
@@ -858,6 +869,10 @@ export class GameAudio {
       this.retryAmbience();
     }
     const l = this.engine.listenerPos;
+    if (this.game.descent) {
+      this.underworldLife(dt);
+      return;
+    }
     this.birdIn -= dt;
     if (this.birdIn <= 0) {
       this.birdIn = 2.5 + Math.random() * 7;
@@ -874,6 +889,90 @@ export class GameAudio {
       const a = Math.random() * Math.PI * 2;
       this.engine.play('amb.crow', { bus: 'ambience', at: { x: l.x + Math.cos(a) * 45, y: 15, z: l.z + Math.sin(a) * 45 }, gain: 0.7, ref: 18 }, 0);
     }
+  }
+
+  /** The underworld's life: drips in the dark, a far groan of rock, the moan of souls, and the lava pit's bubbling. */
+  private underworldLife(dt: number): void {
+    const l = this.engine.listenerPos;
+    const around = (r0: number, r1: number, y: number) => {
+      const a = Math.random() * Math.PI * 2;
+      const r = r0 + Math.random() * (r1 - r0);
+      return { x: l.x + Math.cos(a) * r, y, z: l.z + Math.sin(a) * r };
+    };
+    this.birdIn -= dt;
+    if (this.birdIn <= 0) {
+      this.birdIn = 2 + Math.random() * 6;
+      if (this.heat < 0.7) this.engine.play('amb.drip', { bus: 'ambience', at: around(8, 26, 6 + Math.random() * 6), gain: 0.55, vary: 0.15, ref: 8 }, 0);
+    }
+    this.crowIn -= dt;
+    if (this.crowIn <= 0) {
+      this.crowIn = 18 + Math.random() * 30;
+      this.engine.play(Math.random() < 0.55 ? 'amb.groan' : 'amb.souls', { bus: 'ambience', at: around(30, 45, 10), gain: 0.65, vary: 0.08, ref: 20 }, 0);
+    }
+    // the lava pit bubbles where there is one; the loop drifts far off where there isn't
+    const run = this.game.descent!;
+    const c = run.layout;
+    if (!this.lava || !this.lava.alive) this.lava = this.engine.loop('amb.fire', { bus: 'ambience', gain: 0.9, rate: 0.45, at: { x: c.x, y: -1, z: c.z }, ref: 9 });
+    if (this.lava) {
+      if (c.pit) this.lava.setPosition(c.x, -1, c.z);
+      else this.lava.setPosition(c.x, -400, c.z);
+    }
+  }
+
+  private lava: LoopHandle | null = null;
+
+  /** Last seen Underworld Descent state, so each beat is called once. */
+  private descentSeen = { chamber: 0, phase: '', depth: -1, curses: 0, obols: -1, downed: 0, erupting: false, song: 'abyss' as SongName };
+
+  /** Underworld Descent: each chamber's arrival, the clear, the open gate, curses, revives, the obol and the end. */
+  private watchDescent(): void {
+    const r = this.game.descent;
+    if (!r || !r.chamber) return;
+    const seen = this.descentSeen;
+    const plan = r.current;
+    if (seen.obols < 0) seen.obols = r.obols;
+    if (r.phase === 'enter' && seen.chamber !== r.chamber) {
+      seen.chamber = r.chamber;
+      const depth = DEPTHS[r.depth]!.name;
+      if (r.depth !== seen.depth) {
+        seen.depth = r.depth;
+        this.herald.say(r.chamber === 1 ? `Welcome to ${depth}. Descend, and do not look back.` : `You enter ${depth}.`, 'epic', 3);
+        this.engine.play('wave.horn', { gain: 0.5, rate: 0.75 }, 3);
+      } else if (plan.kind === 'boss') this.herald.say(r.chamber === DESCENT.chambers ? 'The lord of the underworld awaits. End this.' : `The master of ${depth} awaits.`, 'epic', 4);
+      else if (plan.kind === 'trap') this.herald.say('Soul fire burns beneath this chamber. Watch the ground.', 'neutral', 2);
+      else if (plan.kind === 'champion') this.herald.say('A champion of the dead stands in your way.', 'neutral', 2);
+      else if (plan.kind === 'treasure') this.herald.say('Gold glints in the dark. Catch the thief!', 'neutral', 2);
+      else if (plan.kind === 'elite') this.herald.say('Elite guardians bar the way.', 'neutral', 2);
+    }
+    if (r.phase !== seen.phase) {
+      if (r.phase === 'reward' && seen.phase === 'fight') {
+        if (plan.kind === 'boss') this.herald.say('The master has fallen! The way down is yours.', 'epic', 4);
+        else this.herald.say('The chamber is cleared. Choose your reward.', 'good', 3);
+      }
+      if (r.phase === 'draft' && r.drafts.has(this.me)) this.herald.say('A forgotten rite. Learn a new power.', 'good', 2);
+      if (r.phase === 'exit') this.engine.play('god.respawn', { gain: 0.5, rate: 0.7 }, 2);
+      // the ground gives way beneath the team as it goes down
+      if (r.phase === 'descend') this.engine.play('amb.groan', { gain: 0.9 }, 3);
+      if (r.over) this.music.sting(r.phase === 'won' ? 'victory' : 'defeat');
+      if (r.phase === 'won') this.herald.say('You rise again! The underworld could not hold you.', 'epic', 9);
+      if (r.phase === 'lost') this.herald.say('Your team is lost in the dark.', 'bad', 9);
+      seen.phase = r.phase;
+    }
+    // the bosses get the darkest theme; the rest of the descent its own
+    const song: SongName = r.current.kind === 'boss' && r.phase === 'fight' ? 'siege' : 'abyss';
+    if (song !== seen.song && !r.over) {
+      seen.song = song;
+      this.music.play(song);
+    }
+    if (r.curses.length > seen.curses) this.herald.say(`A curse takes hold: ${r.curses[r.curses.length - 1]!.name}.`, 'bad', 2);
+    seen.curses = r.curses.length;
+    if (r.obols < seen.obols) this.herald.say("Charon's obol is spent. Death lets you go, this once.", 'epic', 5);
+    seen.obols = r.obols;
+    const down = r.downed.size;
+    if (down < seen.downed && r.phase !== 'lost' && !r.downed.has(this.me)) this.herald.say('Your ally rises!', 'good', 1);
+    seen.downed = down;
+    if (r.erupting && !seen.erupting) this.herald.say('Soul fire rises!', 'bad', 1);
+    seen.erupting = r.erupting;
   }
 
   // -------------------------------------------------------------------------

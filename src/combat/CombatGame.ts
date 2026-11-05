@@ -44,10 +44,8 @@ import { Coach } from '../ui/Coach';
 import { pitchTerrain, RUSH, type Rush } from '../sim/Rush';
 import { RushMode } from './RushMode';
 import { rushRoster, type RushSlot } from '../net/rushRoster';
-import { Descent } from '../sim/Descent';
-import { DescentBot } from '../sim/DescentBot';
-import { DescentHud } from '../ui/DescentHud';
-import { DescentView } from './DescentView';
+import type { Descent } from '../sim/Descent';
+import { DescentMode } from './DescentMode';
 
 
 const CAST_MESSAGES: Partial<Record<CastError | 'forced', string>> = {
@@ -105,9 +103,9 @@ export class CombatGame implements Updatable {
   /** Relic Rush's rules, and the mode around them (bots, view, HUD, online play). */
   rush: Rush | null = null;
   private rushMode: RushMode | null = null;
+  /** Underworld Descent's rules, and the mode around them (bots, view, HUD, online play). */
   descent: Descent | null = null;
-  private descentHud: DescentHud | null = null;
-  private descentView: DescentView | null = null;
+  private descentMode: DescentMode | null = null;
   private ringShown = 0;
   private difficultyApplied = false;
   /** The plaza's edge, glowing in the color of whoever holds it. */
@@ -151,7 +149,7 @@ export class CombatGame implements Updatable {
     // Relic Rush's pitch ends at a circle around the temple
     const terrain: SimTerrain = conquest && !onConquestMap ? openGround(world.collision) : rush ? pitchTerrain(world.collision) : world.collision;
     this.groundAt = (x, z) => terrain.groundAt(x, z);
-    const net = conquest || rush ? deps.net : undefined;
+    const net = conquest || rush || deps.mode === 'descent' ? deps.net : undefined;
     const slots = net && conquest ? roster(net.players) : null;
     const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random) : null;
     const mySlot = slots?.find((s) => s.player === net!.me) ?? rushSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
@@ -289,7 +287,7 @@ export class CombatGame implements Updatable {
     }
 
     if (descent) {
-      this.startDescent(mine);
+      this.startDescent(mine, net);
       this.sim.drainEvents();
       return;
     }
@@ -443,40 +441,29 @@ export class CombatGame implements Updatable {
   }
 
   /**
-   * Underworld Descent: the player and two bot allies go down through fifteen
-   * chambers, voting on a reward after each and drafting new skills.
+   * Underworld Descent: the player and up to three friends (bots fill the team
+   * to three) go down through fifteen chambers, voting on a reward after each
+   * and drafting new skills.
    */
-  private startDescent(mine: GodDef): void {
-    const run = (this.descent = new Descent(this.sim, godById('zeus')!));
-    run.addGod(this.player, true);
-    const allies = [...GODS.filter((g) => g.id !== mine.id)].sort(() => Math.random() - 0.5).slice(0, 2);
-    for (const def of allies) {
-      const u = godUnit(def, 'order', this.deps.world.spawn);
-      u.brain = new DescentBot(this.sim, u, run);
-      this.sim.add(u);
-      run.addGod(u, false);
-    }
-    run.begin();
+  private startDescent(mine: GodDef, net: CombatDeps['net']): void {
+    const mode = new DescentMode({
+      sim: this.sim,
+      player: this.player,
+      god: mine.id,
+      ctrl: this.deps.player,
+      net,
+      world: this.deps.world,
+      vfx: this.vfx,
+      groundAt: this.groundAt,
+      toast: (t, tone) => this.hud.toast(t, tone),
+      learned: () => this.menu.refresh(),
+    });
+    this.descentMode = mode;
+    this.descent = mode.run;
+    this.netHost = mode.host;
+    this.netGuest = mode.guest;
     this.warmup(this.deps.world.actors);
-    const board = new Scoreboard(this.sim);
-    board.track(run.gods);
-    this.descentHud = new DescentHud(run, this.player, (i) => this.pickDescent(i), board);
-    this.descentView = new DescentView(run, this.deps.world, this.vfx, this.groundAt);
     this.hud.toast('Clear each chamber, then walk into the north gate. Press K to spend your skill points.');
-  }
-
-  /** Votes for a reward, or drafts a skill (from its key or a click on its card). */
-  private pickDescent(i: number): void {
-    const run = this.descent;
-    if (!run) return;
-    if (run.phase === 'reward') run.vote(this.player, i);
-    else if (run.phase === 'draft') {
-      const s = run.draft(this.player, i);
-      if (s) {
-        this.hud.toast(`Learned ${s.name}`, 'gold');
-        this.menu.refresh();
-      }
-    }
   }
 
   /** Temple Siege: the player and two bot allies hold the plaza against endless monster waves. */
@@ -567,7 +554,7 @@ export class CombatGame implements Updatable {
   prime(): () => void {
     this.views.prime(this.sim.units);
     // (lane minions only march in Conquest)
-    const restore = [this.vfx.prime(), this.status.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : []), ...(this.descentView ? [this.descentView.prime()] : [])];
+    const restore = [this.vfx.prime(), this.status.prime(), ...(this.match ? [this.views.minions.prime()] : []), ...(this.rushMode ? [this.rushMode.prime()] : []), ...(this.descentMode ? [this.descentMode.view.prime()] : [])];
     return () => {
       for (const r of restore) r();
     };
@@ -585,6 +572,7 @@ export class CombatGame implements Updatable {
       this.views.beforeStep(this.sim.units);
       this.netGuest.step(dt);
       this.rushMode?.step(dt);
+      this.descentMode?.step(dt);
       this.views.afterStep(this.sim.units);
     } else if (this.netHost && !this.netHost.started) this.netHost.wait(dt);
     else if (this.endTimer < 4) {
@@ -595,7 +583,7 @@ export class CombatGame implements Updatable {
       this.siege?.step(dt);
       this.duel?.step(dt);
       this.rushMode?.step(dt);
-      this.descent?.step(dt);
+      this.descentMode?.step(dt);
       this.sim.step(dt);
       this.netHost?.afterStep(dt);
       this.views.afterStep(this.sim.units);
@@ -638,7 +626,7 @@ export class CombatGame implements Updatable {
     }
     if (this.descent?.phase === 'reward' || this.descent?.phase === 'draft') {
       const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
-      if (pick >= 0) this.pickDescent(pick);
+      if (pick >= 0) this.descentMode?.pick(pick);
     }
     if (this.menu.isOpen && input.wasPressed('Escape')) this.menu.close();
 
@@ -662,8 +650,7 @@ export class CombatGame implements Updatable {
     this.siegeHud?.frame();
     this.duelHud?.frame();
     this.rushMode?.frame(dt, time);
-    this.descentHud?.frame();
-    this.descentView?.frame(dt, time);
+    this.descentMode?.frame(dt, time);
     if (this.plazaRing && this.duel) {
       // the ring is rebuilt only when it has moved half a meter, not every frame
       const r = Math.round(this.duel.ring * 2) / 2;

@@ -5,7 +5,7 @@ import {
   addUnderworldColliders, CHAMBERS, chamberField, entranceSpot, GATE, type ChamberDef, type Palette,
 } from '../../map/UnderworldLayout';
 import {
-  abs, cameraPosition, dot, float, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, sin, smoothstep, time,
+  abs, atan, cameraPosition, cos, dot, exp, float, length, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, sin, smoothstep, time,
   transformNormalToView, uv, vec2, vec3, vec4,
 } from '../../render/tsl';
 import type { QualitySettings } from '../../render/Quality';
@@ -347,16 +347,25 @@ function underworldMaterials(lib: MaterialLibrary) {
     lava.colorNode = mix(hot.mul(flow.add(0.4)), vec3(0.03, 0.02, 0.02), crust.mul(0.85));
   }
 
-  // the exit's veil: a slow swirl in the depth's color once the gate opens
+  // the exit's veil: a vortex in the depth's color that widens as the gate
+  // opens, spiral arms turning round a dark eye with a white-hot rim
   const portal = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
   {
     const u = uv();
-    const centered = u.sub(vec2(0.5, 0.45));
-    const swirl = mx_fractal_noise_float(vec3(centered.x.mul(3).add(sin(time.mul(0.7)).mul(0.3)), centered.y.mul(2).sub(time.mul(0.45)), time.mul(0.25)), 3, 2.0, 0.5).mul(0.5).add(0.5);
-    const edge = smoothstep(0.0, 0.18, u.x).mul(smoothstep(1.0, 0.82, u.x)).mul(smoothstep(1.0, 0.85, u.y));
-    const rim = float(1).sub(smoothstep(0.0, 0.12, abs(u.x.sub(0.5)).sub(0.38).abs()));
-    const glow = swirl.mul(edge).mul(1.6).add(rim.mul(0.6)).mul(smoothstep(0, 0.35, u.y).mul(0.6).add(0.4));
-    portal.colorNode = vec4(mix(underworldGlow, vec3(1, 0.95, 0.85), swirl.mul(0.35)).mul(glow).mul(gateOpen.mul(2.4).add(0.08)), 1);
+    const p = vec2(u.x.sub(0.5).mul((GATE.halfWidth * 2 + 0.4) / LINTEL_Y), u.y.sub(0.47));
+    const r = length(p);
+    const twist = atan(p.y, p.x).add(r.mul(-9)).add(time.mul(1.5));
+    const arms = sin(twist.mul(3)).mul(0.5).add(0.5).pow(2.2);
+    // noise on the circle (cos, sin) so the angle's wrap leaves no seam
+    const flow = mx_fractal_noise_float(vec3(cos(twist).mul(1.4), sin(twist).mul(1.4), r.mul(6).sub(time.mul(0.9))), 3, 2.0, 0.5).mul(0.5).add(0.5);
+    const reach = gateOpen.mul(0.6).add(0.06);
+    const body = smoothstep(reach, reach.sub(0.2), r);
+    const eye = smoothstep(0.03, 0.24, r);
+    const rim = exp(abs(r.sub(reach.sub(0.05))).mul(-26)).mul(gateOpen);
+    const frame = smoothstep(0.0, 0.07, u.x).mul(smoothstep(1.0, 0.93, u.x)).mul(smoothstep(1.0, 0.94, u.y)).mul(smoothstep(0.0, 0.04, u.y));
+    const glow = arms.mul(0.75).add(flow.mul(0.55)).mul(body).mul(eye).add(rim.mul(0.9)).mul(frame);
+    const hot = arms.mul(flow).mul(0.5).add(rim.mul(0.5)).clamp(0, 1);
+    portal.colorNode = vec4(mix(underworldGlow, vec3(1, 0.95, 0.85), hot).mul(glow).mul(gateOpen.mul(2.6).add(0.06)), 1);
   }
 
   // the way back in: a faint, still haze

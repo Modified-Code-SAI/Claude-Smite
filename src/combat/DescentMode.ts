@@ -1,0 +1,131 @@
+import { GODS, godById } from '../game/gods';
+import { NetGuest, NetHost } from '../net/NetGame';
+import { descentRoster } from '../net/descentRoster';
+import type { NetSession } from '../net/Session';
+import type { PlayerController } from '../player/PlayerController';
+import type { World } from '../scene/World';
+import { Descent, learnSkill } from '../sim/Descent';
+import { DescentBot } from '../sim/DescentBot';
+import { godUnit } from '../sim/factory';
+import { Scoreboard } from '../sim/Scoreboard';
+import type { Sim } from '../sim/Sim';
+import type { Unit } from '../sim/Unit';
+import { DescentHud } from '../ui/DescentHud';
+import { DescentView } from './DescentView';
+import type { CombatVfx } from './Vfx';
+
+export interface DescentDeps {
+  sim: Sim;
+  /** The local player's unit, already in the sim. */
+  player: Unit;
+  /** The local player's god, for the single-player roster. */
+  god: string;
+  ctrl: PlayerController;
+  net?: NetSession;
+  world: World;
+  vfx: CombatVfx;
+  groundAt: (x: number, z: number) => number;
+  toast: (text: string, tone?: 'gold') => void;
+  /** The player learned a skill (the loadout menu redraws). */
+  learned: () => void;
+}
+
+/**
+ * Underworld Descent in a live game: builds the team (the humans, then bots
+ * up to three gods), runs the rules alone or on the host, mirrors them on an
+ * online guest, and owns the mode's HUD and view. Votes and skill picks go
+ * through `pick`, which a guest sends to the host.
+ */
+export class DescentMode {
+  readonly run: Descent;
+  readonly gods: Unit[] = [];
+  host: NetHost | null = null;
+  guest: NetGuest | null = null;
+  readonly hud: DescentHud;
+  readonly view: DescentView;
+
+  constructor(private readonly deps: DescentDeps) {
+    const { sim, player, net, world } = deps;
+    const me = net?.me ?? 'me';
+    const slots = descentRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god, team: 'order' }], net ? undefined : Math.random);
+    const run = (this.run = new Descent(sim, godById('zeus')!));
+    const bot = (u: Unit) => {
+      u.brain = new DescentBot(sim, u, run);
+      // a friend who left no longer holds up the vote or the way down
+      run.humans.delete(u);
+    };
+    const host = net?.isHost ? new NetHost(net, sim, bot, deps.toast) : null;
+    const guest = !!net && !net.isHost;
+    const humans: Unit[] = [];
+    for (const s of slots) {
+      let u = player;
+      if (s.player !== me) {
+        u = godUnit(godById(s.god) ?? GODS[0]!, 'order', world.spawn);
+        if (s.player) host?.assign(s.player, u);
+        else if (!guest) bot(u);
+        sim.add(u);
+      }
+      this.gods.push(u);
+      if (s.player) humans.push(u);
+    }
+    const roster = { slots: this.gods, structures: new Map<string, Unit>() };
+    if (guest) {
+      // the host's events arrive ready-made: nothing here may count them again
+      sim.listeners.length = 0;
+      run.join(this.gods, humans);
+      this.guest = new NetGuest(net, sim, run, roster, player, deps.ctrl);
+    } else {
+      for (const u of this.gods) run.addGod(u, humans.includes(u));
+      run.begin();
+      if (host) {
+        host.onAct = (u, msg) => {
+          const i = typeof msg.i === 'number' ? msg.i : -1;
+          if (msg.k === 'vote') run.vote(u, i);
+          else if (msg.k === 'draft') run.draft(u, i);
+        };
+        host.bind(run, roster);
+        this.host = host;
+      }
+    }
+    const board = new Scoreboard(sim);
+    board.track(this.gods);
+    this.hud = new DescentHud(run, player, (i) => this.pick(i), board);
+    this.view = new DescentView(run, world, deps.vfx, deps.groundAt);
+  }
+
+  /** Votes for a reward, or drafts a skill (from its key or a click on its card). */
+  pick(i: number): void {
+    const run = this.run;
+    const me = this.deps.player;
+    if (run.phase === 'reward') {
+      if (!run.offer?.[i]) return;
+      if (this.guest) {
+        this.guest.act({ k: 'vote', i });
+        run.votes.set(me, i);
+      } else run.vote(me, i);
+    } else if (run.phase === 'draft') {
+      const d = run.drafts.get(me);
+      const skill = d?.options[i];
+      if (!d || !skill) return;
+      if (this.guest) {
+        // learned here at once: a guest keeps its own loadout, and the host learns the same
+        this.guest.act({ k: 'draft', i });
+        run.drafts.delete(me);
+        learnSkill(me, d.slot, skill);
+      } else run.draft(me, i);
+      this.deps.toast(`Learned ${skill.name}`, 'gold');
+      this.deps.learned();
+    }
+  }
+
+  /** The fixed step, before the simulation's: the rules on the host (or alone); a guest's copy only runs its clocks. */
+  step(dt: number): void {
+    if (this.guest) this.run.follow(dt);
+    else this.run.step(dt);
+  }
+
+  frame(dt: number, time: number): void {
+    this.hud.frame();
+    this.view.frame(dt, time);
+  }
+}

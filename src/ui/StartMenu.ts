@@ -52,7 +52,12 @@ const MODES: { id: GameMode; name: string; text: string; net?: NetHostOption[] }
       { mode: 'versus', label: 'Host versus', text: 'Friends on both teams, bots fill in', cap: 6 },
     ],
   },
-  { id: 'descent', name: 'Underworld Descent', text: 'You and two bots go down through fifteen chambers of the underworld, a boss every fifth. Vote on a reward after each chamber, learn new skills as you go, and raise fallen allies. About 25 minutes.' },
+  {
+    id: 'descent',
+    name: 'Underworld Descent',
+    text: 'Co-op dungeon run: go down through fifteen chambers of the underworld, a boss every fifth. Vote on a reward after each chamber, learn new skills as you go, and raise fallen allies. Solo with two bots, or with up to three friends. About 25 minutes.',
+    net: [{ mode: 'coop', label: 'Host co-op', text: 'Up to four friends descend together; bots fill the team to three', cap: 4 }],
+  },
   { id: 'duel', name: 'Temple Duel', text: 'One on one against a bot god. Win a round by taking them down; a ring of fire closes in so nobody can hide. First to 3 rounds. About 2–3 minutes.' },
   { id: 'arena', name: 'Training ground', text: 'Training posts and one enemy Thor. Swap gods and levels freely with K.' },
 ];
