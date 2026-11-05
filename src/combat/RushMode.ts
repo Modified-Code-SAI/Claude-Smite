@@ -16,6 +16,8 @@ import { RushHud } from '../ui/RushHud';
 import { RushView } from './RushView';
 import type { GodPalette } from './palette';
 
+/** Seconds after the winning moment that the winners pump their fists (the world stills at 4 s). */
+const VICTORY_PUMPS = [0.45, 1.55, 2.65, 3.6];
 const tone = (main: number, core: number): GodPalette => ({ cloth: main, trim: core, glow: main, vfx: main, core });
 const GOLD = tone(0xffc23a, 0xfff2c4);
 const ALLY = tone(0x4fb2ff, 0xe6f4ff);
@@ -75,6 +77,8 @@ export class RushMode {
   private lastThrower: Unit | null = null;
   /** Seconds into the goal celebration at the last frame (-1 outside one), to catch the scorer's second fist pump. */
   private cheerAt = -1;
+  /** Seconds since the match was won (-1 before), for the winners' fist pumps. */
+  private wonFor = -1;
 
   constructor(private readonly deps: RushDeps) {
     const { sim, player, slots, net } = deps;
@@ -161,6 +165,7 @@ export class RushMode {
   frame(dt: number, time: number): void {
     this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time);
     this.beats();
+    this.victory(dt);
     this.throws();
     this.hud.pointer(this.pointer());
     this.hud.calls(this.callouts());
@@ -203,6 +208,27 @@ export class RushMode {
     if (r.lastGoal && this.cheerAt >= 0 && this.cheerAt < RUSH.cheer.again && cheer >= RUSH.cheer.again) this.deps.swing?.(r.lastGoal.scorer, 'ult');
     this.cheerAt = cheer;
     this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, goals: r.goalCount, phase: r.phase };
+  }
+
+  /**
+   * The winners throw their fists to the sky together, again and again, until
+   * the world stills behind the result (the last pump holds as their pose).
+   */
+  private victory(dt: number): void {
+    const r = this.rush;
+    if (!r.winner) return;
+    const was = this.wonFor;
+    this.wonFor = was < 0 ? 0 : was + dt;
+    r.team(r.winner).forEach((g, i) => {
+      if (!g.alive) return;
+      for (const at of VICTORY_PUMPS) {
+        const t = at + i * 0.18;
+        if (was < t && this.wonFor >= t) {
+          g.sinceAction = 0;
+          this.deps.swing?.(g, 'ult');
+        }
+      }
+    });
   }
 
   /** A new throw swings its thrower's arm (on every end: the relic's state says who threw). */

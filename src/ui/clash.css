@@ -16,6 +16,8 @@
 @keyframes clash-pulse { from { opacity: 0.6; } to { opacity: 1; } }
 .clash-end { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.8)); pointer-events: auto; }
 .clash-end.show { display: flex; animation: clash-in 0.6s ease-out; }
+/* (and the click-to-play hint, the crosshair, tips and the last banner stay out of the way of the result) */
+body:has(.clash-end.show) .hud-hint, body:has(.clash-end.show) .hud-crosshair, body:has(.clash-end.show) .coach, .clash:has(.clash-end.show) .duel-big { display: none; }
 @keyframes clash-in { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
 .clash-end-title { font-size: clamp(48px, 9vw, 110px); letter-spacing: 0.14em; text-transform: uppercase; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.9); }
 .clash-end.won .clash-end-title { color: #ffe08a; }

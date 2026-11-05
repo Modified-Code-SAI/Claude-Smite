@@ -827,7 +827,8 @@ export class CombatGame implements Updatable {
       const mine = relic?.claimer === this.player.team;
       this.relicView?.set(relic, CLASH.relic.radius, relic?.progress ?? 0, time, mine ? 0x4fb2ff : 0xff3524, mine ? 0xe6f4ff : 0xffe0c8);
     }
-    if (this.match?.winner) this.hud.setVisible(false);
+    // the end screens take the place of your god's bars and skills
+    if (this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner) this.hud.setVisible(false);
     this.vfx.player = this.player;
     this.vfx.frame(this.sim, dt, time);
     this.syncCamps();
