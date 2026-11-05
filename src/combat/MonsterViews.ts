@@ -743,7 +743,7 @@ function shade(): MonsterView {
   mesh(head, geo('sh-void', () => new THREE.SphereGeometry(0.22, 18, 12).scale(0.95, 1.1, 1)), glow(0x000000, 0), 0, -0.02, -0.03, 0, 0, 0, false);
   const eyes: THREE.Mesh[] = [];
   for (const sx of [-1, 1]) {
-    const e = mesh(head, geo('sh-eye', () => new THREE.SphereGeometry(0.034, 10, 8).scale(1.5, 0.6, 0.6)), glow(SHADE_GLOW, 8), sx * 0.085, -0.02, 0.205, 0, 0, sx * 0.25, false);
+    const e = mesh(head, geo('sh-eye', () => new THREE.SphereGeometry(0.034, 10, 8).scale(1.5, 0.6, 0.6)), glow(SHADE_CORE, 5), sx * 0.085, -0.02, 0.205, 0, 0, sx * 0.25, false);
     eyes.push(e);
   }
   // bell sleeves on shoulder pivots, spectral claws reaching out of them
@@ -757,7 +757,7 @@ function shade(): MonsterView {
     arms.push(arm);
   }
   // the soul it gathers between its claws, swelling until it throws
-  const orb = mesh(body, geo('sh-orb', () => new THREE.SphereGeometry(0.12, 16, 12)), glow(SHADE_GLOW, 9), 0, 0.92, 0.5, 0, 0, 0, false);
+  const orb = mesh(body, geo('sh-orb', () => new THREE.SphereGeometry(0.12, 16, 12)), glow(SHADE_CORE, 5), 0, 0.92, 0.5, 0, 0, 0, false);
   // wisps of soul fire trailing from under the hem
   const trails: THREE.Group[] = [];
   const trail = geo('sh-trail', () => new THREE.ConeGeometry(0.06, 0.6, 7).rotateX(Math.PI).translate(0, -0.3, 0));

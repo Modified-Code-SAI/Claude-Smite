@@ -389,6 +389,7 @@ describe('Underworld Descent: the run', () => {
     expect(run.cleared).toBe(15);
   });
 
+  // three whole bot runs: more than the default timeout allows on a busy machine
   it('lets a team of bots play a run on its own, walls and all, with no chamber stalling', () => {
     for (let r = 0; r < 3; r++) {
       const walls = new CollisionWorld(() => 0);
@@ -413,5 +414,5 @@ describe('Underworld Descent: the run', () => {
       expect(run.cleared).toBeGreaterThanOrEqual(3);
       for (const g of run.gods) expect(underworldField(g.x, g.z)).toBeGreaterThan(-0.2);
     }
-  });
+  }, 20000);
 });

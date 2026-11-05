@@ -288,7 +288,7 @@ export class CombatHud {
         if (e.unit === this.player) this.toast(`Level ${e.level}${e.level === 5 ? ' &middot; Ultimate unlocked' : ''}`, 'gold');
         break;
       case 'reward':
-        if (e.unit === this.player && e.favor > 0) this.floater(e.unit, `+${e.xp} XP &middot; +${e.favor} Favor`, 'ch-num ch-num-reward');
+        if (e.unit === this.player && e.favor > 0) this.floater(e.unit, `+${Math.round(e.xp)} XP &middot; +${Math.round(e.favor)} Favor`, 'ch-num ch-num-reward');
         break;
       case 'death':
         if (e.killer === this.player && e.unit.kind === 'god') {
