@@ -8,7 +8,7 @@ import { PROJECTILE_HEIGHT } from '../sim/Sim';
 import { isStructure, WORLD_SCALE, type Unit, type Flash, type FlashShape, type Projectile, type SimEvent } from '../sim/Unit';
 import { ArcView } from './Arcs';
 import { GroundDecal, type DecalShape } from './GroundDecal';
-import { ACID, BUFF_GLOW } from './MonsterViews';
+import { ACID, SHADE_CORE, SHADE_GLOW, BUFF_GLOW } from './MonsterViews';
 import { paletteFor, paletteOf, type GodPalette } from './palette';
 import { hypot } from '../core/math';
 
@@ -779,7 +779,7 @@ export class CombatVfx {
         // a hop under a meter (a duelist held on their mark) is not worth a flash:
         // the countdown's hold used to stack hundreds of bursts in a few seconds
         if (!e.quiet && e.unit.alive && hypot(e.unit.x - e.fromX, e.unit.z - e.fromZ) > 1) {
-          const p = paletteOf(e.unit);
+          const p = monsterPalette(e.unit);
           this.burst(p, e.fromX, this.ground(e.fromX, e.fromZ) + 1.2, e.fromZ, 1.2);
           this.burst(p, e.unit.x, e.unit.body.y + 1.2, e.unit.z, 1.2);
         }
@@ -821,7 +821,8 @@ export class CombatVfx {
       let v = this.projectiles.get(p.id);
       if (!v) {
         v = this.projectilePool.take();
-        const size = p.cast ? Math.min(1.3, 0.35 + p.radius * 0.45) : isStructure(p.owner) ? 0.75 : p.owner.kind === 'minion' ? 0.16 : 0.28;
+        // a Shade's soul bolt is slow and big, so it reads as one to sidestep
+        const size = p.cast ? Math.min(1.3, 0.35 + p.radius * 0.45) : isStructure(p.owner) ? 0.75 : p.owner.kind === 'minion' ? 0.16 : p.owner.tag.endsWith(':shade') ? 0.55 : 0.28;
         // structure shots crackle like lightning so they read as heavy
         v.reset(monsterPalette(p.owner), size, at, isStructure(p.owner));
         this.projectiles.set(p.id, v);
@@ -921,8 +922,10 @@ export class CombatVfx {
       sources.push({ x: z.x, y: this.ground(z.x, z.z) + 1.2, z: z.z, color: paletteOf(z.owner).vfx, intensity: 14 });
     }
     for (const p of sim.projectiles) {
-      if (!p.cast && !isStructure(p.owner)) continue;
-      sources.push({ x: p.x, y: this.ground(p.x, p.z) + projectileHeight(p), z: p.z, color: paletteOf(p.owner).vfx, intensity: 9 });
+      // (a Shade's bolt too: its violet light sweeping over the floor shows where it flies)
+      const shade = p.owner.tag.endsWith(':shade');
+      if (!p.cast && !isStructure(p.owner) && !shade) continue;
+      sources.push({ x: p.x, y: this.ground(p.x, p.z) + projectileHeight(p), z: p.z, color: monsterPalette(p.owner).vfx, intensity: shade ? 7 : 9 });
     }
     this.lights.forEach((l, i) => {
       const s = sources[i];
@@ -943,6 +946,7 @@ function monsterPalette(u: Unit): GodPalette {
   if (u.tag.endsWith('treasureWyrm') || u.tag.endsWith('gildedThornback')) return { ...p, vfx: 0xffc83a, core: 0xfff6d0 };
   if (u.tag.endsWith('moltenColossus')) return { ...p, vfx: 0xff4a10, core: 0xffd080 };
   if (u.tag.endsWith('thornSpitter')) return { ...p, vfx: ACID, core: 0xe8ffc0 };
+  if (u.tag.endsWith(':shade')) return { ...p, vfx: SHADE_GLOW, core: SHADE_CORE };
   if (u.kind !== 'monster' || !u.tag.endsWith('warden')) return p;
   const kind = u.tag.split(':')[0]!.split('-')[1] as keyof typeof BUFF_GLOW;
   const c = BUFF_GLOW[kind];

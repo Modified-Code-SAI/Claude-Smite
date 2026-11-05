@@ -61,6 +61,11 @@ export const SOUNDS: Record<string, Recipe> = {
   // the Thornspitter: a wet hacking cough, then the glob of acid flying off
   'basic.spitter': { variants: 3, peak: 0.55, make: (r) => layer([vowel(r, 0.14, (t) => glide(300, 520, t, 0.14), VOWELS.ah, { breath: 0.7, growl: 0.1, gain: 0.4 }), 1], [puff(r, 0.12, { tone: 1400 }), 0.8, 0.08], [whoosh(r, 0.22, 1800, 900, { q: 1.5 }), 0.5, 0.1]) },
   // acid landing: a splat and a short sizzle
+  // the Shade: a whispered hurl, a cold impact, and its blink (a hiss as it folds away, a gasp where it lands)
+  'basic.shade': { variants: 3, peak: 0.55, make: (r) => layer([vowel(r, 0.42, (t) => glide(300, 190, t, 0.42), VOWELS.oo, { breath: 2.5, voices: 2, detune: 0.03, gain: 0.35, env: (t) => ahr(t, 0.04, 0.1, 0.28) }), 0.9], [whoosh(r, 0.5, 500, 2400, { q: 1.6 }), 0.8, 0.04], [shimmer(r, 0.6, 740, { rise: 0.6, peak: 0.12 }), 0.45, 0.06]) },
+  'hit.shade': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.14, { tone: 1100 }), 0.7], [shimmer(r, 0.4, 1046.5, { rise: 0.75, peak: 0.04 }), 0.6, 0.01], [vowel(r, 0.25, (t) => glide(260, 160, t, 0.25), VOWELS.oh, { breath: 2.5, gain: 0.3, env: (t) => ahr(t, 0.01, 0.04, 0.2) }), 0.5]) },
+  'shade.vanish': { variants: 2, peak: 0.5, make: (r) => layer([whoosh(r, 0.32, 3200, 450, { q: 1.2 }), 1], [vowel(r, 0.3, (t) => glide(200, 340, t, 0.3), VOWELS.eh, { breath: 3, gain: 0.3, env: (t) => ahr(t, 0.12, 0.05, 0.12) }), 0.6]) },
+  'shade.appear': { variants: 2, peak: 0.5, make: (r) => layer([whoosh(r, 0.35, 600, 2800, { q: 1.4 }), 0.7], [vowel(r, 0.4, (t) => glide(380, 240, t, 0.4), VOWELS.ah, { breath: 2.8, gain: 0.32, env: (t) => ahr(t, 0.03, 0.08, 0.3) }), 0.8, 0.02], [shimmer(r, 0.5, 880, { rise: 0.5, peak: 0.1 }), 0.4, 0.05]) },
   'hit.acid': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.1, { tone: 900 }), 0.7], [sand(r, 0.35, { tone: 3000, peak: 0.5 }), 0.8, 0.03]) },
   'basic.monster': { variants: 3, peak: 0.6, make: (r) => layer([whoosh(r, 0.22, 500, 1200, { q: 1 }), 1], [vowel(r, 0.25, (t) => glide(220, 150, t, 0.25), VOWELS.ah, { breath: 0.5, growl: 0.2, gain: 0.5 }), 1]) },
   'basic.warden': { variants: 2, peak: 0.85, make: (r) => layer([whoosh(r, 0.45, 160, 500, { q: 0.8, peak: 0.75, gain: 1.4 }), 1], [roar(r, 0.5, 90), 0.5]) },

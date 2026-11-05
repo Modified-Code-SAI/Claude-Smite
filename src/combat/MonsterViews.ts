@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, attribute, float, mix, mx_noise_float, mx_worley_noise_float, normalWorld, positionGeometry, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
+import { abs, attribute, float, mix, mx_noise_float, mx_worley_noise_float, normalView, normalWorld, positionGeometry, positionView, pow, saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
 import { spriteQuads } from '../render/shared';
 import type { CampKind } from '../map/ConquestLayout';
 import { skinRigid } from '../scene/merge';
@@ -16,6 +16,11 @@ import { hypot } from '../core/math';
  *  - Wardens: hulking mossy stone guardians that keep the buff altars, with
  *    a crystal heart, eye slit and rune bands lit in the buff's color, and
  *    shards orbiting their heads. They wind up a two-fisted slam.
+ *  - Shades: hooded wraiths of tattered black cloth that float over the
+ *    floor of the deeper underworld, lit from inside by violet soul fire
+ *    that licks up from the hem, eyes burning in an empty hood. They gather
+ *    a soul between their spectral claws and hurl it, and fold into their
+ *    own fire to blink away from anyone who closes in.
  * Each monster is a small hierarchy of rigid parts posed every frame, drawn
  * as one skinned mesh per material (`skinRigid`): the pivots are its bones.
  * Materials read `positionGeometry`, the part's unposed position, so patterns
@@ -29,6 +34,9 @@ const AMBER = 0xffa53a;
 export const GILDED_GLOW = 0xffd25a;
 /** The Thornspitter's acid: its sacs, eyes and spit. */
 export const ACID = 0x8cff3a;
+/** The Shade's soul fire: its eyes, claws, hem and bolts. */
+export const SHADE_GLOW = 0x8458ff;
+export const SHADE_CORE = 0xeadcff;
 
 export interface MonsterView {
   root: THREE.Group;
@@ -662,6 +670,159 @@ function wyrm(): MonsterView {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Shade
+
+/** How high a Shade's hem floats over the floor. */
+const SHADE_HOVER = 0.45;
+let shadeRobe: THREE.Material | null = null;
+
+/**
+ * Near-black cloth lit from inside: violet soul fire flickers up from the
+ * hem and a cold rim of the same light runs along every edge. In the rig's
+ * space (the Shade's height), so the fire stays on the cloth as it drifts.
+ */
+function shadeRobeMaterial(): THREE.Material {
+  const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.92, side: THREE.DoubleSide });
+  const p = positionGeometry;
+  const weave = mx_noise_float(vec3(p.x.mul(9), p.y.mul(2.2), p.z.mul(9))).mul(0.5).add(0.5);
+  m.colorNode = mix(vec3(0.008, 0.006, 0.016), vec3(0.045, 0.03, 0.07), weave);
+  const flame = mx_noise_float(vec3(p.x.mul(5), p.y.mul(3.5).sub(time.mul(1.8)), p.z.mul(5))).mul(0.5).add(0.5);
+  const hem = smoothstep(1.05, 0.2, p.y.add(flame.mul(0.4)));
+  const rim = pow(float(1).sub(saturate(normalView.dot(positionView.normalize().negate()))), 4);
+  const fire = vec3(0.52, 0.34, 1);
+  m.emissiveNode = fire.mul(hem.mul(hem).mul(3.4).add(rim.mul(0.35)));
+  return m;
+}
+
+/**
+ * Cloth turned on a lathe from (radius, height) pairs, its lower edge torn
+ * into tails: the bottom rings hang down in points around the hem.
+ */
+function tattered(profile: readonly (readonly [number, number])[], tails: number, depth: number, seed: number, around = 40): THREE.BufferGeometry {
+  const g = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), around);
+  const p = g.getAttribute('position') as THREE.BufferAttribute;
+  const low = Math.min(...profile.map(([, y]) => y));
+  const high = Math.max(...profile.map(([, y]) => y));
+  const reach = (high - low) * 0.35;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const y = p.getY(i);
+    const z = p.getZ(i);
+    const a = Math.atan2(x, z);
+    const k = Math.max(0, 1 - (y - low) / reach);
+    // pointed tails of uneven length, and a ripple through the cloth
+    const tail = Math.max(0, Math.sin(a * tails + seed)) ** 0.7 * (0.65 + 0.35 * Math.sin(a * 3 + seed * 2.1));
+    const ripple = 1 + Math.sin(a * 5 + y * 4 + seed) * 0.05 * (0.4 + k);
+    p.setXYZ(i, x * ripple, y - tail * depth * k * k, z * ripple);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function shade(): MonsterView {
+  const robe = (shadeRobe ??= shadeRobeMaterial());
+  const fire = glow(SHADE_GLOW, 2);
+  const root = new THREE.Group();
+  const s = 1.15;
+  const rig = pivot(root, 0, 0, 0);
+  rig.scale.setScalar(s);
+  const body = pivot(rig, 0, SHADE_HOVER, 0);
+  // two layers of robe, the inner one's longer tails showing between the outer's
+  const outer = geo('sh-robe', () => tattered([[0.6, 0], [0.58, 0.06], [0.53, 0.18], [0.43, 0.42], [0.33, 0.72], [0.3, 0.98], [0.33, 1.16], [0.2, 1.3], [0.08, 1.36]], 7, 0.34, 0.4));
+  const inner = geo('sh-robe-in', () => tattered([[0.51, -0.06], [0.5, 0.02], [0.47, 0.15], [0.38, 0.4], [0.29, 0.7], [0.26, 1.0]], 9, 0.42, 2.3));
+  mesh(body, outer, robe);
+  mesh(body, inner, robe, 0, 0, 0, 0, 0.35, 0);
+  // a ragged mantle over the shoulders
+  mesh(body, geo('sh-mantle', () => tattered([[0.47, 0.96], [0.46, 1.02], [0.42, 1.14], [0.3, 1.3], [0.12, 1.4]], 6, 0.16, 1.1, 32)), robe);
+  // the hood: open at the front onto a black void with two eyes burning in it
+  const head = pivot(body, 0, 1.47, 0.04);
+  const open = 1.5;
+  mesh(head, geo('sh-hood', () => new THREE.SphereGeometry(0.26, 24, 16, Math.PI / 2 + open / 2, Math.PI * 2 - open, 0, Math.PI * 0.78).scale(1, 1.18, 1.12)), robe);
+  mesh(head, geo('sh-hood-tip', () => new THREE.ConeGeometry(0.15, 0.34, 12).rotateX(-1.9).translate(0, 0.12, -0.22)), robe);
+  mesh(head, geo('sh-void', () => new THREE.SphereGeometry(0.22, 18, 12).scale(0.95, 1.1, 1)), glow(0x000000, 0), 0, -0.02, -0.03, 0, 0, 0, false);
+  const eyes: THREE.Mesh[] = [];
+  for (const sx of [-1, 1]) {
+    const e = mesh(head, geo('sh-eye', () => new THREE.SphereGeometry(0.034, 10, 8).scale(1.5, 0.6, 0.6)), glow(SHADE_GLOW, 8), sx * 0.085, -0.02, 0.205, 0, 0, sx * 0.25, false);
+    eyes.push(e);
+  }
+  // bell sleeves on shoulder pivots, spectral claws reaching out of them
+  const arms: THREE.Group[] = [];
+  const sleeve = geo('sh-sleeve', () => tattered([[0.15, -0.6], [0.12, -0.42], [0.08, -0.15], [0.07, 0]], 5, 0.12, 0.9, 20));
+  const claw = geo('sh-claw', () => new THREE.ConeGeometry(0.022, 0.26, 6).translate(0, -0.13, 0));
+  for (const sx of [-1, 1]) {
+    const arm = pivot(body, sx * 0.31, 1.2, 0.02);
+    mesh(arm, sleeve, robe);
+    for (let i = 0; i < 4; i++) mesh(arm, claw, fire, sx * (i - 1.5) * 0.04, -0.6, 0.02, 0.25 - Math.abs(i - 1.5) * 0.1, 0, sx * (i - 1.5) * 0.16, false);
+    arms.push(arm);
+  }
+  // the soul it gathers between its claws, swelling until it throws
+  const orb = mesh(body, geo('sh-orb', () => new THREE.SphereGeometry(0.12, 16, 12)), glow(SHADE_GLOW, 9), 0, 0.92, 0.5, 0, 0, 0, false);
+  // wisps of soul fire trailing from under the hem
+  const trails: THREE.Group[] = [];
+  const trail = geo('sh-trail', () => new THREE.ConeGeometry(0.06, 0.6, 7).rotateX(Math.PI).translate(0, -0.3, 0));
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.4;
+    const t = pivot(body, Math.sin(a) * 0.3, 0.1, Math.cos(a) * 0.3);
+    mesh(t, trail, fire, 0, 0, 0, 0, 0, 0, false);
+    trails.push(t);
+  }
+  skinRigid(root, 'shade', rig, [...eyes, orb], bounds(2.3 * s));
+
+  let clock = Math.random() * 10;
+  let lean = 0;
+  let appear = 1;
+  let lastX = NaN;
+  let lastZ = NaN;
+  return {
+    root,
+    height: 2.2 * s,
+    linger: 2.4,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      lean += (Math.min(1, hypot(u.vx, u.vz) / 4) - lean) * Math.min(1, dt * 5);
+      // a blink: it folds into its own fire and unfolds where it lands
+      if (hypot(u.x - lastX, u.z - lastZ) > 3) appear = 0;
+      lastX = u.x;
+      lastZ = u.z;
+      appear = Math.min(1, appear + dt / 0.3);
+      const k = 1 - (1 - appear) ** 2;
+      rig.scale.set(s * (0.35 + 0.65 * k), s * (0.15 + 0.85 * k), s * (0.35 + 0.65 * k));
+      rig.rotation.y = (1 - k) * 3;
+      body.position.y = SHADE_HOVER + Math.sin(clock * 1.7) * 0.07;
+      body.rotation.x = lean * 0.3 + wobble * 0.06;
+      body.rotation.z = Math.sin(clock * 1.1) * 0.035 + wobble * 0.08;
+      // the throw: both claws thrust forward as the soul leaves, then it gathers another
+      const a = u.sinceAction;
+      const thrust = a < 0.45 ? Math.sin(Math.min(1, a / 0.45) * Math.PI) : 0;
+      const fill = Math.min(1, a / 1.1);
+      orb.scale.setScalar(0.2 + 0.8 * fill * fill + Math.sin(clock * 9) * 0.06);
+      orb.position.z = 0.5 + thrust * 0.25;
+      arms.forEach((arm, i) => {
+        const sx = i ? 1 : -1;
+        arm.rotation.x = -0.95 - thrust * 0.55 + Math.sin(clock * 1.7 + i) * 0.05;
+        arm.rotation.z = -sx * 0.12 * (1 - thrust * 0.5);
+      });
+      head.rotation.x = 0.12 - thrust * 0.15 + Math.sin(clock * 0.9) * 0.04;
+      trails.forEach((t, i) => {
+        t.rotation.x = lean * 0.8 + Math.sin(clock * 3 + i * 1.7) * 0.2;
+        t.rotation.z = Math.sin(clock * 2.3 + i) * 0.18;
+        t.scale.y = 0.8 + Math.sin(clock * 4 + i * 2.1) * 0.25;
+      });
+      if (deathTime >= 0) {
+        // it collapses into its robe and the fire inside goes out
+        const t = Math.min(1, deathTime / 0.8);
+        body.position.y = SHADE_HOVER * (1 - t) - Math.max(0, deathTime - 1.3) * 0.5;
+        rig.scale.y = s * (1 - t * 0.75);
+        rig.rotation.y = t * t * 0.8;
+        orb.scale.setScalar(Math.max(0.01, 1 - t * 2));
+        for (const e of eyes) e.scale.setScalar(Math.max(0.01, 1 - t * 1.5));
+        for (const arm of arms) arm.rotation.x = -0.95 * (1 - t) - 0.2 * t;
+      }
+    },
+  };
+}
+
 /** The camp kind is encoded in the monster's tag: `<team>-<kind>-<i>:<type>`. */
 function campKindOf(u: Unit): CampKind {
   return u.tag.split(':')[0]!.split('-')[1] as CampKind;
@@ -681,6 +842,7 @@ export function monsterWarmup(): THREE.Object3D[] {
     ...buffs.map((b) => giant({ glow: BUFF_GLOW[b] ?? 0xffffff, stone: mats().stone, scale: 1 })),
     giant({ glow: 0xff6a1a, stone: lavaStone(), scale: 2.1, molten: true }),
     wyrm(),
+    shade(),
   ].map((v) => v.root);
 }
 
@@ -701,5 +863,6 @@ function createView(u: Unit): MonsterView {
   if (type === 'warden') return giant({ glow: BUFF_GLOW[campKindOf(u)] ?? 0xffffff, stone: mats().stone, scale: 1 });
   if (type === 'moltenColossus') return giant({ glow: 0xff6a1a, stone: lavaStone(), scale: 2.1, molten: true });
   if (type === 'treasureWyrm') return wyrm();
+  if (type === 'shade') return shade();
   return thornback(type === 'thornbackAlpha', type === 'thornSpitter', type === 'gildedThornback');
 }
