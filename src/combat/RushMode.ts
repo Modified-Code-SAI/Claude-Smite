@@ -6,6 +6,7 @@ import { NetGuest, NetHost } from '../net/NetGame';
 import type { RushSlot } from '../net/rushRoster';
 import type { NetSession } from '../net/Session';
 import type { PlayerController } from '../player/PlayerController';
+import type { CameraShot } from '../player/ThirdPersonCamera';
 import { godUnit } from '../sim/factory';
 import { Nav } from '../sim/Nav';
 import { Rush, RUSH } from '../sim/Rush';
@@ -45,7 +46,16 @@ export interface RushDeps {
   shake?: (amount: number) => void;
   /** Plays a god's throwing arm (the basic-attack swing), or a scorer's cheer ('ult': chest up, a hand to the sky). */
   swing?: (u: Unit, kind?: 'basic' | 'ult') => void;
+  /** Lays a camera shot over the follow camera (the first kickoff's fly-over); null hands it back. */
+  cameraShot?: (shot: CameraShot | null) => void;
 }
+
+/**
+ * The first kickoff's fly-over: the camera sweeps round the pitch from high
+ * over the crowd, looking in at the pedestal, and comes down behind the
+ * player's god as the countdown ends. Seconds into the countdown.
+ */
+const FLYOVER = { sweep: 1.35, radius: [27, 19], height: [15, 8.5], orbitFor: 2.6, holdUntil: 1.75, backBy: 2.75 } as const;
 
 /** A teammate's call for the pass, placed over their head on screen. */
 export interface RushCall {
@@ -162,7 +172,49 @@ export class RushMode {
     else this.rush.step(dt);
   }
 
+  /** The first kickoff's fly-over (see FLYOVER), and where it ends: the player's own side of the pitch. */
+  private flyover: { end: number; shot: CameraShot } | null = null;
+  private flyoverDone = false;
+
+  private flyoverFrame(): void {
+    const set = this.deps.cameraShot;
+    const r = this.rush;
+    if (this.flyoverDone || !set) return;
+    // only a match that's just starting (not a guest joining mid-game, nor a later kickoff)
+    if (r.phase !== 'kickoff' || r.goalCount > 0 || r.overtime) {
+      this.flyoverDone = true;
+      if (this.flyover) set(null);
+      this.flyover = null;
+      document.body.classList.remove('rush-flyover');
+      return;
+    }
+    const me = this.deps.player;
+    if (!this.flyover) {
+      if (r.timer < RUSH.countdown - 0.05) {
+        this.flyoverDone = true;
+        return;
+      }
+      this.flyover = { end: Math.atan2(me.x, me.z), shot: { pos: { x: 0, y: 0, z: 0 }, look: { x: 0, y: 1.2, z: 0 }, weight: 1 } };
+    }
+    const s = RUSH.countdown - r.timer;
+    const k = Math.min(1, s / FLYOVER.orbitFor);
+    const u = k * k * (3 - 2 * k);
+    const a = this.flyover.end - FLYOVER.sweep * (1 - u);
+    const rad = FLYOVER.radius[0] + (FLYOVER.radius[1] - FLYOVER.radius[0]) * u;
+    const shot = this.flyover.shot;
+    shot.pos.x = Math.sin(a) * rad;
+    shot.pos.z = Math.cos(a) * rad;
+    shot.pos.y = this.deps.groundAt(0, 0) + FLYOVER.height[0] + (FLYOVER.height[1] - FLYOVER.height[0]) * u;
+    shot.look.y = this.deps.groundAt(0, 0) + 1.2;
+    const back = Math.min(1, Math.max(0, (s - FLYOVER.holdUntil) / (FLYOVER.backBy - FLYOVER.holdUntil)));
+    shot.weight = 1 - back * back * (3 - 2 * back);
+    set(shot.weight > 0.001 ? shot : null);
+    // the action bar, health bars and nameplates stand aside while the camera is up in the stands
+    document.body.classList.toggle('rush-flyover', shot.weight > 0.4);
+  }
+
   frame(dt: number, time: number): void {
+    this.flyoverFrame();
     this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time);
     this.beats();
     this.victory(dt);

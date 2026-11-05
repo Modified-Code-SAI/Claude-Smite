@@ -7,6 +7,16 @@ import type { CollisionWorld } from '../scene/Collision';
  * the god slightly above the head so the crosshair sits ahead of them. Pitch
  * pulls the camera closer as it looks up. Collides with architecture.
  */
+/** A shot laid over the follow camera (a mode's fly-over): where to stand, what to look at, and how much of it to use (0 to 1). */
+export interface CameraShot {
+  pos: { x: number; y: number; z: number };
+  look: { x: number; y: number; z: number };
+  weight: number;
+}
+
+const shotPos = new THREE.Vector3();
+const shotLook = new THREE.Vector3();
+
 export class ThirdPersonCamera {
   distance = 7.2;
   height = 2.9;
@@ -24,6 +34,8 @@ export class ThirdPersonCamera {
   private initialized = false;
   private shake = 0;
   private shakeTime = 0;
+  /** A mode's shot to blend toward (null: the plain follow camera). The follow camera keeps tracking underneath, so it blends back cleanly. */
+  shot: CameraShot | null = null;
 
   constructor(
     readonly camera: THREE.PerspectiveCamera,
@@ -90,6 +102,12 @@ export class ThirdPersonCamera {
     const aim = focus.clone().addScaledVector(new THREE.Vector3(-dir.x, 0, -dir.z).normalize(), 6 * this.ahead);
     aim.y = focus.y - 0.4 * k - Math.sin(pitch) * 4 * k;
     this.camera.lookAt(aim);
+    const s = this.shot;
+    if (s && s.weight > 0) {
+      const w = Math.min(1, s.weight);
+      this.camera.position.lerp(shotPos.set(s.pos.x, s.pos.y, s.pos.z), w);
+      this.camera.lookAt(shotLook.set(s.look.x, s.look.y, s.look.z).sub(aim).multiplyScalar(w).add(aim));
+    }
     if (this.shake > 0) {
       // trauma-style shake: squared so small knocks stay subtle, smooth
       // layered sines instead of per-frame noise so it rumbles, not jitters
