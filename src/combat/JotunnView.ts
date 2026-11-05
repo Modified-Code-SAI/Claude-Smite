@@ -25,6 +25,8 @@ export interface JotunnViewHost {
   shake(amount: number, at: THREE.Vector3): void;
   /** A frost burst from the shared spell effects (flash, sparks, ring, snow). */
   burst(at: THREE.Vector3, power: number): void;
+  /** A giant's foot came down (its sound), 0..1 how hard. */
+  footfall?(at: THREE.Vector3, k: number): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -645,6 +647,7 @@ export class JotunnView {
     // snow kicked up around the foot, and the ground shaking
     this.snow.ring(at, Math.round(5 + k * 5), 3 + k * 3, { life: 1.1, size0: 0.8, size1: 2.6 + k, alpha: 0.5, color: 0xe2edf3 });
     this.host.shake(0.18 * k, at);
+    this.host.footfall?.(at, k);
   }
 
   private impact(act: GiantAct, at: THREE.Vector3): void {

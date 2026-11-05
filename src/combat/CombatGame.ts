@@ -97,6 +97,10 @@ const openGround = (c: SimTerrain): SimTerrain => ({ groundAt: (x, z) => c.groun
 export class CombatGame implements Updatable {
   readonly sim: Sim;
   player!: Unit;
+  /** The local player's own god: the same as `player` except while the Jötunn hands them the giant. */
+  ownGod!: Unit;
+  /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls. */
+  onCue: ((name: 'step', at: { x: number; y: number; z: number }, k: number) => void) | null = null;
   bot: Unit | null = null;
   readonly match: Match | null = null;
   private readonly matchHud: MatchHud | null = null;
@@ -233,6 +237,7 @@ export class CombatGame implements Updatable {
     if (conquest || clash || siege || duel || rush || descent || jotunn) player.spawn(spawn.x, spawn.z, spawn.yaw);
     const mine = godById(mySlot?.god ?? deps.god ?? 'zeus') ?? GODS[0]!;
     this.player = godUnit(mine, myTeam, { x: spawn.x, z: spawn.z, yaw: spawn.yaw }, this.body);
+    this.ownGod = this.player;
     this.sim.add(this.player);
     // the Conquest map builds and places its own Tower, Phoenix and Titan models
     // the map dims a buff altar's crystal while its Warden is down (when the map supports it)
@@ -441,6 +446,7 @@ export class CombatGame implements Updatable {
       toast: (t) => this.hud.toast(t),
       reaction: d === 'easy' ? 0.55 : d === 'hard' ? 0.18 : undefined,
       net,
+      cue: (name, at, k) => this.onCue?.(name, at, k),
     });
     this.jotunn = this.jotunnMode.mode;
     this.netHost = this.jotunnMode.host;
@@ -1091,7 +1097,7 @@ export class CombatGame implements Updatable {
     next.combatant.gainFavor(old.combatant.favor);
     this.sim.remove(old);
     this.sim.add(next);
-    this.player = next;
+    this.player = this.ownGod = next;
     this.setPlayerModel(id);
     this.hud.setPlayer(next);
     return null;

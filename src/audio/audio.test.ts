@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { GODS } from '../game/gods';
+import { jotunn } from '../game/gods/jotunn';
 import { hashSeed, RATE } from './dsp';
 import { CHORDS, INST, INSTRUMENTS, SONGS } from './music';
 import { SKILL_SOUNDS } from './skillSounds';
@@ -41,8 +42,8 @@ describe('sound bank', () => {
     expect(total / RATE).toBeLessThan(900);
   });
 
-  test('every skill of every god has its own cast sound, and its parts render', { timeout: 60000 }, () => {
-    for (const g of GODS) {
+  test('every skill of every god (and the Jötunn) has its own cast sound, and its parts render', { timeout: 60000 }, () => {
+    for (const g of [...GODS, jotunn]) {
       for (const s of g.skills) {
         const ss = SKILL_SOUNDS[s.id];
         expect(ss, `${s.id} has sounds`).toBeTruthy();
