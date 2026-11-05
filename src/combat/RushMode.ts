@@ -59,6 +59,18 @@ export interface RushDeps {
 const FLYOVER = { sweep: 1.35, radius: [27, 19], height: [15, 8.5], orbitFor: 2.6, holdUntil: 1.75, backBy: 2.75 } as const;
 
 /** A teammate's call for the pass, placed over their head on screen. */
+/** Who would catch the local carrier's throw, placed over their head on screen. */
+export interface RushCatch {
+  x: number;
+  y: number;
+  ally: boolean;
+  name: string;
+  /** What the marker says: a pass, a cut-off or a keeper's save. */
+  label: string;
+  /** Raised above the bubble of a teammate who is calling for the pass. */
+  raised: boolean;
+}
+
 export interface RushCall {
   x: number;
   y: number;
@@ -269,6 +281,7 @@ export class RushMode {
     this.throws();
     this.hud.pointer(this.pointer());
     this.hud.calls(this.callouts());
+    this.hud.catcher(this.catchMarker());
     this.hud.frame(dt);
   }
 
@@ -362,6 +375,24 @@ export class RushMode {
       out.push({ x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h, name: g === me ? 'You' : g.name, mine: g === me, age: ago / RUSH.call.time });
     }
     return out;
+  }
+
+  /** The marker over whoever would catch the local carrier's throw (see RushView.read). */
+  private catchMarker(): RushCatch | null {
+    const by = this.view.read?.catcher;
+    const me = this.deps.player;
+    if (!by || !by.alive) return null;
+    const cam = this.deps.camera;
+    const head = this.deps.headOf(by, this.v);
+    if (!head) return null;
+    head.y += 0.9;
+    cam.getWorldDirection(this.fwd);
+    if (this.fwd.dot(this.toHead.copy(head).sub(cam.position)) < 0) return null;
+    const p = head.project(cam);
+    if (Math.abs(p.x) > 1.05 || Math.abs(p.y) > 1.05) return null;
+    const ally = by.team === me.team;
+    const label = ally ? 'Pass' : this.rush.shotOnTarget(me, me.aim) ? 'Save' : 'Cut off';
+    return { x: ((p.x + 1) / 2) * window.innerWidth, y: ((1 - p.y) / 2) * window.innerHeight, ally, name: by.name, label, raised: ally && this.rush.calledAgo(by) !== null };
   }
 
   /**

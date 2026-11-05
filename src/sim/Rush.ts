@@ -399,6 +399,47 @@ export class Rush {
     return false;
   }
 
+  /**
+   * What a throw toward `at` would do if everybody kept running as they are
+   * now: score (`goal`), be caught (`catcher`: a teammate taking the pass, or
+   * an enemy cutting it off), or neither and land loose. Steps the same
+   * flight as `throwRelic` at the sim's 60 Hz with the relic's own catch rules
+   * (keepers included); the thrower is left out. The carrier's throw preview
+   * marks the catcher.
+   */
+  passRead(u: Unit, at: Point): { goal: boolean; catcher: Unit | null } {
+    const R = RUSH.relic;
+    const K = RUSH.keeper;
+    const to = this.throwTarget(u, at);
+    const d = hypot(to.x - u.x, to.z - u.z);
+    const arc = { h0: R.carryHeight, arc: 0.8 + d * 0.14 };
+    const time = Rush.flightTime(d, u.combatant.sport('throwSpeed'));
+    const foe = other(u.team as Side);
+    const dt = 1 / 60;
+    for (let i = 1; ; i++) {
+      const t = i * dt;
+      const p = Math.min(1, t / time);
+      const x = u.x + (to.x - u.x) * p;
+      const z = u.z + (to.z - u.z) * p;
+      const h = Rush.flightHeight(arc, p);
+      if (h <= R.shotHeight && inGate(foe, x, z, RUSH.shotHalfWidth)) return { goal: true, catcher: null };
+      let best: Unit | null = null;
+      let bestD = Infinity;
+      for (const g of this.squad) {
+        if (g === u || !g.alive) continue;
+        // the relic moves before the gods do each step
+        const gx = g.x + g.vx * (t - dt);
+        const gz = g.z + g.vz * (t - dt);
+        const keeper = inGate(g.team as Side, gx, gz, K.halfWidth, K.depth);
+        if (h > (keeper ? K.height : R.catchHeight)) continue;
+        const dd = hypot(gx - x, gz - z);
+        if (dd <= g.radius + g.combatant.sport('catchReach') + (keeper ? Math.max(R.catchReach, K.reach) : R.catchReach) && dd < bestD) [best, bestD] = [g, dd];
+      }
+      if (best) return { goal: false, catcher: best };
+      if (p >= 1) return { goal: false, catcher: null };
+    }
+  }
+
   /** How long a throw of this length flies (`faster`: the thrower's Bullet Pass). */
   static flightTime(dist: number, faster = 0): number {
     return 0.2 + dist / (RUSH.relic.speed * (1 + faster));
