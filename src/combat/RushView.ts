@@ -10,6 +10,9 @@ import { RelicView } from './Vfx';
 
 type Ground = (x: number, z: number) => number;
 
+/** How far to the screen's right of the local carrier's head the relic is held (m). */
+const MINE_SIDE = 0.8;
+
 const ALLY = { main: 0x4fb2ff, core: 0xe6f4ff };
 const FOE = { main: 0xff3524, core: 0xffe0c8 };
 const GOLD = { main: 0xffc23a, core: 0xfff2c4 };
@@ -241,9 +244,12 @@ export class RushView {
   private readonly edge: GroundDecal;
   private readonly preview: GroundDecal;
   private previewAt = '';
-  /** Whether the preview shows a shot on target (its colors are only set when that changes). */
-  private previewShot = false;
+  /** What the preview shows (its colors are only set when that changes): a pass, a shot on target, or a throw an enemy would cut off (see `read`). */
+  private previewTone: 'pass' | 'shot' | 'cut' = 'pass';
+  /** What the local carrier's throw would do (see Rush.passRead), or null when they aren't carrying. */
+  read: { goal: boolean; catcher: Unit | null } | null = null;
   private readonly head = new THREE.Vector3();
+  private readonly side = new THREE.Vector3();
   /** Where the relic was drawn last frame, so a catch glides instead of snapping. */
   private readonly drawn = new THREE.Vector3();
   private readonly goal = new THREE.Vector3();
@@ -358,17 +364,23 @@ export class RushView {
     let x = r.x;
     let z = r.z;
     let y = this.ground(x, z) + r.h;
-    // over the local carrier's own head it sits lower and smaller, out of the way of their aim
+    // the local carrier holds it up beside their head, smaller: over it, it would sit on the crosshair and hide whoever they pass to
     const mine = r.phase === 'held' && r.holder === me;
     if (r.phase === 'held' && r.holder) {
       const head = headOf(r.holder, this.head);
       if (head) {
         x = head.x;
         z = head.z;
-        y = head.y + (mine ? 0.35 : 0.55);
+        y = head.y + 0.55;
+        if (mine && this.camera) {
+          this.side.setFromMatrixColumn(this.camera.matrixWorld, 0);
+          x += this.side.x * MINE_SIDE;
+          z += this.side.z * MINE_SIDE;
+          y = head.y + 0.1;
+        }
       }
     }
-    this.relic.scale.setScalar(mine ? 0.75 : 1);
+    this.relic.scale.setScalar(mine ? 0.7 : 1);
     // glide into the hands on a catch rather than jumping a meter
     if (!this.placed || r.phase === 'center' || r.phase === 'gone') this.drawn.set(x, y, z);
     else this.drawn.lerp(this.goal.set(x, y, z), Math.min(1, dt * (r.phase === 'held' ? 22 : 40)));
@@ -404,9 +416,10 @@ export class RushView {
     const width = r.phase === 'held' ? (mine ? 0 : 0.34) : r.phase === 'flying' ? 0.5 : 0.4;
     this.locator.set(at, r.phase === 'held' ? 1.2 : 1.6, team ? 1 : 0, t, tone.main, tone.core, { lift, width });
 
-    // the local carrier sees where a throw would land, lit up blue when it would go in as a shot
+    // the local carrier sees where a throw would land and who would catch it: blue when it would go in as a shot, red when an enemy would cut it off
     const carrying = r.phase === 'held' && r.holder === me && rush.phase === 'play';
-    const shot = carrying && rush.shotOnTarget(me, me.aim);
+    const read = (this.read = carrying ? rush.passRead(me, me.aim) : null);
+    const shot = !!read?.goal;
     // a gate glows harder while the relic is coming at it, and flares when your shot is lined up on it
     for (const v of this.veils) {
       const g = RUSH.gates[v.side];
@@ -418,10 +431,13 @@ export class RushView {
     this.edge.values.opacity = 0.4 + 0.12 * Math.sin(t * 1.3);
 
     this.preview.mesh.visible = carrying;
+    const by = read?.catcher ?? null;
     if (carrying) {
-      if (shot !== this.previewShot) {
-        this.previewShot = shot;
-        this.preview.setColors(shot ? ALLY.main : GOLD.main, shot ? ALLY.core : GOLD.core);
+      const tone = shot ? 'shot' : by && by.team !== me.team ? 'cut' : 'pass';
+      if (tone !== this.previewTone) {
+        this.previewTone = tone;
+        const c = tone === 'shot' ? ALLY : tone === 'cut' ? FOE : GOLD;
+        this.preview.setColors(c.main, c.core);
       }
       const to = rush.throwTarget(me, me.aim);
       const key = `${to.x.toFixed(1)},${to.z.toFixed(1)}`;

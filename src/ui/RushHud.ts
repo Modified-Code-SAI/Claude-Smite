@@ -1,7 +1,7 @@
 import type { Side } from '../game/combatant';
 import { RUSH, type Rush } from '../sim/Rush';
 import type { Unit } from '../sim/Unit';
-import type { RushCall } from '../combat/RushMode';
+import type { RushCall, RushCatch } from '../combat/RushMode';
 import { addResult } from './records';
 import { awardLine } from './ascension';
 import { RushRadar } from './RushRadar';
@@ -91,6 +91,7 @@ export class RushHud {
       <div class="rush-intro"><b>Relic Rush</b><small>First to ${RUSH.goals} goals: carry or throw the Sun Relic through their gate</small><div class="rush-intro-teams"><div class="ally">${this.lineUp(this.mine)}</div><i class="rush-intro-count"></i><div class="foe">${this.lineUp(this.foe)}</div></div></div>
       <div class="rush-pointer"><i></i></div>
       <div class="rush-calls"></div>
+      <div class="rush-catch"><span><b></b><i><svg viewBox="0 0 24 24"><path d="M3 6h18l-9 13z"/></svg></i></span></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><div class="clash-end-table"></div><button class="clash-again">${online ? 'Back to the title screen' : 'Play again'}</button></div>`;
     document.body.appendChild(this.root);
     this.pips = {
@@ -102,6 +103,8 @@ export class RushHud {
     this.big = this.root.querySelector('.duel-big')!;
     this.end = this.root.querySelector('.clash-end')!;
     this.arrow = this.root.querySelector('.rush-pointer')!;
+    this.catchEl = this.root.querySelector('.rush-catch')!;
+    this.catchLabel = this.catchEl.querySelector('b')!;
     this.cut = this.root.querySelector('.rush-cut')!;
     this.intro = this.root.querySelector('.rush-intro')!;
     this.introCount = this.root.querySelector('.rush-intro-count')!;
@@ -146,6 +149,29 @@ export class RushHud {
       b.el.style.transform = `translate(${c.x.toFixed(0)}px, ${c.y.toFixed(0)}px)`;
       b.el.style.opacity = (1 - c.age ** 3).toFixed(2);
     });
+  }
+
+  private readonly catchEl: HTMLElement;
+  private readonly catchLabel: HTMLElement;
+  private catchKey = '';
+
+  /** The marker over whoever would catch the carrier's throw (null hides it). */
+  catcher(c: RushCatch | null): void {
+    const key = c ? `${c.name}|${c.label}|${c.raised ? 'r' : ''}` : '';
+    if (key !== this.catchKey) {
+      this.catchKey = key;
+      this.catchEl.classList.toggle('show', !!c);
+      if (c) {
+        this.catchEl.classList.toggle('foe', !c.ally);
+        this.catchEl.classList.toggle('raised', c.raised);
+        this.catchLabel.textContent = c.label;
+        // re-pop when it lands on somebody new or changes its call
+        this.catchEl.classList.remove('pop');
+        void this.catchEl.offsetWidth;
+        this.catchEl.classList.add('pop');
+      }
+    }
+    if (c) this.catchEl.style.transform = `translate(${c.x.toFixed(0)}px, ${c.y.toFixed(0)}px)`;
   }
 
   /** The arrow at the screen's edge toward an out-of-sight relic (null hides it). */
@@ -208,8 +234,14 @@ export class RushHud {
     if (!me.alive) return { text: `Dazed: back on your feet at your gate in ${Math.max(1, Math.ceil(me.combatant.respawnTimer))}`, tone: 'foe' };
     if (r.phase === 'kickoff') return { text: r.overtime ? 'Golden relic: the next goal wins' : 'Kickoff: the Sun Relic waits on the pedestal', tone: r.overtime ? 'contested' : '' };
     const h = relic.holder;
-    if (h === me && r.shotOnTarget(me, me.aim)) return { text: 'On target! Left click to shoot it through their gate', tone: 'contested' };
-    if (h === me) return { text: 'You have the relic! Run it through their gate, or left click to pass where you aim', tone: 'order' };
+    if (h === me) {
+      const read = r.passRead(me, me.aim);
+      if (read.goal) return { text: 'On target! Left click to shoot it through their gate', tone: 'contested' };
+      const by = read.catcher;
+      if (by && by.team === me.team) return { text: `Left click to pass to ${by.name}`, tone: 'order' };
+      if (by) return { text: r.shotOnTarget(me, me.aim) ? `${by.name} would save that shot` : `${by.name} would cut that pass off`, tone: 'chaos' };
+      return { text: 'You have the relic! Run it through their gate, or left click to pass where you aim', tone: 'order' };
+    }
     if (h && h.team === me.team) return { text: `${h.name} has the relic: get open, and press F to call for the pass`, tone: 'order' };
     if (h) return { text: `${h.name} has the relic: stun or knock them back to make them drop it`, tone: 'chaos' };
     if (relic.phase === 'center') return { text: 'Grab the Sun Relic from the pedestal', tone: 'contested' };
