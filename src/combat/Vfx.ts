@@ -947,7 +947,7 @@ function monsterPalette(u: Unit): GodPalette {
   if (u.tag.endsWith('moltenColossus')) return { ...p, vfx: 0xff4a10, core: 0xffd080 };
   if (u.tag.endsWith('thornSpitter')) return { ...p, vfx: ACID, core: 0xe8ffc0 };
   if (u.tag.endsWith(':shade')) return { ...p, vfx: SHADE_GLOW, core: SHADE_CORE };
-  if (u.tag.endsWith(':gravekeeper')) return { ...p, vfx: KEEPER_GLOW, core: KEEPER_CORE };
+  if (u.tag.endsWith(':gravekeeper') || u.tag.endsWith(':ossuaryKing')) return { ...p, vfx: KEEPER_GLOW, core: KEEPER_CORE };
   if (u.kind !== 'monster' || !u.tag.endsWith('warden')) return p;
   const kind = u.tag.split(':')[0]!.split('-')[1] as keyof typeof BUFF_GLOW;
   const c = BUFF_GLOW[kind];

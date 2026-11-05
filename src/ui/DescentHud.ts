@@ -18,6 +18,7 @@ const KEYS = 'ZXC';
 const HINTS: readonly (readonly [tag: string, hint: string])[] = [
   [':shade', 'Shades blink away when you close in: sidestep their slow bolts'],
   [':gravekeeper', 'Gravekeepers mend the monsters around them: take them down first'],
+  [':ossuaryKing', 'The King rains soul fire where you stand: keep moving'],
 ];
 
 /**
@@ -164,7 +165,9 @@ export class DescentHud {
       if (cardKey) {
         this.card.querySelector('.descent-card-depth')!.textContent = plan.kind === 'boss' ? `${DEPTHS[r.depth]!.name} · its master` : DEPTHS[r.depth]!.name;
         this.card.querySelector('.descent-card-name')!.textContent = CHAMBERS[plan.layout]!.name;
-        this.card.querySelector('.descent-card-kind')!.innerHTML = `<b>${KIND_NAMES[plan.kind]}</b> ${KIND_TEXT[plan.kind]}`;
+        // the bottom of the run: its lord, by name
+        const last = plan.kind === 'boss' && r.chamber === DESCENT.chambers;
+        this.card.querySelector('.descent-card-kind')!.innerHTML = last ? '<b>The Ossuary King</b> The lord of the Abyss. End this.' : `<b>${KIND_NAMES[plan.kind]}</b> ${KIND_TEXT[plan.kind]}`;
       }
       this.card.classList.toggle('show', !!cardKey);
       this.card.dataset.kind = plan.kind;

@@ -31,7 +31,13 @@ export const BOSS_WINDUP = 0.6;
  * Colossus stomps and the ground erupts. Telegraphed, then everything within
  * `radius` takes `scale` times the boss's attack power.
  */
-export const BOSS_SPECIAL: Record<BossKind, { every: number; windup: number; radius: number; scale: number }> = {
+export interface BossSpecial {
+  every: number;
+  windup: number;
+  radius: number;
+  scale: number;
+}
+export const BOSS_SPECIAL: Record<BossKind, BossSpecial> = {
   treasureWyrm: { every: 9, windup: 1.0, radius: 7, scale: 1.4 },
   moltenColossus: { every: 11, windup: 1.3, radius: 9, scale: 1.8 },
 };
@@ -234,10 +240,10 @@ export class MonsterBrain implements Brain {
     const { u, sim, camp } = this;
     u.move = null;
     if (!u.alive) return;
-    const boss = isBoss(camp.camp.kind) ? camp.camp.kind : null;
-    if (boss && this.special > 0) {
+    const spec = this.specialSpec;
+    if (spec && this.special > 0) {
       this.special -= dt;
-      if (this.special <= 0) this.unleash(boss);
+      if (this.special <= 0) this.unleash(spec);
       return;
     }
     if (u.windup > 0) {
@@ -269,12 +275,11 @@ export class MonsterBrain implements Brain {
       return;
     }
     this.resetting = false;
-    if (boss) {
+    if (spec) {
       this.specialIn -= dt;
       if (this.specialIn <= 0) {
-        const s = BOSS_SPECIAL[boss];
-        this.specialIn = s.every;
-        this.special = s.windup;
+        this.specialIn = spec.every;
+        this.special = spec.windup;
         return;
       }
     }
@@ -288,15 +293,26 @@ export class MonsterBrain implements Brain {
     const reach = attackReach(u, t);
     if (d > reach * 0.85) u.move = { x: dx / d, z: dz / d };
     if (d > reach || !u.combatant.basicReady) return;
-    if (boss) u.windup = BOSS_WINDUP;
+    if (spec) u.windup = BOSS_WINDUP;
     else if (u.tag.endsWith('warden')) u.windup = WARDEN_WINDUP;
     else sim.basic(u);
   }
 
+  /** Which boss this is, for its big named bar on the HUD (a jungle boss's camp kind), or null for anything else. */
+  get bossKey(): string | null {
+    const kind = this.camp.camp.kind;
+    return isBoss(kind) ? kind : null;
+  }
+
+  /** A boss's area attack (its kind's in the jungle), or none for anything else. */
+  protected get specialSpec(): BossSpecial | null {
+    const kind = this.camp.camp.kind;
+    return isBoss(kind) ? BOSS_SPECIAL[kind] : null;
+  }
+
   /** The boss's area attack lands: everything around it is hit, with a shockwave on the ground. */
-  private unleash(boss: BossKind): void {
+  private unleash(s: BossSpecial): void {
     const { u, sim } = this;
-    const s = BOSS_SPECIAL[boss];
     this.special = 0;
     u.sinceAction = 0;
     sim.flashAt(u, { type: 'circle', x: u.x, z: u.z, radius: s.radius });
@@ -309,8 +325,8 @@ export class MonsterBrain implements Brain {
 
   /** Share of a boss's area attack windup done, 0 when not winding up (for the view). */
   get specialProgress(): number {
-    const kind = this.camp.camp.kind;
-    if (!isBoss(kind) || this.special <= 0) return 0;
-    return 1 - this.special / BOSS_SPECIAL[kind].windup;
+    const spec = this.specialSpec;
+    if (!spec || this.special <= 0) return 0;
+    return 1 - this.special / spec.windup;
   }
 }

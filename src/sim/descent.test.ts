@@ -3,7 +3,7 @@ import { ULTIMATE_SLOT } from '../game/loadout';
 import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { BOSS_CHAMBER, CHAMBERS, chamberField, entranceSpot, exitSpot, steer, underworldField, obstaclesOf } from '../map/UnderworldLayout';
-import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, KEEPER, learnSkill, planRun, SHADE_BLINK } from './Descent';
+import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, KEEPER, KING, learnSkill, planRun, SHADE_BLINK } from './Descent';
 import { DescentBot } from './DescentBot';
 import { godUnit, monsterUnit } from './factory';
 import { CollisionWorld } from '../scene/Collision';
@@ -127,7 +127,7 @@ describe('Underworld Descent: the run', () => {
     expect(size(6)).toBeLessThanOrEqual(size(13));
     expect(chamberWaves({ n: 5, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('treasureWyrm');
     expect(chamberWaves({ n: 10, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('moltenColossus');
-    expect(chamberWaves({ n: 15, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('treasureWyrm');
+    expect(chamberWaves({ n: 15, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('ossuaryKing');
     expect(chamberWaves({ n: 4, layout: 0, kind: 'elite' })[0]).toContain('warden');
   });
 
@@ -233,6 +233,73 @@ describe('Underworld Descent: the run', () => {
     run(1);
     expect(gap()).toBeGreaterThan(start + 1);
     expect(c.sd(keeper.x - c.x, keeper.z - c.z)).toBeGreaterThan(0);
+  });
+
+  it('crowns the bottom of the run with the Ossuary King: Soul Rain under every god, never while stunned, faster when hurt; a Grave Toll; Shades among its adds', () => {
+    const { sim, run, team } = setup([zeus, thor], 2, 11);
+    const jump = run as unknown as { chamber: number; nextChamber(): void };
+    jump.chamber = DESCENT.chambers - 1;
+    jump.nextChamber();
+    step(sim, run, DESCENT.enterTime + 0.1);
+    const k = run.boss!;
+    expect(k.name).toBe('Ossuary King');
+    expect(k.tag.endsWith(':ossuaryKing')).toBe(true);
+    // only the rain can hurt for now: the King stands still and the gods stand clear of it
+    const brain = k.brain as DescentMonsterBrain;
+    k.brain = null;
+    k.move = null;
+    const place = () => team.forEach((g, i) => {
+      g.combatant.health = g.combatant.stats.maxHealth;
+      sim.teleport(g, k.x + (i ? 6 : -6), k.z + 10);
+    });
+    place();
+    const under = (g: Unit) => run.eruptions.some((e) => Math.hypot(e.x - g.x, e.z - g.z) < 1.5);
+    let newest = 0;
+    /** Seconds until the King next calls the rain, or null if it doesn't within `limit`. */
+    const nextRain = (limit: number, each?: () => void): number | null => {
+      for (let i = 1; i <= Math.round(limit * 30); i++) {
+        team.forEach((g) => (g.combatant.health = g.combatant.stats.maxHealth));
+        each?.();
+        step(sim, run, 1 / 30);
+        const id = Math.max(0, ...run.eruptions.map((e) => e.id));
+        if (id > newest) {
+          newest = id;
+          return i / 30;
+        }
+      }
+      return null;
+    };
+    // (the rain's clock starts as the King rises, a moment into the fight)
+    expect(nextRain(KING.rain.first + 1)).toBeGreaterThan(KING.rain.first - 0.3);
+    for (const g of team) expect(under(g)).toBe(true);
+    expect(run.eruptions.length).toBeLessThanOrEqual(team.length + KING.rain.extra);
+    // stunned, it can't; freed, it calls the rain at once
+    k.combatant.cc.apply('stun', 60);
+    expect(nextRain(KING.rain.every + 2)).toBe(null);
+    k.combatant.cc.cleanse();
+    place();
+    expect(nextRain(1)).not.toBe(null);
+    for (const g of team) expect(under(g)).toBe(true);
+    // badly hurt, the rain after next comes sooner
+    const low = () => (k.combatant.health = k.combatant.stats.maxHealth * (KING.enrage - 0.05));
+    expect(nextRain(KING.rain.every + 0.5, low)).toBeCloseTo(KING.rain.every, 0);
+    expect(nextRain(KING.rain.every + 0.5, low)).toBeCloseTo(KING.rain.enraged, 0);
+    // the Grave Toll: a windup, then a ring of the toll's size around it
+    k.brain = brain;
+    let wound = false;
+    let ring = false;
+    for (let i = 0; i < 30 * (KING.toll.every + 3) && !ring; i++) {
+      team.forEach((g) => (g.combatant.health = g.combatant.stats.maxHealth));
+      step(sim, run, 1 / 30);
+      if (brain.specialProgress > 0) wound = true;
+      ring = sim.flashes.some((f) => f.owner === k && f.shape.type === 'circle' && f.shape.radius === KING.toll.radius);
+    }
+    expect(wound).toBe(true);
+    expect(ring).toBe(true);
+    // its adds (called as it weakens, which the hurt check above already did) bring Shades of its court, never a healer
+    const adds = run.monsters.map((m) => m.tag.split(':')[1]);
+    expect(adds).toContain('shade');
+    expect(adds).not.toContain('gravekeeper');
   });
 
   it('starts every god with one skill, the rest sealed', () => {
