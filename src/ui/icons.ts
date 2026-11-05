@@ -1,5 +1,6 @@
 import { hex, paletteFor } from '../combat/palette';
 import type { Keystone, SkillDef, StatKey, TreeNode } from '../game/types';
+import type { RelicId } from '../sim/Relics';
 
 /**
  * Procedural skill icons: a glyph for what the skill does, drawn over a
@@ -555,4 +556,55 @@ function iconSvg(vfx: string, body: string, gold: boolean): string {
     <g clip-path="url(#${id}c)" filter="url(#${id}g)">${body}</g>
     ${frame}
   </svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// Underworld Descent's relics: emblems of what each one does
+
+const RELIC_ART: Record<RelicId, { vfx: string; body: string }> = {
+  // a skull bursting in a ring of soul fire
+  knell: {
+    vfx: '#ff6a1a',
+    body: `<circle cx="32" cy="33" r="25" fill="none" stroke="#ffb36a" stroke-width="2" stroke-dasharray="3 4" opacity="0.8"/>${Array.from({ length: 8 }, (_, i) => {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const p = (r: number) => `${(32 + Math.cos(a) * r).toFixed(1)} ${(33 + Math.sin(a) * r).toFixed(1)}`;
+      return `<path d="M${p(16)} L${p(23)}" ${LINE} stroke="#ffd08a" stroke-width="3"/>`;
+    }).join('')}${glyphAt('skull', 32, 33, 0.42, 'fill="#fff6e2" stroke="#fff6e2"')}`,
+  },
+  // a blow landing on one monster and leaping on to two more
+  chain: {
+    vfx: '#3aa8ff',
+    body: `${foe(32, 24, 0.78)}${foe(13, 54, 0.7)}${foe(51, 54, 0.7)}<path d="M28 30 L22 36 L26 38 L17 45" ${LINE} stroke="#d8f6ff" stroke-width="2.8"/><path d="M36 30 L42 36 L38 38 L47 45" ${LINE} stroke="#d8f6ff" stroke-width="2.8"/><path d="M32 6 V10 M24 9 L26 12 M40 9 L38 12" ${LINE} stroke-width="2.4"/>`,
+  },
+  // an hourglass inside a turning arrow: cooldowns given back
+  echo: {
+    vfx: '#e0a020',
+    body: `<path d="M50 14 A23 23 0 1 0 55 38" ${LINE} stroke-width="3.4"/><path d="M49 32 L55 39 L60 31" ${LINE} stroke-width="3.4"/>${glyphAt('hourglass', 31, 33, 0.5, 'fill="#fff6e2" stroke="#fff6e2"')}`,
+  },
+  // a shield built of ribs on a spine
+  aegis: {
+    vfx: '#b8c8e8',
+    body: `<path d="M32 7 L52 15 V31 C52 44 43 52 32 57 C21 52 12 44 12 31 V15 Z" fill="#fff6e2" fill-opacity="0.12" stroke="#fff6e2" stroke-width="3" stroke-linejoin="round"/><path d="M32 13 V52" ${LINE} stroke-width="3.4"/><path d="M31 21 Q21 20 17 26 M33 21 Q43 20 47 26 M31 30 Q21 29 17 35 M33 30 Q43 29 47 35 M31 39 Q23 38 20 43 M33 39 Q41 38 44 43" ${LINE} stroke-width="2.6"/>`,
+  },
+  // souls streaming out of the slain into a heart
+  harvest: {
+    vfx: '#3ad06a',
+    body: `<path d="M8 10 Q14 24 24 30 M56 10 Q50 24 40 30 M32 4 V18" ${LINE} stroke="#c8ffd0" stroke-width="2.2" stroke-dasharray="3 3"/><circle cx="8" cy="10" r="3" fill="#c8ffd0"/><circle cx="56" cy="10" r="3" fill="#c8ffd0"/><circle cx="32" cy="4" r="3" fill="#c8ffd0"/>${glyphAt('heart', 32, 40, 0.5, 'fill="#8dff8a" stroke="#fff6e2" stroke-width="3"')}${glyphAt('heal', 32, 40, 0.22, 'fill="#0d3a14" stroke="none"')}`,
+  },
+  // a skull with burning eyes in a rising flame
+  spite: {
+    vfx: '#e02020',
+    body: `<path d="M32 4 C40 14 46 18 44 30 C50 26 52 20 52 20 C58 34 50 50 32 58 C14 50 6 34 12 20 C12 20 14 26 20 30 C18 18 24 14 32 4 Z" fill="#ff5a3a" fill-opacity="0.55" stroke="#ffb08a" stroke-width="1.6"/>${glyphAt('skull', 32, 38, 0.46, 'fill="#fff6e2" stroke="#fff6e2"')}<circle cx="27.9" cy="36.2" r="1.9" fill="#ff3020"/><circle cx="36.1" cy="36.2" r="1.9" fill="#ff3020"/>`,
+  },
+  // the ferryman's lantern, and a god rising in its light
+  lantern: {
+    vfx: '#40c8e0',
+    body: `<path d="M26 6 H34 M30 6 V12" ${LINE} stroke-width="3"/><path d="M21 14 H39 L36 18 H24 Z" fill="#fff6e2"/><rect x="22" y="18" width="16" height="23" rx="3" fill="#9ff0ff" fill-opacity="0.3" stroke="#fff6e2" stroke-width="2.6"/><path d="M30 23 C34.5 28 34 34 30 37 C26 34 25.5 28 30 23 Z" fill="#e8ffff"/><path d="M21 41 H39 L36 45 H24 Z" fill="#fff6e2"/>${me(50, 58, 0.62)}<path d="M50 40 V28 M45 33 L50 27 L55 33" ${LINE} stroke="#9ff0ff" stroke-width="3"/>`,
+  },
+};
+
+/** A relic's emblem, gold-framed like an ultimate: relics are the run's rare finds. */
+export function relicIcon(id: RelicId): string {
+  const a = RELIC_ART[id];
+  return iconSvg(a.vfx, a.body, true);
 }

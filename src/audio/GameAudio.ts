@@ -20,6 +20,7 @@ import { hypot } from '../core/math';
 import { DUEL } from '../sim/Duel';
 import { RUSH } from '../sim/Rush';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
+import { relicById } from '../sim/Relics';
 import { JOTUNN, type PartId } from '../sim/Jotunn';
 
 /** A match's music only ever moves forward: dawn, then battle, then the siege. */
@@ -32,6 +33,9 @@ interface Tracked {
   loop: LoopHandle;
   seen: boolean;
 }
+
+/** How loud each relic's sound plays (the bursts carry, a god's own relics stay close). */
+const RELIC_GAIN: Record<string, number> = { 'relic.knell': 0.75, 'relic.chain': 0.45, 'relic.echo': 0.5, 'relic.aegis': 0.45, 'relic.harvest': 0.35, 'relic.spite': 0.7 };
 
 /** Which god basic-hit sound each god makes. */
 const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand', jotunn: 'hit.jotunn' };
@@ -104,6 +108,8 @@ export class GameAudio {
       else if (name === 'soul') this.engine.play('soul.absorb', { gain: 0.32, rate: 1 + Math.min(k, 10) * 0.055, vary: 0.03 }, 1, 0.05);
       // the dead clawing up out of the floor: one rumble for a wave rising together, a boss louder and lower
       else if (name === 'emerge') this.engine.play('monster.emerge', { at, gain: 0.5 + k * 0.6, rate: 1.15 - k * 0.35, vary: 0.06, ref: 12 + k * 20 }, 2, 0.12);
+      // a relic going off: bursts and leaps where they happen (a pack's chain of bursts thinned out), a god's own relics at that god
+      else if (name.startsWith('relic.')) this.engine.play(name, { at, gain: RELIC_GAIN[name] ?? 0.5, vary: 0.05, ref: 14 }, 2, name === 'relic.knell' ? 0.09 : name === 'relic.chain' ? 0.06 : 0.12);
     };
   }
 
@@ -1098,7 +1104,7 @@ export class GameAudio {
   private lava: LoopHandle | null = null;
 
   /** Last seen Underworld Descent state, so each beat is called once. */
-  private descentSeen = { chamber: 0, phase: '', depth: -1, curses: 0, obols: -1, downed: 0, erupting: false, song: 'abyss' as SongName, lead: 0, routed: 0, routs: 0 };
+  private descentSeen = { chamber: 0, phase: '', depth: -1, curses: 0, obols: -1, downed: 0, erupting: false, song: 'abyss' as SongName, lead: 0, routed: 0, routs: 0, relics: 0 };
 
   /** Underworld Descent: each chamber's arrival, the clear, the open gate, curses, revives, the obol and the end. */
   private watchDescent(): void {
@@ -1142,6 +1148,13 @@ export class GameAudio {
       seen.song = song;
       this.music.play(song);
     }
+    // a relic found: a bell, and the herald names it
+    const relics = r.relics.ofSide(r.sideOf(this.me));
+    if (relics.length > seen.relics) {
+      this.engine.play('relic.found', { bus: 'ui', gain: 0.6 }, 3);
+      this.herald.say(`A relic of the underworld: ${relicById(relics[relics.length - 1]!)?.name ?? 'a relic'}.`, 'epic', 3);
+    }
+    seen.relics = relics.length;
     if (r.curses.length > seen.curses) this.herald.say(`A curse takes hold: ${r.curses[r.curses.length - 1]!.name}.`, 'bad', 2);
     seen.curses = r.curses.length;
     if (r.obols < seen.obols) this.herald.say("Charon's obol is spent. Death lets you go, this once.", 'epic', 5);

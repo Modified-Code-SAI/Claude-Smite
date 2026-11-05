@@ -1,10 +1,13 @@
+import * as THREE from 'three/webgpu';
 import type { Side } from '../game/combatant';
 import { exitSpot } from '../map/UnderworldLayout';
 import { DESCENT, DEPTHS, SOULS, type Descent } from '../sim/Descent';
+import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
 import { DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
+import { ArcView } from './Arcs';
 import { GroundDecal } from './GroundDecal';
 import { KEEPER_CORE, KEEPER_GLOW } from './MonsterViews';
 import type { GodPalette } from './palette';
@@ -23,6 +26,19 @@ const LANTERN: GodPalette = { cloth: 0, trim: 0, glow: KEEPER_GLOW, vfx: KEEPER_
 const GILDED: GodPalette = { cloth: 0, trim: 0, glow: 0xffc23a, vfx: 0xffb020, core: 0xfff0b0 };
 /** Seconds between the souls a god raising an ally pours into them. */
 const STREAM_EVERY = 0.09;
+/** Each relic's light when it goes off. */
+const RELIC_FX: Record<RelicId, GodPalette> = {
+  knell: { cloth: 0, trim: 0, glow: 0xff5a1a, vfx: 0xff6a20, core: 0xffc878 },
+  chain: { cloth: 0, trim: 0, glow: 0x3aa8ff, vfx: 0x4ab4ff, core: 0xe8f8ff },
+  echo: { cloth: 0, trim: 0, glow: 0xffc23a, vfx: 0xffc84a, core: 0xfff4c8 },
+  aegis: { cloth: 0, trim: 0, glow: 0xc8d4f0, vfx: 0xd8e2ff, core: 0xffffff },
+  harvest: { cloth: 0, trim: 0, glow: 0x5aff8a, vfx: 0x6aff96, core: 0xe0ffe8 },
+  spite: { cloth: 0, trim: 0, glow: 0xff3020, vfx: 0xff4030, core: 0xffb090 },
+  lantern: { cloth: 0, trim: 0, glow: 0x8fe8ff, vfx: 0x8fe8ff, core: 0xffffff },
+};
+/** How long a Chain of Souls bolt crackles, and a Death Knell's ring takes to spread. */
+const LEAP_LIFE = 0.28;
+const KNELL_LIFE = 0.5;
 
 export interface DescentViewOptions {
   /** The player's team: in a shared descent the rivals' fallen get no ring (only their own team can raise them). */
@@ -38,7 +54,7 @@ export interface DescentViewOptions {
   cue?: (name: DescentCue, at: { x: number; y: number; z: number }, k: number) => void;
 }
 
-export type DescentCue = 'soul' | 'emerge';
+export type DescentCue = 'soul' | 'emerge' | `relic.${RelicId}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -76,6 +92,12 @@ export class DescentView {
   private clock = 0;
   /** The run of souls reaching the player: its length and when the last landed. */
   private streak = { k: 0, at: -1 };
+  /** Relics going off: the newest proc already shown, Chain of Souls bolts still crackling, and Death Knell rings spreading. */
+  private lastProc = 0;
+  private readonly chainArc = new ArcView();
+  private readonly leaps: { a: THREE.Vector3; mid: THREE.Vector3; b: THREE.Vector3; age: number }[] = [];
+  private readonly knellRings: GroundDecal[] = [];
+  private readonly knells: { x: number; z: number; age: number }[] = [];
 
   constructor(
     private readonly run: Descent,
@@ -114,6 +136,17 @@ export class DescentView {
     this.door.setStyle('zone');
     this.door.mesh.visible = false;
     world.vfx.add(this.door.mesh);
+    for (let i = 0; i < 4; i++) {
+      const d = new GroundDecal(groundAt);
+      d.setStyle('telegraph');
+      d.setColors(RELIC_FX.knell.vfx, RELIC_FX.knell.core);
+      d.mesh.visible = false;
+      this.knellRings.push(d);
+      world.vfx.add(d.mesh);
+    }
+    this.chainArc.setColors(RELIC_FX.chain.vfx, RELIC_FX.chain.core);
+    this.chainArc.group.visible = false;
+    world.vfx.add(this.chainArc.group);
   }
 
   frame(dt: number, time: number): void {
@@ -189,6 +222,7 @@ export class DescentView {
     }
     this.streams();
     this.gate(dt, door);
+    this.relicFx(dt);
     this.wisps.frame(dt);
 
     // a ring under each downed god that fills as it is raised
@@ -333,14 +367,129 @@ export class DescentView {
     }
   }
 
+  /**
+   * Relics going off: Death Knell's soul fire bursting out of the slain in a
+   * spreading ring, Chain of Souls' bolts crackling from monster to monster,
+   * Grave Harvest's green souls flying into the gods it heals, and a flare
+   * on a god as Echoing Rite, Bone Aegis or Spite takes hold. Each has its
+   * own sound for the player it is about (and for anyone near a burst).
+   */
+  private relicFx(dt: number): void {
+    for (const p of this.run.relics.procs) {
+      if (p.id <= this.lastProc) continue;
+      this.lastProc = p.id;
+      this.proc(p);
+    }
+    // Chain of Souls: bolts re-jagged every frame as they fade, so they crackle
+    for (let i = this.leaps.length - 1; i >= 0; i--) if ((this.leaps[i]!.age += dt) >= LEAP_LIFE) this.leaps.splice(i, 1);
+    this.chainArc.group.visible = this.leaps.length > 0;
+    if (this.leaps.length) {
+      this.chainArc.clear();
+      let fade = 0;
+      for (const l of this.leaps) {
+        const k = 1 - l.age / LEAP_LIFE;
+        fade = Math.max(fade, k);
+        // up over the bodies and down into the next one, so it reads as a leap (a low heat keeps it soul-blue, not white)
+        this.chainArc.bolt(l.a, l.mid, 0.22 + 0.2 * k, 0.14, 0.25 + 0.25 * k, 3);
+        this.chainArc.bolt(l.mid, l.b, 0.22 + 0.2 * k, 0.14, 0.25 + 0.25 * k, 3);
+      }
+      this.chainArc.values.fade = fade;
+    }
+    // Death Knell: a ring of fire running out to the burst's reach
+    for (let i = this.knells.length - 1; i >= 0; i--) if ((this.knells[i]!.age += dt) >= KNELL_LIFE) this.knells.splice(i, 1);
+    this.knellRings.forEach((d, i) => {
+      const k = this.knells[i];
+      d.mesh.visible = !!k;
+      if (!k) return;
+      const t = k.age / KNELL_LIFE;
+      d.values.fill = 1;
+      d.values.opacity = (1 - t) * 0.9;
+      d.place({ type: 'ring', radius: 0.6 + (RELIC.knell.radius - 0.6) * Math.sqrt(t), width: 0.35 + 0.5 * (1 - t) }, k.x, k.z, 0, 0.1);
+    });
+  }
+
+  /** How high a monster's back stands at (x, z): the nearest monster's, or a thornback's when none is close. */
+  private backOf(x: number, z: number): number {
+    let best: Unit | null = null;
+    let bd = 2.5;
+    for (const m of this.run.monsters) {
+      const d = Math.hypot(m.x - x, m.z - z);
+      if (d < bd) {
+        bd = d;
+        best = m;
+      }
+    }
+    return best ? Math.min(3.2, 0.9 + best.radius * 0.7) : 1.6;
+  }
+
+  private proc(p: RelicProc): void {
+    const fx = RELIC_FX[p.k];
+    const me = this.opts.me;
+    const god = p.god === undefined ? null : (this.run.gods[p.god] ?? null);
+    const mine = !!god && god === me;
+    const gy = this.groundAt(p.x, p.z);
+    const cue = (at: { x: number; y: number; z: number }, k = 0) => this.opts.cue?.(`relic.${p.k}`, at, k);
+    switch (p.k) {
+      case 'knell': {
+        this.vfx.burst(fx, p.x, gy + 0.5, p.z, 1.5);
+        this.wisps.swarm.release(p.x, gy + 0.8, p.z, 5, null, fx.core, 0.5, 0.5);
+        if (this.knells.length >= this.knellRings.length) this.knells.shift();
+        this.knells.push({ x: p.x, z: p.z, age: 0 });
+        const near = me ? Math.hypot(me.x - p.x, me.z - p.z) : 99;
+        if (near < 12) this.opts.shake?.(0.12 * (1 - near / 12));
+        cue({ x: p.x, y: gy + 0.5, z: p.z });
+        return;
+      }
+      case 'chain': {
+        if (p.tx === undefined || p.tz === undefined) return;
+        // from the top of one monster to the top of the next (the nearest ones to each end)
+        const a = new THREE.Vector3(p.x, gy + this.backOf(p.x, p.z), p.z);
+        const b = new THREE.Vector3(p.tx, this.groundAt(p.tx, p.tz) + this.backOf(p.tx, p.tz), p.tz);
+        const mid = a.clone().lerp(b, 0.5);
+        mid.y = Math.max(a.y, b.y) + 0.5 + a.distanceTo(b) * 0.12;
+        if (this.leaps.length >= 8) this.leaps.shift();
+        this.leaps.push({ a, mid, b, age: 0 });
+        this.vfx.burst(fx, a.x, a.y, a.z, 0.4);
+        this.vfx.burst(fx, b.x, b.y, b.z, 0.65);
+        cue({ x: b.x, y: b.y, z: b.z });
+        return;
+      }
+      case 'harvest': {
+        if (!god) return;
+        for (let i = 0; i < 3; i++) this.wisps.swarm.send(p.x, gy + 1 + i * 0.2, p.z, god, fx.vfx, 0.34, 1.3);
+        if (mine) cue({ x: god.x, y: god.body.y + 1.2, z: god.z });
+        return;
+      }
+      case 'echo':
+      case 'aegis':
+      case 'spite': {
+        if (!god) return;
+        const y = god.body.y + (p.k === 'echo' ? 2.2 : 1.2);
+        this.vfx.burst(fx, god.x, y, god.z, p.k === 'spite' ? 1.4 : 0.7);
+        if (p.k === 'echo') this.wisps.swarm.release(god.x, y, god.z, 4, null, fx.core, 0.28, 0.35);
+        // (no pillar for Spite: a column of light over a god is how its fall looks)
+        if (p.k === 'spite') this.wisps.swarm.release(god.x, god.body.y + 0.4, god.z, 6, null, fx.vfx, 0.4, 0.5);
+        if (mine) cue({ x: god.x, y, z: god.z });
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
   /** Shows every decal and the souls for the loading frames that prepare shaders; returns the undo. */
   prime(): () => void {
-    const all = [...this.eruptions, ...this.revives, this.door];
+    const all = [...this.eruptions, ...this.revives, this.door, ...this.knellRings];
     for (const d of all) d.mesh.visible = true;
     const wisps = this.wisps.prime();
+    // a bolt of Chain of Souls, so its shader is ready before the first leap
+    this.chainArc.group.visible = true;
+    this.chainArc.bolt(new THREE.Vector3(0, 1, 0), new THREE.Vector3(2, 1, 0), 0.1);
     return () => {
       for (const d of all) d.mesh.visible = false;
       wisps();
+      this.chainArc.clear();
+      this.chainArc.group.visible = false;
     };
   }
 }

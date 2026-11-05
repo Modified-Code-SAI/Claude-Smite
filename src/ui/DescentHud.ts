@@ -5,7 +5,8 @@ import type { Unit } from '../sim/Unit';
 import { CHAMBERS } from '../map/UnderworldLayout';
 import { addResult } from './records';
 import { awardLine } from './ascension';
-import { skillIcon } from './icons';
+import { relicById, type RelicId } from '../sim/Relics';
+import { relicIcon, skillIcon } from './icons';
 import { KillTally } from './killTally';
 import type { SimEvent } from '../sim/Unit';
 import './match.css';
@@ -56,6 +57,11 @@ export class DescentHud {
   private bannerUntil = 0;
   /** The first chamber each new monster rose in this run, where the status line says how to fight it. */
   private readonly hintAt = new Map<string, number>();
+  /** The team's relics down the left edge, each lighting up as it goes off. */
+  private readonly relicTray: HTMLElement;
+  private readonly relicEls = new Map<RelicId, HTMLElement>();
+  private shownRelics = '';
+  private lastProc = 0;
 
   constructor(
     private readonly run: Descent,
@@ -73,6 +79,7 @@ export class DescentHud {
       <div class="descent-curses"></div>
       <div class="descent-card"><div class="descent-card-depth"></div><div class="descent-card-name"></div><div class="descent-card-kind"></div></div>
       <div class="siege-boons descent-cards"></div>
+      <div class="descent-relics"></div>
       <div class="mh-banner"></div>
       <div class="descent-fade"></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><div class="clash-end-table"></div><button class="clash-again">Descend again</button></div>`;
@@ -84,6 +91,7 @@ export class DescentHud {
     this.cards = this.root.querySelector('.descent-cards')!;
     this.fade = this.root.querySelector('.descent-fade')!;
     this.end = this.root.querySelector('.clash-end')!;
+    this.relicTray = this.root.querySelector('.descent-relics')!;
     this.cards.addEventListener('click', (e) => {
       const card = (e.target as HTMLElement).closest<HTMLElement>('.siege-boon');
       if (card) onPick(Number(card.dataset.i));
@@ -191,8 +199,43 @@ export class DescentHud {
     }
 
     this.rewardCards();
+    this.relics();
 
     if (r.over && !this.shownEnd) this.showEnd();
+  }
+
+  /** The team's relics: a new one flies in, each flares as it goes off for this god (or the team), and Spite burns while it rages. */
+  private relics(): void {
+    const rel = this.run.relics;
+    const mine = rel.ofSide(this.mine);
+    const key = mine.join();
+    if (key !== this.shownRelics) {
+      const had = new Set(this.relicEls.keys());
+      this.shownRelics = key;
+      this.relicTray.innerHTML = mine
+        .map((id) => {
+          const r = relicById(id)!;
+          return `<div class="descent-relic${had.has(id) ? '' : ' new'}" data-id="${id}"><i>${relicIcon(id)}</i><span><b>${r.name}</b>${r.text}</span></div>`;
+        })
+        .join('');
+      this.relicEls.clear();
+      for (const el of this.relicTray.querySelectorAll<HTMLElement>('.descent-relic')) this.relicEls.set(el.dataset.id as RelicId, el);
+      this.relicTray.classList.toggle('show', mine.length > 0);
+    }
+    for (const p of rel.procs) {
+      if (p.id <= this.lastProc) continue;
+      this.lastProc = p.id;
+      // a god's own relics (a shield, a refund, a heal, a rage) flare for that god's player only
+      if (p.side !== this.mine || (p.god !== undefined && this.run.gods[p.god] !== this.me)) continue;
+      const el = this.relicEls.get(p.k);
+      if (!el) continue;
+      el.classList.remove('pop');
+      void el.offsetWidth;
+      el.classList.add('pop');
+    }
+    this.relicEls.get('spite')?.classList.toggle('lit', rel.spiting(this.me));
+    // between fights, every relic says what it does
+    this.relicTray.classList.toggle('open', this.run.phase === 'reward' || this.run.phase === 'draft' || this.run.phase === 'exit');
   }
 
   private stateText(): string {
@@ -251,7 +294,7 @@ export class DescentHud {
         offer
           .map(
             (c, i) =>
-              `<div class="siege-boon descent-reward ${c.kind}${mine === i ? ' voted' : ''}" data-i="${i}"><kbd>${KEYS[i]}</kbd><b>${c.name}</b><span>${c.text}</span>${team && t[i] ? `<em>${t[i]} ${t[i] === 1 ? 'vote' : 'votes'}</em>` : ''}</div>`,
+              `<div class="siege-boon descent-reward ${c.kind}${mine === i ? ' voted' : ''}" data-i="${i}"><kbd>${KEYS[i]}</kbd>${c.relic ? `<i class="descent-icon">${relicIcon(c.relic.id)}</i><small>Relic</small>` : ''}<b>${c.name}</b><span>${c.text}</span>${team && t[i] ? `<em>${t[i]} ${t[i] === 1 ? 'vote' : 'votes'}</em>` : ''}</div>`,
           )
           .join('');
     } else if (draft) {
@@ -279,7 +322,7 @@ export class DescentHud {
     const mins = Math.floor(r.time / 60);
     const secs = String(Math.floor(r.time % 60)).padStart(2, '0');
     this.end.querySelector('.clash-end-score')!.textContent =
-      `${won ? 'All fifteen chambers cleared' : `${cleared} ${cleared === 1 ? 'chamber' : 'chambers'} cleared`} in ${mins}:${secs} · ${r.kills} monsters slain · ${r.boons.length} boons · ${record ? 'new best!' : `best ${best}`}`;
+      `${won ? 'All fifteen chambers cleared' : `${cleared} ${cleared === 1 ? 'chamber' : 'chambers'} cleared`} in ${mins}:${secs} · ${r.kills} monsters slain · ${r.boons.length} boons${relics(r.relics.ofSide('order').length)} · ${record ? 'new best!' : `best ${best}`}`;
     this.end.querySelector('.clash-end-score')!.insertAdjacentHTML('afterend', awardLine(award));
     if (this.board) this.end.querySelector('.clash-end-table')!.innerHTML = scoreTable(this.board, this.me, 'monsters');
     this.end.classList.add('show');
@@ -300,10 +343,12 @@ export class DescentHud {
     const theirs = Math.floor(r.souls[this.foe]);
     const boons = r.boonTeam.filter((t) => t === this.mine).length;
     this.end.querySelector('.clash-end-score')!.textContent =
-      `Souls ${ours} to ${theirs} · ${r.teamKills[this.mine]} monsters slain to ${r.teamKills[this.foe]} · ${boons} boons · ${mins}:${secs}`;
+      `Souls ${ours} to ${theirs} · ${r.teamKills[this.mine]} monsters slain to ${r.teamKills[this.foe]} · ${boons} boons${relics(r.relics.ofSide(this.mine).length)} · ${mins}:${secs}`;
     this.end.querySelector('.clash-end-score')!.insertAdjacentHTML('afterend', awardLine(award));
     if (this.board) this.end.querySelector('.clash-end-table')!.innerHTML = scoreTable(this.board, this.me, 'gods');
     this.end.classList.add('show');
     document.exitPointerLock?.();
   }
 }
+
+const relics = (n: number): string => (n ? ` · ${n} ${n === 1 ? 'relic' : 'relics'}` : '');
