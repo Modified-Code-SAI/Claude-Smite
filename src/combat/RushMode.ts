@@ -56,7 +56,7 @@ export class RushMode {
   private readonly view: RushView;
   private readonly hud: RushHud;
   /** The beats already shown, so each catch, fumble and goal flashes once. */
-  private seen = { catch: 0, steal: 0, fumble: 0, goals: 0, phase: '' as string };
+  private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, goals: 0, phase: '' as string };
   private readonly v = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
 
@@ -109,7 +109,7 @@ export class RushMode {
     this.view.camera = deps.camera;
     deps.vfx.add(this.view.group);
     this.hud = new RushHud(rush, player, this.gods, !!net);
-    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, goals: rush.goalCount, phase: rush.phase };
+    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, shrug: rush.beats.shrug, goals: rush.goalCount, phase: rush.phase };
   }
 
   /** Whether the local player has the relic (their skills and basic attack give way to throwing). */
@@ -155,6 +155,11 @@ export class RushMode {
       const b = r.lastBeat;
       if (b?.kind === 'fumble' && (b.unit === me || b.by === me)) this.deps.shake?.(0.25);
     }
+    if (at && r.beats.shrug !== seen.shrug) {
+      // a Captain keeps it: a ring of gold off the carrier
+      burst(GOLD, at.x, at.y, at.z, 0.65);
+      if (r.lastBeat?.unit === me) this.deps.shake?.(0.12);
+    }
     if (r.goalCount !== seen.goals && r.lastGoal) {
       const g = r.lastGoal;
       const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
@@ -165,7 +170,7 @@ export class RushMode {
       this.deps.shake?.(0.15 + near * 0.35);
     }
     if (r.phase === 'play' && seen.phase === 'kickoff' && at) burst(GOLD, at.x, at.y, at.z, 0.9);
-    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, goals: r.goalCount, phase: r.phase };
+    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, goals: r.goalCount, phase: r.phase };
   }
 
   /**

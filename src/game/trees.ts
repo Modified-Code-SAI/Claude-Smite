@@ -1,4 +1,4 @@
-import type { Effect, GodDef, Keystone, SkillModField, SkillTree, StatKey, TreeNode } from './types';
+import type { Effect, GodDef, Keystone, SkillModField, SkillTree, SportKey, StatKey, TreeNode } from './types';
 
 /**
  * Points that must already be spent in a tree before a node of this tier
@@ -23,9 +23,9 @@ export interface TreeIndex {
   node: Map<string, { node: TreeNode; tree: SkillTree }>;
 }
 
-export function indexTrees(god: GodDef): TreeIndex {
+export function indexTrees(god: GodDef | readonly SkillTree[]): TreeIndex {
   const node = new Map<string, { node: TreeNode; tree: SkillTree }>();
-  for (const tree of god.trees) for (const n of tree.nodes) node.set(n.id, { node: n, tree });
+  for (const tree of 'trees' in god ? god.trees : god) for (const n of tree.nodes) node.set(n.id, { node: n, tree });
   return { node };
 }
 
@@ -131,10 +131,16 @@ export interface TreeBonuses {
   keystones: Keystone[];
   /** Effects tree nodes add to skills, by skill id. */
   augments: Record<string, Effect[]>;
+  /** Relic Rush's sport numbers. */
+  sport: Partial<Record<SportKey, number>>;
+}
+
+export function emptyBonuses(): TreeBonuses {
+  return { stats: {}, skills: {}, keystones: [], augments: {}, sport: {} };
 }
 
 export function treeBonuses(index: TreeIndex, alloc: Allocation): TreeBonuses {
-  const out: TreeBonuses = { stats: {}, skills: {}, keystones: [], augments: {} };
+  const out = emptyBonuses();
   for (const [id, rank] of Object.entries(alloc)) {
     const entry = index.node.get(id);
     if (!entry || rank <= 0) continue;
@@ -146,6 +152,8 @@ export function treeBonuses(index: TreeIndex, alloc: Allocation): TreeBonuses {
         mods[e.field satisfies SkillModField] += e.perRank * rank;
       } else if (e.type === 'augment') {
         (out.augments[e.skill] ??= []).push(...e.effects);
+      } else if (e.type === 'sport') {
+        out.sport[e.key] = (out.sport[e.key] ?? 0) + e.perRank * rank;
       } else {
         out.keystones.push(e.keystone);
       }
@@ -160,19 +168,19 @@ export function treeBonuses(index: TreeIndex, alloc: Allocation): TreeBonuses {
  * comes as early as the gates allow), then the rest into a second tree.
  */
 export function botBuildOrder(god: GodDef, main: number): string[] {
+  return [...treeOrder(god.trees[main % 3]!, true), ...treeOrder(god.trees[(main + 1) % 3]!, false)];
+}
+
+/** One tree's nodes from the bottom up, the keystone's prerequisite first in its tier, and the keystone last. */
+export function treeOrder(tree: SkillTree, withKeystone: boolean): string[] {
   const order: string[] = [];
-  const add = (tree: SkillTree, withKeystone: boolean) => {
-    const key = tree.nodes.find((n) => n.tier === 4);
-    for (const tier of [1, 2, 3] as const) {
-      const nodes = tree.nodes.filter((n) => n.tier === tier);
-      nodes.sort((a, b) => Number(b.id === key?.requires) - Number(a.id === key?.requires));
-      for (const n of nodes) order.push(n.id);
-    }
-    if (withKeystone && key) order.push(key.id);
-  };
-  const first = god.trees[main % 3]!;
-  add(first, true);
-  add(god.trees[(main + 1) % 3]!, false);
+  const key = tree.nodes.find((n) => n.tier === 4);
+  for (const tier of [1, 2, 3] as const) {
+    const nodes = tree.nodes.filter((n) => n.tier === tier);
+    nodes.sort((a, b) => Number(b.id === key?.requires) - Number(a.id === key?.requires));
+    for (const n of nodes) order.push(n.id);
+  }
+  if (withKeystone && key) order.push(key.id);
   return order;
 }
 

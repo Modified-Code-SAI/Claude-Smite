@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GODS } from '../game/gods';
+import { PLAYMAKER } from '../game/sport';
 import { glyphFor, skillIcon, talentIcon } from './icons';
 
 describe('skill icons', () => {
@@ -23,6 +24,19 @@ describe('skill icons', () => {
           expect(svg).toContain('<svg');
           if (n.tier === 2) expect(svg, n.name).toContain('r="8.5"');
         }
+    }
+  });
+
+  it("draws Relic Rush's Playmaker talents as their own scenes", () => {
+    const god = GODS[0]!;
+    const seen = new Set<string>();
+    for (const n of PLAYMAKER.nodes) {
+      // gradient ids are random per icon: compare the drawings without them
+      const svg = talentIcon(god.id, n, god.skills, '#5fe3a1').replace(/g[a-z0-9]{6}/g, '');
+      expect(seen.has(svg), n.name).toBe(false);
+      seen.add(svg);
+      // a scene, not the generic stat glyph
+      expect(svg, n.name).toContain('#fff6e2');
     }
   });
 });

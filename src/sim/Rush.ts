@@ -1,4 +1,5 @@
 import type { Side } from '../game/combatant';
+import { CAPTAIN_SPEED, PLAYMAKER } from '../game/sport';
 import type { CCKind } from '../game/types';
 import { Arena } from '../scene/ArenaLayout';
 import { hypot } from '../core/math';
@@ -155,12 +156,15 @@ export interface RushNet {
   w: Side | null;
   g: number;
   lg: [Side, number, number, 'dunk' | 'shot', number] | null;
-  b: [number, number, number, number];
-  lb: ['fumble' | 'steal' | 'catch', number, number] | null;
+  b: [number, number, number, number, number];
+  lb: [RushBeat, number, number] | null;
   r: [RelicPhase, number, number, number, number, number, number, number, number, number, number, number, number, number, Side | null, number];
   l: [number, number, number, number, number, number][];
   ps: [number, number];
 }
+
+/** A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the relic through a hit. */
+export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug';
 
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 
@@ -210,16 +214,19 @@ export class Rush {
   lastGoal: RushGoal | null = null;
   /** Counts every goal, so watchers can tell a new one from the last. */
   goalCount = 0;
-  /** Bumped on each fumble, interception and catch, for sounds and banners. */
-  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0 };
+  /** Bumped on each fumble, interception, catch and Captain's shrug, for sounds and banners. */
+  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0 };
   /** The latest of those beats, with who did it. */
-  lastBeat: { kind: 'fumble' | 'steal' | 'catch'; unit: Unit; by: Unit | null } | null = null;
+  lastBeat: { kind: RushBeat; unit: Unit; by: Unit | null } | null = null;
   private readonly squad: Unit[] = [];
   /** Gods who can't touch the relic until a sim time. */
   private readonly noCatch = new Map<Unit, number>();
   private noCatchAll = 0;
   /** The last completed pass, for assists. */
   private lastPass: { from: Unit; to: Unit; at: number } | null = null;
+  /** The Captain keystone: spent for this possession, and the sim time its shrugged-off hit wears off. */
+  private shrugUsed = false;
+  private shrugUntil = 0;
 
   constructor(private readonly sim: Sim) {
     sim.listeners.push((e) => this.on(e));
@@ -241,6 +248,8 @@ export class Rush {
    */
   join(gods: readonly Unit[]): void {
     for (const g of gods) {
+      // the sport tree opens next to the god's own three
+      g.combatant.addTree(PLAYMAKER);
       this.squad.push(g);
       this.lines.set(g, { goals: 0, assists: 0, steals: 0, tackles: 0, passes: 0, dazed: 0 });
     }
@@ -269,7 +278,7 @@ export class Rush {
   private on(e: SimEvent): void {
     if (e.type !== 'death' || !this.squad.includes(e.unit)) return;
     // a daze, not a death: back on their feet at their gate in a moment
-    e.unit.combatant.respawnTimer = RUSH.daze;
+    e.unit.combatant.respawnTimer = Math.max(1, RUSH.daze - e.unit.combatant.sport('dazeCut'));
     this.lines.get(e.unit)!.dazed++;
     if (this.relic.holder === e.unit) {
       const by = e.killer ? (e.killer.owner ?? e.killer) : null;
@@ -311,7 +320,8 @@ export class Rush {
     if (this.phase !== 'play' || r.phase !== 'held' || r.holder !== u || !u.alive) return false;
     if (this.sim.time - r.since < R.holdMin) return false;
     const to = this.throwTarget(u, at);
-    this.launch(u, to.x, to.z, u, R.carryHeight);
+    const d = hypot(to.x - u.x, to.z - u.z);
+    this.launch(u, to.x, to.z, u, R.carryHeight, undefined, Rush.flightTime(d, u.combatant.sport('throwSpeed')));
     this.noCatch.set(u, this.sim.time + R.selfCatch);
     return true;
   }
@@ -327,13 +337,18 @@ export class Rush {
       dz = u.forward.z;
       d = 1;
     }
-    const len = Math.min(R.maxThrow, Math.max(R.minThrow, d));
+    const len = Math.min(Rush.maxThrow(u), Math.max(R.minThrow, d));
     return clampToPitch(u.x + (dx / d) * len, u.z + (dz / d) * len, 1.2);
   }
 
-  /** How long a throw of this length flies. */
-  static flightTime(dist: number): number {
-    return 0.2 + dist / RUSH.relic.speed;
+  /** How long a throw of this length flies (`faster`: the thrower's Bullet Pass). */
+  static flightTime(dist: number, faster = 0): number {
+    return 0.2 + dist / (RUSH.relic.speed * (1 + faster));
+  }
+
+  /** The longest pass this god throws (Long Arm adds to it). */
+  static maxThrow(u: Unit): number {
+    return RUSH.relic.maxThrow + u.combatant.sport('throwRange');
   }
 
   private launch(from: Point, tx: number, tz: number, thrower: Unit | null, h0: number, arc?: number, duration?: number): void {
@@ -366,13 +381,21 @@ export class Rush {
       r.z = u.z;
       r.h = R.carryHeight;
       if (r.team) this.possession[r.team] += dt;
-      const knocked = this.fumbleCause(u);
+      const knocked = this.sim.time < this.shrugUntil ? undefined : this.fumbleCause(u);
       if (knocked !== undefined) {
-        this.fumble(u, knocked);
-        return;
+        if (this.shrugUsed || u.combatant.sport('captain') <= 0) {
+          this.fumble(u, knocked);
+          return;
+        }
+        // a Captain keeps it through the first hit, for as long as that hit lasts
+        this.shrugUsed = true;
+        this.shrugUntil = this.sim.time + this.knockTime(u);
+        this.beats.shrug++;
+        this.lastBeat = { kind: 'shrug', unit: u, by: knocked };
       }
       if (u.recall > 0) this.sim.interruptRecall(u);
-      u.combatant.refreshTimedMod('bonusMoveSpeed', -RUSH.carrierSlow, 0.25);
+      const slow = RUSH.carrierSlow * Math.max(0, 1 - u.combatant.sport('carrierSpeed'));
+      if (slow > 0) u.combatant.refreshTimedMod('bonusMoveSpeed', -slow, 0.25);
       if (inGate(other(u.team as Side), u.x, u.z)) this.goal(u.team as Side, u, 'dunk');
       return;
     }
@@ -416,7 +439,8 @@ export class Rush {
       const keeper = inGate(g.team as Side, g.x, g.z, K.halfWidth, K.depth);
       if (h > (keeper ? K.height : RUSH.relic.catchHeight)) continue;
       const d = hypot(g.x - r.x, g.z - r.z);
-      if (d <= g.radius + (keeper ? Math.max(reach, K.reach) : reach) && d < bestD) [best, bestD] = [g, d];
+      const hands = g.combatant.sport('catchReach');
+      if (d <= g.radius + hands + (keeper ? Math.max(reach, K.reach) : reach) && d < bestD) [best, bestD] = [g, d];
     }
     if (!best) return false;
     this.take(best);
@@ -439,7 +463,10 @@ export class Rush {
       this.lastPass = { from: thrower, to: u, at: this.sim.time };
       this.beats.catch++;
       this.lastBeat = { kind: 'catch', unit: u, by: thrower };
+      if (thrower.combatant.sport('captain') > 0) u.combatant.addTimedMod('bonusMoveSpeed', CAPTAIN_SPEED.pct, CAPTAIN_SPEED.duration);
     }
+    this.shrugUsed = false;
+    this.shrugUntil = 0;
     r.phase = 'held';
     r.holder = u;
     r.team = team;
@@ -464,15 +491,28 @@ export class Rush {
     return by && by.team !== u.team ? (by.owner ?? by) : null;
   }
 
-  /** The relic pops out of the carrier's hands, hopping away from whoever knocked it loose. */
+  /** How long the hit on a carrier lasts: its crowd control, or the shove it's riding. */
+  private knockTime(u: Unit): number {
+    let t = u.forced?.remaining ?? 0;
+    for (const c of u.combatant.cc.active) if (FUMBLE_CC.has(c.kind)) t = Math.max(t, c.remaining);
+    return t + 0.1;
+  }
+
+  /**
+   * The relic pops out of the carrier's hands, hopping away from whoever
+   * knocked it loose (or toward them, with Strip Tackle).
+   */
   private fumble(u: Unit, by: Unit | null): void {
     const R = RUSH.relic;
-    let dx = by ? u.x - by.x : Math.sin(this.sim.time * 7.3);
-    let dz = by ? u.z - by.z : Math.cos(this.sim.time * 7.3);
+    const strip = !!by && by.combatant.sport('strip') > 0;
+    let dx = by ? (strip ? by.x - u.x : u.x - by.x) : Math.sin(this.sim.time * 7.3);
+    let dz = by ? (strip ? by.z - u.z : u.z - by.z) : Math.cos(this.sim.time * 7.3);
     const d = hypot(dx, dz) || 1;
     dx /= d;
     dz /= d;
-    const to = clampToPitch(u.x + dx * R.hop, u.z + dz * R.hop, 1.2);
+    // a strip lands at the tackler's feet, never past them
+    const hop = strip ? Math.max(1, Math.min(R.hop, d - by!.radius - 0.4)) : R.hop;
+    const to = clampToPitch(u.x + dx * hop, u.z + dz * hop, 1.2);
     this.launch(u, to.x, to.z, null, R.carryHeight, 1.1, 0.55);
     this.relic.team = u.team as Side;
     this.noCatch.set(u, this.sim.time + R.regrab);
@@ -566,7 +606,7 @@ export class Rush {
       w: this.winner,
       g: this.goalCount,
       lg: g ? [g.team, at(g.scorer), at(g.assist), g.kind, n(g.at)] : null,
-      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff],
+      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug],
       lb: b ? [b.kind, at(b.unit), at(b.by)] : null,
       r: [r.phase, at(r.holder), n(r.x), n(r.z), n(r.h), n(r.fx), n(r.fz), n(r.tx), n(r.tz), n(r.t), n(r.duration), n(r.arc), n(r.h0), at(r.thrower), r.team, n(r.since)],
       l: this.squad.map((u) => {
@@ -590,7 +630,7 @@ export class Rush {
     const lg = s.lg;
     const scorer = lg && god(lg[1]);
     this.lastGoal = lg && scorer ? { team: lg[0], scorer, assist: god(lg[2]), kind: lg[3], at: lg[4] } : null;
-    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff] = s.b;
+    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug] = s.b;
     const lb = s.lb;
     const unit = lb && god(lb[1]);
     this.lastBeat = lb && unit ? { kind: lb[0], unit, by: god(lb[2]) } : null;

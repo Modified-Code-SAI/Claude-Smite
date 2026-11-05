@@ -703,7 +703,7 @@ export class GameAudio {
   }
 
   /** Last seen Relic Rush state, so each beat is called once. */
-  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
+  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
 
   /** Relic Rush: the horn at each kickoff, goals, steals and fumbles, the golden relic and the result. */
   private watchRush(): void {
@@ -751,6 +751,12 @@ export class GameAudio {
     if (r.beats.catch !== seen.catch) {
       seen.catch = r.beats.catch;
       this.engine.play('relic.catch', { at, ref: 10 }, 3);
+    }
+    if (r.beats.shrug !== seen.shrug) {
+      seen.shrug = r.beats.shrug;
+      this.engine.play('relic.shrug', { at, ref: 10 }, 3);
+      const b = r.lastBeat;
+      if (b?.kind === 'shrug' && b.unit === this.me) this.herald.say('Captain! You shrug it off and keep the relic.', 'good', 2);
     }
     const flying = relic.phase === 'flying' && !!relic.thrower;
     if (flying && !seen.flying) this.engine.play('relic.throw', { at, ref: 10 }, 3);

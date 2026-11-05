@@ -606,8 +606,9 @@ export class Sim {
       const dz = target.z - owner.z;
       const d = hypot(dx, dz) || 1;
       if (e.cc === 'knockback') {
-        const time = 0.3 * Math.sqrt(this.knockback / 3.5);
-        const dist = this.knockback;
+        // Relic Rush's Playmaker tree: Bulldozer throws farther, Iron Footing holds ground
+        const dist = this.knockback * (1 + owner.combatant.sport('push')) * Math.max(0.2, 1 - target.combatant.sport('footing'));
+        const time = 0.3 * Math.sqrt(dist / 3.5);
         target.forced = { vx: (dx / d) * (dist / time), vz: (dz / d) * (dist / time), remaining: time, total: time, arc: 0.6, collide: true };
       } else if (e.cc === 'pull' || e.cc === 'grab') {
         const time = 0.3;

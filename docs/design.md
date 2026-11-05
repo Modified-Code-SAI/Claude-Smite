@@ -109,6 +109,7 @@ Gamepad support comes later.
 - **Tier gating is per tree:** tier 2 needs 5 points spent in that tree, tier 3 needs 10, and tier 4 needs 15.
 - **Mix and match freely.** Points can go into any tree in any split. A full keystone needs 15 points in one tree, so you can reach at most two keystones; most builds take one keystone and spread the rest.
 - **Respec** is free while in base, the same as loadout swaps.
+- **Relic Rush adds a fourth tree, Playmaker** (`src/game/sport.ts`), open to every god in that mode only: movement speed, longer and faster passes, a wider catch, a lighter carrier slow, shorter dazes, Strip Tackle (a relic you knock loose pops toward you), Bulldozer (harder knockbacks for less damage) and Iron Footing. Its keystone, Captain, shrugs off the first hit that would knock the relic loose each possession and speeds up teammates who catch your passes. The points come from the same 35-point budget, so sport is traded for damage. Half the bots (the wings of each line-up) fill it first.
 
 ### 3.4 Earning points: the cap
 
