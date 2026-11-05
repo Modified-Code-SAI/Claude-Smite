@@ -57,6 +57,11 @@ export class NetHost {
   basic: (u: Unit) => void = (u) => void this.sim.basic(u);
   /** A mode's own messages from guests (`NetGuest.act`), with the unit that guest controls. */
   onAct: ((u: Unit, msg: Msg, from: string) => void) | null = null;
+  /**
+   * Units the mode walks itself from a guest's intent (sent with `act`; the
+   * Jötunn's giant): their inputs carry only aim and the basic attack.
+   */
+  steered: ((u: Unit) => boolean) | null = null;
 
   constructor(
     private readonly session: NetSession,
@@ -129,7 +134,7 @@ export class NetHost {
       u.aim.x = i.a[0];
       u.aim.z = i.a[1];
       rp.basic = i.b === 1;
-      if (i.s !== rp.seq || !u.alive || !this.sim.canMove(u)) continue;
+      if (i.s !== rp.seq || !u.alive || !this.sim.canMove(u) || this.steered?.(u)) continue;
       const moved = hypot(i.p[0] - u.x, i.p[2] - u.z);
       u.body.x = i.p[0];
       u.body.y = i.p[1];
@@ -317,6 +322,11 @@ export class NetGuest {
     this.session.send('host', { t: 'recall' });
   }
 
+  /** Units the host walks from this player's intent: drawn from snapshots even while this player controls one (see NetHost.steered). */
+  set steered(fn: ((u: Unit) => boolean) | null) {
+    this.sync.steered = fn;
+  }
+
   /** A mode's own message to the host (its `NetHost.onAct` gets it, with this player's unit). */
   act(msg: Record<string, unknown>): void {
     this.session.send('host', { ...msg, t: 'act' });
@@ -324,6 +334,8 @@ export class NetGuest {
 
   /** Send this player's loadout and tree points when the skills menu changed them. */
   syncBuild(): void {
+    // the host keeps the build of a unit it runs for this player (see steered)
+    if (this.sync.steered?.(this.self)) return;
     const c = this.self.combatant;
     const build = JSON.stringify([c.loadout, c.allocation]);
     if (build === this.lastBuild) return;

@@ -159,7 +159,7 @@ export class CombatGame implements Updatable {
     // Relic Rush's pitch ends at a circle around the temple
     const terrain: SimTerrain = conquest && !onConquestMap ? openGround(world.collision) : rush ? pitchTerrain(world.collision) : world.collision;
     this.groundAt = (x, z) => terrain.groundAt(x, z);
-    const net = conquest || rush || deps.mode === 'descent' ? deps.net : undefined;
+    const net = conquest || rush || deps.mode === 'descent' || deps.mode === 'jotunn' ? deps.net : undefined;
     const slots = net && conquest ? roster(net.players) : null;
     const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random) : null;
     const mySlot = slots?.find((s) => s.player === net!.me) ?? rushSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
@@ -314,7 +314,7 @@ export class CombatGame implements Updatable {
     }
 
     if (jotunn) {
-      this.startJotunn();
+      this.startJotunn(net);
       this.sim.drainEvents();
       return;
     }
@@ -423,7 +423,7 @@ export class CombatGame implements Updatable {
   }
 
   /** Jötunn: one frost giant against four gods, round by round, everyone (you too) taking a turn as the giant. */
-  private startJotunn(): void {
+  private startJotunn(net: CombatDeps['net']): void {
     const world = this.deps.world;
     const d = this.deps.difficulty ?? 'normal';
     this.jotunnMode = new JotunnMode({
@@ -440,8 +440,11 @@ export class CombatGame implements Updatable {
       control: (u, giant) => this.control(u, giant),
       toast: (t) => this.hud.toast(t),
       reaction: d === 'easy' ? 0.55 : d === 'hard' ? 0.18 : undefined,
+      net,
     });
     this.jotunn = this.jotunnMode.mode;
+    this.netHost = this.jotunnMode.host;
+    this.netGuest = this.jotunnMode.guest;
   }
 
   /** Jötunn: the local player takes another unit (the giant for their round, then their god again). */
@@ -642,6 +645,8 @@ export class CombatGame implements Updatable {
       this.netGuest.step(dt);
       this.rushMode?.step(dt);
       this.descentMode?.step(dt);
+      this.jotunnMode?.step(dt);
+      this.jotunnMode?.afterStep();
       this.views.afterStep(this.sim.units);
     } else if (this.netHost && !this.netHost.started) this.netHost.wait(dt);
     else if (this.endTimer < 4) {
