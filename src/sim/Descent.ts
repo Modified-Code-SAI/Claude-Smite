@@ -7,6 +7,7 @@ import type { CampKind } from '../map/ConquestLayout';
 import { BOSS_CHAMBER, CHAMBERS, entranceSpot, exitSpot, obstaclesOf, steer, type ChamberDef, type Palette } from '../map/UnderworldLayout';
 import { monsterUnit, type MonsterType } from './factory';
 import { MonsterBrain, type BossSpecial, type CampState } from './Jungle';
+import { Relics, relicById, type Relic, type RelicNet } from './Relics';
 import { BOONS, CHAMPION, CURSES, type Boon, type Curse } from './Siege';
 import type { Sim } from './Sim';
 import type { Brain, SimEvent, Unit } from './Unit';
@@ -300,7 +301,7 @@ function bossAdds(n: number): MonsterType[] {
 // ---------------------------------------------------------------------------
 // Rewards and curses
 
-export type RewardKind = 'boon' | 'skill' | 'points' | 'heal' | 'obol';
+export type RewardKind = 'boon' | 'skill' | 'points' | 'heal' | 'obol' | 'relic';
 
 export interface Reward {
   kind: RewardKind;
@@ -308,7 +309,12 @@ export interface Reward {
   text: string;
   /** The boon a boon card gives. */
   boon?: Boon;
+  /** The relic a relic card gives. */
+  relic?: Relic;
 }
+
+/** The chance a reward offers a relic, by the kind of chamber just cleared (none after the first): about three a run, one after each boss. */
+export const RELIC_CHANCE: Partial<Record<ChamberKind, number>> = { boss: 1, elite: 0.4, champion: 0.4, pack: 0.1, trap: 0.12, treasure: 0.12 };
 
 /** Boons for the underworld: Siege's that make sense away from the plaza. */
 export const DESCENT_BOONS: readonly Boon[] = BOONS.filter((b) => !b.cleanse && !b.corruptScale);
@@ -624,6 +630,8 @@ export class Descent {
   winner: Side | 'draw' | null = null;
   /** Revives that need extra health after the sim respawns them. */
   private readonly reviving = new Map<Unit, number>();
+  /** The relics each team has found, and what they do. */
+  readonly relics: Relics;
 
   constructor(
     private readonly sim: Sim,
@@ -635,6 +643,8 @@ export class Descent {
   ) {
     this.plan = plan ?? planRun(sim.rng);
     sim.listeners.push((e) => this.on(e));
+    // after the run's own listener, so a kill is the run's before a relic pays out on it
+    this.relics = new Relics(sim, this);
   }
 
   /** The teams on the run: Order alone in co-op, both in a shared descent. */
@@ -767,7 +777,7 @@ export class Descent {
   }
 
   /** The team a kill counts for: the killer's, or (a monster's last blow, a burn) a rival god who helped. */
-  private creditOf(victim: Unit, killer: Unit | null, assists: readonly Unit[]): Side | null {
+  creditOf(victim: Unit, killer: Unit | null, assists: readonly Unit[]): Side | null {
     const team = (k: Unit | null | undefined): Side | null => (k && (k.team === 'order' || k.team === 'chaos') && k.team !== victim.team ? this.sideOf(k) : null);
     return team(killer) ?? team(assists.find((a) => a.kind === 'god')) ?? null;
   }
@@ -830,6 +840,7 @@ export class Descent {
     if (this.checkWipe()) return;
     this.stepEruptions(dt);
     this.stepKing(dt);
+    this.relics.step();
     switch (this.phase) {
       case 'enter':
         this.timer -= dt;
@@ -1049,6 +1060,11 @@ export class Descent {
     if ((this.downed.size > 0 || hurt < 0.55) && rng() < 0.85) cards.push(HEAL);
     // nobody's run ends in a shared descent, so there is no wipe for an obol to undo
     if (!this.versus && this.obols < 1 && this.chamber >= 3 && rng() < 0.12) cards.push(OBOL);
+    const relics = this.relics.open(sides);
+    if (cards.length < 3 && this.chamber >= 2 && relics.length && rng() < (RELIC_CHANCE[this.current.kind] ?? 0)) {
+      const r = relics[Math.floor(rng() * relics.length)]!;
+      cards.push({ kind: 'relic', name: r.name, text: r.text, relic: r });
+    }
     if (cards.length < 3 && rng() < 0.4) cards.push(POINTS);
     const boons = shuffle(DESCENT_BOONS, rng);
     while (cards.length < 3) {
@@ -1069,7 +1085,7 @@ export class Descent {
   private botChoice(side: Side): number {
     const o = this.offer!;
     const down = [...this.downed.keys()].some((g) => this.sideOf(g) === side);
-    const order: RewardKind[] = down ? ['heal', 'skill', 'obol', 'boon', 'points'] : ['skill', 'obol', 'boon', 'points', 'heal'];
+    const order: RewardKind[] = down ? ['heal', 'skill', 'relic', 'obol', 'boon', 'points'] : ['skill', 'relic', 'obol', 'boon', 'points', 'heal'];
     for (const k of order) {
       const i = o.findIndex((r) => r.kind === k);
       if (i >= 0) return i;
@@ -1133,6 +1149,9 @@ export class Descent {
       case 'points':
         for (const g of team) grantTreePoints(g, POINTS_REWARD);
         break;
+      case 'relic':
+        this.relics.take(r.relic!.id, side);
+        break;
       case 'heal':
         for (const g of team) {
           if (!g.alive) this.revive(g, 1);
@@ -1195,6 +1214,7 @@ export class Descent {
     this.chamber++;
     this.phase = 'enter';
     this.timer = DESCENT.enterTime;
+    this.relics.reset();
     this.placeTeam();
   }
 
@@ -1236,8 +1256,9 @@ export class Descent {
         if (a === g || !a.alive || this.sideOf(a) !== this.sideOf(g)) continue;
         if (hypot(a.x - g.x, a.z - g.z) <= DESCENT.revive.range + a.radius) helpers++;
       }
-      const next = helpers ? p + (dt * (1 + 0.5 * (helpers - 1))) / this.reviveTime : Math.max(0, p - dt * 0.25);
-      if (next >= 1) this.revive(g, DESCENT.revive.health);
+      const side = this.sideOf(g);
+      const next = helpers ? p + (dt * (1 + 0.5 * (helpers - 1)) * this.relics.reviveSpeed(side)) / this.reviveTime : Math.max(0, p - dt * 0.25);
+      if (next >= 1) this.revive(g, this.relics.riseHealth(side, DESCENT.revive.health));
       else this.downed.set(g, next);
     }
   }
@@ -1369,6 +1390,7 @@ export class Descent {
   join(gods: readonly Unit[], humans: readonly Unit[]): void {
     for (const g of gods) this.addGod(g, humans.includes(g));
     this.underdog();
+    this.relics.remote = true;
   }
 
   netState(): DescentNet {
@@ -1396,6 +1418,7 @@ export class Descent {
       dn: [...this.downed].map(([u, p]) => [gi(u), r2(p)]),
       e: this.eruptions.map((e) => [e.id, r2(e.x), r2(e.z), e.r, r2(e.left)]),
       b: this.boons.map((b) => b.id),
+      ...(this.relics.held.length || this.relics.procs.length ? { rl: this.relics.netState(sideCode) } : {}),
       l: this.learned,
       h: [...this.humans].map(gi),
       ...(this.versus
@@ -1454,6 +1477,7 @@ export class Descent {
       }
     }
     this.nextCurse = DESCENT_CURSES.find((k) => k.id === s.nc) ?? null;
+    this.relics.applyNet(s.rl ?? { h: [], p: [], sp: [] }, codeSide);
     // the same objects while nothing changes, so the HUD only redraws its cards on a change
     const offerKey = s.of?.join() ?? '';
     if (offerKey !== (this.offer?.map(rewardKey).join() ?? '')) this.offer = s.of ? s.of.map(rewardFromKey) : null;
@@ -1555,6 +1579,8 @@ export interface DescentNet {
   dn: [number, number][];
   e: [number, number, number, number, number][];
   b: string[];
+  /** Relics held and their recent procs (left out while there are none). */
+  rl?: RelicNet;
   l: [number, number, number, string][];
   h: number[];
   /** A shared descent's score and team choices (teams as 'o' and 'c'). */
@@ -1577,8 +1603,10 @@ const sideCode = (s: Side): string => (s === 'order' ? 'o' : 'c');
 const codeSide = (c: string): Side => (c === 'c' ? 'chaos' : 'order');
 
 const REWARDS: readonly Reward[] = [SKILL_REWARD, POINTS, HEAL, OBOL];
-const rewardKey = (r: Reward): string => (r.kind === 'boon' ? `b:${r.boon!.id}` : r.kind);
+const rewardKey = (r: Reward): string => (r.kind === 'boon' ? `b:${r.boon!.id}` : r.kind === 'relic' ? `r:${r.relic!.id}` : r.kind);
 function rewardFromKey(key: string): Reward {
+  const relic = key.startsWith('r:') ? relicById(key.slice(2)) : undefined;
+  if (relic) return { kind: 'relic', name: relic.name, text: relic.text, relic };
   if (key.startsWith('b:')) {
     const b = DESCENT_BOONS.find((k) => k.id === key.slice(2))!;
     return { kind: 'boon', name: b?.name ?? '', text: b?.text ?? '', boon: b };

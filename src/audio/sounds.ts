@@ -90,6 +90,23 @@ export const SOUNDS: Record<string, Recipe> = {
         [debris(r, 1.8, { density: 30, gain: 0.5, tone: 500 }), 0.8, 0.08],
       ),
   },
+  // Underworld relics: a find's bell and choir, then each one going off
+  'relic.found': {
+    peak: 0.7,
+    make: (r) =>
+      layer(
+        [clang(r, 2.6, 293.7, { decay: 2.2, bright: 0.45, gain: 0.55 }), 0.8],
+        [clang(r, 2.2, 440, { decay: 1.8, bright: 0.35, gain: 0.35 }), 0.5, 0.12],
+        [choir(r, 2.4, 146.8, { vowelName: 'ah', env: (t) => ahr(t, 0.3, 0.7, 1.2) }), 0.5, 0.05],
+        [shimmer(r, 1.8, 880, { rise: 1.6, peak: 0.5 }), 0.6, 0.15],
+      ),
+  },
+  'relic.knell': { variants: 3, peak: 0.75, make: (r) => layer([thump(r, 0.5, 70, 30, { click: 0.4, noise: 0.7, drive: 2 }), 0.8], [fire(r, 0.7, { gain: 0.8, roar: 1.6 }), 0.9, 0.02], [clang(r, 1.2, 146.8 + r() * 10, { decay: 0.9, bright: 0.25, gain: 0.25 }), 0.45, 0.03], [crackles(r, 0.5, 16), 0.35, 0.05]) },
+  'relic.chain': { variants: 3, peak: 0.6, make: (r) => layer([zap(r, 0.22, 600 + r() * 200, { chaos: 0.6, hiss: 0.8 }), 0.6], [whoosh(r, 0.25, 900, 3200, { q: 1.6, peak: 0.6 }), 0.6], [vowel(r, 0.3, (t) => glide(330, 440, t, 0.3), VOWELS.oo, { breath: 2.5, gain: 0.3 }), 0.35, 0.02]) },
+  'relic.echo': { variants: 2, peak: 0.45, make: (r) => layer([clang(r, 1.1, 1174.7, { decay: 0.8, bright: 0.6, gain: 0.35 }), 0.7], [clang(r, 0.9, 1568, { decay: 0.6, bright: 0.5, gain: 0.25 }), 0.5, 0.09], [shimmer(r, 0.7, 2349, { rise: 0.8, peak: 0.2 }), 0.4, 0.04]) },
+  'relic.aegis': { variants: 3, peak: 0.5, make: (r) => layer([knock(r, 0.12, 900 + r() * 300), 0.8], [knock(r, 0.1, 1400 + r() * 300), 0.6, 0.04], [knock(r, 0.1, 1100), 0.5, 0.08], [shimmer(r, 0.5, 660, { rise: 1.2, peak: 0.3 }), 0.4, 0.02]) },
+  'relic.harvest': { variants: 3, peak: 0.4, make: (r) => layer([whoosh(r, 0.35, 2600, 700, { q: 1.3, peak: 0.3, gain: 0.6 }), 0.5], [choir(r, 0.7, 392, { vowelName: 'oo', env: (t) => ahr(t, 0.08, 0.15, 0.4) }), 0.45, 0.04], [shimmer(r, 0.6, 784, { rise: 1.2, peak: 0.4 }), 0.5, 0.06]) },
+  'relic.spite': { peak: 0.75, make: (r) => layer([roar(r, 0.9, 110, { open: 1.1 }), 0.5], [fire(r, 0.9, { gain: 0.9, roar: 2 }), 0.8], [thump(r, 0.6, 60, 28, { click: 0.3, noise: 0.5, drive: 2 }), 0.6]) },
   'king.roar': { peak: 0.95, make: (r) => layer([roar(r, 3, 48, { open: 0.9 }), 1], [choir(r, 3, 55, { vowelName: 'oh', env: (t) => ahr(t, 0.6, 1.2, 1.2) }), 0.6, 0.2], [rumble(r, 3, { tone: 90 }), 0.8], [crackles(r, 2.4, 10), 0.3, 0.4]) },
   'keeper.mend': { variants: 2, peak: 0.55, make: (r) => layer([choir(r, 1.1, r() < 0.5 ? 98 : 110, { vowelName: 'oh', env: (t) => ahr(t, 0.25, 0.3, 0.5) }), 0.5], [shimmer(r, 1, 587.3, { rise: 1.5, peak: 0.6 }), 0.8, 0.1], [fire(r, 0.6, { gain: 0.6 }), 0.45], [vowel(r, 0.7, (t) => glide(140, 120, t, 0.7), VOWELS.oo, { breath: 2.4, gain: 0.3 }), 0.4, 0.05]) },
   'hit.acid': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.1, { tone: 900 }), 0.7], [sand(r, 0.35, { tone: 3000, peak: 0.5 }), 0.8, 0.03]) },
