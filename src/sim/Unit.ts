@@ -227,7 +227,8 @@ export interface Flash {
 
 export type SimEvent =
   | { type: 'damage'; target: Unit; source: Unit | null; amount: number; crit: boolean; ability: boolean }
-  | { type: 'heal'; target: Unit; amount: number }
+  /** `source`: who mended them, when someone did (a Gravekeeper's lantern). */
+  | { type: 'heal'; target: Unit; amount: number; source?: Unit }
   | { type: 'cast'; unit: Unit; cast: ResolvedSkill; x: number; z: number }
   | { type: 'basic'; unit: Unit; melee: boolean }
   | { type: 'impact'; x: number; z: number; owner: Unit; big: boolean }

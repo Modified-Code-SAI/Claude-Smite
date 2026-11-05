@@ -21,6 +21,10 @@ import { hypot } from '../core/math';
  *    that licks up from the hem, eyes burning in an empty hood. They gather
  *    a soul between their spectral claws and hurl it, and fold into their
  *    own fire to blink away from anyone who closes in.
+ *  - Gravekeepers: stooped antlered skeletons in grave-linen rags, haunting
+ *    the Abyss with a crooked staff and a lantern of amber soul fire. They
+ *    hang back, lift the lantern and pour souls into the most hurt monster
+ *    near them, an ember of their own soul glowing in their open ribs.
  * Each monster is a small hierarchy of rigid parts posed every frame, drawn
  * as one skinned mesh per material (`skinRigid`): the pivots are its bones.
  * Materials read `positionGeometry`, the part's unposed position, so patterns
@@ -37,6 +41,9 @@ export const ACID = 0x8cff3a;
 /** The Shade's soul fire: its eyes, claws, hem and bolts. */
 export const SHADE_GLOW = 0x8458ff;
 export const SHADE_CORE = 0xeadcff;
+/** The Gravekeeper's lantern: a warm corpse-candle flame in the cold green Abyss. */
+export const KEEPER_GLOW = 0xffa83a;
+export const KEEPER_CORE = 0xfff0c8;
 
 export interface MonsterView {
   root: THREE.Group;
@@ -699,8 +706,8 @@ function shadeRobeMaterial(): THREE.Material {
  * Cloth turned on a lathe from (radius, height) pairs, its lower edge torn
  * into tails: the bottom rings hang down in points around the hem.
  */
-function tattered(profile: readonly (readonly [number, number])[], tails: number, depth: number, seed: number, around = 40): THREE.BufferGeometry {
-  const g = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), around);
+function tattered(profile: readonly (readonly [number, number])[], tails: number, depth: number, seed: number, around = 40, phiStart = 0, phiLength = Math.PI * 2): THREE.BufferGeometry {
+  const g = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), around, phiStart, phiLength);
   const p = g.getAttribute('position') as THREE.BufferAttribute;
   const low = Math.min(...profile.map(([, y]) => y));
   const high = Math.max(...profile.map(([, y]) => y));
@@ -823,6 +830,177 @@ function shade(): MonsterView {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Gravekeeper
+
+let keeperShroud: THREE.Material | null = null;
+
+/** Grave linen: pale, coarse and fraying, grimed darker toward its hem. */
+function keeperShroudMaterial(): THREE.Material {
+  const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.95, side: THREE.DoubleSide });
+  const p = positionGeometry;
+  const weave = mx_noise_float(vec3(p.x.mul(16), p.y.mul(5), p.z.mul(16))).mul(0.5).add(0.5);
+  const grime = smoothstep(1.1, 0.35, p.y.add(n(6).sub(0.5).mul(0.3)));
+  m.colorNode = mix(vec3(0.2, 0.19, 0.15), vec3(0.05, 0.05, 0.035), grime.mul(0.75).add(weave.mul(0.25)));
+  return m;
+}
+
+/** A bone from `a` toward `b` (a tapered cylinder), as a child of `parent`. */
+function bone(parent: THREE.Object3D, m: THREE.Material, a: THREE.Vector3, b: THREE.Vector3, r0: number, r1 = r0 * 0.8): THREE.Mesh {
+  const len = a.distanceTo(b);
+  const key = `gk-bone-${len.toFixed(2)}-${r0.toFixed(3)}-${r1.toFixed(3)}`;
+  const o = mesh(parent, geo(key, () => new THREE.CylinderGeometry(r1, r0, len, 7).translate(0, len / 2, 0)), m, a.x, a.y, a.z);
+  o.quaternion.setFromUnitVectors(UP, b.clone().sub(a).normalize());
+  return o;
+}
+const UP = new THREE.Vector3(0, 1, 0);
+const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+
+function gravekeeper(): MonsterView {
+  const ivory = (wyrmMats ??= wyrmMaterials()).ivory;
+  const iron = mats().hoof;
+  const shroud = (keeperShroud ??= keeperShroudMaterial());
+  const flameMat = glow(KEEPER_GLOW, 6);
+  const root = new THREE.Group();
+  const s = 1.15;
+  const rig = pivot(root, 0, 0, 0);
+  rig.scale.setScalar(s);
+  const HIP = 0.78;
+  const hips = pivot(rig, 0, HIP, 0);
+  mesh(hips, geo('gk-pelvis', () => new THREE.SphereGeometry(0.11, 14, 10).scale(1.35, 0.7, 0.85)), ivory);
+  // rags about the hips
+  mesh(hips, geo('gk-rags', () => tattered([[0.25, -0.42], [0.23, -0.22], [0.2, -0.06], [0.16, 0.04]], 6, 0.16, 0.7, 28)), shroud);
+  // legs: hip and knee pivots, a bent stance
+  const thighs: THREE.Group[] = [];
+  const knees: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const hip = pivot(hips, sx * 0.1, -0.02, 0);
+    bone(hip, ivory, v3(0, 0, 0), v3(0, -0.4, 0), 0.03, 0.024);
+    const knee = pivot(hip, 0, -0.4, 0);
+    mesh(knee, geo('gk-kneecap', () => new THREE.SphereGeometry(0.036, 10, 8)), ivory, 0, 0, 0.01);
+    bone(knee, ivory, v3(0, 0, 0), v3(0, -0.4, 0), 0.025, 0.02);
+    mesh(knee, geo('gk-foot', () => new THREE.SphereGeometry(0.05, 10, 8).scale(0.9, 0.5, 2.1)), ivory, 0, -0.41, 0.06);
+    thighs.push(hip);
+    knees.push(knee);
+  }
+  // a hunched spine and an open ribcage, an ember of its soul inside
+  const torso = pivot(hips, 0, 0.05, 0);
+  for (let i = 0; i < 7; i++) mesh(torso, geo('gk-vertebra', () => new THREE.SphereGeometry(0.034, 10, 8).scale(1.2, 0.8, 1)), ivory, 0, 0.05 + i * 0.075, -0.06 - Math.sin((i / 6) * Math.PI) * 0.04);
+  const ribs = [0.12, 0.145, 0.155, 0.15, 0.125];
+  ribs.forEach((r, i) => {
+    const g = geo(`gk-rib-${r}`, () => new THREE.TorusGeometry(r, 0.013, 6, 20, Math.PI * 1.65).rotateX(Math.PI / 2).rotateY(Math.PI * 1.325).scale(1, 1, 0.82));
+    mesh(torso, g, ivory, 0, 0.22 + i * 0.065, 0.02, 0.18, 0, 0);
+  });
+  const ember = mesh(torso, geo('gk-ember', () => new THREE.SphereGeometry(0.038, 12, 10)), glow(KEEPER_GLOW, 1.5), 0, 0.33, 0.02, 0, 0, 0, false);
+  bone(torso, ivory, v3(-0.2, 0.55, -0.02), v3(0.2, 0.55, -0.02), 0.018, 0.018);
+  // a ragged cloak over the back
+  mesh(torso, geo('gk-cloak', () => tattered([[0.42, -0.25], [0.36, 0.08], [0.31, 0.36], [0.26, 0.56], [0.16, 0.62]], 7, 0.22, 2.2, 28, Math.PI * 0.5, Math.PI)), shroud);
+  // the skull, antlered, its jaw on a hinge and two embers deep in its sockets
+  const head = pivot(torso, 0, 0.66, 0.04);
+  mesh(head, geo('gk-skull', () => new THREE.SphereGeometry(0.115, 18, 14).scale(0.9, 1, 1.05)), ivory, 0, 0.08, 0);
+  mesh(head, geo('gk-maxilla', () => new THREE.SphereGeometry(0.07, 14, 10).scale(1, 0.62, 1.05)), ivory, 0, 0.0, 0.07);
+  const jaw = pivot(head, 0, 0.01, 0.0);
+  mesh(jaw, geo('gk-jaw', () => new THREE.SphereGeometry(0.068, 12, 8, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55).scale(1, 0.7, 1.15)), ivory, 0, -0.01, 0.06);
+  const eyes: THREE.Mesh[] = [];
+  for (const sx of [-1, 1]) {
+    mesh(head, geo('gk-socket', () => new THREE.SphereGeometry(0.03, 10, 8)), glow(0x000000, 0), sx * 0.043, 0.075, 0.088, 0, 0, 0, false);
+    eyes.push(mesh(head, geo('gk-eye', () => new THREE.SphereGeometry(0.012, 8, 6)), glow(KEEPER_CORE, 6), sx * 0.043, 0.075, 0.108, 0, 0, 0, false));
+    // antlers: a sweeping beam with two tines
+    const o = v3(sx * 0.07, 0.16, -0.03);
+    const d = v3(sx * 0.62, 0.72, -0.32).normalize();
+    bone(head, ivory, o, o.clone().addScaledVector(d, 0.34), 0.022, 0.01);
+    for (const [at, len] of [[0.12, 0.13], [0.24, 0.1]] as const) {
+      const b = o.clone().addScaledVector(d, at);
+      bone(head, ivory, b, b.clone().add(v3(sx * 0.03, len, len * 0.45)), 0.011, 0.005);
+    }
+  }
+  // arms: the right holds the staff, the left reaches out with its claws
+  const shoulders: THREE.Group[] = [];
+  const elbows: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const sh = pivot(torso, sx * 0.19, 0.53, -0.01);
+    bone(sh, ivory, v3(0, 0, 0), v3(0, -0.3, 0), 0.022, 0.018);
+    const el = pivot(sh, 0, -0.3, 0);
+    bone(el, ivory, v3(0, 0, 0), v3(0, -0.27, 0), 0.018, 0.014);
+    for (let i = 0; i < 3; i++) bone(el, ivory, v3((i - 1) * 0.015, -0.27, 0), v3((i - 1) * 0.03, -0.37, 0.03), 0.007, 0.003);
+    shoulders.push(sh);
+    elbows.push(el);
+  }
+  // the staff, with a crook at the top and the lantern swinging from it
+  const staff = pivot(elbows[1]!, 0, -0.27, 0);
+  mesh(staff, geo('gk-staff', () => new THREE.CylinderGeometry(0.016, 0.022, 1.5, 7).translate(0, 0.25, 0)), iron);
+  mesh(staff, geo('gk-crook', () => new THREE.TorusGeometry(0.09, 0.016, 6, 14, Math.PI).rotateY(Math.PI / 2).translate(0, 1.0, 0.09)), iron);
+  const lantern = pivot(staff, 0, 1.0, 0.18);
+  mesh(lantern, geo('gk-chain', () => new THREE.CylinderGeometry(0.005, 0.005, 0.12, 4).translate(0, -0.06, 0)), iron, 0, 0, 0, 0, 0, 0, false);
+  mesh(lantern, geo('gk-cap', () => new THREE.ConeGeometry(0.07, 0.06, 6).translate(0, -0.15, 0)), iron);
+  mesh(lantern, geo('gk-base', () => new THREE.CylinderGeometry(0.055, 0.06, 0.02, 6).translate(0, -0.36, 0)), iron);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    mesh(lantern, geo('gk-bar', () => new THREE.CylinderGeometry(0.005, 0.005, 0.2, 4).translate(0, -0.26, 0)), iron, Math.cos(a) * 0.05, 0, Math.sin(a) * 0.05, 0, 0, 0, false);
+  }
+  const flame = mesh(lantern, geo('gk-flame', () => new THREE.SphereGeometry(0.04, 12, 10).scale(1, 1.7, 1)), flameMat, 0, -0.26, 0, 0, 0, 0, false);
+  skinRigid(root, 'gravekeeper', rig, [ember, flame, ...eyes], bounds(2 * s));
+
+  let clock = Math.random() * 10;
+  let phase = Math.random() * 10;
+  let lean = 0;
+  return {
+    root,
+    height: 1.75 * s,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      const speed = hypot(u.vx, u.vz);
+      phase += dt * (2.2 + speed * 2.6);
+      const gait = Math.min(1, speed / 1.8);
+      lean += (gait - lean) * Math.min(1, dt * 5);
+      // a shuffling walk, knees never straight
+      thighs.forEach((t, i) => {
+        const sw = Math.sin(phase + i * Math.PI);
+        t.rotation.x = -0.25 + sw * 0.5 * gait;
+        knees[i]!.rotation.x = 0.45 + Math.max(0, -sw) * 0.65 * gait;
+      });
+      hips.position.y = HIP + Math.abs(Math.cos(phase)) * 0.03 * gait + Math.sin(clock * 1.6) * 0.008;
+      // the mend: it straightens, lifts the lantern high toward its patient and its flame flares
+      const a = u.sinceAction;
+      const lift = a < 0.8 ? Math.sin(Math.min(1, a / 0.8) * Math.PI) : 0;
+      torso.rotation.x = 0.55 + Math.sin(clock * 1.6) * 0.03 + wobble * 0.06 - lift * 0.25 + lean * 0.1;
+      torso.rotation.z = Math.sin(phase) * 0.05 * gait + wobble * 0.05;
+      head.rotation.x = -0.45 + Math.sin(clock * 0.7) * 0.05 + lift * 0.15;
+      head.rotation.y = Math.sin(clock * 0.43) * 0.3 * (1 - lift);
+      jaw.rotation.x = 0.06 + lift * 0.35 + (Math.sin(clock * 3.1) > 0.85 ? Math.abs(Math.sin(clock * 40)) * 0.12 : 0);
+      shoulders[1]!.rotation.x = -0.95 - lift * 0.75;
+      elbows[1]!.rotation.x = -0.55 + lift * 0.35;
+      shoulders[1]!.rotation.z = 0.12;
+      // the staff stays upright whatever the arm does, tipping toward the patient as the lantern lifts
+      staff.rotation.x = -(torso.rotation.x + shoulders[1]!.rotation.x + elbows[1]!.rotation.x) + lift * 0.45;
+      shoulders[0]!.rotation.x = -0.85 + Math.sin(phase + Math.PI) * 0.25 * gait - lift * 0.5;
+      elbows[0]!.rotation.x = -0.5 - lift * 0.3;
+      shoulders[0]!.rotation.z = -0.15;
+      // (the lantern hangs plumb from the crook, cancelling the staff's tip, and trails a little as it walks)
+      lantern.rotation.x = Math.sin(clock * 1.9) * 0.12 - lean * 0.35 - lift * 0.45;
+      lantern.rotation.z = Math.sin(clock * 1.4) * 0.1;
+      const flick = 0.9 + Math.sin(clock * 13) * 0.12 + Math.sin(clock * 29 + 1) * 0.08;
+      flame.scale.setScalar(flick * (1 + lift * 0.9));
+      ember.scale.setScalar(0.85 + Math.sin(clock * 2.4) * 0.15 + lift * 0.3);
+      if (deathTime >= 0) {
+        // it falls apart into a heap of bones, the flame and ember going out
+        const t = Math.min(1, deathTime / 0.7);
+        const k = t * t;
+        hips.position.y = HIP * (1 - k * 0.82) - Math.max(0, deathTime - 1.6) * 0.4;
+        torso.rotation.x = 0.55 + k * 1.0;
+        head.rotation.x = -0.45 + k * 0.9;
+        for (const kn of knees) kn.rotation.x = 0.45 + k * 1.6;
+        for (const th of thighs) th.rotation.x = -0.25 - k * 1.1;
+        jaw.rotation.x = 0.06 + k * 0.5;
+        const out = Math.max(0.01, 1 - t * 1.4);
+        flame.scale.setScalar(out);
+        ember.scale.setScalar(out);
+        for (const e of eyes) e.scale.setScalar(out);
+      }
+    },
+  };
+}
+
 /** The camp kind is encoded in the monster's tag: `<team>-<kind>-<i>:<type>`. */
 function campKindOf(u: Unit): CampKind {
   return u.tag.split(':')[0]!.split('-')[1] as CampKind;
@@ -843,6 +1021,7 @@ export function monsterWarmup(): THREE.Object3D[] {
     giant({ glow: 0xff6a1a, stone: lavaStone(), scale: 2.1, molten: true }),
     wyrm(),
     shade(),
+    gravekeeper(),
   ].map((v) => v.root);
 }
 
@@ -864,5 +1043,6 @@ function createView(u: Unit): MonsterView {
   if (type === 'moltenColossus') return giant({ glow: 0xff6a1a, stone: lavaStone(), scale: 2.1, molten: true });
   if (type === 'treasureWyrm') return wyrm();
   if (type === 'shade') return shade();
+  if (type === 'gravekeeper') return gravekeeper();
   return thornback(type === 'thornbackAlpha', type === 'thornSpitter', type === 'gildedThornback');
 }

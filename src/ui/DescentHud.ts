@@ -14,6 +14,12 @@ import './descent.css';
 
 const KEYS = 'ZXC';
 
+/** What the status line says in the first chamber a new kind of monster rises in. */
+const HINTS: readonly (readonly [tag: string, hint: string])[] = [
+  [':shade', 'Shades blink away when you close in: sidestep their slow bolts'],
+  [':gravekeeper', 'Gravekeepers mend the monsters around them: take them down first'],
+];
+
 /**
  * Underworld Descent readout: the depth and chamber, what is left of its
  * monsters, the curses on the team, the chamber's name card as the team
@@ -47,8 +53,8 @@ export class DescentHud {
   private readonly tally: KillTally | null;
   private readonly banner: HTMLElement;
   private bannerUntil = 0;
-  /** The first chamber Shades rose in this run, where the status line says how to fight them. */
-  private shadeHint = -1;
+  /** The first chamber each new monster rose in this run, where the status line says how to fight it. */
+  private readonly hintAt = new Map<string, number>();
 
   constructor(
     private readonly run: Descent,
@@ -203,8 +209,10 @@ export class DescentHud {
         else if (r.champion?.alive) s += r.versus ? ' · a Champion leads them: its fall empowers whoever lands it' : ' · a Champion leads them';
         if (r.gilded) s += r.versus ? ' · catch the Gilded Thornback before the rivals!' : ' · catch the Gilded Thornback!';
         if (r.erupting) s += ' · soul fire!';
-        if (this.shadeHint < 0 && r.monsters.some((m) => m.alive && m.tag.endsWith(':shade'))) this.shadeHint = r.chamber;
-        if (this.shadeHint === r.chamber) s += ' · Shades blink away when you close in: sidestep their slow bolts';
+        for (const [tag, hint] of HINTS) {
+          if (!this.hintAt.has(tag) && r.monsters.some((m) => m.alive && m.tag.endsWith(tag))) this.hintAt.set(tag, r.chamber);
+          if (this.hintAt.get(tag) === r.chamber) s += ` · ${hint}`;
+        }
         return s + downText;
       }
       case 'reward':

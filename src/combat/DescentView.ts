@@ -6,6 +6,7 @@ import type { World } from '../scene/World';
 import { DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { GroundDecal } from './GroundDecal';
+import { KEEPER_CORE, KEEPER_GLOW } from './MonsterViews';
 import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
@@ -17,6 +18,8 @@ const SOULS_OF: Record<keyof typeof DEPTH_COLORS, number> = { ember: 0xbfefff, s
 const ALLY_SOUL = 0x5ab8ff;
 const FOE_SOUL = 0xff4060;
 /** The Gilded Thornback's burst of gold. */
+/** A Gravekeeper's lantern flaring as it mends. */
+const LANTERN: GodPalette = { cloth: 0, trim: 0, glow: KEEPER_GLOW, vfx: KEEPER_GLOW, core: KEEPER_CORE };
 const GILDED: GodPalette = { cloth: 0, trim: 0, glow: 0xffc23a, vfx: 0xffb020, core: 0xfff0b0 };
 /** Seconds between the souls a god raising an ally pours into them. */
 const STREAM_EVERY = 0.09;
@@ -203,6 +206,19 @@ export class DescentView {
   onEvent(e: SimEvent): void {
     const r = this.run;
     if (!r.chamber) return;
+    if (e.type === 'heal' && e.source?.tag.endsWith(':gravekeeper') && e.target.alive) {
+      // the Gravekeeper's lantern flares and a stream of amber souls pours into its patient
+      const k = e.source;
+      const f = k.forward;
+      // (the lantern hangs ahead of it on its staff hand, the model's +x side)
+      const x = k.x + f.x * 0.8 + f.z * 0.25;
+      const z = k.z + f.z * 0.8 - f.x * 0.25;
+      const y = k.body.y + 2.1;
+      const to = e.target;
+      for (let i = 0; i < 5; i++) this.wisps.swarm.send(x, y, z, to, KEEPER_GLOW, 0.42, Math.min(2.6, 0.6 + to.radius * 0.6));
+      this.vfx.burst(LANTERN, x, y, z, 0.6);
+      return;
+    }
     if (e.type === 'respawn' && r.gods.includes(e.unit)) {
       const g = e.unit;
       const color = this.colorFor(g);

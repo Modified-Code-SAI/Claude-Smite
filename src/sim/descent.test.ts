@@ -3,7 +3,7 @@ import { ULTIMATE_SLOT } from '../game/loadout';
 import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { BOSS_CHAMBER, CHAMBERS, chamberField, entranceSpot, exitSpot, steer, underworldField, obstaclesOf } from '../map/UnderworldLayout';
-import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, learnSkill, planRun, SHADE_BLINK } from './Descent';
+import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, KEEPER, learnSkill, planRun, SHADE_BLINK } from './Descent';
 import { DescentBot } from './DescentBot';
 import { godUnit, monsterUnit } from './factory';
 import { CollisionWorld } from '../scene/Collision';
@@ -175,6 +175,64 @@ describe('Underworld Descent: the run', () => {
     expect(hops).toBe(1);
     run(2);
     expect(hops).toBe(2);
+  });
+
+  it('brings Gravekeepers only into the Abyss, past the second boss', () => {
+    const keepers = (n: number) => chamberWaves({ n, layout: 0, kind: 'pack' }).flat().filter((t) => t === 'gravekeeper').length;
+    for (let n = 1; n <= 2 * DESCENT.bossEvery; n++) expect(keepers(n)).toBe(0);
+    expect(keepers(2 * DESCENT.bossEvery + 1)).toBeGreaterThan(0);
+    expect(keepers(14)).toBeGreaterThan(keepers(2 * DESCENT.bossEvery + 1));
+  });
+
+  it('has a Gravekeeper mend the most hurt monster near it, never itself, and not while stunned; it backs away from gods', () => {
+    const c = CHAMBERS[1]!;
+    const sim = new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(5));
+    const [sx, sz] = c.spawns[3]!;
+    const brained = (type: 'gravekeeper' | 'thornback', x: number, z: number, i: number) => {
+      const m = sim.add(monsterUnit(zeus, type, { x, z, yaw: 0 }, 0));
+      m.tag = `descent-small-11.0.${i}:${type}`;
+      const camp = { camp: { id: `m${i}`, kind: 'small' as const, team: null, at: [x, z] as [number, number] }, members: [m], respawnAt: null, foe: null };
+      m.brain = new DescentMonsterBrain(sim, m, camp, obstaclesOf(c), c);
+      return m;
+    };
+    const keeper = brained('gravekeeper', c.x + sx, c.z + sz, 0);
+    const scratched = brained('thornback', keeper.x + 4, keeper.z, 1);
+    const mauled = brained('thornback', keeper.x - 4, keeper.z, 2);
+    const far = brained('thornback', keeper.x, keeper.z + KEEPER.range + 4, 3);
+    const hp = (m: Unit) => m.combatant.health / m.combatant.stats.maxHealth;
+    scratched.combatant.health = scratched.combatant.stats.maxHealth * 0.8;
+    mauled.combatant.health = mauled.combatant.stats.maxHealth * 0.3;
+    far.combatant.health = far.combatant.stats.maxHealth * 0.1;
+    keeper.combatant.health = keeper.combatant.stats.maxHealth * 0.2;
+    const mends: Unit[] = [];
+    sim.listeners.push((e) => {
+      if (e.type === 'heal' && e.source === keeper) mends.push(e.target);
+    });
+    const run = (seconds: number) => {
+      for (let i = 0; i < seconds * 30; i++) sim.step(1 / 30);
+    };
+    run(KEEPER.first + 0.1);
+    // the worst hurt within its reach, not the one out of reach, and never itself
+    expect(mends).toEqual([mauled]);
+    expect(hp(mauled)).toBeCloseTo(0.3 + KEEPER.share, 2);
+    expect(hp(far)).toBeCloseTo(0.1, 5);
+    expect(hp(keeper)).toBeCloseTo(0.2, 5);
+    run(KEEPER.every);
+    expect(mends).toEqual([mauled, mauled]);
+    // stunned, the lantern stays dark
+    keeper.combatant.cc.apply('stun', KEEPER.every * 2);
+    run(KEEPER.every * 2 - 0.2);
+    expect(mends).toHaveLength(2);
+    // (it looks for a patient again a few times a second)
+    run(1);
+    expect(mends).toHaveLength(3);
+    // a god walks up: it backs off
+    const god = sim.add(godUnit(thor, 'order', { x: keeper.x + 2.5, z: keeper.z, yaw: 0 }));
+    const gap = () => Math.hypot(keeper.x - god.x, keeper.z - god.z);
+    const start = gap();
+    run(1);
+    expect(gap()).toBeGreaterThan(start + 1);
+    expect(c.sd(keeper.x - c.x, keeper.z - c.z)).toBeGreaterThan(0);
   });
 
   it('starts every god with one skill, the rest sealed', () => {
