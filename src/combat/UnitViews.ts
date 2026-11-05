@@ -179,6 +179,8 @@ interface UnitView {
   /** Seconds since a destroyed structure began to rise again, or -1. */
   rebirth: number;
   monster: MonsterView | null;
+  /** Built by the mode's own view (see the `custom` hook), the player's included. */
+  custom: boolean;
   /** Time the god model's animation has not caught up on yet (see animateEvery). */
   animDt: number;
   /** Staggers reduced-rate animation so gods don't all update on the same frame. */
@@ -216,6 +218,8 @@ export class UnitViews {
     private playerModel: GodModel,
     /** Structure models the map already built and placed, by unit. */
     private readonly mapStructure: (u: Unit) => StructureModel | undefined = () => undefined,
+    /** Views a mode draws its own units with (the Jötunn and its weak points), the player's unit included. */
+    private readonly custom: (u: Unit) => MonsterView | undefined = () => undefined,
   ) {
     this.group.name = 'units';
     this.group.add(this.minions.group);
@@ -232,7 +236,7 @@ export class UnitViews {
 
   /** After a god switch: the old player's view is dropped (its model belongs to the controller). */
   setPlayer(u: Unit, model: GodModel): void {
-    this.views.delete(this.player);
+    if (!this.views.get(this.player)?.custom) this.views.delete(this.player);
     this.player = u;
     this.playerModel = model;
   }
@@ -278,7 +282,7 @@ export class UnitViews {
     );
     for (const [u, v] of this.views) {
       if (seen.has(u)) continue;
-      if (u !== this.player) this.group.remove(v.root);
+      if (u !== this.player || v.custom) this.group.remove(v.root);
       if (u.kind === 'dummy') this.dummies?.remove(v.root);
       this.views.delete(u);
       this.prev.delete(u);
@@ -351,7 +355,13 @@ export class UnitViews {
     let external = false;
     let monster: MonsterView | null = null;
     let height = 2.45;
-    if (u === this.player) {
+    const own = this.custom(u);
+    if (own) {
+      monster = own;
+      root = own.root;
+      height = own.height;
+      this.group.add(root);
+    } else if (u === this.player) {
       model = this.playerModel;
       root = model.root;
     } else if (u.kind === 'dummy') {
@@ -392,7 +402,7 @@ export class UnitViews {
       if (summoned) root.scale.setScalar(0.88);
       this.group.add(root);
     }
-    const v: UnitView = { root, model, height, wobble: 0, wobbleVel: 0, deathTime: -1, localDir: new THREE.Vector2(), lift: 0, structure, rebirth: -1, external, windup: 0, monster, animDt: 0, stagger: this.created++ };
+    const v: UnitView = { root, model, height, wobble: 0, wobbleVel: 0, deathTime: -1, localDir: new THREE.Vector2(), lift: 0, structure, rebirth: -1, external, windup: 0, monster, custom: !!own, animDt: 0, stagger: this.created++ };
     this.views.set(u, v);
     return v;
   }
@@ -418,7 +428,7 @@ export class UnitViews {
 
     // a downed god (Underworld Descent) lies where it fell until it is raised; a dazed one (Relic Rush) until it stands up
     const lying = (u.downed || (this.dazes && u.kind === 'god')) && !u.alive;
-    if (u === this.player) {
+    if (u === this.player && !v.custom) {
       // no sink: the camera follows this root through the respawn wait
       v.root.visible = u.alive || lying || v.deathTime < GOD_CORPSE;
       v.root.position.y += v.lift;
@@ -463,7 +473,7 @@ export class UnitViews {
       return;
     }
     if (v.monster) {
-      v.root.visible = v.deathTime < 3;
+      v.root.visible = v.deathTime < (v.monster.linger ?? 3);
       v.monster.animate(u, dt, v.deathTime, v.wobble);
       return;
     }

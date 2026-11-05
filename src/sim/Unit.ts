@@ -220,6 +220,8 @@ export interface Flash {
   life: number;
   /** A warning: the shape is struck when the flash ends (an attack winding up). */
   warn?: boolean;
+  /** What a warning winds up: the skill id, or 'basic'. */
+  act?: string;
 }
 
 export type SimEvent =

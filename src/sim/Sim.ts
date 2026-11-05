@@ -185,7 +185,7 @@ export class Sim {
           this.landBasic(u, t, shot);
         }
       };
-      if (def.windup) this.windUp(u, def.windup, true, { type: 'cone', x: u.x, z: u.z, yaw: Math.atan2(-dir.x, -dir.z), range, angle: MELEE_ARC }, swing);
+      if (def.windup) this.windUp(u, def.windup, 'basic', { type: 'cone', x: u.x, z: u.z, yaw: Math.atan2(-dir.x, -dir.z), range, angle: MELEE_ARC }, swing);
       else swing();
     } else {
       this.emit({ type: 'basic', unit: u, melee: false });
@@ -205,7 +205,7 @@ export class Sim {
     const grantsStealth = r.cast.hits.some((e) => e.kind === 'stealth');
     if (!grantsStealth) u.stealth = 0;
     const windup = r.cast.skill.windup;
-    if (windup) this.windUp(u, windup, false, this.strikeShape(u, r.cast), () => this.execute(u, r.cast));
+    if (windup) this.windUp(u, windup, r.cast.skill.id, this.strikeShape(u, r.cast), () => this.execute(u, r.cast));
     else this.execute(u, r.cast);
     return null;
   }
@@ -215,10 +215,10 @@ export class Sim {
    * will strike shows as a warning, and the attack lands along the aim it had
    * at the press. Hard crowd control in the meantime cancels it.
    */
-  private windUp(u: Unit, time: number, basic: boolean, shape: FlashShape, run: () => void): void {
+  private windUp(u: Unit, time: number, act: string, shape: FlashShape, run: () => void): void {
     const flash = nextEntityId();
-    this.flashes.push({ id: flash, shape, owner: u, age: 0, life: time, warn: true });
-    this.winding.set(u, { at: this.time + time, aim: { x: u.aim.x, z: u.aim.z }, basic, flash, run });
+    this.flashes.push({ id: flash, shape, owner: u, age: 0, life: time, warn: true, act });
+    this.winding.set(u, { at: this.time + time, aim: { x: u.aim.x, z: u.aim.z }, basic: act === 'basic', flash, run });
     u.windup = time;
   }
 

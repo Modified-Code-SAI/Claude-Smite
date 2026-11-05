@@ -68,7 +68,8 @@ export const jotunn: GodDef = {
       kind: 'regular',
       description: 'Smash a fist into the ground in front of you, stunning the gods there. The hand stays planted a moment, wrist exposed.',
       tags: ['damage', 'cc'],
-      targeting: { type: 'ground', range: 6, radius: 2.2 },
+      // as far as the fist reaches with the giant bent over its lunge
+      targeting: { type: 'ground', range: 4.6, radius: 2.2 },
       cooldown: 9,
       cost: 0,
       windup: 0.85,

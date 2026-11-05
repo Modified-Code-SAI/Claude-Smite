@@ -165,7 +165,7 @@ class ProjectileView {
 }
 
 /** Elements whose hits and areas raise billowing puffs, and the puff color for each. */
-const PUFF_COLORS: Partial<Record<string, number>> = { smoke: 0x4f9466, sand: 0xe0b77e };
+const PUFF_COLORS: Partial<Record<string, number>> = { smoke: 0x4f9466, sand: 0xe0b77e, frost: 0xd6ecf7 };
 
 /** Each cloud's own values for the material every cloud shares. */
 const puffUniforms = () => ({

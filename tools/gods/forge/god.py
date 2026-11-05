@@ -39,8 +39,12 @@ class God:
     bulk: dict = {}
     definition: float = 0.7  # how strongly muscle forms are exaggerated (0 = MakeHuman as is)
 
+    stretch: dict = {}  # limb segment length scales (see body.limb_stretch)
+
     def __init__(self):
         self.body = bodymod.build(self.shape, self.height)
+        if self.stretch:
+            self.body = bodymod.build(self.shape, self.height, bodymod.limb_stretch(self.body, self.stretch))
         if self.bulk:
             bodymod.bulk(self.body, self.bulk)
         self.F = Fields(self.body)
