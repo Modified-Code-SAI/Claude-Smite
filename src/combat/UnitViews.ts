@@ -315,11 +315,20 @@ export class UnitViews {
     }
   }
 
+  /** Scratch for frame(), kept so a frame makes no garbage: the units seen this frame, the minions among them, and the minion batch's lookups. */
+  private readonly seen = new Set<Unit>();
+  private readonly minionsNow: Unit[] = [];
+  private readonly minionAt = (u: Unit) => this.views.get(u)!.root.position;
+  private readonly minionDeath = (u: Unit) => this.views.get(u)!.deathTime;
+  private readonly minionShown = (u: Unit) => this.views.get(u)!.root.visible;
+
   frame(units: readonly Unit[], dt: number, alpha: number, time = 0): void {
     this.frameNo++;
     if (this.camera) this.frustum.setFromProjectionMatrix(this.viewProj.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
-    const seen = new Set<Unit>();
-    const minions: Unit[] = [];
+    const seen = this.seen;
+    const minions = this.minionsNow;
+    seen.clear();
+    minions.length = 0;
     for (const u of units) {
       seen.add(u);
       const v = this.views.get(u) ?? this.create(u);
@@ -328,13 +337,7 @@ export class UnitViews {
       if (u.kind === 'minion') minions.push(u);
       if (v.structure && !v.external) v.structure.update(dt, time, this.camera ?? undefined);
     }
-    this.minions.frame(
-      minions,
-      dt,
-      (u) => this.views.get(u)!.root.position,
-      (u) => this.views.get(u)!.deathTime,
-      (u) => this.views.get(u)!.root.visible,
-    );
+    this.minions.frame(minions, dt, this.minionAt, this.minionDeath, this.minionShown);
     for (const [u, v] of this.views) {
       if (seen.has(u)) continue;
       if (u !== this.player || v.custom) this.group.remove(v.root);

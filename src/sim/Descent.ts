@@ -62,6 +62,8 @@ export const DESCENT = {
    * camera watches it go down): the adds it called crumble with it.
    */
   bossFall: 2.4,
+  /** How fast a fallen boss's retinue crumbles outward from it, in meters a second: a wave, not all in one frame. */
+  crumble: 24,
   /** Champion's Obol: a whole-team wipe is undone this many times (it can be won as a reward). */
   obols: 0,
   /** A shared descent (team versus). */
@@ -931,15 +933,17 @@ export class Descent {
   }
 
   /**
-   * A boss gone down: whatever it called up crumbles with it (any that are
-   * still climbing out of the floor as soon as they can be struck), credited
-   * to the god who felled it, while the chamber holds for its fall.
+   * A boss gone down: whatever it called up crumbles with it, in a wave
+   * spreading out from where it fell (everything left by the end of the
+   * hold), credited to the god who felled it.
    */
   private stepFall(dt: number): void {
     this.fallLeft = Math.max(0, this.fallLeft - dt);
     const by = this.fallBy;
-    if (!by) return;
-    for (const m of this.monsters) if (m.alive && m !== this.gilded) this.sim.strike(by, m, 1e9, 'true');
+    const b = this.boss;
+    if (!by || !b) return;
+    const reach = this.fallLeft > 0 ? 1.5 + (DESCENT.bossFall - this.fallLeft) * DESCENT.crumble : Infinity;
+    for (const m of this.monsters) if (m.alive && m !== this.gilded && hypot(m.x - b.x, m.z - b.z) <= reach) this.sim.slay(by, m);
   }
 
   /** A boss calls its adds as it weakens. */

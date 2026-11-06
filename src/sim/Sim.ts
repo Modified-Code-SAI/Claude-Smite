@@ -546,6 +546,20 @@ export class Sim {
     this.checkLevel(credit, levelBefore);
   }
 
+  /**
+   * Kill outright with no hit to show (no damage number, hit marker or hit
+   * sound): a mode's rules, such as a fallen boss's retinue crumbling. The
+   * kill is credited and rewarded like any other.
+   */
+  slay(source: Unit, target: Unit): void {
+    if (!target.alive || target.team === source.team || isStructure(target)) return;
+    const credit = source.owner ?? source;
+    const levelBefore = credit.combatant.level;
+    target.combatant.slay(source.combatant);
+    this.onDeath(target, source);
+    this.checkLevel(credit, levelBefore);
+  }
+
   private landBasic(u: Unit, target: Unit, shot: BasicShot): void {
     const c = target.combatant;
     const before = c.health + c.shieldTotal;
