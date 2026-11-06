@@ -489,6 +489,8 @@ export class JotunnView {
   /** Seconds until a roar for the camera lands (see roar), or below 0. */
   private cheer = -1;
   private storm: { x: number; z: number; r: number; left: number } | null = null;
+  /** How high each god's arc goes while it is in the air (0 on the ground), for the snow where it comes down. */
+  private readonly aloft = new Map<Unit, number>();
   private readonly state: GiantState = { speed: 0, localDir: new THREE.Vector2(), windup: null, kneel: false, plant: null, silenced: false, staggered: null, dead: false };
 
   constructor(private readonly host: JotunnViewHost) {
@@ -690,6 +692,25 @@ export class JotunnView {
       this.spikes.add(at.clone().setY(at.y - 1.4), 0, 1.6, 0, 1.2);
       this.mist.ring(at, 14, 5, { life: 1.4, size0: 1, size1: 3.5, alpha: 0.45, color: 0xcfefff });
       this.host.shake(0.35, at);
+    }
+  }
+
+  /**
+   * Gods thrown by the giant (or leaping) come down in a burst of snow, the
+   * bigger the higher they flew. `skip`: the giant player's own god, parked
+   * off the field.
+   */
+  landings(players: readonly { god: Unit }[], skip: Unit): void {
+    for (const { god: u } of players) {
+      if (u === skip) continue;
+      const arc = u.alive && u.forced ? u.forced.arc : 0;
+      const was = this.aloft.get(u) ?? 0;
+      if (arc === was) continue;
+      this.aloft.set(u, arc);
+      if (arc > 0 || was < 0.3 || !u.alive) continue;
+      const k = Math.min(1, was / JOTUNN.thrown.arc);
+      const at = tmp.set(u.x, this.host.ground(u.x, u.z), u.z);
+      this.snow.ring(at, Math.round(5 + 7 * k), 1.5 + 2.5 * k, { life: 0.9, size0: 0.5, size1: 1.6 + 1.2 * k, alpha: 0.5, color: 0xe2edf3 });
     }
   }
 

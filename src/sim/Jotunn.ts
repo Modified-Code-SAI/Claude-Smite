@@ -58,6 +58,12 @@ export const JOTUNN = {
   /** Each claimed shrine: more damage for the rest of the round, and some Might back. */
   shrineDamage: 0.08,
   shrineHeal: 0.06,
+  /**
+   * How the giant's blows throw a god: a stomp hurls it `distance` meters
+   * back on an arc `arc` high, an avalanche tosses it `toss` meters into the
+   * air (a god's own knockbacks go 3.5 m on a 0.6 m arc, a knock-up 1.6 m).
+   */
+  thrown: { distance: 6.5, arc: 1.5, toss: 2.6 },
   /** The giant's Might, as a share, under which the fight comes to its last stand (see lastStand). */
   lastStand: 0.25,
   giantSpawn: { x: 0, z: -64, yaw: Math.PI },
@@ -260,6 +266,10 @@ export class Jotunn {
     opts: { rounds?: number; order?: number[]; brains?: JotunnBrains } = {},
   ) {
     this.brains = opts.brains ?? null;
+    // the only knockbacks here are the giant's (it shrugs off the gods'), and it throws hard
+    sim.knockback = JOTUNN.thrown.distance;
+    sim.knockbackArc = JOTUNN.thrown.arc;
+    sim.knockupArc = JOTUNN.thrown.toss;
     const gods = Math.max(1, Math.min(JOTUNN.gods, players.length - 1));
     this.might = JOTUNN.might.base + JOTUNN.might.perGod * gods;
     this.giant = giantUnit(this.might);
