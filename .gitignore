@@ -16,9 +16,10 @@ tools/trailer/out/
 # orchestra sample sources (tools/music/build.py --fetch)
 tools/music/src/
 
-# Blender effect and collapse scratch (tools/vfx, tools/collapse READMEs)
+# Blender effect, collapse and hero render scratch (tools/vfx, tools/collapse, tools/hero READMEs)
 tools/vfx/out/
 tools/collapse/out/
+tools/hero/out/
 
 # AI texture candidates (tools/textures/paint.py)
 tools/textures/out/
