@@ -8,7 +8,7 @@ export interface DepthColors {
   fire: { low: number; high: number; ember: number; light: number; scale: number };
   /** Cracks in the walls, rune rings in the floor, the coals and the open gate. */
   glow: number;
-  /** Far haze, the sky's glow at the horizon, and the cold light from above. */
+  /** Far haze, the sky's glow at the horizon, and the light from above (cold in all but the forge). */
   fog: number;
   horizon: number;
   key: number;
@@ -23,7 +23,8 @@ export const DEPTH_COLORS: Record<Palette, DepthColors> = {
     glow: 0xff5a14,
     fog: 0x1a0c0a,
     horizon: 0x5a1808,
-    key: 0xb8c4ff,
+    // the light from above comes down through the forges' smoke, dull and warm
+    key: 0xd4b8b0,
     // embers off the forges, drifting up
     motes: { color: 0xff6a20, glow: 0.9, rise: 0.45, grow: 1.7, near: 6 },
   },

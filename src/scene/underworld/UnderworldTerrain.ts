@@ -3,7 +3,7 @@ import { fbm2, simplex2, smoothstep as sstep } from '../../core/random';
 import { hypot } from '../../core/math';
 import { CHAMBERS, chamberAt, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
 import {
-  abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, length, max, min, mix, mx_noise_float, select, normalWorld, positionWorld, sin, smoothstep, texture, time, transformNormalToView, vec2, vec3,
+  abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionWorld, sin, smoothstep, texture, time, transformNormalToView, vec2, vec3,
 } from '../../render/tsl';
 import { planar, triplanar, type TextureLibrary } from '../Materials';
 import type { Terrain, TerrainDef } from '../Terrain';
@@ -206,10 +206,25 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   // the Ashen Depths: lava seeping up through the joints between the slabs in
   // patches, and through the cracks in the crust along the walls
   // (in patches a few slabs across, where the runes' wear noise runs high)
-  const joint = smoothstep(0.955, 0.998, flag.roughness).mul(smoothstep(0.25, 0.62, wornN)).mul(smoothstep(0.3, 0.55, macro)).mul(float(1).sub(ashW));
+  const open = float(1).sub(ashW);
+  const patch = smoothstep(0.25, 0.62, wornN).mul(smoothstep(0.3, 0.55, macro));
+  const joint = smoothstep(0.955, 0.998, flag.roughness).mul(patch).mul(open);
   const crustCracks = smoothstep(0.07, 0.0, crackN).mul(ashW);
-  const seep = joint.mul(1.25).add(crustCracks.mul(2.4)).mul(floorW).mul(ember);
-  col = col.mul(float(1).sub(joint.mul(ember).mul(floorW).mul(0.6)));
+  const forgeFloor = floorW.mul(ember);
+  // round each seeping patch the slabs are heated: their edges scorched and
+  // glowing dull red, and a warm light rising off the stone that fades out
+  // over a few slabs
+  const warmth = smoothstep(0.0, 0.6, wornN).mul(smoothstep(0.15, 0.55, macro)).mul(open);
+  const rimHeat = smoothstep(0.86, 0.955, flag.roughness).mul(warmth);
+  // cinders caught in the black crust along the walls (and a few among the
+  // hot slabs), each glowing and fading on its own beat
+  const cell = floor(xz.mul(3.5)).add(2048);
+  const cellHash = hash(cell.y.mul(4096).add(cell.x));
+  const fleckD = length(fract(xz.mul(3.5)).sub(0.5));
+  const fleckBeat = sin(time.mul(cellHash.mul(3).add(1.5)).add(cellHash.mul(40))).mul(0.5).add(0.5);
+  const fleck = smoothstep(0.93, 0.96, cellHash).mul(smoothstep(0.24, 0.05, fleckD)).mul(fleckBeat).mul(max(ashW, patch.mul(0.6)));
+  const seep = joint.mul(1.25).add(crustCracks.mul(2.4)).add(rimHeat.mul(0.3)).add(warmth.mul(0.045)).add(fleck.mul(3.5)).mul(forgeFloor);
+  col = col.mul(float(1).sub(joint.add(rimHeat.mul(0.45)).mul(forgeFloor).mul(0.6)));
   // the Drowned Halls: the slabs are wet, moss grows in their joints, and
   // still water stands in the hollows, stirred by slow ripples
   const wetFloor = floorW.mul(soul);
