@@ -220,6 +220,8 @@ function engageable(c: CampState, t: Unit): boolean {
  */
 export class MonsterBrain implements Brain {
   private resetting = false;
+  /** It was fighting the camp's foe: when the camp lets go, it walks home healing too. */
+  private engaged = false;
   /** Seconds until a boss's next area attack. */
   private specialIn = 4;
   /** Seconds left on a boss's area attack windup, 0 when not winding up. */
@@ -255,11 +257,11 @@ export class MonsterBrain implements Brain {
       return;
     }
     const foe = camp.foe;
-    if (foe && !engageable(camp, foe)) {
-      camp.foe = null;
-      this.resetting = true;
-    }
+    if (foe && !engageable(camp, foe)) camp.foe = null;
     if (!camp.foe) {
+      // every monster that was in the fight resets, not only the first to notice the foe gone
+      if (this.engaged) this.resetting = true;
+      this.engaged = false;
       const dx = u.home.x - u.x;
       const dz = u.home.z - u.z;
       const d = hypot(dx, dz);
@@ -275,6 +277,7 @@ export class MonsterBrain implements Brain {
       return;
     }
     this.resetting = false;
+    this.engaged = true;
     if (spec) {
       this.specialIn -= dt;
       if (this.specialIn <= 0) {

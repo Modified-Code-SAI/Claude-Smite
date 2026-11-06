@@ -23,7 +23,7 @@ import { offGate, RUSH } from '../sim/Rush';
 import { chantAt, chantBreak, chanting } from './chant';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import type { Palette } from '../map/UnderworldLayout';
-import { DEPTH_BEDS, DEPTH_SONG, UNDERWORLD_LIFE, type Stir } from './underworldAmbience';
+import { DEPTH_BEDS, DEPTH_GROUND, DEPTH_ROOM, DEPTH_SONG, UNDERWORLD_LIFE, type Stir } from './underworldAmbience';
 import { relicById } from '../sim/Relics';
 import { BOSS_CALL_LINE } from '../ui/bossNames';
 import { isGiant, JOTUNN, lastStand, type PartId } from '../sim/Jotunn';
@@ -36,7 +36,7 @@ const GIANT_GLOAT_GAP = 14;
 const ATTACK_CALL_GAP = 25;
 
 
-type Surface = 'stone' | 'grass' | 'dirt' | 'coins' | 'ash';
+type Surface = 'stone' | 'grass' | 'dirt' | 'coins' | 'ash' | 'basalt' | 'wet' | 'glass';
 
 interface Tracked {
   loop: LoopHandle;
@@ -112,6 +112,8 @@ export class GameAudio {
     game.sim.listeners.push((e) => this.onEvent(e));
     window.addEventListener('keydown', (e) => this.onKey(e));
     engine.onUnlock(() => this.startAmbience());
+    // each depth of the Descent is a space of its own: set them all up now, not as the team goes down
+    if (game.descent) engine.prepareRooms(Object.values(DEPTH_ROOM));
     this.music.play(this.conquest ? 'dawn' : game.descent ? DEPTH_SONG[DEPTHS[game.descent.depth]!.palette] : game.jotunn ? 'frost' : 'battle');
     // the giant's footfalls come from its model, so each lands with the foot; souls reaching you rise in pitch along a run
     // pings are the team's voice: flat, heard anywhere on the map, your own softer
@@ -595,7 +597,7 @@ export class GameAudio {
       const hidden = u.stealth > 0 && u.team !== this.me.team;
       if (s.air && !air && u.alive && !hidden && d < range && u.kind !== 'minion') {
         const big = u.radius > 2;
-        this.engine.play('land', { at: { x: u.x, y: u.body.y, z: u.z }, gain: (u === this.me ? 0.75 : 0.55) * (u === this.me ? 1 : this.crowd), vary: 0.06, ref: big ? 12 : 6, rate: big ? 0.7 : 1 }, u === this.me ? 4 : 2);
+        this.engine.play(this.landing(), { at: { x: u.x, y: u.body.y, z: u.z }, gain: (u === this.me ? 0.75 : 0.55) * (u === this.me ? 1 : this.crowd), vary: 0.06, ref: big ? 12 : 6, rate: big ? 0.7 : 1 }, u === this.me ? 4 : 2);
       }
       s.air = air;
       // leaps, blinks and recalls are not walking
@@ -618,6 +620,7 @@ export class GameAudio {
   }
 
   private surface(x: number, z: number): Surface {
+    if (this.game.descent) return DEPTH_GROUND[DEPTHS[this.game.descent.depth]!.palette];
     if (!this.conquest) return 'stone';
     for (const c of L.camps) {
       if (c.team !== null || hypot(x - c.at[0], z - c.at[1]) > L.radii.boss) continue;
@@ -627,6 +630,12 @@ export class GameAudio {
     for (const lane of L.lanes) if (nearestOnPolyline(lane.points, x, z).distance < lane.width * 0.55) return 'stone';
     for (const path of L.paths) if (nearestOnPolyline(path.points, x, z).distance < path.width * 0.6) return 'dirt';
     return 'grass';
+  }
+
+  /** A landing on this floor: in the Descent, on the depth's own. */
+  private landing(): string {
+    const run = this.game.descent;
+    return run ? `land.${DEPTH_GROUND[DEPTHS[run.depth]!.palette]}` : 'land';
   }
 
   private watchMonsters(): void {
@@ -1261,6 +1270,8 @@ export class GameAudio {
   /** Fades the shown depth's beds in and the others out. */
   private depthBeds(depth: Palette): void {
     const turned = depth !== this.bedsDepth;
+    // and the room they sound in, crossfading as the team falls into the next
+    if (turned) this.engine.setRoom(DEPTH_ROOM[depth], this.bedsDepth === null ? 0 : 2.5);
     this.bedsDepth = depth;
     for (const b of this.beds) {
       if (!b.loop?.alive) b.loop = this.engine.loop(b.name, { bus: 'ambience', gain: b.depth === depth ? b.gain : 0, pan: b.pan, rate: b.rate });
@@ -1306,7 +1317,7 @@ export class GameAudio {
       // master's chamber they fall a long way, and land hard at the bottom
       if (r.phase === 'descend') this.engine.play('amb.groan', { gain: 0.9 }, 3);
       if (r.phase === 'descend' && r.plunging) this.engine.play('amb.plunge', { gain: 0.85 }, 3);
-      if (r.phase === 'enter' && seen.phase === 'descend' && r.chamber % DESCENT.bossEvery === 1) this.engine.play('land', { gain: 0.9, rate: 0.75 }, 3);
+      if (r.phase === 'enter' && seen.phase === 'descend' && r.chamber % DESCENT.bossEvery === 1) this.engine.play(this.landing(), { gain: 0.9, rate: 0.75 }, 3);
       if (r.over) this.music.sting(r.phase === 'won' && (!r.versus || r.winner === this.me.team) ? 'victory' : 'defeat');
       if (r.phase === 'won' && r.versus) this.herald.say(r.winner === 'draw' ? 'A dead heat. The underworld keeps you both.' : r.winner === this.me.team ? 'Victory! Your team rules the underworld.' : 'The rivals rule the underworld.', r.winner === this.me.team ? 'epic' : 'bad', 9);
       else if (r.phase === 'won') this.herald.say('You rise again! The underworld could not hold you.', 'epic', 9);

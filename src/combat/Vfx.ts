@@ -13,7 +13,7 @@ import { GroundDecal, type DecalShape } from './GroundDecal';
 import { ACID, KEEPER_CORE, KEEPER_GLOW, SHADE_CORE, SHADE_GLOW, BUFF_GLOW } from './MonsterViews';
 import { paletteFor, paletteOf, type GodPalette } from './palette';
 import { hypot } from '../core/math';
-import { lookFor, type ShotLook, type ZoneLook } from './skillLooks';
+import { basicLookFor, lookFor, type ShotLook, type ZoneLook } from './skillLooks';
 import { Pool } from './skillFx/pool';
 import { SkillFx } from './skillFx/SkillFx';
 import { settings } from '../settings/store';
@@ -898,7 +898,7 @@ export class CombatVfx {
         v = this.projectilePool.take();
         // a Shade's soul bolt is slow and big, so it reads as one to sidestep
         const size = p.cast ? Math.min(1.3, 0.35 + p.radius * 0.45) : isStructure(p.owner) ? 0.75 : p.owner.kind === 'minion' ? 0.16 : p.owner.tag.endsWith(':shade') ? 0.55 : 0.28;
-        const look = p.cast ? lookFor(p.cast.skill.id) : undefined;
+        const look = p.cast ? lookFor(p.cast.skill.id) : basicLookFor(p.owner);
         // structure shots crackle like lightning so they read as heavy
         v.reset(look ? this.skills.palette(look, p.owner) : monsterPalette(p.owner), size, at, isStructure(p.owner), look?.shot);
         this.projectiles.set(p.id, v);

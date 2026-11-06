@@ -1,0 +1,4170 @@
+{
+ "anubis/death-1": {
+  "dur": 2.56,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.893,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.02,
+    "heard": "Death cannot hold me.",
+    "match": 0.868,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.85,
+    "heard": "Death cannot hold me.",
+    "match": 0.864,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.83,
+    "heard": "Death cannot hold me.",
+    "match": 0.893,
+    "wer": 0.0
+   }
+  ],
+  "text": "Death... cannot hold me."
+ },
+ "anubis/death-2": {
+  "dur": 3.19,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.912,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.2,
+    "heard": "I will return, as all things do.",
+    "match": 0.9,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.5,
+    "heard": "I will return, as all things do.",
+    "match": 0.888,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.28,
+    "heard": "I will return, as all things do.",
+    "match": 0.912,
+    "wer": 0.0
+   }
+  ],
+  "text": "I will return... as all things do."
+ },
+ "anubis/kill-1": {
+  "dur": 3.12,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.929,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.25,
+    "heard": "weighed and found wanting.",
+    "match": 0.902,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.31,
+    "heard": "weighed and found wanting.",
+    "match": 0.929,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.17,
+    "heard": "weighed and found wanting.",
+    "match": 0.877,
+    "wer": 0.0
+   }
+  ],
+  "text": "Weighed, and found wanting."
+ },
+ "anubis/kill-2": {
+  "dur": 1.84,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.871,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.28,
+    "heard": "Your heart is heavy.",
+    "match": 0.871,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.11,
+    "heard": "Your heart is heavy.",
+    "match": 0.836,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.15,
+    "heard": "Your heart is heavy.",
+    "match": 0.858,
+    "wer": 0.0
+   }
+  ],
+  "text": "Your heart is heavy."
+ },
+ "anubis/kill-3": {
+  "dur": 2.45,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.893,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.55,
+    "heard": "the underworld claims you.",
+    "match": 0.865,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.75,
+    "heard": "The underworld claims you.",
+    "match": 0.893,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.64,
+    "heard": "the underworld claims you.",
+    "match": 0.854,
+    "wer": 0.0
+   }
+  ],
+  "text": "The underworld claims you."
+ },
+ "anubis/respawn-1": {
+  "dur": 2.48,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.886,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.78,
+    "heard": "I know the road back from death.",
+    "match": 0.853,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.86,
+    "heard": "I know the road back from death.",
+    "match": 0.866,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.74,
+    "heard": "I know the road back from death.",
+    "match": 0.886,
+    "wer": 0.0
+   }
+  ],
+  "text": "I know the road back from death."
+ },
+ "anubis/respawn-2": {
+  "dur": 3.06,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.896,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.75,
+    "heard": "The tomb could not keep me.",
+    "match": 0.862,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.21,
+    "heard": "The tomb could not keep me.",
+    "match": 0.896,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.81,
+    "heard": "The tomb could not keep me.",
+    "match": 0.858,
+    "wer": 0.0
+   }
+  ],
+  "text": "The tomb could not keep me."
+ },
+ "anubis/start-1": {
+  "dur": 3.33,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.92,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.52,
+    "heard": "All things come to me, in time.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.55,
+    "heard": "All things come to me, in time.",
+    "match": 0.896,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.51,
+    "heard": "All things come to me, in time.",
+    "match": 0.91,
+    "wer": 0.0
+   }
+  ],
+  "text": "All things come to me, in time."
+ },
+ "anubis/start-2": {
+  "dur": 2.13,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.904,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.52,
+    "heard": "The sands are shifting.",
+    "match": 0.904,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.29,
+    "heard": "The sands are shifting.",
+    "match": 0.87,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.61,
+    "heard": "The sands are shifting.",
+    "match": 0.873,
+    "wer": 0.0
+   }
+  ],
+  "text": "The sands are shifting."
+ },
+ "anubis/streak-1": {
+  "dur": 2.52,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.896,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.67,
+    "heard": "the dead march behind me.",
+    "match": 0.883,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.64,
+    "heard": "the dead march behind me.",
+    "match": 0.888,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.79,
+    "heard": "the dead march behind me.",
+    "match": 0.896,
+    "wer": 0.0
+   }
+  ],
+  "text": "The dead march behind me."
+ },
+ "anubis/streak-2": {
+  "dur": 2.53,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.903,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.6,
+    "heard": "So many hearts to weigh.",
+    "match": 0.897,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.96,
+    "heard": "So many hearts to weigh.",
+    "match": 0.855,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.81,
+    "heard": "So many hearts to weigh.",
+    "match": 0.903,
+    "wer": 0.0
+   }
+  ],
+  "text": "So many hearts to weigh."
+ },
+ "anubis/taunt-1": {
+  "dur": 5.54,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.928,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 3.49,
+    "heard": "I have embalmed kings. You will not take long.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.85,
+    "heard": "I have embalmed kings. You will not take long.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.22,
+    "heard": "I have embalmed kings. You will not take long.",
+    "match": 0.928,
+    "wer": 0.0
+   }
+  ],
+  "text": "I have embalmed kings. You will not take long."
+ },
+ "anubis/taunt-2": {
+  "dur": 5.21,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.93,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 3.98,
+    "heard": "Your heart is lighter than a feather. That is not a compliment.",
+    "match": 0.916,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.93,
+    "heard": "Your heart is lighter than a feather. That is not a compliment.",
+    "match": 0.93,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.88,
+    "heard": "Your heart is lighter than a feather. That is not a compliment.",
+    "match": 0.927,
+    "wer": 0.0
+   }
+  ],
+  "text": "Your heart is lighter than a feather. That is not a compliment."
+ },
+ "anubis/taunt-3": {
+  "dur": 3.4,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.9,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.6,
+    "heard": "Run. The sand remembers your steps.",
+    "match": 0.9,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.83,
+    "heard": "Run. The SAN remembers your steps.",
+    "match": 0.902,
+    "wer": 0.167
+   },
+   {
+    "dur": 2.7,
+    "heard": "Run. The sand remembers your steps.",
+    "match": 0.873,
+    "wer": 0.0
+   }
+  ],
+  "text": "Run. The sand remembers your steps."
+ },
+ "anubis/ult-1": {
+  "dur": 1.11,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.821,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 0.65,
+    "heard": "Judgment.",
+    "match": 0.821,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.55,
+    "heard": "Roll the win!",
+    "match": 0.801,
+    "wer": 3.0
+   },
+   {
+    "dur": 0.7,
+    "heard": "Judgment!",
+    "match": 0.798,
+    "wer": 0.0
+   }
+  ],
+  "text": "Judgment!"
+ },
+ "anubis/ult-2": {
+  "dur": 2.25,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.886,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.57,
+    "heard": "feel the weight of the dead.",
+    "match": 0.886,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.86,
+    "heard": "Feel the weight of the dead.",
+    "match": 0.84,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.53,
+    "heard": "Feel the weight of the dead.",
+    "match": 0.869,
+    "wer": 0.0
+   }
+  ],
+  "text": "Feel the weight of the dead."
+ },
+ "cthulhu/death-1": {
+  "dur": 5.13,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.917,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.92,
+    "heard": "that is not dead, which can eternal lie.",
+    "match": 0.909,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.46,
+    "heard": "That is not dead, which can eternal lie.",
+    "match": 0.917,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.86,
+    "heard": "That is not dead, which can eternal lie.",
+    "match": 0.909,
+    "wer": 0.0
+   }
+  ],
+  "text": "That is not dead... which can eternal lie..."
+ },
+ "cthulhu/death-2": {
+  "dur": 3.12,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.893,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.67,
+    "heard": "I return to the dreaming.",
+    "match": 0.893,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.62,
+    "heard": "I return to the dreaming tei.",
+    "match": 0.894,
+    "wer": 0.2
+   },
+   {
+    "dur": 8.62,
+    "heard": "I return to the dreaming, but the bars, the bars, over love and interest and interest in James.",
+    "match": 0.955,
+    "wer": 2.6
+   }
+  ],
+  "text": "I return... to the dreaming..."
+ },
+ "cthulhu/kill-1": {
+  "kept": "kokoro",
+  "takes": [
+   {
+    "dur": 0.67,
+    "heard": "Sink.",
+    "match": 0.676,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.7,
+    "heard": "Sink.",
+    "match": 0.721,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.43,
+    "heard": "Why?",
+    "match": 0.58,
+    "wer": 1.0
+   }
+  ],
+  "text": "Sink."
+ },
+ "cthulhu/kill-2": {
+  "dur": 3.43,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.891,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.1,
+    "heard": "down into the deep with you.",
+    "match": 0.866,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.07,
+    "heard": "down into the deep with you.",
+    "match": 0.891,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.24,
+    "heard": "down into the deep with you.",
+    "match": 0.889,
+    "wer": 0.0
+   }
+  ],
+  "text": "Down into the deep with you."
+ },
+ "cthulhu/kill-3": {
+  "dur": 3.5,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.859,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.04,
+    "heard": "Dream with me forever.",
+    "match": 0.859,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.27,
+    "heard": "Dream with me forever.",
+    "match": 0.855,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.04,
+    "heard": "Dream with me forever.",
+    "match": 0.849,
+    "wer": 0.0
+   }
+  ],
+  "text": "Dream with me. Forever."
+ },
+ "cthulhu/respawn-1": {
+  "dur": 4.5,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.895,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.14,
+    "heard": "What is dead may wake again.",
+    "match": 0.861,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.85,
+    "heard": "What is dead, may wake again.",
+    "match": 0.895,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.59,
+    "heard": "What is dead may wake again.",
+    "match": 0.876,
+    "wer": 0.0
+   }
+  ],
+  "text": "What is dead may wake again."
+ },
+ "cthulhu/respawn-2": {
+  "dur": 2.79,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.905,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.86,
+    "heard": "The sea gives me back.",
+    "match": 0.871,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.96,
+    "heard": "The sea gives me back.",
+    "match": 0.844,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.7,
+    "heard": "The sea gives me back.",
+    "match": 0.905,
+    "wer": 0.0
+   }
+  ],
+  "text": "The sea gives me back."
+ },
+ "cthulhu/start-1": {
+  "dur": 3.06,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.928,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.6,
+    "heard": "The stars are coming right.",
+    "match": 0.9,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.84,
+    "heard": "The stars are coming right.",
+    "match": 0.928,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.63,
+    "heard": "The stars are coming right.",
+    "match": 0.913,
+    "wer": 0.0
+   }
+  ],
+  "text": "The stars are coming right."
+ },
+ "cthulhu/start-2": {
+  "dur": 5.59,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.946,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 3.69,
+    "heard": "I slept beneath the sea for ages. I am awake now.",
+    "match": 0.925,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.84,
+    "heard": "I slept beneath the sea for ages. I am awake now.",
+    "match": 0.946,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.34,
+    "heard": "I slept beneath the sea for ages. I am awake now.",
+    "match": 0.933,
+    "wer": 0.0
+   }
+  ],
+  "text": "I slept beneath the sea for ages. I am awake now."
+ },
+ "cthulhu/streak-1": {
+  "dur": 2.71,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.869,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.44,
+    "heard": "The tide is rising.",
+    "match": 0.869,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.44,
+    "heard": "The tide is rising.",
+    "match": 0.88,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.55,
+    "heard": "The tide is rising.",
+    "match": 0.845,
+    "wer": 0.0
+   }
+  ],
+  "text": "The tide is rising."
+ },
+ "cthulhu/streak-2": {
+  "dur": 3.75,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.881,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.27,
+    "heard": "They dream of me now, all of them.",
+    "match": 0.877,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.11,
+    "heard": "They dream of me now, all of them.",
+    "match": 0.878,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.25,
+    "heard": "They dream of me now, all of them.",
+    "match": 0.881,
+    "wer": 0.0
+   }
+  ],
+  "text": "They dream of me now. All of them."
+ },
+ "cthulhu/taunt-1": {
+  "dur": 3.88,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.909,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.37,
+    "heard": "You are a small thing and brief.",
+    "match": 0.909,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.29,
+    "heard": "You are a small thing, and brief.",
+    "match": 0.9,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.22,
+    "heard": "You are a small thing and brief.",
+    "match": 0.872,
+    "wer": 0.0
+   }
+  ],
+  "text": "You are a small thing, and brief."
+ },
+ "cthulhu/taunt-2": {
+  "dur": 7.39,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.93,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 4.48,
+    "heard": "I have dreamed of whole worlds drowning. You are not even a ripple.",
+    "match": 0.918,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.95,
+    "heard": "I have dreamed of whole worlds drowning. You are not even a ripple.",
+    "match": 0.916,
+    "wer": 0.0
+   },
+   {
+    "dur": 5.02,
+    "heard": "I have dreamed of whole worlds drowning. You are not even a ripple.",
+    "match": 0.93,
+    "wer": 0.0
+   }
+  ],
+  "text": "I have dreamed of whole worlds drowning. You are not even a ripple."
+ },
+ "cthulhu/taunt-3": {
+  "dur": 4.16,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.939,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 3.02,
+    "heard": "Look at me, little one, look and despair.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.93,
+    "heard": "Look at me, little one. Look and despair.",
+    "match": 0.895,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.6,
+    "heard": "Look at me, little one, look and despair.",
+    "match": 0.939,
+    "wer": 0.0
+   }
+  ],
+  "text": "Look at me, little one. Look, and despair."
+ },
+ "cthulhu/ult-1": {
+  "dur": 2.46,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.844,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.29,
+    "heard": "The stars are right.",
+    "match": 0.844,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.71,
+    "heard": "The stars are right.",
+    "match": 0.797,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.27,
+    "heard": "The stars are right.",
+    "match": 0.823,
+    "wer": 0.0
+   }
+  ],
+  "text": "The stars are right!"
+ },
+ "cthulhu/ult-2": {
+  "dur": 2.68,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.762,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.34,
+    "heard": "Rise, Relyea!",
+    "match": 0.762,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.8,
+    "heard": "Rise Rallier!",
+    "match": 0.801,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.15,
+    "heard": "Rise really air.",
+    "match": 0.792,
+    "wer": 0.5
+   }
+  ],
+  "text": "Rise, R'lyeh!"
+ },
+ "jotunn/brazier-1": {
+  "dur": 2.36,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.891,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.28,
+    "heard": "Another fire dies.",
+    "match": 0.891,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.79,
+    "heard": "Another fire dies.",
+    "match": 0.904,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.37,
+    "heard": "Another fire dies.",
+    "match": 0.89,
+    "wer": 0.0
+   }
+  ],
+  "text": "Another fire dies."
+ },
+ "jotunn/brazier-2": {
+  "dur": 2.5,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.885,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.18,
+    "heard": "Your light goes dark.",
+    "match": 0.844,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.32,
+    "heard": "Your light goes dark.",
+    "match": 0.882,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.29,
+    "heard": "Your light goes dark.",
+    "match": 0.885,
+    "wer": 0.0
+   }
+  ],
+  "text": "Your light goes dark."
+ },
+ "jotunn/brazier-3": {
+  "dur": 2.61,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.863,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.57,
+    "heard": "Burn out, little flame.",
+    "match": 0.861,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.32,
+    "heard": "Burn out, little flame.",
+    "match": 0.863,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.4,
+    "heard": "Burn out, little flame.",
+    "match": 0.826,
+    "wer": 0.0
+   }
+  ],
+  "text": "Burn out, little flame."
+ },
+ "jotunn/death-1": {
+  "dur": 2.66,
+  "heat": 0.55,
+  "kept": "chatterbox",
+  "match": 0.895,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.36,
+    "heard": "The winter ends.",
+    "match": 0.884,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.73,
+    "heard": "The winter ends.",
+    "match": 0.884,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.46,
+    "heard": "The winter ends.",
+    "match": 0.895,
+    "wer": 0.0
+   }
+  ],
+  "text": "The winter... ends..."
+ },
+ "jotunn/death-2": {
+  "dur": 3.02,
+  "heat": 0.55,
+  "kept": "chatterbox",
+  "match": 0.884,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.6,
+    "heard": "Even the mountain falls.",
+    "match": 0.884,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.71,
+    "heard": "even the mountain falls.",
+    "match": 0.866,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.01,
+    "heard": "Even the mountain falls.",
+    "match": 0.879,
+    "wer": 0.0
+   }
+  ],
+  "text": "Even the mountain... falls."
+ },
+ "jotunn/kill-1": {
+  "dur": 3.21,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.867,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.67,
+    "heard": "crushed like the rest.",
+    "match": 0.848,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.84,
+    "heard": "crushed, like the rest.",
+    "match": 0.864,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.76,
+    "heard": "Crushed like the rest.",
+    "match": 0.867,
+    "wer": 0.0
+   }
+  ],
+  "text": "Crushed, like the rest."
+ },
+ "jotunn/kill-2": {
+  "dur": 3.02,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.912,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.3,
+    "heard": "like frost underfoot.",
+    "match": 0.911,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.53,
+    "heard": "like frost underfoot.",
+    "match": 0.912,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.55,
+    "heard": "like frost underfoot.",
+    "match": 0.877,
+    "wer": 0.0
+   }
+  ],
+  "text": "Like frost underfoot."
+ },
+ "jotunn/kill-3": {
+  "dur": 2.93,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.903,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.37,
+    "heard": "Stay down, little God.",
+    "match": 0.903,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.58,
+    "heard": "Stay down, little god.",
+    "match": 0.87,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.85,
+    "heard": "Stay down, little god.",
+    "match": 0.901,
+    "wer": 0.0
+   }
+  ],
+  "text": "Stay down, little god."
+ },
+ "jotunn/kneel-1": {
+  "dur": 2.8,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.836,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.06,
+    "heard": "You dare?",
+    "match": 0.795,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.25,
+    "heard": "You dare?",
+    "match": 0.836,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.76,
+    "heard": "You dare?",
+    "match": 0.805,
+    "wer": 0.0
+   }
+  ],
+  "text": "You dare?"
+ },
+ "jotunn/kneel-2": {
+  "dur": 2.72,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.822,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.23,
+    "heard": "I will rise.",
+    "match": 0.805,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.31,
+    "heard": "I will rise.",
+    "match": 0.806,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.44,
+    "heard": "I will rise.",
+    "match": 0.822,
+    "wer": 0.0
+   }
+  ],
+  "text": "I will rise!"
+ },
+ "jotunn/shrine-1": {
+  "dur": 3.01,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.917,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.0,
+    "heard": "The old cold answers, me.",
+    "match": 0.876,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.55,
+    "heard": "The old cold answers me.",
+    "match": 0.881,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.69,
+    "heard": "The old cold answers me.",
+    "match": 0.917,
+    "wer": 0.0
+   }
+  ],
+  "text": "The old cold answers me."
+ },
+ "jotunn/shrine-2": {
+  "dur": 3.08,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.888,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.75,
+    "heard": "This power is mine.",
+    "match": 0.887,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.85,
+    "heard": "This power is mine.",
+    "match": 0.875,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.82,
+    "heard": "This power is mine.",
+    "match": 0.888,
+    "wer": 0.0
+   }
+  ],
+  "text": "This power is mine."
+ },
+ "jotunn/stand-1": {
+  "dur": 4.37,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.901,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.61,
+    "heard": "Nuff now faced the true winner.",
+    "match": 0.889,
+    "wer": 0.5
+   },
+   {
+    "dur": 2.52,
+    "heard": "Enough! Now face the true winter!",
+    "match": 0.87,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.7,
+    "heard": "Enough, now face the true winter.",
+    "match": 0.901,
+    "wer": 0.0
+   }
+  ],
+  "text": "Enough! Now face the true winter!"
+ },
+ "jotunn/stand-2": {
+  "dur": 3.8,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.911,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.3,
+    "heard": "I will not fall to insects.",
+    "match": 0.911,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.4,
+    "heard": "I will not fall to insects.",
+    "match": 0.85,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.17,
+    "heard": "I will not fall to insects.",
+    "match": 0.863,
+    "wer": 0.0
+   }
+  ],
+  "text": "I will not fall to insects!"
+ },
+ "jotunn/start-1": {
+  "dur": 5.67,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.93,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.62,
+    "heard": "Little Gods, your fires end tonight.",
+    "match": 0.922,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.5,
+    "heard": "Little Gods, your fires end tonight.",
+    "match": 0.93,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.13,
+    "heard": "Little gods, your fires end tonight.",
+    "match": 0.924,
+    "wer": 0.0
+   }
+  ],
+  "text": "Little gods. Your fires end tonight."
+ },
+ "jotunn/start-2": {
+  "dur": 4.7,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.915,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.76,
+    "heard": "I have slept for an age, no more.",
+    "match": 0.915,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.72,
+    "heard": "I have slept for an age, no more.",
+    "match": 0.899,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.06,
+    "heard": "I have slept for an age. No more.",
+    "match": 0.898,
+    "wer": 0.0
+   }
+  ],
+  "text": "I have slept for an age. No more."
+ },
+ "jotunn/start-3": {
+  "dur": 3.04,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.901,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.29,
+    "heard": "the long night wakes.",
+    "match": 0.867,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.73,
+    "heard": "The long night wakes.",
+    "match": 0.901,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.72,
+    "heard": "The long night wakes.",
+    "match": 0.895,
+    "wer": 0.0
+   }
+  ],
+  "text": "The long night wakes."
+ },
+ "jotunn/streak-1": {
+  "dur": 3.21,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.882,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.78,
+    "heard": "Who is next to break?",
+    "match": 0.882,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.32,
+    "heard": "Who is next to break?",
+    "match": 0.872,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.83,
+    "heard": "Who is next to break?",
+    "match": 0.876,
+    "wer": 0.0
+   }
+  ],
+  "text": "Who is next to break?"
+ },
+ "jotunn/streak-2": {
+  "dur": 2.86,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.861,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.45,
+    "heard": "Your gods grow few.",
+    "match": 0.807,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.47,
+    "heard": "Your gods grow few.",
+    "match": 0.861,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.01,
+    "heard": "Your gods grow few.",
+    "match": 0.796,
+    "wer": 0.0
+   }
+  ],
+  "text": "Your gods grow few."
+ },
+ "jotunn/win-1": {
+  "dur": 2.89,
+  "heat": 0.8,
+  "kept": "chatterbox",
+  "match": 0.885,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 3.27,
+    "heard": "The long winter begins. Hey!",
+    "match": 0.906,
+    "wer": 0.25
+   },
+   {
+    "dur": 1.7,
+    "heard": "The long winter begins.",
+    "match": 0.885,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.84,
+    "heard": "The long winter begins.",
+    "match": 0.864,
+    "wer": 0.0
+   }
+  ],
+  "text": "The long winter begins."
+ },
+ "jotunn/win-2": {
+  "dur": 3.95,
+  "heat": 0.8,
+  "kept": "chatterbox",
+  "match": 0.905,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.45,
+    "heard": "Your temple is mine to freeze.",
+    "match": 0.88,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.55,
+    "heard": "Your temple is mine to freeze.",
+    "match": 0.894,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.43,
+    "heard": "Your temple is mine to freeze.",
+    "match": 0.905,
+    "wer": 0.0
+   }
+  ],
+  "text": "Your temple is mine to freeze."
+ },
+ "kukulkan/death-1": {
+  "dur": 2.87,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.917,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.21,
+    "heard": "I will shed this skin.",
+    "match": 0.907,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.0,
+    "heard": "I will shed this skin.",
+    "match": 0.917,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.23,
+    "heard": "I will shed this skin.",
+    "match": 0.908,
+    "wer": 0.0
+   }
+  ],
+  "text": "I will shed... this skin..."
+ },
+ "kukulkan/death-2": {
+  "dur": 2.35,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.886,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.08,
+    "heard": "The star sets.",
+    "match": 0.85,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.47,
+    "heard": "The star sets.",
+    "match": 0.886,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.38,
+    "heard": "The star, sets.",
+    "match": 0.88,
+    "wer": 0.0
+   }
+  ],
+  "text": "The star... sets..."
+ },
+ "kukulkan/kill-1": {
+  "dur": 2.36,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.896,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.41,
+    "heard": "Shed your skin if you can.",
+    "match": 0.896,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.72,
+    "heard": "Shed your skin if you can.",
+    "match": 0.85,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.8,
+    "heard": "Shed your skin if you can.",
+    "match": 0.896,
+    "wer": 0.0
+   }
+  ],
+  "text": "Shed your skin, if you can."
+ },
+ "kukulkan/kill-2": {
+  "dur": 2.92,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.82,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.85,
+    "heard": "swallowed whole.",
+    "match": 0.82,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.89,
+    "heard": "Swallow hole.",
+    "match": 0.769,
+    "wer": 1.0
+   },
+   {
+    "dur": 0.96,
+    "heard": "Swallowed Hole",
+    "match": 0.79,
+    "wer": 0.5
+   }
+  ],
+  "text": "Swallowed whole."
+ },
+ "kukulkan/kill-3": {
+  "dur": 2.21,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.865,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.08,
+    "heard": "The coils close. Doh!",
+    "match": 0.844,
+    "wer": 0.333
+   },
+   {
+    "dur": 1.19,
+    "heard": "The coils close.",
+    "match": 0.849,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.31,
+    "heard": "The coils close.",
+    "match": 0.865,
+    "wer": 0.0
+   }
+  ],
+  "text": "The coils close."
+ },
+ "kukulkan/respawn-1": {
+  "dur": 3.62,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.936,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.63,
+    "heard": "A new skin, the same serpent.",
+    "match": 0.936,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.89,
+    "heard": "A new skin. The same serpent.",
+    "match": 0.929,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.31,
+    "heard": "a new skin, the same serpent.",
+    "match": 0.934,
+    "wer": 0.0
+   }
+  ],
+  "text": "A new skin. The same serpent."
+ },
+ "kukulkan/respawn-2": {
+  "dur": 2.95,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.92,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.83,
+    "heard": "The Morning Star Rises Again.",
+    "match": 0.908,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.85,
+    "heard": "The Morning Star Rises Again.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.0,
+    "heard": "The Morning Star Rises Again.",
+    "match": 0.88,
+    "wer": 0.0
+   }
+  ],
+  "text": "The morning star rises again."
+ },
+ "kukulkan/start-1": {
+  "dur": 5.27,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.955,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 4.06,
+    "heard": "Feathers and scales. Sky and earth. I am both.",
+    "match": 0.938,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.83,
+    "heard": "Feathers and scales, sky and earth, I am both.",
+    "match": 0.939,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.06,
+    "heard": "Feathers and scales. Sky and earth. I am both.",
+    "match": 0.955,
+    "wer": 0.0
+   }
+  ],
+  "text": "Feathers and scales. Sky and earth. I am both."
+ },
+ "kukulkan/start-2": {
+  "dur": 5.88,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.954,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 4.12,
+    "heard": "At the equinox my shadow walks the stairs. Today it walks the field.",
+    "match": 0.937,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.1,
+    "heard": "At the equinox my shadow walks the stairs. Today it walks the field.",
+    "match": 0.932,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.48,
+    "heard": "At the equinox, my shadow walks the stairs. Today, it walks the field.",
+    "match": 0.954,
+    "wer": 0.0
+   }
+  ],
+  "text": "At the equinox my shadow walks the stairs. Today it walks the field."
+ },
+ "kukulkan/streak-1": {
+  "dur": 2.14,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.88,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.63,
+    "heard": "The jungle grows quiet. Bee!",
+    "match": 0.899,
+    "wer": 0.25
+   },
+   {
+    "dur": 1.4,
+    "heard": "The jungle grows quiet.",
+    "match": 0.88,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.56,
+    "heard": "The jungle grows quiet.",
+    "match": 0.87,
+    "wer": 0.0
+   }
+  ],
+  "text": "The jungle grows quiet."
+ },
+ "kukulkan/streak-2": {
+  "dur": 2.75,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.92,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.68,
+    "heard": "Another offering for the sky.",
+    "match": 0.919,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.79,
+    "heard": "another offering for the sky.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.89,
+    "heard": "another offering for the sky.",
+    "match": 0.92,
+    "wer": 0.0
+   }
+  ],
+  "text": "Another offering for the sky."
+ },
+ "kukulkan/taunt-1": {
+  "dur": 3.88,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.909,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.44,
+    "heard": "Cure the rattle. That is your warning.",
+    "match": 0.901,
+    "wer": 0.143
+   },
+   {
+    "dur": 3.03,
+    "heard": "Hear the rattle? That is your warning.",
+    "match": 0.909,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.61,
+    "heard": "That is your warning.",
+    "match": 0.91,
+    "wer": 0.429
+   }
+  ],
+  "text": "Hear the rattle? That is your warning."
+ },
+ "kukulkan/taunt-2": {
+  "dur": 3.44,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.923,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.24,
+    "heard": "You are prey that is not noticed yet.",
+    "match": 0.893,
+    "wer": 0.125
+   },
+   {
+    "dur": 2.24,
+    "heard": "You are prey that has not noticed yet.",
+    "match": 0.921,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.5,
+    "heard": "You are prey that has not noticed yet.",
+    "match": 0.923,
+    "wer": 0.0
+   }
+  ],
+  "text": "You are prey that has not noticed yet."
+ },
+ "kukulkan/taunt-3": {
+  "dur": 5.39,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.946,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 4.83,
+    "heard": "I have watched empires fall into the jungle. You are smaller.",
+    "match": 0.927,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.01,
+    "heard": "I have watched empires fall into the jungle. You are smaller.",
+    "match": 0.946,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.39,
+    "heard": "I have watched empires fall into the jungle. You are smaller.",
+    "match": 0.944,
+    "wer": 0.0
+   }
+  ],
+  "text": "I have watched empires fall into the jungle. You are smaller."
+ },
+ "kukulkan/ult-1": {
+  "dur": 2.31,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.849,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 0.59,
+    "heard": "I ugly",
+    "match": 0.649,
+    "wer": 0.5
+   },
+   {
+    "dur": 1.47,
+    "heard": "I descend.",
+    "match": 0.849,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.28,
+    "heard": "I dig and!",
+    "match": 0.799,
+    "wer": 1.0
+   }
+  ],
+  "text": "I descend!"
+ },
+ "kukulkan/ult-2": {
+  "dur": 2.93,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.885,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.7,
+    "heard": "See me and tremble.",
+    "match": 0.871,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.58,
+    "heard": "See me and Shremble!",
+    "match": 0.831,
+    "wer": 0.25
+   },
+   {
+    "dur": 1.71,
+    "heard": "see me, and tremble.",
+    "match": 0.885,
+    "wer": 0.0
+   }
+  ],
+  "text": "See me, and tremble."
+ },
+ "loki/death-1": {
+  "dur": 1.96,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.895,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.93,
+    "heard": "That was cheating. How rude.",
+    "match": 0.868,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.77,
+    "heard": "That was cheating! How rude!",
+    "match": 0.89,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.99,
+    "heard": "That was cheating, how rude.",
+    "match": 0.895,
+    "wer": 0.0
+   }
+  ],
+  "text": "That was cheating! How rude."
+ },
+ "loki/death-2": {
+  "dur": 1.94,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.886,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.05,
+    "heard": "Well, that was unplanned.",
+    "match": 0.826,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.11,
+    "heard": "Well, that was unplanned.",
+    "match": 0.874,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.96,
+    "heard": "Well, that was unplanned.",
+    "match": 0.886,
+    "wer": 0.0
+   }
+  ],
+  "text": "Well. That was... unplanned."
+ },
+ "loki/kill-1": {
+  "dur": 0.88,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.821,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 0.92,
+    "heard": "Surprise!",
+    "match": 0.797,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.82,
+    "heard": "the prize.",
+    "match": 0.835,
+    "wer": 2.0
+   },
+   {
+    "dur": 0.86,
+    "heard": "Surprise!",
+    "match": 0.821,
+    "wer": 0.0
+   }
+  ],
+  "text": "Surprise!"
+ },
+ "loki/kill-2": {
+  "dur": 2.15,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.933,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.12,
+    "heard": "Didn't see that coming, nobody ever does.",
+    "match": 0.933,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.14,
+    "heard": "Didn't see that coming? Nobody ever does.",
+    "match": 0.896,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.04,
+    "heard": "Didn't see that coming, nobody ever does.",
+    "match": 0.878,
+    "wer": 0.0
+   }
+  ],
+  "text": "Didn't see that coming? Nobody ever does."
+ },
+ "loki/kill-3": {
+  "dur": 1.23,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.883,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.22,
+    "heard": "Hush now. Sleep.",
+    "match": 0.883,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.98,
+    "heard": "Hush now, sleep.",
+    "match": 0.879,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.3,
+    "heard": "Hush now. Sleep.",
+    "match": 0.872,
+    "wer": 0.0
+   }
+  ],
+  "text": "Hush now. Sleep."
+ },
+ "loki/respawn-1": {
+  "dur": 0.81,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.889,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 0.92,
+    "heard": "Did you miss me?",
+    "match": 0.887,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.68,
+    "heard": "Did you miss me?",
+    "match": 0.875,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.78,
+    "heard": "Did you miss me?",
+    "match": 0.889,
+    "wer": 0.0
+   }
+  ],
+  "text": "Did you miss me?"
+ },
+ "loki/respawn-2": {
+  "dur": 1.76,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.908,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.73,
+    "heard": "I'm back, and still lovely.",
+    "match": 0.908,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.85,
+    "heard": "I'm back, and still lovely.",
+    "match": 0.887,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.61,
+    "heard": "I'm back, and still lovely.",
+    "match": 0.877,
+    "wer": 0.0
+   }
+  ],
+  "text": "I'm back, and still lovely."
+ },
+ "loki/start-1": {
+  "dur": 1.33,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.891,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.59,
+    "heard": "Let's see who trusts whom.",
+    "match": 0.891,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.55,
+    "heard": "Let's see who trusts whom.",
+    "match": 0.891,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.19,
+    "heard": "Let's see who trusts whom.",
+    "match": 0.876,
+    "wer": 0.0
+   }
+  ],
+  "text": "Let's see who trusts whom."
+ },
+ "loki/start-2": {
+  "dur": 2.85,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.924,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.85,
+    "heard": "Smile everyone, it makes the knife going easier.",
+    "match": 0.935,
+    "wer": 0.222
+   },
+   {
+    "dur": 2.93,
+    "heard": "Smile, everyone. It makes the knife go in easier.",
+    "match": 0.924,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.79,
+    "heard": "Smile everyone, it makes the knife go in easier.",
+    "match": 0.908,
+    "wer": 0.0
+   }
+  ],
+  "text": "Smile, everyone. It makes the knife go in easier."
+ },
+ "loki/streak-1": {
+  "dur": 1.41,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.925,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.15,
+    "heard": "I'm on a roll, aren't I?",
+    "match": 0.915,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.56,
+    "heard": "I'm on a roll, aren't I?",
+    "match": 0.857,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.41,
+    "heard": "I'm on a roll, aren't I?",
+    "match": 0.925,
+    "wer": 0.0
+   }
+  ],
+  "text": "I'm on a roll, aren't I?"
+ },
+ "loki/streak-2": {
+  "dur": 2.29,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.897,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.27,
+    "heard": "Who's next? Don't all volunteer at once.",
+    "match": 0.897,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.48,
+    "heard": "Who's next? Don't all volunteer at once.",
+    "match": 0.89,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.16,
+    "heard": "Who's next? Don't all volunteer at once.",
+    "match": 0.897,
+    "wer": 0.0
+   }
+  ],
+  "text": "Who's next? Don't all volunteer at once."
+ },
+ "loki/taunt-1": {
+  "dur": 2.31,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.93,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.22,
+    "heard": "I'd say good fight, but I lie for a living.",
+    "match": 0.909,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.28,
+    "heard": "I'd say good fight, but I lie for a living.",
+    "match": 0.93,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.09,
+    "heard": "I'd say good fight, but I'd lie for a living.",
+    "match": 0.87,
+    "wer": 0.1
+   }
+  ],
+  "text": "I'd say good fight, but I lie for a living."
+ },
+ "loki/taunt-2": {
+  "dur": 1.72,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.837,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.83,
+    "heard": "Over here. No, over here.",
+    "match": 0.814,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.67,
+    "heard": "Over here, no, over here.",
+    "match": 0.837,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.6,
+    "heard": "Over here. No, over here.",
+    "match": 0.783,
+    "wer": 0.0
+   }
+  ],
+  "text": "Over here! No, over here!"
+ },
+ "loki/taunt-3": {
+  "dur": 2.48,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.934,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.62,
+    "heard": "You're so easy to fool. It's charming, really.",
+    "match": 0.933,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.58,
+    "heard": "You're so easy to fool. It's charming, really.",
+    "match": 0.934,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.7,
+    "heard": "You're so easy to fool. It's charming, really.",
+    "match": 0.916,
+    "wer": 0.0
+   }
+  ],
+  "text": "You're so easy to fool. It's charming, really."
+ },
+ "loki/ult-1": {
+  "dur": 0.72,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.836,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.24,
+    "heard": "behind you.",
+    "match": 0.857,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.72,
+    "heard": "behind you.",
+    "match": 0.836,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.65,
+    "heard": "behind you.",
+    "match": 0.773,
+    "wer": 0.0
+   }
+  ],
+  "text": "Behind you."
+ },
+ "loki/ult-2": {
+  "dur": 1.05,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.87,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.01,
+    "heard": "Now you see me.",
+    "match": 0.87,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.99,
+    "heard": "Now you see me?",
+    "match": 0.858,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.04,
+    "heard": "Now you see me.",
+    "match": 0.869,
+    "wer": 0.0
+   }
+  ],
+  "text": "Now you see me..."
+ },
+ "odin/death-1": {
+  "dur": 2.58,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.888,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 3.15,
+    "heard": "Even I did not see this.",
+    "match": 0.921,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.07,
+    "heard": "Even I did not see this.",
+    "match": 0.888,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.47,
+    "heard": "Even I did not see this.",
+    "match": 0.856,
+    "wer": 0.0
+   }
+  ],
+  "text": "Even I... did not see this."
+ },
+ "odin/death-2": {
+  "dur": 3.04,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.926,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.6,
+    "heard": "My thread unravels.",
+    "match": 0.926,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.14,
+    "heard": "My thread unravels.",
+    "match": 0.883,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.19,
+    "heard": "My thread unravels.",
+    "match": 0.884,
+    "wer": 0.0
+   }
+  ],
+  "text": "My thread... unravels."
+ },
+ "odin/kill-1": {
+  "dur": 1.79,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.883,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.43,
+    "heard": "Your thread is cut.",
+    "match": 0.854,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.55,
+    "heard": "Your thread is cut.",
+    "match": 0.883,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.91,
+    "heard": "Your thread is cut.",
+    "match": 0.873,
+    "wer": 0.0
+   }
+  ],
+  "text": "Your thread is cut."
+ },
+ "odin/kill-2": {
+  "dur": 2.1,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.869,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.51,
+    "heard": "as it was foreseen.",
+    "match": 0.849,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.25,
+    "heard": "As it was foreseen. As it was foreseen.",
+    "match": 0.872,
+    "wer": 1.0
+   },
+   {
+    "dur": 1.76,
+    "heard": "as it was foreseen.",
+    "match": 0.869,
+    "wer": 0.0
+   }
+  ],
+  "text": "As it was foreseen."
+ },
+ "odin/kill-3": {
+  "dur": 3.42,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.861,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 3.24,
+    "heard": "Valhalla will not open for you.",
+    "match": 0.858,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.07,
+    "heard": "Valhalla will not open for you.",
+    "match": 0.845,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.92,
+    "heard": "Valhalla will not open for you.",
+    "match": 0.861,
+    "wer": 0.0
+   }
+  ],
+  "text": "Valhalla will not open for you."
+ },
+ "odin/respawn-1": {
+  "dur": 4.01,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.919,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 3.22,
+    "heard": "Death is a door. I know it well.",
+    "match": 0.914,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.04,
+    "heard": "Death is a door. I know it well.",
+    "match": 0.911,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.43,
+    "heard": "Death is a door. I know it well.",
+    "match": 0.919,
+    "wer": 0.0
+   }
+  ],
+  "text": "Death is a door. I know it well."
+ },
+ "odin/respawn-2": {
+  "dur": 3.59,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.925,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.92,
+    "heard": "I return, and I am wiser.",
+    "match": 0.889,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.95,
+    "heard": "I return. And I am wiser.",
+    "match": 0.925,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.52,
+    "heard": "I return, and I am wiser.",
+    "match": 0.876,
+    "wer": 0.0
+   }
+  ],
+  "text": "I return, and I am wiser."
+ },
+ "odin/start-1": {
+  "dur": 4.05,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.921,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 3.77,
+    "heard": "Every war is a lesson. Learn it quickly.",
+    "match": 0.918,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.71,
+    "heard": "Every war is a lesson. Learn it quickly.",
+    "match": 0.904,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.4,
+    "heard": "Every war is a lesson. Learn it quickly.",
+    "match": 0.921,
+    "wer": 0.0
+   }
+  ],
+  "text": "Every war is a lesson. Learn it quickly."
+ },
+ "odin/start-2": {
+  "dur": 4.46,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.926,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 3.51,
+    "heard": "The ravens fly. So, it begins.",
+    "match": 0.913,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.77,
+    "heard": "The ravens fly. So it begins.",
+    "match": 0.926,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.24,
+    "heard": "The ravens fly. So it begins.",
+    "match": 0.908,
+    "wer": 0.0
+   }
+  ],
+  "text": "The ravens fly. So it begins."
+ },
+ "odin/streak-1": {
+  "dur": 2.57,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.874,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.16,
+    "heard": "The ravens feast tonight.",
+    "match": 0.825,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.44,
+    "heard": "The ravens feast tonight.",
+    "match": 0.844,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.32,
+    "heard": "The Ravens feast tonight.",
+    "match": 0.874,
+    "wer": 0.0
+   }
+  ],
+  "text": "The ravens feast tonight."
+ },
+ "odin/streak-2": {
+  "dur": 2.95,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.894,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.36,
+    "heard": "None can stand against me.",
+    "match": 0.813,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.25,
+    "heard": "None can stand against me.",
+    "match": 0.878,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.41,
+    "heard": "None can stand against me.",
+    "match": 0.894,
+    "wer": 0.0
+   }
+  ],
+  "text": "None can stand against me."
+ },
+ "odin/taunt-1": {
+  "dur": 5.76,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.935,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 4.42,
+    "heard": "I gave an eye for wisdom. You gave nothing, and it shows.",
+    "match": 0.917,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.26,
+    "heard": "I gave an eye for wisdom. You gave nothing, and it shows.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.77,
+    "heard": "I gave an eye for wisdom. You gave nothing, and it shows.",
+    "match": 0.935,
+    "wer": 0.0
+   }
+  ],
+  "text": "I gave an eye for wisdom. You gave nothing, and it shows."
+ },
+ "odin/taunt-2": {
+  "dur": 2.49,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.86,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.24,
+    "heard": "My ravens find you dull.",
+    "match": 0.815,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.23,
+    "heard": "My ravens find you dull.",
+    "match": 0.86,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.22,
+    "heard": "My ravens find you dull.",
+    "match": 0.812,
+    "wer": 0.0
+   }
+  ],
+  "text": "My ravens find you dull."
+ },
+ "odin/taunt-3": {
+  "dur": 3.03,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.884,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.48,
+    "heard": "You fight like a riddle with no answer.",
+    "match": 0.803,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.58,
+    "heard": "You fight like a riddle with no answer.",
+    "match": 0.884,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.26,
+    "heard": "You fight like a riddle with no answer.",
+    "match": 0.781,
+    "wer": 0.0
+   }
+  ],
+  "text": "You fight like a riddle with no answer."
+ },
+ "odin/ult-1": {
+  "dur": 2.01,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.826,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.79,
+    "heard": "Rise, my spears!",
+    "match": 0.826,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.55,
+    "heard": "AHHH!",
+    "match": 0.598,
+    "wer": 1.0
+   },
+   {
+    "dur": 2.16,
+    "heard": "Rise, my spears!",
+    "match": 0.822,
+    "wer": 0.0
+   }
+  ],
+  "text": "Rise, my spears!"
+ },
+ "odin/ult-2": {
+  "dur": 2.75,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.889,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 3.43,
+    "heard": "Stand within the ring and fall!",
+    "match": 0.877,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.19,
+    "heard": "Stand within the ring and fall.",
+    "match": 0.843,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.24,
+    "heard": "stand within the ring, and fall.",
+    "match": 0.889,
+    "wer": 0.0
+   }
+  ],
+  "text": "Stand within the ring, and fall."
+ },
+ "thanatos/death-1": {
+  "dur": 2.24,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.871,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.78,
+    "heard": "Even I may rest.",
+    "match": 0.845,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.67,
+    "heard": "Even I may rest.",
+    "match": 0.871,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.1,
+    "heard": "Even I may rest and bed",
+    "match": 0.923,
+    "wer": 0.5
+   }
+  ],
+  "text": "Even I... may rest..."
+ },
+ "thanatos/death-2": {
+  "dur": 2.95,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.914,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.59,
+    "heard": "My brother will keep my place.",
+    "match": 0.888,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.36,
+    "heard": "My brother will keep my place.",
+    "match": 0.914,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.68,
+    "heard": "My brother will keep my place.",
+    "match": 0.908,
+    "wer": 0.0
+   }
+  ],
+  "text": "My brother... will keep my place..."
+ },
+ "thanatos/kill-1": {
+  "dur": 1.59,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.842,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.02,
+    "heard": "Rest now.",
+    "match": 0.842,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.88,
+    "heard": "Rest now.",
+    "match": 0.827,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.84,
+    "heard": "Rest now.",
+    "match": 0.781,
+    "wer": 0.0
+   }
+  ],
+  "text": "Rest now."
+ },
+ "thanatos/kill-2": {
+  "dur": 2.21,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.835,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.05,
+    "heard": "There. No more pain.",
+    "match": 0.785,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.78,
+    "heard": "There, no more pain.",
+    "match": 0.829,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.55,
+    "heard": "There, no more pain.",
+    "match": 0.835,
+    "wer": 0.0
+   }
+  ],
+  "text": "There. No more pain."
+ },
+ "thanatos/kill-3": {
+  "dur": 1.58,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.864,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.08,
+    "heard": "Close your eyes.",
+    "match": 0.864,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.99,
+    "heard": "Close your eyes.",
+    "match": 0.833,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.26,
+    "heard": "Close your eyes. Aight!",
+    "match": 0.901,
+    "wer": 0.333
+   }
+  ],
+  "text": "Close your eyes."
+ },
+ "thanatos/respawn-1": {
+  "dur": 3.08,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.892,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.84,
+    "heard": "Death does not stay dead.",
+    "match": 0.877,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.35,
+    "heard": "Death does not stay dead.",
+    "match": 0.859,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.32,
+    "heard": "Death does not stay dead.",
+    "match": 0.892,
+    "wer": 0.0
+   }
+  ],
+  "text": "Death does not stay dead."
+ },
+ "thanatos/respawn-2": {
+  "dur": 2.62,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.881,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.75,
+    "heard": "I was never far away.",
+    "match": 0.843,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.0,
+    "heard": "I was never far away.",
+    "match": 0.881,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.13,
+    "heard": "I was never far away.",
+    "match": 0.865,
+    "wer": 0.0
+   }
+  ],
+  "text": "I was never far away."
+ },
+ "thanatos/start-1": {
+  "dur": 4.98,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.941,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 4.07,
+    "heard": "Every road ends with me. Let us walk it gently.",
+    "match": 0.932,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.96,
+    "heard": "Every road ends with me. Let us walk it gently.",
+    "match": 0.934,
+    "wer": 0.0
+   },
+   {
+    "dur": 4.34,
+    "heard": "Every road ends with me. Let us walk it gently.",
+    "match": 0.941,
+    "wer": 0.0
+   }
+  ],
+  "text": "Every road ends with me. Let us walk it gently."
+ },
+ "thanatos/start-2": {
+  "dur": 4.23,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.948,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 3.48,
+    "heard": "Sleep keeps my left hand. I keep the rest.",
+    "match": 0.929,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.53,
+    "heard": "Sleep keeps my left hand. I keep the rest.",
+    "match": 0.948,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.33,
+    "heard": "Sleep keeps my left hand. I keep the rest.",
+    "match": 0.944,
+    "wer": 0.0
+   }
+  ],
+  "text": "Sleep keeps my left hand. I keep the rest."
+ },
+ "thanatos/streak-1": {
+  "dur": 2.63,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.891,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.06,
+    "heard": "So many lanterns going out.",
+    "match": 0.891,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.05,
+    "heard": "So many lanterns going out.",
+    "match": 0.88,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.93,
+    "heard": "So many lanterns going out.",
+    "match": 0.85,
+    "wer": 0.0
+   }
+  ],
+  "text": "So many lanterns going out."
+ },
+ "thanatos/streak-2": {
+  "dur": 2.7,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.891,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.03,
+    "heard": "The ferryman will be busy tonight.",
+    "match": 0.873,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.02,
+    "heard": "The ferryman will be busy tonight.",
+    "match": 0.876,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.2,
+    "heard": "the ferryman will be busy tonight.",
+    "match": 0.891,
+    "wer": 0.0
+   }
+  ],
+  "text": "The ferryman will be busy tonight."
+ },
+ "thanatos/taunt-1": {
+  "dur": 4.36,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.91,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 3.33,
+    "heard": "Do not fight it. Nobody ever wins.",
+    "match": 0.906,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.43,
+    "heard": "Do not fight it. Nobody ever wins.",
+    "match": 0.905,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.54,
+    "heard": "Do not fight it. Nobody ever wins.",
+    "match": 0.91,
+    "wer": 0.0
+   }
+  ],
+  "text": "Do not fight it. Nobody ever wins."
+ },
+ "thanatos/taunt-2": {
+  "dur": 4.5,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.923,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 4.04,
+    "heard": "I have met kings and beggars. You are not special.",
+    "match": 0.915,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.96,
+    "heard": "I have met kings and beggars. You are not special.",
+    "match": 0.908,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.74,
+    "heard": "I have met kings and beggars. You are not special.",
+    "match": 0.923,
+    "wer": 0.0
+   }
+  ],
+  "text": "I have met kings and beggars. You are not special."
+ },
+ "thanatos/taunt-3": {
+  "dur": 2.58,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.865,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.27,
+    "heard": "You are tired, I can tell.",
+    "match": 0.82,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.98,
+    "heard": "You are tired, I can tell.",
+    "match": 0.865,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.1,
+    "heard": "You are tired, I can tell.",
+    "match": 0.844,
+    "wer": 0.0
+   }
+  ],
+  "text": "You are tired. I can tell."
+ },
+ "thanatos/ult-1": {
+  "dur": 2.04,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.871,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.14,
+    "heard": "Sleep, all of you.",
+    "match": 0.819,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.4,
+    "heard": "Sleep, all of you.",
+    "match": 0.871,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.44,
+    "heard": "Sleep, all of you.",
+    "match": 0.855,
+    "wer": 0.0
+   }
+  ],
+  "text": "Sleep, all of you."
+ },
+ "thanatos/ult-2": {
+  "dur": 2.96,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.918,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.22,
+    "heard": "Lie down and do not wake.",
+    "match": 0.918,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.53,
+    "heard": "Lie down and do not wake.",
+    "match": 0.91,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.33,
+    "heard": "Lie down and do not wake.",
+    "match": 0.91,
+    "wer": 0.0
+   }
+  ],
+  "text": "Lie down, and do not wake."
+ },
+ "thor/death-1": {
+  "dur": 1.53,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.912,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.35,
+    "heard": "Not like this.",
+    "match": 0.912,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.49,
+    "heard": "Not like this.",
+    "match": 0.897,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.35,
+    "heard": "not like this.",
+    "match": 0.878,
+    "wer": 0.0
+   }
+  ],
+  "text": "Not... like this."
+ },
+ "thor/death-2": {
+  "dur": 1.7,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.913,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.59,
+    "heard": "Save me a seat, in the hall.",
+    "match": 0.906,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.49,
+    "heard": "Save me a seat, in the hall.",
+    "match": 0.913,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.74,
+    "heard": "Save me a seat in the hall.",
+    "match": 0.9,
+    "wer": 0.0
+   }
+  ],
+  "text": "Save me a seat... in the hall."
+ },
+ "thor/kill-1": {
+  "dur": 1.11,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.873,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 0.79,
+    "heard": "And on you go.",
+    "match": 0.85,
+    "wer": 0.667
+   },
+   {
+    "dur": 0.91,
+    "heard": "Down you go.",
+    "match": 0.873,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.76,
+    "heard": "Done you go.",
+    "match": 0.852,
+    "wer": 0.333
+   }
+  ],
+  "text": "Down you go!"
+ },
+ "thor/kill-2": {
+  "dur": 2.62,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.888,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.26,
+    "heard": "Ha! You felt that one, didn't you?",
+    "match": 0.888,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.08,
+    "heard": "Huh. You felt that one, didn't you?",
+    "match": 0.868,
+    "wer": 0.143
+   },
+   {
+    "dur": 1.96,
+    "heard": "Huh. You felt that one, didn't you?",
+    "match": 0.86,
+    "wer": 0.143
+   }
+  ],
+  "text": "Ha! You felt that one, didn't you?"
+ },
+ "thor/kill-3": {
+  "dur": 1.53,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.904,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.63,
+    "heard": "Another one for the songs.",
+    "match": 0.877,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.38,
+    "heard": "Another one for the songs.",
+    "match": 0.904,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.62,
+    "heard": "Another one for the songs.",
+    "match": 0.887,
+    "wer": 0.0
+   }
+  ],
+  "text": "Another one for the songs!"
+ },
+ "thor/respawn-1": {
+  "dur": 0.96,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.885,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 0.83,
+    "heard": "Round 2.",
+    "match": 0.885,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.61,
+    "heard": "Hmm, round two.",
+    "match": 0.862,
+    "wer": 0.5
+   },
+   {
+    "dur": 0.11,
+    "heard": "..............................................................................................................................................................................................................................................................................................................................................................................................................................................................",
+    "match": 0.568,
+    "wer": 1.0
+   }
+  ],
+  "text": "Round two!"
+ },
+ "thor/respawn-2": {
+  "dur": 1.8,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.913,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.74,
+    "heard": "back and angrier.",
+    "match": 0.904,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.58,
+    "heard": "back, and angrier.",
+    "match": 0.913,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.64,
+    "heard": "back and angrier.",
+    "match": 0.903,
+    "wer": 0.0
+   }
+  ],
+  "text": "Back, and angrier."
+ },
+ "thor/start-1": {
+  "dur": 2.24,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.9,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.82,
+    "heard": "What a fine day for a brawl!",
+    "match": 0.869,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.98,
+    "heard": "What a fine day for a brawl.",
+    "match": 0.9,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.72,
+    "heard": "What a fine day for a brawl!",
+    "match": 0.88,
+    "wer": 0.0
+   }
+  ],
+  "text": "What a fine day for a brawl!"
+ },
+ "thor/start-2": {
+  "dur": 1.25,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.942,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.33,
+    "heard": "Let's make some noise.",
+    "match": 0.931,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.18,
+    "heard": "Let's make some noise.",
+    "match": 0.924,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.1,
+    "heard": "Let's make some noise.",
+    "match": 0.942,
+    "wer": 0.0
+   }
+  ],
+  "text": "Let's make some noise!"
+ },
+ "thor/streak-1": {
+  "dur": 0.95,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.88,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 0.96,
+    "heard": "Keep them coming!",
+    "match": 0.865,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.88,
+    "heard": "Keep them coming.",
+    "match": 0.86,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.78,
+    "heard": "Keep them coming.",
+    "match": 0.88,
+    "wer": 0.0
+   }
+  ],
+  "text": "Keep them coming!"
+ },
+ "thor/streak-2": {
+  "dur": 1.31,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.887,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.12,
+    "heard": "Is that all of you?",
+    "match": 0.887,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.0,
+    "heard": "Is that all of you?",
+    "match": 0.877,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.99,
+    "heard": "Is that all of you?",
+    "match": 0.884,
+    "wer": 0.0
+   }
+  ],
+  "text": "Is that all of you?"
+ },
+ "thor/taunt-1": {
+  "dur": 2.62,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.872,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.39,
+    "heard": "I have fought Frost Giants with better footwork.",
+    "match": 0.872,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.54,
+    "heard": "I have fought frost giants with better footwork.",
+    "match": 0.854,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.4,
+    "heard": "I have thought Frost Giants would better footwork.",
+    "match": 0.851,
+    "wer": 0.25
+   }
+  ],
+  "text": "I have fought frost giants with better footwork."
+ },
+ "thor/taunt-2": {
+  "dur": 3.77,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.949,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 3.26,
+    "heard": "Come closer. The hammer won't bite. Much.",
+    "match": 0.921,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.83,
+    "heard": "Come closer. The hammer won't bite. Much.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.35,
+    "heard": "Come closer. The hammer won't bite. Much.",
+    "match": 0.949,
+    "wer": 0.0
+   }
+  ],
+  "text": "Come closer. The hammer won't bite. Much."
+ },
+ "thor/taunt-3": {
+  "dur": 1.73,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.885,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.01,
+    "heard": "You hit like a summer breeze.",
+    "match": 0.871,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.79,
+    "heard": "You hit like a summer breeze.",
+    "match": 0.856,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.55,
+    "heard": "You hit like a summer breeze.",
+    "match": 0.885,
+    "wer": 0.0
+   }
+  ],
+  "text": "You hit like a summer breeze."
+ },
+ "thor/ult-1": {
+  "dur": 1.27,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.894,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.11,
+    "heard": "Here comes the hammer.",
+    "match": 0.894,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.09,
+    "heard": "Here comes the hammer.",
+    "match": 0.864,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.15,
+    "heard": "Here comes then a hammer.",
+    "match": 0.874,
+    "wer": 0.5
+   }
+  ],
+  "text": "Here comes the hammer!"
+ },
+ "thor/ult-2": {
+  "dur": 1.35,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.915,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.16,
+    "heard": "Thunder with me.",
+    "match": 0.915,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.29,
+    "heard": "Thunder, Winnie!",
+    "match": 0.86,
+    "wer": 0.667
+   },
+   {
+    "dur": 1.35,
+    "heard": "Thunder with Mivini.",
+    "match": 0.889,
+    "wer": 0.333
+   }
+  ],
+  "text": "Thunder, with me!"
+ },
+ "zeus/death-1": {
+  "dur": 1.71,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.903,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 0.91,
+    "heard": "impossible.",
+    "match": 0.88,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.88,
+    "heard": "Impossible.",
+    "match": 0.884,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.96,
+    "heard": "impossible.",
+    "match": 0.903,
+    "wer": 0.0
+   }
+  ],
+  "text": "Impossible..."
+ },
+ "zeus/death-2": {
+  "dur": 2.85,
+  "heat": 0.7,
+  "kept": "chatterbox",
+  "match": 0.879,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 2.07,
+    "heard": "The sky will remember this.",
+    "match": 0.879,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.91,
+    "heard": "the sky, or remember this.",
+    "match": 0.9,
+    "wer": 0.2
+   },
+   {
+    "dur": 2.42,
+    "heard": "The sky. Well, remember this.",
+    "match": 0.913,
+    "wer": 0.2
+   }
+  ],
+  "text": "The sky... will remember this."
+ },
+ "zeus/kill-1": {
+  "dur": 1.55,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.813,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 0.98,
+    "heard": "Struck down.",
+    "match": 0.788,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.05,
+    "heard": "struck down.",
+    "match": 0.787,
+    "wer": 0.0
+   },
+   {
+    "dur": 0.81,
+    "heard": "Struck down.",
+    "match": 0.813,
+    "wer": 0.0
+   }
+  ],
+  "text": "Struck down."
+ },
+ "zeus/kill-2": {
+  "dur": 1.88,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.843,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.11,
+    "heard": "You should have bowed.",
+    "match": 0.831,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.7,
+    "heard": "You should have bowed. You should have bowed.",
+    "match": 0.877,
+    "wer": 1.0
+   },
+   {
+    "dur": 1.24,
+    "heard": "You should have bowed.",
+    "match": 0.843,
+    "wer": 0.0
+   }
+  ],
+  "text": "You should have bowed."
+ },
+ "zeus/kill-3": {
+  "dur": 2.23,
+  "heat": 0.75,
+  "kept": "chatterbox",
+  "match": 0.89,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.53,
+    "heard": "The sky has judged you.",
+    "match": 0.89,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.62,
+    "heard": "The sky has judged you.",
+    "match": 0.869,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.65,
+    "heard": "The sky has judged you.",
+    "match": 0.869,
+    "wer": 0.0
+   }
+  ],
+  "text": "The sky has judged you."
+ },
+ "zeus/respawn-1": {
+  "dur": 2.05,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.881,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.35,
+    "heard": "A king returns.",
+    "match": 0.881,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.28,
+    "heard": "A king returns.",
+    "match": 0.876,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.45,
+    "heard": "A king returns.",
+    "match": 0.878,
+    "wer": 0.0
+   }
+  ],
+  "text": "A king returns."
+ },
+ "zeus/respawn-2": {
+  "dur": 2.64,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.92,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.8,
+    "heard": "The storm rolls back in.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.6,
+    "heard": "The storm rolls back in.",
+    "match": 0.896,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.67,
+    "heard": "The storm rolls back in.",
+    "match": 0.905,
+    "wer": 0.0
+   }
+  ],
+  "text": "The storm rolls back in."
+ },
+ "zeus/start-1": {
+  "dur": 3.81,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.947,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 2.95,
+    "heard": "Olympus is watching. Let us give it a show.",
+    "match": 0.937,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.53,
+    "heard": "Olympus is watching. Let us give it a show.",
+    "match": 0.92,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.79,
+    "heard": "Olympus is watching. Let us give it a show.",
+    "match": 0.947,
+    "wer": 0.0
+   }
+  ],
+  "text": "Olympus is watching. Let us give it a show."
+ },
+ "zeus/start-2": {
+  "dur": 2.75,
+  "heat": 0.6,
+  "kept": "chatterbox",
+  "match": 0.886,
+  "take": 2,
+  "takes": [
+   {
+    "dur": 1.89,
+    "heard": "Clouds gather, so do I.",
+    "match": 0.875,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.12,
+    "heard": "Clouds gather, so do I.",
+    "match": 0.878,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.95,
+    "heard": "Clouds gather, so do I.",
+    "match": 0.886,
+    "wer": 0.0
+   }
+  ],
+  "text": "Clouds gather. So do I."
+ },
+ "zeus/streak-1": {
+  "dur": 2.95,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.869,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.85,
+    "heard": "Who else would argue with a storm?",
+    "match": 0.887,
+    "wer": 0.143
+   },
+   {
+    "dur": 2.13,
+    "heard": "Who else would argue with the storm?",
+    "match": 0.869,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.13,
+    "heard": "Who else would argue with the storm?",
+    "match": 0.854,
+    "wer": 0.0
+   }
+  ],
+  "text": "Who else would argue with the storm?"
+ },
+ "zeus/streak-2": {
+  "dur": 2.74,
+  "heat": 0.85,
+  "kept": "chatterbox",
+  "match": 0.876,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.9,
+    "heard": "on your knees, all of you.",
+    "match": 0.876,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.75,
+    "heard": "on your knees, all of you.",
+    "match": 0.872,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.58,
+    "heard": "on your knees, all of you.",
+    "match": 0.872,
+    "wer": 0.0
+   }
+  ],
+  "text": "On your knees. All of you."
+ },
+ "zeus/taunt-1": {
+  "dur": 3.59,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.927,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 2.62,
+    "heard": "I have thrown bolts at better than you before breakfast.",
+    "match": 0.909,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.82,
+    "heard": "I have thrown bolts at better than you before breakfast.",
+    "match": 0.927,
+    "wer": 0.0
+   },
+   {
+    "dur": 3.22,
+    "heard": "I have thrown bolts at better than you before breakfast.",
+    "match": 0.921,
+    "wer": 0.0
+   }
+  ],
+  "text": "I have thrown bolts at better than you before breakfast."
+ },
+ "zeus/taunt-2": {
+  "dur": 3.26,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.902,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.93,
+    "heard": "Look up. That is where I will be.",
+    "match": 0.871,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.4,
+    "heard": "Look up. That is where I will be.",
+    "match": 0.902,
+    "wer": 0.0
+   },
+   {
+    "dur": 2.56,
+    "heard": "Look up. That is where I will be.",
+    "match": 0.895,
+    "wer": 0.0
+   }
+  ],
+  "text": "Look up. That is where I will be."
+ },
+ "zeus/taunt-3": {
+  "dur": 2.35,
+  "heat": 0.65,
+  "kept": "chatterbox",
+  "match": 0.891,
+  "take": 1,
+  "takes": [
+   {
+    "dur": 1.74,
+    "heard": "pray. It might even help.",
+    "match": 0.868,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.72,
+    "heard": "pray. It might even help.",
+    "match": 0.891,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.75,
+    "heard": "Pray. It might even help.",
+    "match": 0.886,
+    "wer": 0.0
+   }
+  ],
+  "text": "Pray. It might even help."
+ },
+ "zeus/ult-1": {
+  "dur": 2.15,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.884,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.3,
+    "heard": "Let the heavens fall.",
+    "match": 0.884,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.32,
+    "heard": "Let the heavens fall!",
+    "match": 0.843,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.27,
+    "heard": "Let the heavens fall.",
+    "match": 0.868,
+    "wer": 0.0
+   }
+  ],
+  "text": "Let the heavens fall!"
+ },
+ "zeus/ult-2": {
+  "dur": 2.06,
+  "heat": 1.0,
+  "kept": "chatterbox",
+  "match": 0.899,
+  "take": 0,
+  "takes": [
+   {
+    "dur": 1.22,
+    "heard": "Storm Obey Me!",
+    "match": 0.899,
+    "wer": 0.0
+   },
+   {
+    "dur": 1.21,
+    "heard": "Storm O'Bainey",
+    "match": 0.871,
+    "wer": 0.667
+   },
+   {
+    "dur": 1.34,
+    "heard": "Storm obey me.",
+    "match": 0.865,
+    "wer": 0.0
+   }
+  ],
+  "text": "Storm, obey me!"
+ }
+}

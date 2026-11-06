@@ -36,6 +36,19 @@ const step = (r: Rand, tone: number, soft: number, weight: number): Float32Array
   );
 };
 
+/** Water thrown off wet stone: a slap, a spatter and a bubble or two (size 0 a foot, 1 a god landing). */
+const splash = (r: Rand, size: number): Float32Array => {
+  const slap = filter(whoosh(r, 0.05 + size * 0.07, 2300, 700, { q: 0.9 }), 'highpass', 450);
+  const spatter = filter(sand(r, 0.09 + size * 0.16, { tone: 2900, gain: 0.6, peak: 0.12, grains: 300 + size * 900 }), 'lowpass', 6000);
+  const parts: [Float32Array, number, number][] = [[slap, 0.8, 0], [spatter, 0.35 + size * 0.2, 0.008]];
+  for (let k = 0; k < 1 + Math.round(size * 3); k++) parts.push([bubble(r), 0.16, 0.025 + r() * (0.05 + size * 0.15)]);
+  return layer(...parts);
+};
+
+/** One landing on a hard floor: a thud and a little dust. */
+const landing = (r: Rand): Float32Array =>
+  layer([thump(r, 0.35, 120, 45, { click: 0.3, noise: 0.5, drive: 1.6 }), 1], [debris(r, 0.35, { density: 18, gain: 0.3, tone: 900 }), 0.6, 0.02], [puff(r, 0.4, { tone: 700, gain: 0.5 }), 0.4]);
+
 const hitFlesh = (r: Rand, weight: number): Float32Array =>
   layer([impact(r, weight, { tone: 140 + r() * 30, crunch: 0.6 }), 1], [filter(puff(r, 0.12, { tone: 1600 }), 'highpass', 300), 0.35]);
 
@@ -55,8 +68,16 @@ export const SOUNDS: Record<string, Recipe> = {
   // the Wyrm's pit is strewn with its hoard; the Colossus stands on cooled lava and ash
   'step.coins': { variants: 4, peak: 0.45, make: (r) => layer([step(r, 1500, 0.2, 0.7), 1], [clang(r, 0.25, 2600 + r() * 1400, { decay: 0.12, gain: 0.35 }), 0.8, 0.01], [clang(r, 0.2, 3400 + r() * 1600, { decay: 0.08, gain: 0.25 }), 0.6, 0.04]) },
   'step.ash': { variants: 4, peak: 0.45, make: (r) => layer([step(r, 900, 0.6, 0.9), 1], [debris(r, 0.18, { density: 60, gain: 0.3, tone: 2200 }), 0.7]) },
+  // each depth of the Descent underfoot: the forge's basalt gritty with ash, the Drowned Halls' stone running wet, the Abyss's obsidian
+  'step.basalt': { variants: 6, peak: 0.5, make: (r) => layer([step(r, 1450, 0.25, 1.05), 1], [debris(r, 0.15, { density: 80, gain: 0.22, tone: 2300 }), 0.5, 0.006], [sand(r, 0.13, { tone: 2600, gain: 0.5, peak: 0.2, grains: 500 }), 0.22]) },
+  'step.wet': { variants: 6, peak: 0.5, make: (r) => layer([step(r, 1500, 0.2, 0.95), 1], [splash(r, 0), 0.55, 0.01]) },
+  'step.glass': { variants: 6, peak: 0.5, make: (r) => layer([step(r, 2000, 0.05, 0.9), 1], [chime(r, 0.12, 1700 + r() * 700), 0.1, 0.003], [debris(r, 0.1, { density: 60, gain: 0.14, tone: 2900 }), 0.4, 0.01]) },
   // landing from a leap, a jump or a knock-up: a thud and a little dust
-  'land': { variants: 3, peak: 0.7, make: (r) => layer([thump(r, 0.35, 120, 45, { click: 0.3, noise: 0.5, drive: 1.6 }), 1], [debris(r, 0.35, { density: 18, gain: 0.3, tone: 900 }), 0.6, 0.02], [puff(r, 0.4, { tone: 700, gain: 0.5 }), 0.4]) },
+  'land': { variants: 3, peak: 0.7, make: landing },
+  // and on each depth's floor: a puff of ash and grit, a splash, a glassy crack of obsidian
+  'land.basalt': { variants: 3, peak: 0.7, make: (r) => layer([landing(r), 0.85], [debris(r, 0.3, { density: 70, gain: 0.5, tone: 2000 }), 1.1, 0.008], [sand(r, 0.35, { tone: 2400, gain: 0.8, peak: 0.15, grains: 700 }), 0.45, 0.01]) },
+  'land.wet': { variants: 3, peak: 0.7, make: (r) => layer([landing(r), 0.85], [splash(r, 1), 0.75, 0.008]) },
+  'land.glass': { variants: 3, peak: 0.7, make: (r) => layer([landing(r), 0.85], [chime(r, 0.35, 1300 + r() * 500), 1, 0.004], [knock(r, 0.04, 3200), 0.35, 0.002], [debris(r, 0.25, { density: 80, gain: 0.5, tone: 2700 }), 1, 0.008]) },
   'step.heavy': { variants: 3, peak: 0.9, make: (r) => layer([thump(r, 0.6, 70, 28, { click: 0.3, noise: 0.6, drive: 2 }), 1], [debris(r, 0.5, { density: 10, gain: 0.4, tone: 500 }), 0.6]) },
 
   // -- god basic attacks (cast side)
@@ -868,6 +889,16 @@ function drip(r: Rand): Float32Array {
   const o = new Osc();
   const f = 900 + r() * 900;
   fill(out, (t) => o.sine(f * (1 + t * 9)) * perc(t, 0.001, 0.05) * 0.8);
+  return out;
+}
+
+/** A small bubble breaking at the surface: a quick rising blip. */
+function bubble(r: Rand): Float32Array {
+  const len = 0.07;
+  const out = buf(len);
+  const o = new Osc();
+  const f = 700 + r() * 900;
+  fill(out, (t) => o.sine(f * (1 + t * 14)) * perc(t, 0.001, 0.025) * 0.7);
   return out;
 }
 

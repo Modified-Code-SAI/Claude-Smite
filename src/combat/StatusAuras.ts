@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, float, max, min, normalView, positionView, pow, saturate, smoothstep, uv, vec3, vec4 } from '../render/tsl';
+import { abs, float, max, min, mix, normalView, positionView, pow, saturate, smoothstep, uv, vec3, vec4 } from '../render/tsl';
 import type { CCKind } from '../game/types';
 import type { Unit } from '../sim/Unit';
 
@@ -9,6 +9,13 @@ const STAR = 0xffd65a;
 const ROOT = 0x8fe05a;
 const SLOW = 0x7fc8ff;
 const SHIELD = 0xfff0c0;
+/** Zeus's Charge: sparks crackling round the chest, one per stack. */
+const CHARGE = 0x1a8cff;
+/** Thanatos's Drowse: slow motes of sleep drifting about the shoulders, one per stack. */
+const DROWSE = 0x7a3cff;
+/** The passive marks shown, by the sim's mark name. */
+const PIP_MARKS = ['charge', 'drowse'] as const;
+const PIPS = 3;
 
 function starMaterial(hex: number): THREE.SpriteNodeMaterial {
   const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -20,6 +27,25 @@ function starMaterial(hex: number): THREE.SpriteNodeMaterial {
   const f = max(bars, core);
   m.colorNode = vec4(vec3(c.r, c.g, c.b).mul(4).add(core.mul(3)).mul(f), 1);
   m.opacityNode = f;
+  return m;
+}
+
+/**
+ * A stack pip: a four-point spark (`star`) or a soft round mote, drawn over
+ * the scene rather than added to it, so a saturated color still reads
+ * against the bright plaza.
+ */
+function pipMaterial(hex: number, star: boolean): THREE.SpriteNodeMaterial {
+  const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
+  const c = new THREE.Color(hex);
+  const d = uv().sub(0.5);
+  const r = d.length().mul(2);
+  const core = smoothstep(0.36, 0, r);
+  const shape = star
+    ? max(smoothstep(0.1, 0, min(abs(d.x), abs(d.y))).mul(smoothstep(1, 0.2, r)), core)
+    : max(pow(saturate(float(1).sub(r)), 1.6), core);
+  m.colorNode = vec4(mix(vec3(c.r, c.g, c.b), vec3(1, 1, 1), core.mul(0.75)).mul(1.8), 1);
+  m.opacityNode = shape;
   return m;
 }
 
@@ -46,6 +72,8 @@ function shieldMaterial(): THREE.MeshBasicNodeMaterial {
 /** The materials every god's status shares, so a new status builds no shader. */
 interface StatusLook {
   star: THREE.SpriteNodeMaterial;
+  charge: THREE.SpriteNodeMaterial;
+  drowse: THREE.SpriteNodeMaterial;
   shield: THREE.MeshBasicNodeMaterial;
   root: THREE.MeshBasicNodeMaterial;
   slow: THREE.MeshBasicNodeMaterial;
@@ -53,10 +81,12 @@ interface StatusLook {
   bubble: THREE.SphereGeometry;
 }
 
-/** What one god shows: stars when dazed, a ground ring when rooted or slowed, a bubble while shielded. */
+/** What one god shows: stars when dazed, a ground ring when rooted or slowed, a bubble while shielded, and enemy passives' stacks. */
 class Status {
   readonly group = new THREE.Group();
   readonly stars: THREE.Sprite[] = [];
+  /** One row of pips per passive mark (PIP_MARKS), a pip per stack. */
+  readonly pips: THREE.Sprite[][] = [];
   readonly ring: THREE.Mesh;
   readonly bubble: THREE.Mesh;
 
@@ -67,6 +97,16 @@ class Status {
       s.renderOrder = 14;
       this.stars.push(s);
       this.group.add(s);
+    }
+    for (const mark of PIP_MARKS) {
+      const row: THREE.Sprite[] = [];
+      for (let i = 0; i < PIPS; i++) {
+        const s = new THREE.Sprite(look[mark]);
+        s.renderOrder = 14;
+        row.push(s);
+        this.group.add(s);
+      }
+      this.pips.push(row);
     }
     this.ring = new THREE.Mesh(look.ring, look.root);
     this.ring.rotation.x = -Math.PI / 2;
@@ -89,10 +129,34 @@ class Status {
       else if (a.kind === 'slow' || a.kind === 'cripple') slowed = true;
     }
     const shielded = c.shieldTotal > 0.5;
-    if (!dazed && !rooted && !slowed && !shielded) return false;
+    const charge = u.marks.get('charge')?.stacks ?? 0;
+    const drowse = u.marks.get('drowse')?.stacks ?? 0;
+    if (!dazed && !rooted && !slowed && !shielded && !charge && !drowse) return false;
     const { x, z } = u;
     const y = u.body.y;
     const h = u.radius * 3.6;
+    // Charge: sparks racing round the chest, flickering
+    const sparks = this.pips[0]!;
+    for (let i = 0; i < PIPS; i++) {
+      const s = sparks[i]!;
+      s.visible = i < charge;
+      if (!s.visible) continue;
+      const a = t * 5.5 + (i / PIPS) * Math.PI * 2;
+      const r = u.radius + 0.4;
+      s.position.set(x + Math.cos(a) * r, y + h * 0.78 + Math.sin(a * 3 + i) * 0.12, z + Math.sin(a) * r);
+      s.scale.setScalar(0.7 * (0.8 + 0.2 * Math.sin(t * 37 + i * 2.3)));
+    }
+    // Drowse: motes drifting slowly up and round the shoulders
+    const motes = this.pips[1]!;
+    for (let i = 0; i < PIPS; i++) {
+      const s = motes[i]!;
+      s.visible = i < drowse;
+      if (!s.visible) continue;
+      const a = -t * 1.3 + (i / PIPS) * Math.PI * 2;
+      const r = u.radius + 0.45;
+      s.position.set(x + Math.cos(a) * r, y + h * 0.95 + Math.sin(t * 1.7 + i * 2.1) * 0.15, z + Math.sin(a) * r);
+      s.scale.setScalar(0.48 * (0.9 + 0.1 * Math.sin(t * 2.4 + i)));
+    }
     for (const [i, s] of this.stars.entries()) {
       s.visible = dazed;
       if (!dazed) continue;
@@ -120,7 +184,9 @@ class Status {
 /**
  * Status on gods, readable from the game camera: stars circle the head of a
  * stunned (or otherwise dazed) god, a ring holds a rooted or slowed one to
- * the ground, and a bubble wraps anyone carrying a shield.
+ * the ground, a bubble wraps anyone carrying a shield, and an enemy
+ * passive's stacks circle the body (Zeus's Charge, Thanatos's Drowse), so a
+ * player can see when a target is ripe to detonate.
  */
 export class StatusAuras {
   readonly group = new THREE.Group();
@@ -128,6 +194,8 @@ export class StatusAuras {
   private readonly pool: Status[] = [];
   private readonly look: StatusLook = {
     star: starMaterial(STAR),
+    charge: pipMaterial(CHARGE, true),
+    drowse: pipMaterial(DROWSE, false),
     shield: shieldMaterial(),
     root: ringMaterial(ROOT, 1),
     slow: ringMaterial(SLOW, 0.7),

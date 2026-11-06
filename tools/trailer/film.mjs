@@ -4,7 +4,12 @@
 // steps the game one frame at a time with `director` flying the camera.
 //
 //   npm run build && npx vite preview --port 4173 &
-//   node tools/trailer/film.mjs [shot,shot,...] [--base http://localhost:4173] [--frames N]
+//   node tools/trailer/film.mjs [shot,shot,...] [--base http://localhost:4173] [--frames N] [--plate]
+//
+// `--plate` also films the last frame's instant again, settled, with every god,
+// unit and effect hidden (NNNN-plate.jpg) and then shown (NNNN-full.jpg): the bare
+// scenery is what tools/textures/keyart.py paints, and the difference between
+// the two tells it where the gods are.
 //
 // Arena shots take ~15 s a frame at 1280x720, Conquest ~20 s (quality medium).
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -21,6 +26,7 @@ const opt = (name, def) => {
 const base = opt('--base', 'http://localhost:4173');
 const maxFrames = Number(opt('--frames', Infinity));
 const width = Number(opt('--width', 1280));
+const plate = args.includes('--plate') && !!args.splice(args.indexOf('--plate'), 1);
 const height = Math.round((width * 9) / 16);
 const names = (args[0] ?? Object.keys(SHOTS).join(',')).split(',');
 
@@ -71,6 +77,27 @@ async function film(name) {
       return c.toDataURL('image/jpeg', 0.92);
     });
     writeFileSync(file, Buffer.from(jpg.split(',')[1], 'base64'));
+    if (plate && f === frames - 1) {
+      // the same instant (no time step) rendered until temporal AA settles, without and then
+      // with the gods, so the two differ only where the gods, units and effects are
+      for (const [suffix, show] of [['plate', false], ['full', true]]) {
+        const still = await page.evaluate(async (show) => {
+          const g = window.__game, w = g.world;
+          w.stageLit ??= w.spellLights.map((l) => l.intensity);
+          w.actors.visible = w.vfx.visible = show;
+          w.spellLights.forEach((l, i) => (l.intensity = show ? w.stageLit[i] : 0));
+          const img = new Image();
+          img.src = await g.capture(6, 0);
+          await img.decode();
+          const c = document.createElement('canvas');
+          c.width = img.width;
+          c.height = img.height;
+          c.getContext('2d').drawImage(img, 0, 0);
+          return c.toDataURL('image/jpeg', 0.95);
+        }, show);
+        writeFileSync(new URL(`${String(f).padStart(4, '0')}-${suffix}.jpg`, dir), Buffer.from(still.split(',')[1], 'base64'));
+      }
+    }
     if (f % 10 === 0) console.log(name, `frame ${f}/${frames}`, `${Math.round((Date.now() - t0) / 1000)} s`);
   }
   console.log(name, 'done', `${Math.round((Date.now() - t0) / 1000)} s`);

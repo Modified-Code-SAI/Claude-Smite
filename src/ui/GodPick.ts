@@ -67,6 +67,17 @@ const portrait = (id: string) => `${BASE}portraits/${id}.jpg`;
 /** A god's spell color as CSS: the light behind them on the pick screen. */
 const godColor = (id: string) => `#${paletteFor(id).vfx.toString(16).padStart(6, '0')}`;
 const splash = (id: string) => `${BASE}splash/${id}.jpg`;
+/**
+ * The gods with a full-length hero render (public/hero, made in Blender by
+ * tools/hero): transparent, so they stand straight on the pick screen's light.
+ * A god without one yet shows their splash instead.
+ */
+export const HEROES: ReadonlySet<string> = new Set(['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan', 'cthulhu', 'jotunn']);
+const hero = (id: string) => `${BASE}hero/${id}.webp`;
+/** A god's full-length art: the hero render where there is one, else the splash. */
+const fullArt = (id: string) => (HEROES.has(id) ? hero(id) : splash(id));
+/** Two-digit hex alpha for a #rrggbb color. */
+const alpha = (hex: string, a: number) => `${hex}${Math.round(a * 255).toString(16).padStart(2, '0')}`;
 
 /** The silhouette shown for a god not chosen yet, or one the other team keeps hidden. */
 const MYSTERY = `<svg viewBox="0 0 64 80" aria-hidden="true"><path d="M32 8c-9 0-15 7-15 16 0 6 3 11 7 14-9 3-16 10-18 20l-1 14h54l-1-14c-2-10-9-17-18-20 4-3 7-8 7-14 0-9-6-16-15-16z" fill="currentColor"/><text x="32" y="33" text-anchor="middle" font-size="20" font-family="Cinzel, Georgia, serif" fill="#0d0b08">?</text></svg>`;
@@ -283,7 +294,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
     if (newly && !locked) setup.sound?.('ui.point', 0.35);
   };
   const foeCardHtml = (id: string, name: string, text: string) =>
-    `<div class="gp-foecard" style="background-image:${id === 'jotunn' ? `url(${splash('jotunn')}), ` : ''}url(${modeArt(id)})"><b>${esc(name)}</b><span>${text}</span></div>`;
+    `<div class="gp-foecard${id === 'jotunn' && HEROES.has('jotunn') ? ' hero' : ''}" style="background-image:${id === 'jotunn' ? `url(${fullArt('jotunn')}), ` : ''}url(${modeArt(id)})"><b>${esc(name)}</b><span>${text}</span></div>`;
 
   // -- Temple Duel alone: choose the rival (or let it be a surprise)
   const renderRival = () => {
@@ -305,20 +316,52 @@ export function showGodPick(setup: PickSetup): PickScreen {
 
   // -- the chosen god: art, name, passive, skills and build
   let hovered: SkillDef | null = null;
+  /**
+   * Once the first god stands, the other hero renders load in the background,
+   * nearest in the strip first, so a swap (and the versus screen) never waits.
+   */
+  const warm: HTMLImageElement[] = [];
+  const warmHeroes = (from: string) => {
+    if (warm.length) return;
+    const order = gods.map((g) => g.id);
+    const at = Math.max(0, order.indexOf(from));
+    const ids = [...HEROES].filter((id) => id !== from).sort((a, b) => dist(a) - dist(b));
+    function dist(id: string) {
+      const i = order.indexOf(id);
+      return i < 0 ? order.length : Math.abs(i - at);
+    }
+    const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300));
+    idle(() =>
+      ids.forEach((id) => {
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = hero(id);
+        warm.push(img);
+      }),
+    );
+  };
   const renderHero = () => {
     const def = asGiant ? jotunn : godDef(god);
     root.querySelectorAll<HTMLButtonElement>('.gp-god').forEach((b) => b.classList.toggle('on', b.dataset.god === god));
     // the light behind the god (and the screen's glow) takes their color
     root.style.setProperty('--god', godColor(def.id));
-    const src = splash(def.id);
     if (artGod !== def.id) {
       artGod = def.id;
       // the new god loads into the back layer, then steps in as the last one steps out
       const next = arts[1 - artFront]!;
       const id = def.id;
-      next.classList.remove('show', 'out', 'bust');
+      // the hero render, else the splash, else the face card framed the same way
+      const tries = HEROES.has(id) ? [hero(id), splash(id)] : [splash(id)];
+      let k = 0;
+      next.classList.remove('show', 'out', 'bust', 'hero');
+      next.classList.toggle('hero', tries[0] === hero(id));
       next.onerror = () => {
-        // no splash baked: the face card, framed the same way (and nothing at all for the giant)
+        if (artGod !== id) return;
+        if (++k < tries.length) {
+          next.classList.remove('hero');
+          next.src = tries[k]!;
+          return;
+        }
         next.onerror = null;
         next.classList.add('bust');
         next.src = portrait(id);
@@ -329,8 +372,9 @@ export function showGodPick(setup: PickSetup): PickScreen {
         if (prev !== next && prev.classList.contains('show')) prev.classList.replace('show', 'out');
         next.classList.add('show');
         artFront = arts.indexOf(next);
+        warmHeroes(id);
       };
-      next.src = src;
+      next.src = tries[0]!;
     }
     const choice = builds ? buildChoice(def) : { list: [], active: null };
     const active = choice.list.find((b) => b.id === choice.active);
@@ -542,12 +586,16 @@ export function showGodPick(setup: PickSetup): PickScreen {
       const p = playerOf(s);
       const who = s.player === me ? 'You' : s.player ? esc(p?.name ?? 'Player') : 'Bot';
       const g = godDef(s.god);
-      return `<div class="gp-vcard${s.player === me ? ' me' : ''}" style="--i:${i}"><div class="gp-vimg" style="background-image:url(${splash(g.id)}), url(${portrait(g.id)})"></div><div class="gp-vname"><b>${g.name}</b><span>${who}</span></div></div>`;
+      // a hero render stands in the god's own light; a splash already has its scene
+      const art = HEROES.has(g.id)
+        ? `class="gp-vimg hero" style="background-image:url(${hero(g.id)}), radial-gradient(ellipse 72% 56% at 50% 34%, ${alpha(godColor(g.id), 0.42)}, transparent 76%)"`
+        : `class="gp-vimg" style="background-image:url(${splash(g.id)}), url(${portrait(g.id)})"`;
+      return `<div class="gp-vcard${s.player === me ? ' me' : ''}" style="--i:${i}"><div ${art}></div><div class="gp-vname"><b>${g.name}</b><span>${who}</span></div></div>`;
     };
     const foeSide = foes.length
       ? foes.map(card).join('')
       : giant
-        ? `<div class="gp-vcard gp-vgiant"><div class="gp-vimg" style="background-image:url(${splash('jotunn')}), url(${modeArt('jotunn')})"></div><div class="gp-vname"><b>The Jötunn</b><span>${giant.player === me ? 'You' : giant.player ? esc(playerOf(giant)?.name ?? 'Player') : 'Bot'}</span></div></div>`
+        ? `<div class="gp-vcard gp-vgiant"><div class="gp-vimg${HEROES.has('jotunn') ? ' hero' : ''}" style="background-image:url(${fullArt('jotunn')}), url(${modeArt('jotunn')})"></div><div class="gp-vname"><b>The Jötunn</b><span>${giant.player === me ? 'You' : giant.player ? esc(playerOf(giant)?.name ?? 'Player') : 'Bot'}</span></div></div>`
         : info.foe
           ? `<div class="gp-vcard gp-vfoe"><div class="gp-vimg" style="background-image:url(${modeArt(mode)})"></div><div class="gp-vname"><b>${esc(info.foe.name)}</b><span>${esc(info.foe.text)}</span></div></div>`
           : '';

@@ -46,6 +46,10 @@ def dome(radius: float, height: float, rings: int = 10, seg: int = 36, lip: floa
     inner = [[x * (1 - t / radius), y * (1 - t / max(height, 1e-6)) - t] for x, y in prof[:-3][::-1]]
     inner[-1][0] = 1e-4
     m = lathe(prof + inner, seg)
+    # this profile runs apex-first, which lathe winds inside out: turn the faces so the
+    # outer surface faces out (it used to be culled, showing the inner shell, and its
+    # inward normals baked the whole plate as fully occluded)
+    m = Mesh(m.v, m.f[:, ::-1].copy(), m.uv)
     return split_sharp(m, 55)
 
 

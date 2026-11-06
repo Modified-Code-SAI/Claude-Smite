@@ -24,6 +24,7 @@ import { BuildBook, fittingBuild, spendAlong, startingPointsLine } from '../game
 import { MatchHud } from '../ui/MatchHud';
 import { GroundDecal, type DecalShape } from './GroundDecal';
 import { paletteFor, SIDE } from './palette';
+import { lookFor } from './skillLooks';
 import type { StructureModel } from './structures';
 import { UnitViews } from './UnitViews';
 import { BuffAuras } from './BuffAuras';
@@ -1250,7 +1251,9 @@ export class CombatGame implements Updatable {
     const u = this.player;
     const cast = u.combatant.resolve(this.preview.slot);
     const t = cast.targeting;
-    const p = paletteFor(u.combatant.god.id);
+    // the preview takes the colors the skill will land in (Rune Ward's gold, Soul Shield's spirit teal)
+    const look = lookFor(cast.skill.id);
+    const p = look ? this.vfx.skills.palette(look, u) : paletteFor(u.combatant.god.id);
     const S = WORLD_SCALE;
     const range = (r: number) => r * S * cast.rangeScale;
     const radius = (r: number) => r * S * cast.radiusScale;

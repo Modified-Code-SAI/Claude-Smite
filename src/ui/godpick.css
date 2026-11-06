@@ -68,6 +68,7 @@
 .gp-foes .gp-slot .gp-who { order: 2; text-align: right; }
 .gp-foes .gp-slot.ready::before { left: auto; right: 0; }
 .gp-foecard { position: relative; height: clamp(150px, 22vh, 230px); display: flex; flex-direction: column; justify-content: flex-end; gap: 3px; padding: 14px 16px; text-align: right; background: #15100b center / cover no-repeat; border: 1px solid rgba(231, 194, 122, 0.3); border-radius: 6px; overflow: hidden; }
+.gp-foecard.hero { background-size: auto 170%, cover; background-position: 12% 6%, center; }
 .gp-foecard::before { content: ''; position: absolute; inset: 0; background: linear-gradient(0deg, rgba(6, 5, 4, 0.95), rgba(6, 5, 4, 0) 70%); }
 .gp-foecard b, .gp-foecard span { position: relative; }
 .gp-foecard b { font-size: 22px; font-weight: 500; letter-spacing: 0.1em; color: #ffe3a3; }
@@ -101,6 +102,8 @@
 .gp-hero.swap .gp-aura { animation: gp-aura-in 0.8s ease-out, gp-aura 5s ease-in-out 0.8s infinite alternate; }
 @keyframes gp-aura-in { from { opacity: 0; transform: scale(0.85); } }
 /* the face card stands in until a splash is baked: framed, not cut out */
+/* a hero render is cut out already (its contact shadow and glow are in the alpha): no frame or mask, never cropped, feet on the light */
+.gp-art img.hero { object-fit: contain; object-position: 50% 100%; -webkit-mask-image: none; mask-image: none; }
 .gp-art img.bust { top: 0; height: auto; max-height: 100%; margin: auto; width: auto; max-width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; border: 1px solid rgba(231, 194, 122, 0.45); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 200, 110, 0.12); -webkit-mask-image: none; mask-image: none; align-self: center; }
 .gp-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .gp-hero.swap .gp-info > * { animation: gp-up 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
@@ -203,6 +206,9 @@
 .gp-vname span { font-family: Georgia, serif; font-size: 12px; opacity: 0.75; }
 .gp-vgiant, .gp-vfoe { flex-basis: clamp(200px, 20vw, 360px); aspect-ratio: 4 / 4.6; }
 .gp-vfoe .gp-vimg, .gp-vgiant .gp-vimg { background-position: center; }
+/* hero renders on the versus cards: head to thigh, in the god's own light */
+.gp-vimg.hero { background-size: 160% auto, cover; background-position: 50% 4%, center; }
+.gp-vgiant .gp-vimg.hero { background-size: auto 150%, cover; background-position: 50% 5%, center; }
 .gp-vs { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .gp-vs span { font-size: clamp(48px, 5vw, 86px); font-weight: 700; font-style: italic; letter-spacing: 0.04em; background: linear-gradient(180deg, #fff3cf, #e8b45a 60%, #9a6424); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 24px rgba(255, 190, 90, 0.5)); }
 .gp.loading .gp-vs span { animation: gp-vs 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) 0.1s both; }

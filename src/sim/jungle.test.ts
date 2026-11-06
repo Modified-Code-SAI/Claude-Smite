@@ -70,7 +70,8 @@ describe('jungle camps', () => {
     const c = camp(match, 'small');
     const g = godAt(sim, c);
     const alpha = c.members[0]!;
-    sim.strike(g, alpha, 300, 'true');
+    // every member hurt, so each one's reset shows (not only the first to notice the god gone)
+    for (const m of c.members) sim.strike(g, m, 300, 'true');
     run(sim, match, 0.5);
     const hurt = alpha.combatant.health;
     expect(hurt).toBeLessThan(alpha.combatant.stats.maxHealth);
@@ -79,7 +80,7 @@ describe('jungle camps', () => {
     run(sim, match, 6);
     expect(c.foe).toBeNull();
     expect(Math.hypot(alpha.x - alpha.home.x, alpha.z - alpha.home.z)).toBeLessThan(0.6);
-    expect(alpha.combatant.health).toBe(alpha.combatant.stats.maxHealth);
+    for (const m of c.members) expect(m.combatant.health).toBe(m.combatant.stats.maxHealth);
   });
 
   it("give the Warden's buff, XP and favor to the god who kills it, and grow back later", () => {

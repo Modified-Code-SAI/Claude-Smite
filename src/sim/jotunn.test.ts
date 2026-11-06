@@ -124,6 +124,8 @@ describe('Jötunn', () => {
     expect(mode.braziers).toHaveLength(4);
     expect(g.combatant.stats.maxHealth).toBe(JOTUNN.might.base + JOTUNN.might.perGod * 4);
     expect(g.combatant.ccImmune).toBe(true);
+    // nobody always moves first
+    expect(sim.alternateOrder).toBe(true);
     expect(mode.phase).toBe('countdown');
   });
 

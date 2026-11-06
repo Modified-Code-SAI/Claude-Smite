@@ -4,6 +4,8 @@
     # model files from https://github.com/thewh1teagle/kokoro-onnx/releases (model-files-v1.0)
     node tools/voices/lines.mjs > /tmp/lines.json
     python tools/voices/speak.py kokoro-v1.0.onnx voices-v1.0.bin /tmp/lines.json [god,god...]
+    # clean, untreated takes of each voice for shout.py to clone: writes <dir>/<god>.wav
+    python tools/voices/speak.py kokoro-v1.0.onnx voices-v1.0.bin /tmp/lines.json --refs <dir>
 
 Kokoro is an Apache-2.0 open model, so the lines are free to ship. Each god
 has a voice of its own: a Kokoro voice (or a blend of two), a pitch drop,
@@ -16,7 +18,6 @@ import numpy as np
 import soundfile as sf
 from scipy.signal import butter, fftconvolve, resample_poly, sosfilt
 from fractions import Fraction
-from kokoro_onnx import Kokoro
 
 RATE = 24000
 here = os.path.dirname(os.path.abspath(__file__))
@@ -131,9 +132,33 @@ def level(x, target_db=-17.0, peak_db=-1.0):
     return y
 
 
+def references(k, lines, out_dir):
+    """Each voice untreated (no pitch drop, room or grit), about ten seconds of its
+    calmer lines: the sample shout.py clones, before the same treatment."""
+    os.makedirs(out_dir, exist_ok=True)
+    for god, kinds in lines.items():
+        c = CAST[god]
+        texts = [*kinds.get('select', []), *kinds.get('start', []), *kinds.get('omw', []), *kinds.get('respawn', [])]
+        parts, total = [], 0.0
+        for text in texts:
+            samples, rate = k.create(text, voice=style(k, c['voice']), speed=c['speed'], lang=c['lang'])
+            x = trim(np.asarray(samples, dtype=np.float64))
+            parts += [x, np.zeros(int(RATE * 0.35))]
+            total += len(x) / RATE
+            if total > 10:
+                break
+        y = level(np.concatenate(parts))
+        sf.write(os.path.join(out_dir, f'{god}.wav'), y.astype(np.float32), RATE)
+        print(god, f'{total:.1f} s reference')
+
+
 def main():
+    from kokoro_onnx import Kokoro
     k = Kokoro(sys.argv[1], sys.argv[2])
     lines = json.load(open(sys.argv[3]))
+    if len(sys.argv) > 5 and sys.argv[4] == '--refs':
+        references(k, lines, sys.argv[5])
+        return
     only = set(sys.argv[4].split(',')) if len(sys.argv) > 4 else None
     report = {}
     for god, kinds in lines.items():

@@ -5,9 +5,16 @@
 
 import type { Palette } from '../map/UnderworldLayout';
 import type { SongName } from './music';
+import type { Room } from './rooms';
 
 /** Each depth's theme between its bosses: the smith's war song, the drowned halls' slow one, the Abyss's own. */
 export const DEPTH_SONG: Record<Palette, SongName> = { ember: 'forge', soul: 'drowned', spirit: 'abyss' };
+
+/** Each depth's floor underfoot, for steps and landings: the forge's ashy basalt, the Drowned Halls' wet stone, the Abyss's obsidian. */
+export const DEPTH_GROUND: Record<Palette, 'basalt' | 'wet' | 'glass'> = { ember: 'basalt', soul: 'wet', spirit: 'glass' };
+
+/** The space each depth's sounds ring in (rooms.ts): the forge's low warm vault, the Drowned Halls' long wet stone, the Abyss's vast dark. */
+export const DEPTH_ROOM: Record<Palette, Room> = { ember: 'forge', soul: 'drowned', spirit: 'abyss' };
 
 /**
  * Each Descent depth's own air, over the cavern breath they all share: the

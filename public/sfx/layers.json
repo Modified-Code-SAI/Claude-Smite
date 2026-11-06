@@ -49,6 +49,39 @@
     "step-minion-8.ogg"
    ]
   },
+  "step.basalt": {
+   "mix": -2,
+   "files": [
+    "step-stone-1.ogg",
+    "step-stone-2.ogg",
+    "step-stone-3.ogg",
+    "step-stone-4.ogg",
+    "step-stone-5.ogg",
+    "step-stone-6.ogg"
+   ]
+  },
+  "step.wet": {
+   "mix": -4,
+   "files": [
+    "step-stone-1.ogg",
+    "step-stone-2.ogg",
+    "step-stone-3.ogg",
+    "step-stone-4.ogg",
+    "step-stone-5.ogg",
+    "step-stone-6.ogg"
+   ]
+  },
+  "step.glass": {
+   "mix": -3,
+   "files": [
+    "step-stone-1.ogg",
+    "step-stone-2.ogg",
+    "step-stone-3.ogg",
+    "step-stone-4.ogg",
+    "step-stone-5.ogg",
+    "step-stone-6.ogg"
+   ]
+  },
   "hit.blade": {
    "mix": -2,
    "files": [
