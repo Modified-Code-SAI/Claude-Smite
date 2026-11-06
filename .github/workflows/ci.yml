@@ -20,3 +20,23 @@ jobs:
       # shared runners are slower than a dev box; some match simulations run several seconds
       - run: npx vitest run --testTimeout=30000
       - run: npx vite build
+
+  smoke:
+    # Every mode boots in headless Chromium (software WebGL 2) and plays about
+    # 5 s: no page errors, no blank frames, no shaders generated mid-play, and
+    # draw calls within scripts/smoke-budgets.json. Split in four to run in parallel.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/4, 2/4, 3/4, 4/4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps --only-shell chromium
+      - run: npx vite build
+      - run: node scripts/smoke.mjs --shard ${{ matrix.shard }}

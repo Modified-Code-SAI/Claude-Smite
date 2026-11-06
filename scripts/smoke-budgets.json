@@ -1,0 +1,34 @@
+{
+  "arena": {
+    "draws": 125,
+    "measured": 96
+  },
+  "conquest": {
+    "draws": 771,
+    "measured": 593
+  },
+  "clash": {
+    "draws": 151,
+    "measured": 116
+  },
+  "siege": {
+    "draws": 263,
+    "measured": 202
+  },
+  "duel": {
+    "draws": 137,
+    "measured": 105
+  },
+  "rush": {
+    "draws": 324,
+    "measured": 249
+  },
+  "descent": {
+    "draws": 219,
+    "measured": 168
+  },
+  "jotunn": {
+    "draws": 198,
+    "measured": 152
+  }
+}
