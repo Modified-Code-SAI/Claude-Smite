@@ -1405,4 +1405,39 @@ describe('Relic Rush: bots among the temple’s stones', () => {
     }
     expect(moved).toBeGreaterThan(2);
   });
+
+  it('a carrier bot coming at a gate from wide of its mouth, a defender on its heels, curves in front of the mouth without turning back and forth', () => {
+    const { sim, rush } = match(rushTestField());
+    const coach = new RushCoach(sim, rush);
+    const carrier = god(sim, thor, 'chaos', 0);
+    const keeper = god(sim, kukulkan, 'order', 0);
+    const press = god(sim, kukulkan, 'order', 1);
+    const far = god(sim, kukulkan, 'order', 2);
+    carrier.brain = new RushBot(sim, carrier, rush, coach, null);
+    rush.begin([carrier, keeper, press, far]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(carrier, 0, -1.6);
+    run(sim, rush, 0.4, () => rush.holder === carrier);
+    expect(rush.holder).toBe(carrier);
+    expect(rush.juke(carrier, { x: 1, z: 0 })).toBe(true);
+    run(sim, rush, 0.3);
+    // as a bot match left them: well wide of the order gate's mouth and closing on it, the keeper home, a defender on its heels
+    // (stepping out in front of the mouth carried it past where that ended, so it headed back for the mouth, came beside the pillar
+    // again and stepped out again: about face every half second, for as long as the defender let it)
+    sim.teleport(carrier, -8.5, 20.7);
+    let turns = 0;
+    let last: { x: number; z: number } | null = null;
+    for (let i = 0; i < 150 && rush.holder === carrier; i++) {
+      sim.teleport(keeper, -2.8, 21.8);
+      sim.teleport(press, carrier.x - 0.4, carrier.z - 1.7);
+      sim.teleport(far, 0, 0);
+      run(sim, rush, 1 / 60);
+      const m = carrier.move;
+      if (!m || i % 6) continue;
+      const l = Math.hypot(m.x, m.z) || 1;
+      if (last && (last.x * m.x + last.z * m.z) / l < -0.5) turns++;
+      last = { x: m.x / l, z: m.z / l };
+    }
+    expect(turns).toBeLessThanOrEqual(1);
+  });
 });
