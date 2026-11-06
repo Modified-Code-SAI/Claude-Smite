@@ -342,6 +342,23 @@ export const SOUNDS: Record<string, Recipe> = {
       ),
   },
   'monster.emerge': { variants: 3, peak: 0.6, make: (r) => layer([rumble(r, 1.3, { tone: 75, attack: 0.04 }), 1], [debris(r, 1, { density: 16, gain: 0.35, tone: 650 }), 0.75, 0.04], [choir(r, 1.5, r() < 0.5 ? 82 : 73, { vowelName: 'oo', env: (t) => ahr(t, 0.35, 0.25, 0.8) }), 0.3, 0.12]) },
+  // a body going down into the Descent's ground as each depth takes it back: the forge's slumping into hissing ash and
+  // cinders, the Drowned Halls' going under with a splash and a gulp of bubbles, the Abyss's unwinding into the dark on a sigh
+  'sink.basalt': { variants: 3, peak: 0.55, make: (r) => layer([thump(r, 0.4, 150, 80, { noise: 0.7, gain: 0.8 }), 0.3], [puff(r, 0.7, { tone: 750, gain: 0.7 }), 0.6, 0.01], [debris(r, 1, { density: 26, gain: 0.45, tone: 1300 }), 1, 0.02], [filter(sand(r, 1.2, { tone: 1900, gain: 0.7, peak: 0.35, grains: 1400 }), 'lowpass', 4500), 0.5, 0.05], [crackles(r, 0.9, 22), 0.3, 0.12]) },
+  'sink.wet': {
+    variants: 3,
+    peak: 0.55,
+    make: (r) => {
+      const parts: [Float32Array, number, number][] = [
+        [splash(r, 1), 0.9, 0],
+        [filter(thump(r, 0.35, 170, 70, { noise: 0.3, gain: 0.7 }), 'lowpass', 900), 0.5, 0.03],
+        [filter(whoosh(r, 0.6, 520, 300, { q: 0.8 }), 'lowpass', 1500), 0.35, 0.04],
+      ];
+      for (let k = 0; k < 5; k++) parts.push([bubble(r), 0.2 - k * 0.025, 0.18 + k * 0.12 + r() * 0.08]);
+      return layer(...parts);
+    },
+  },
+  'sink.glass': { variants: 3, peak: 0.5, make: (r) => layer([whoosh(r, 1.4, 900, 340, { q: 1.1 }), 0.7], [choir(r, 1.6, r() < 0.5 ? 147 : 165, { vowelName: 'oo', env: (t) => ahr(t, 0.25, 0.3, 1) }), 0.3, 0.05], [chime(r, 0.9, 1200 + r() * 400), 0.12, 0.03]) },
   'soul.absorb': { variants: 3, peak: 0.35, make: (r) => layer([whoosh(r, 0.3, 700, 3400, { q: 1.4, peak: 0.85, gain: 0.7 }), 0.6], [shimmer(r, 0.55, 1046.5, { rise: 1.3, peak: 0.15 }), 1, 0.07], [choir(r, 0.6, 523.3, { vowelName: 'oo', env: (t) => ahr(t, 0.06, 0.08, 0.4) }), 0.35, 0.05]) },
 
   // -- the gods' own voices (voices.ts)

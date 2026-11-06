@@ -11,12 +11,21 @@ import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { ArcView } from './Arcs';
 import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
 import { GroundDecal } from './GroundDecal';
-import { KEEPER_CORE, KEEPER_GLOW, setMonsterDepth } from './MonsterViews';
+import { DEPTH_EYES, KEEPER_CORE, KEEPER_GLOW, setMonsterDepth, sinksAfter } from './MonsterViews';
 import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
 
 const ERUPTIONS = 10;
+/** The slain going into each depth's ground (DescentView.sink): forge ash and its cinders, the Drowned Halls' spray, the Abyss's ghost smoke. */
+const ASH = 0x8a7a6c;
+const ASH_SMOKE = 0x564840;
+const CINDERS: GodPalette = { cloth: 0, trim: 0, glow: 0xff6a1a, vfx: 0xff6a1a, core: 0xffc46a };
+const SPLASH: GodPalette = { cloth: 0, trim: 0, glow: 0x7ec8ff, vfx: 0x7ec8ff, core: 0xe8f8ff };
+const SPRAY = 0x4c6478;
+const GHOST_SMOKE = 0x3c8a66;
+/** The white-hot middle of a beast's flares in each depth, around its eyes' color (DEPTH_EYES). */
+const BEAST_CORE: Record<keyof typeof DEPTH_COLORS, number> = { ember: 0xffd08a, soul: 0xeaf8ff, spirit: 0xe0ffe8 };
 /** Souls that are nobody's in particular, pale and ghostly in each depth's light (cyan against the Ashen Depths' fire). */
 const SOULS_OF: Record<keyof typeof DEPTH_COLORS, number> = { ember: 0xbfefff, soul: 0xe0f6ff, spirit: 0xd4ffb0 };
 /** Souls in a shared descent: the player's team's in cold blue, the rivals' in crimson (the HUD's colors). */
@@ -64,7 +73,7 @@ export interface DescentViewOptions {
   heightOf?: (u: Unit) => number | null;
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -109,6 +118,8 @@ export class DescentView {
   /** The newest soul fire already marked (the Ossuary King's rain sends a bolt into each new one). */
   private lastErupt = 0;
   private clock = 0;
+  /** The slain still to go down into the ground: where, when (on this view's clock), how big and whether a boss. */
+  private readonly sinking: { x: number; z: number; at: number; r: number; boss: boolean }[] = [];
   /** The run of souls reaching the player: its length and when the last landed. */
   private streak = { k: 0, at: -1 };
   /** Relics going off: the newest proc already shown, Chain of Souls bolts still crackling, and Death Knell rings spreading. */
@@ -180,6 +191,7 @@ export class DescentView {
       this.shownChamber = r.chamber;
       this.wisps.swarm.clear();
       this.raised.clear();
+      this.sinking.length = 0;
       this.callAt.age = -1;
       this.callRing.mesh.visible = false;
     }
@@ -192,8 +204,9 @@ export class DescentView {
       const palette = DEPTHS[r.depth]!.palette;
       const c = DEPTH_COLORS[palette];
       if (this.map?.setPalette(palette)) this.world.recolorFires();
-      // and the beasts that live there
+      // and the beasts that live there, down to the flares of their blows and deaths
       setMonsterDepth(palette);
+      this.vfx.monsterFire = { cloth: 0, trim: 0, glow: DEPTH_EYES[palette], vfx: DEPTH_EYES[palette], core: BEAST_CORE[palette] };
       this.world.environment.setDepth(c);
       const dust = this.world.dust;
       dust.tint.value.setHex(c.motes.color);
@@ -206,6 +219,13 @@ export class DescentView {
       for (const d of this.eruptions) d.setColors(c.glow, c.fire.high);
     }
     this.clock += dt;
+    for (let i = this.sinking.length - 1; i >= 0; i--) {
+      const s = this.sinking[i]!;
+      if (this.clock < s.at) continue;
+      this.sinking[i] = this.sinking[this.sinking.length - 1]!;
+      this.sinking.pop();
+      this.sink(s);
+    }
     if (r.phase !== this.phase) {
       // the floor gives way beneath the team as it goes down
       if (r.phase === 'descend') this.opts.shake?.(0.4);
@@ -342,12 +362,45 @@ export class DescentView {
     const type = u.origin?.f === 'mode' ? (u.origin.data as { type?: keyof typeof SOULS } | undefined)?.type : undefined;
     const worth = isGod ? (r.versus ? DESCENT.versus.god : 0) : type ? SOULS[type] : 1;
     const y = u.body.y + Math.min(3.2, 0.9 + u.radius * 0.5);
+    if (!isGod) {
+      const role = u.origin?.f === 'mode' ? (u.origin.data as { role?: string } | undefined)?.role : undefined;
+      this.sinking.push({ x: u.x, z: u.z, at: this.clock + sinksAfter(u.tag), r: u.radius, boss: role === 'boss' });
+    }
     if (isGod && !(r.versus && to)) {
       // no rival to take them: a few souls slip away upward as the god goes down
       this.wisps.swarm.release(u.x, y, u.z, 3, null, this.colorFor(u), 0.6, 0.3);
       return;
     }
     this.wisps.swarm.release(u.x, y, u.z, Math.min(12, 1 + worth), to, to ? this.colorFor(to) : this.soul, worth >= 10 ? 1.1 : 0.85, worth >= 10 ? 0.6 : 0.28);
+  }
+
+  /**
+   * A body going down into the ground, the way each depth takes back its dead:
+   * the forge's slumps into ash and cinders, the Drowned Halls' goes under the
+   * dark water in a splash, and the Abyss's comes apart into green ghost smoke.
+   * All on the shared clouds and bursts, so it builds no shader.
+   */
+  private sink(s: { x: number; z: number; r: number; boss: boolean }): void {
+    const gy = this.groundAt(s.x, s.z);
+    const size = Math.min(s.boss ? 7.5 : 4.6, 1.8 + s.r * 1.3);
+    const palette = DEPTHS[this.run.depth]!.palette;
+    if (palette === 'ember') {
+      // ash rolling out low over the floor, smoke curling up off it, cinders spitting
+      this.vfx.billow('dust', s.x, gy + size * 0.2, s.z, size * 1.15, { tint: ASH, duration: 2.2, rise: 0.15 });
+      this.vfx.billow('smoke', s.x, gy + size * 0.35, s.z, size * 0.85, { tint: ASH_SMOKE, duration: 2.8, rise: 1, delay: 0.15 });
+      this.vfx.burst(CINDERS, s.x, gy + 0.35, s.z, 0.7);
+    } else if (palette === 'soul') {
+      // a ring of water running out from it and a spray of cold mist hanging over the spot
+      this.vfx.burst(SPLASH, s.x, gy + 0.1, s.z, Math.min(1.8, 0.85 + s.r * 0.3));
+      this.vfx.billow('dust', s.x, gy + size * 0.12, s.z, size * 0.8, { tint: SPRAY, duration: 1.4, rise: 0.3 });
+    } else {
+      // ghost smoke unwinding upward out of the body
+      this.vfx.billow('smoke', s.x, gy + size * 0.25, s.z, size, { tint: GHOST_SMOKE, duration: 3, rise: 1.4 });
+      this.vfx.cloud(GHOST_SMOKE, s.x, gy + 0.6, s.z, Math.min(1.6, 0.6 + s.r * 0.35), 1.4);
+    }
+    const me = this.opts.me;
+    const near = me ? Math.hypot(me.x - s.x, me.z - s.z) : 99;
+    if (near < 45) this.opts.cue?.('sink', { x: s.x, y: gy, z: s.z }, s.boss ? 1 : Math.min(0.75, 0.25 + s.r * 0.2));
   }
 
   /**

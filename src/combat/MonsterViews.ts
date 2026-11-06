@@ -46,6 +46,19 @@ export const SHADE_CORE = 0xeadcff;
 export const KEEPER_GLOW = 0xffa83a;
 export const KEEPER_CORE = 0xfff0c8;
 
+/**
+ * Seconds after death each body starts going down into the ground (the rigs
+ * below sink on these), so whatever marks the ground taking it lands as it goes.
+ */
+const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4 } as const;
+
+/** When a monster's body starts sinking into the ground, in seconds after it died. */
+export function sinksAfter(tag: string): number {
+  const type = tag.split(':')[1] ?? '';
+  if (type === 'warden' || type === 'moltenColossus') return SINKS.warden;
+  return type in SINKS ? SINKS[type as keyof typeof SINKS] : SINKS.thornback;
+}
+
 export interface MonsterView {
   root: THREE.Group;
   height: number;
@@ -72,7 +85,7 @@ const depthOn = uniform(new THREE.Vector3());
 /** The amber glows (Thornback eyes, the Alpha's crest), which take each depth's light. */
 const amberGlows: { value: THREE.Color }[] = [];
 /** The amber glows' color at each depth: forge fire, the Drowned Halls' cold soul light, the Abyss's green. */
-const DEPTH_EYES: Record<Palette, number> = { ember: 0xff8a2a, soul: 0x8fd8ff, spirit: 0x7affb0 };
+export const DEPTH_EYES: Record<Palette, number> = { ember: 0xff8a2a, soul: 0x8fd8ff, spirit: 0x7affb0 };
 
 /** Dresses the monsters for a Descent depth, or back in their jungle look (null). */
 export function setMonsterDepth(p: Palette | null): void {
@@ -351,7 +364,7 @@ function thornback(alpha: boolean, spitter = false, gilded = false): MonsterView
         // keel over on its side, then sink into the ground
         const t = Math.min(1, deathTime / 0.5);
         body.rotation.z = t * t * 1.5;
-        body.position.y = 0.72 - t * 0.35 - Math.max(0, deathTime - 1.6) * 0.5;
+        body.position.y = 0.72 - t * 0.35 - Math.max(0, deathTime - SINKS.thornback) * 0.5;
         for (const l of legs) l.rotation.x *= 1 - t;
       }
     },
@@ -488,7 +501,7 @@ function giant(o: GiantOptions): MonsterView {
       if (deathTime >= 0) {
         // crumble: the body slumps and sinks, the arms drop, the light goes out
         const k = Math.min(1, deathTime / 1.1);
-        hips.position.y = 1.25 - k * k * 1.0 - Math.max(0, deathTime - 1.4) * 0.8;
+        hips.position.y = 1.25 - k * k * 1.0 - Math.max(0, deathTime - SINKS.warden) * 0.8;
         torso.rotation.x = 0.18 + k * 0.7;
         for (const arm of arms) arm.rotation.x = k * 0.8;
         heart.scale.setScalar(Math.max(0.01, 1 - k));
@@ -754,7 +767,7 @@ function wyrm(): MonsterView {
       // (in the body's own frame: lookAt would want world space)
       head.quaternion.setFromUnitVectors(FORWARD, tan.setY(tan.y * 0.3 - 0.35).normalize());
       jaw.rotation.x = Math.max(0, bite) * 0.7 + Math.max(0, -bite) * 0.4 + special * 0.5 + (dead > 0 ? 0.3 : 0);
-      root.position.y = -Math.max(0, deathTime - 1.8) * 0.6;
+      root.position.y = -Math.max(0, deathTime - SINKS.treasureWyrm) * 0.6;
     },
   };
 }
@@ -901,7 +914,7 @@ function shade(): MonsterView {
       if (deathTime >= 0) {
         // it collapses into its robe and the fire inside goes out
         const t = Math.min(1, deathTime / 0.8);
-        body.position.y = SHADE_HOVER * (1 - t) - Math.max(0, deathTime - 1.3) * 0.5;
+        body.position.y = SHADE_HOVER * (1 - t) - Math.max(0, deathTime - SINKS.shade) * 0.5;
         rig.scale.y = s * (1 - t * 0.75);
         rig.rotation.y = t * t * 0.8;
         orb.scale.setScalar(Math.max(0.01, 1 - t * 2));
@@ -1068,7 +1081,7 @@ function gravekeeper(): MonsterView {
         // it falls apart into a heap of bones, the flame and ember going out
         const t = Math.min(1, deathTime / 0.7);
         const k = t * t;
-        hips.position.y = HIP * (1 - k * 0.82) - Math.max(0, deathTime - 1.6) * 0.4;
+        hips.position.y = HIP * (1 - k * 0.82) - Math.max(0, deathTime - SINKS.gravekeeper) * 0.4;
         torso.rotation.x = 0.55 + k * 1.0;
         head.rotation.x = -0.45 + k * 0.9;
         for (const kn of knees) kn.rotation.x = 0.45 + k * 1.6;
@@ -1257,7 +1270,7 @@ function ossuaryKing(): MonsterView {
         // it sinks to its knees, slumps over its blade and goes down into the dark
         const t = Math.min(1, deathTime / 1.4);
         const k = t * t * (3 - 2 * t);
-        hips.position.y = HIP * (1 - k * 0.5) - Math.max(0, deathTime - 2.4) * 0.35;
+        hips.position.y = HIP * (1 - k * 0.5) - Math.max(0, deathTime - SINKS.ossuaryKing) * 0.35;
         for (const th of thighs) th.rotation.x = -k * 1.3;
         for (const kn of knees) kn.rotation.x = k * 2.0;
         torso.rotation.x = 0.1 + k * 0.6;
