@@ -442,6 +442,7 @@ class ShrineView {
 const tmp = new THREE.Vector3();
 const tmp2 = new THREE.Vector3();
 const tmp3 = new THREE.Vector3();
+const tmp4 = new THREE.Vector3();
 /** How wide (meters) a foot that is down parts the grass round it. */
 const FOOT_PART = 1.9;
 const FEET = [0, 1] as const;
@@ -507,6 +508,8 @@ export class JotunnView {
     this.hail.onLand = (p) => {
       this.snow.ring(p.at, 3, 2.2, { life: 0.8, size0: 0.4, size1: 1.4, alpha: 0.55, color: 0xe8f4fa });
       this.spikes.add(p.at, Math.random() * 6.28, 0.35 + Math.random() * 0.25, 0, 0.6);
+      // a few stones leave a star of frost where they struck, so the storm's circle stays rimed a while
+      if (Math.random() < 0.2) this.prints.blow(p.at.x, p.at.z, 0.8 + Math.random() * 0.5);
     };
     this.group.add(this.spikes.mesh, this.hail.mesh);
     this.prints = new FrostPrints(host.ground);
@@ -853,7 +856,7 @@ export class JotunnView {
       this.model.mouth(tmp, tmp2);
       const n = Math.round(dt * 70) + (Math.random() < (dt * 70) % 1 ? 1 : 0);
       for (let i = 0; i < n; i++) {
-        const v = tmp2.clone();
+        const v = tmp4.copy(tmp2);
         v.y = Math.min(v.y, -0.25);
         v.normalize();
         v.x += (Math.random() - 0.5) * 0.45;
@@ -868,6 +871,8 @@ export class JotunnView {
         const gx = tmp.x + tmp2.x * d;
         const gz = tmp.z + tmp2.z * d;
         this.spikes.add(tmp.set(gx, this.host.ground(gx, gz), gz), Math.random() * 6.28, 0.5 + Math.random() * 0.5, 0, 0.8);
+        // and stays white with frost where the breath raked it
+        if (Math.random() < 0.6) this.prints.blow(gx, gz, 1.8 + Math.random() * 1.1);
       }
     }
     // its breath in the cold, every few seconds (quick and heavy while it kneels), but not over its frost breath

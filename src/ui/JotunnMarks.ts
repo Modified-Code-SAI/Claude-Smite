@@ -35,6 +35,59 @@ export interface MarkScene {
   braziers: readonly { x: number; y: number; z: number; alive: boolean; hitAgo: number }[];
   /** ready: claimable now (not resting after a claim). */
   shrines: readonly { x: number; y: number; z: number; ready: boolean; contested: boolean; ult: string }[];
+  /** The giant is far enough from the temple that its braziers show as one mark (see clusterBraziers). */
+  clustered?: boolean;
+}
+
+/**
+ * From this far (meters from the giant to the nearest lit brazier) the
+ * braziers, which sit close together on the temple, show as one mark; they
+ * split into their own marks again inside `split` (apart, so the marks don't
+ * flicker on the line).
+ */
+export const CLUSTER = { join: 34, split: 28 };
+
+/** Whether the braziers show as one mark, given whether they did and the giant's distance to the nearest lit one. */
+export function clusterBraziers(was: boolean, nearest: number): boolean {
+  return nearest > (was ? CLUSTER.split : CLUSTER.join);
+}
+
+/** How close (pixels) two marks in view may sit before the farther one rises over the nearer: a disc (15 px above its spot) and its two lines of text under it (to about 45 px below), and most of a label's width. */
+export const STACK = { w: 64, h: 60 };
+
+/** A mark in view, for stackMarks: where it falls on screen (tx, ty), how far away it is, and the lift (pixels, up is negative) it gets. */
+export interface Stackable {
+  tx: number;
+  ty: number;
+  meters: number;
+  lift: number;
+}
+
+/**
+ * Keeps marks in view from covering one another: nearest first, each mark
+ * that would sit on one already placed rises to just above it (farther
+ * things lie higher on the screen anyway, so the order still reads).
+ * Sorts `items` nearest first.
+ */
+export function stackMarks(items: Stackable[]): void {
+  items.sort((a, b) => a.meters - b.meters);
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i]!;
+    let y = it.ty;
+    for (let pass = 0; pass <= i; pass++) {
+      let moved = false;
+      for (let j = 0; j < i; j++) {
+        const o = items[j]!;
+        const oy = o.ty + o.lift;
+        if (Math.abs(it.tx - o.tx) < STACK.w && Math.abs(y - oy) < STACK.h) {
+          y = oy - STACK.h;
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    it.lift = y - it.ty;
+  }
 }
 
 /** A god is called to a brazier the giant is this close to (meters, center to center), or struck this recently (seconds). */
@@ -59,9 +112,25 @@ export function pickMarks(s: MarkScene): MarkWant[] {
         near = i;
       }
     });
-    s.braziers.forEach((b, i) => {
-      if (b.alive) out.push({ key: `b${i}`, kind: 'smash', x: b.x, y: b.y, z: b.z, label: i === near ? 'Smash' : '' });
-    });
+    if (s.clustered) {
+      // far off, one mark on the temple for all of them
+      let n = 0;
+      let x = 0;
+      let y = 0;
+      let z = 0;
+      for (const b of s.braziers) {
+        if (!b.alive) continue;
+        n++;
+        x += b.x;
+        y += b.y;
+        z += b.z;
+      }
+      if (n) out.push({ key: 'bc', kind: 'smash', x: x / n, y: y / n, z: z / n, label: 'Smash' });
+    } else {
+      s.braziers.forEach((b, i) => {
+        if (b.alive) out.push({ key: `b${i}`, kind: 'smash', x: b.x, y: b.y, z: b.z, label: i === near ? 'Smash' : '' });
+      });
+    }
     s.shrines.forEach((sh, i) => {
       if (sh.ready) out.push({ key: `s${i}`, kind: 'shrine', x: sh.x, y: sh.y, z: sh.z, label: sh.contested ? 'Held' : sh.ult });
     });
@@ -93,7 +162,7 @@ const ICONS: Record<MarkKind, string> = {
   giant: '<path d="M3 3.5c.4 3.7 2.2 5.9 4.6 6.9V14c0 3.6 2 6.2 4.4 7.5 2.4-1.3 4.4-3.9 4.4-7.5v-3.6c2.4-1 4.2-3.2 4.6-6.9-2 1.9-4 2.8-6.1 2.8H9.1C7 6.3 5 5.4 3 3.5zm6.3 9.1 2 .9-2 .9zm5.4 0v1.8l-2-.9z"/>',
 };
 
-interface Shown {
+interface Shown extends Stackable {
   el: HTMLElement;
   label: HTMLElement;
   dist: HTMLElement;
@@ -106,6 +175,10 @@ interface Shown {
   x: number;
   y: number;
   turn: number;
+  /** The lift it is shown with now, easing toward `lift`. */
+  rise: number;
+  /** The frame it was last wanted on. */
+  seen: number;
 }
 
 /** Marks near the middle of the screen (the aim) fade back, so they never sit over what you're hitting. Pixels. */
@@ -151,6 +224,14 @@ export class JotunnMarks {
   private readonly v = new THREE.Vector3();
   private readonly brazierY: number[];
   private readonly shrineY: number[];
+  /** What pickMarks is shown each frame (kept, so a frame makes no garbage of it). */
+  private readonly scene: MarkScene;
+  private readonly brazierScene: { x: number; y: number; z: number; alive: boolean; hitAgo: number }[];
+  private readonly shrineScene: { x: number; y: number; z: number; ready: boolean; contested: boolean; ult: string }[];
+  private readonly live: Shown[] = [];
+  private readonly inView: Shown[] = [];
+  private clustered = false;
+  private frameNo = 0;
   private t = 0;
 
   constructor(
@@ -164,6 +245,9 @@ export class JotunnMarks {
     // a brazier stands 2.4 m; a shrine's obelisk about 7
     this.brazierY = JOTUNN.braziers.map((b) => groundAt(b.x, b.z) + 3.3);
     this.shrineY = SHRINES.map((s) => groundAt(s.x, s.z) + 8.2);
+    this.brazierScene = JOTUNN.braziers.map((b, i) => ({ x: b.x, y: this.brazierY[i]!, z: b.z, alive: true, hitAgo: 99 }));
+    this.shrineScene = SHRINES.map((s, i) => ({ x: s.x, y: this.shrineY[i]!, z: s.z, ready: true, contested: false, ult: ULT_NAMES[s.id] ?? '' }));
+    this.scene = { piloting: false, phase: mode.phase, cine: false, giant: { x: 0, y: 0, z: 0, alive: true }, braziers: this.brazierScene, shrines: this.shrineScene };
   }
 
   onEvent(e: SimEvent): void {
@@ -175,24 +259,44 @@ export class JotunnMarks {
   /** `me` is the unit the player drives (the giant when piloting): distances are from it. */
   frame(dt: number, piloting: boolean, cine: boolean, me: Point): void {
     this.t += dt;
+    this.frameNo++;
     const m = this.mode;
     const g = m.giant;
-    const want = pickMarks({
-      piloting,
-      phase: m.phase,
-      cine,
-      giant: { x: g.x, y: g.body.y + 9, z: g.z, alive: g.alive },
-      braziers: m.braziers.map((b, i) => ({ x: b.x, y: this.brazierY[i]!, z: b.z, alive: b.alive, hitAgo: this.t - this.hitAt[i]! })),
-      shrines: m.shrines.map((s, i) => ({ x: s.def.x, y: this.shrineY[i]!, z: s.def.z, ready: s.dormant <= 0, contested: s.contested, ult: ULT_NAMES[s.def.id] ?? '' })),
+    let nearest = Infinity;
+    m.braziers.forEach((b, i) => {
+      const k = this.brazierScene[i]!;
+      k.alive = b.alive;
+      k.hitAgo = this.t - this.hitAt[i]!;
+      if (b.alive) nearest = Math.min(nearest, hypot(b.x - g.x, b.z - g.z));
     });
+    m.shrines.forEach((s, i) => {
+      const k = this.shrineScene[i]!;
+      k.ready = s.dormant <= 0;
+      k.contested = s.contested;
+    });
+    this.clustered = piloting && clusterBraziers(this.clustered, nearest);
+    const sc = this.scene;
+    sc.piloting = piloting;
+    sc.phase = m.phase;
+    sc.cine = cine;
+    sc.giant.x = g.x;
+    sc.giant.y = g.body.y + 9;
+    sc.giant.z = g.z;
+    sc.giant.alive = g.alive;
+    sc.clustered = this.clustered;
+    const want = pickMarks(sc);
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const live = new Set<string>();
+    const inView = this.inView;
+    inView.length = 0;
+    const live = this.live;
+    live.length = 0;
     for (const k of want) {
       const p = toScreen(this.v.set(k.x, k.y, k.z), this.camera, w, h, this.spot);
       if (k.edgeOnly && !p.edge) continue;
-      live.add(k.key);
       const s = this.mark(k.key);
+      s.seen = this.frameNo;
+      live.push(s);
       if (s.kind !== k.kind) {
         s.kind = k.kind;
         s.el.className = `jm jm-${k.kind}`;
@@ -201,7 +305,9 @@ export class JotunnMarks {
         s.edge = false;
         s.near = false;
       }
-      if (!s.on) {
+      // (a mark coming back shows at its place at once, without easing into it)
+      const fresh = !s.on;
+      if (fresh) {
         s.on = true;
         s.el.classList.remove('hide');
       }
@@ -223,18 +329,30 @@ export class JotunnMarks {
         s.near = near;
         s.el.classList.toggle('near', near);
       }
-      if (Math.abs(p.x - s.x) > 0.4 || Math.abs(p.y - s.y) > 0.4) {
-        s.x = p.x;
-        s.y = p.y;
-        s.el.style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0)`;
-      }
+      s.tx = p.x;
+      s.ty = p.y;
+      s.lift = 0;
+      if (fresh || p.edge) s.rise = -1e9;
+      // marks faded back under the HUD or over the aim, and those pinned to the edge, stay where they are
+      if (!p.edge && !near) inView.push(s);
       if (p.edge && Math.abs(p.angle - s.turn) > 0.01) {
         s.turn = p.angle;
         s.el.style.setProperty('--turn', `${p.angle.toFixed(3)}rad`);
       }
     }
-    for (const [key, s] of this.shown) {
-      if (s.on && !live.has(key)) {
+    stackMarks(inView);
+    const ease = Math.min(1, dt * 12);
+    for (const s of live) {
+      s.rise = s.rise < -1e8 ? s.lift : s.rise + (s.lift - s.rise) * ease;
+      const y = s.ty + s.rise;
+      if (Math.abs(s.tx - s.x) > 0.4 || Math.abs(y - s.y) > 0.4) {
+        s.x = s.tx;
+        s.y = y;
+        s.el.style.transform = `translate3d(${s.tx.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+      }
+    }
+    for (const s of this.shown.values()) {
+      if (s.on && s.seen !== this.frameNo) {
         s.on = false;
         s.el.classList.add('hide');
       }
@@ -248,7 +366,7 @@ export class JotunnMarks {
     el.className = 'jm hide';
     el.innerHTML = '<div class="jm-disc"><svg viewBox="0 0 24 24"></svg></div><div class="jm-arrow"></div><div class="jm-under"><span class="jm-label"></span><span class="jm-dist"></span></div>';
     this.root.appendChild(el);
-    s = { el, label: el.querySelector('.jm-label')!, dist: el.querySelector('.jm-dist')!, kind: '', text: '', meters: -1, on: false, edge: false, near: false, x: -1e9, y: -1e9, turn: -1e9 };
+    s = { el, label: el.querySelector('.jm-label')!, dist: el.querySelector('.jm-dist')!, kind: '', text: '', meters: -1, on: false, edge: false, near: false, x: -1e9, y: -1e9, turn: -1e9, tx: 0, ty: 0, lift: 0, rise: -1e9, seen: -1 };
     this.shown.set(key, s);
     return s;
   }
