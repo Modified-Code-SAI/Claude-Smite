@@ -2,6 +2,7 @@ import type { CineKind } from '../combat/jotunnCine';
 import { JOTUNN, PART_IDS, PARTS, type Jotunn, type PartId } from '../sim/Jotunn';
 import type { SimEvent, Unit } from '../sim/Unit';
 import { awardLine } from './ascension';
+import { clockText, jotunnAwards, mightText, type JotunnAwardKey } from './jotunnAwards';
 import { KillTally } from './killTally';
 import { addResult } from './records';
 import './match.css';
@@ -10,6 +11,14 @@ import './jotunn.css';
 const PART_GLYPH: Record<PartId, string> = { kneeL: 'L', kneeR: 'R', rune: 'ᛟ', wristL: 'L', wristR: 'R', crown: '♛' };
 const PART_GROUP: Record<PartId, string> = { kneeL: 'knee', kneeR: 'knee', rune: 'rune', wristL: 'wrist', wristR: 'wrist', crown: 'crown' };
 const SHRINE_ULT: Record<string, string> = { rime: 'Frost Breath', avalanche: 'Avalanche', hail: 'Hailstorm' };
+/** The end screen's frost medals: a sword, a cracked shard of ice, the giant's crown. */
+const AWARD_ICON: Record<JotunnAwardKey, string> = {
+  slayer: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1l3 3.6V14H9V4.6z"/><path d="M5.5 14h13v2.6h-13z"/><path d="M10.6 16.6h2.8v3.6l1.2 1.2V23H9.4v-1.6l1.2-1.2z"/></svg>',
+  breaker: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5l7.5 10.5L12 22.5 4.5 12z"/><path d="M12.6 2.5l-1.8 5.6 2.9 3.1-2.4 4.2 1.3 6" fill="none" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+  giant: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 18.5l1.8-12 4.4 5.2L12 3l3.3 8.7 4.4-5.2 1.8 12z"/><path d="M2.5 19.6h19v2.3h-19z"/></svg>',
+};
+/** Text for innerHTML (players' names come from their peers online). */
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
 /** Seconds the braziers' count stays on the state line once it changes (the bar keeps it), before the line clears off the giant's chest. */
 const QUIET_AFTER = 6;
 
@@ -264,7 +273,7 @@ export class JotunnHud {
     const wins = m.players.map((p) => `${p.god === this.me ? 'You' : p.name}:${p.wins}:${p === m.giantPlayer}`).join('|');
     this.set('wins', wins, () => {
       this.wins.innerHTML = m.players
-        .map((p) => `<span class="${p.god === this.me ? 'me' : ''} ${p === m.giantPlayer ? 'giant' : ''}">${p.god === this.me ? 'You' : p.name}<b>${p.wins}</b></span>`)
+        .map((p) => `<span class="${p.god === this.me ? 'me' : ''} ${p === m.giantPlayer ? 'giant' : ''}">${this.nameOf(p)}<b>${p.wins}</b></span>`)
         .join('');
     });
 
@@ -276,21 +285,35 @@ export class JotunnHud {
       this.end.querySelector('.clash-end-title')!.textContent = won ? (champs.length > 1 ? 'Shared victory' : 'Victory') : 'Defeat';
       const score = this.end.querySelector('.clash-end-score')!;
       score.innerHTML = this.table();
+      // the match's awards, as frost medals over the table
+      const medals = jotunnAwards(m.players)
+        .map((a) => `<div class="jt-award${a.player.god === this.me ? ' me' : ''}" data-award="${a.key}"><i>${AWARD_ICON[a.key]}</i><b>${a.title}</b><span>${this.nameOf(a.player)}</span><small>${esc(a.stat)}</small></div>`)
+        .join('');
+      if (medals) score.insertAdjacentHTML('beforebegin', `<div class="jt-awards">${medals}</div>`);
       const { award } = addResult('jotunn', { won, rounds: m.rounds });
       score.insertAdjacentHTML('afterend', awardLine(award));
     }
   }
 
+  private nameOf(p: { god: Unit; name: string }): string {
+    return p.god === this.me ? 'You' : esc(p.name);
+  }
+
+  /** Everyone's match: rounds won, what they tore from the giant as a god, and their own round as it. */
   private table(): string {
     const rows = [...this.mode.players]
-      .sort((a, b) => b.wins - a.wins)
+      .sort((a, b) => b.wins - a.wins || b.tally.might - a.tally.might)
       .map((p) => {
         const r = p.giantRound;
-        const asGiant = r ? `${r.won ? 'won' : 'lost'} · ${r.braziers} braziers · ${Math.floor(r.time / 60)}:${String(Math.floor(r.time % 60)).padStart(2, '0')}` : '–';
-        return `<tr class="${p.god === this.me ? 'me' : ''}"><td>${p.god === this.me ? 'You' : p.name}</td><td>${p.wins}</td><td>${asGiant}</td></tr>`;
+        const t = p.tally;
+        const asGiant = r ? [r.won ? 'won' : 'lost', `${r.braziers} brazier${r.braziers === 1 ? '' : 's'}`, t.takedowns > 0 ? `${t.takedowns} takedown${t.takedowns === 1 ? '' : 's'}` : '', clockText(r.time)].filter(Boolean).join(' · ') : '–';
+        // the blow that felled the giant, marked by the name
+        const felled = t.felled > 0 ? `<span class="jt-felled" title="Struck the blow that felled the giant${t.felled > 1 ? ` (${t.felled} times)` : ''}">⚔</span>` : '';
+        return `<tr class="${p.god === this.me ? 'me' : ''}"><td>${felled}${this.nameOf(p)}</td><td>${p.wins}</td><td>${mightText(t.might)}</td><td>${t.breaks}</td><td>${asGiant}</td></tr>`;
       })
       .join('');
-    return `<table class="end-table"><tr><th>Player</th><th>Rounds won</th><th>As the Jötunn</th></tr>${rows}</table>`;
+    const legend = this.mode.players.some((p) => p.tally.felled > 0) ? '<div class="jt-legend">⚔ struck the blow that felled the giant</div>' : '';
+    return `<table class="end-table"><tr><th>Player</th><th>Rounds won</th><th>Might torn</th><th>Weak points</th><th>As the Jötunn</th></tr>${rows}</table>${legend}`;
   }
 
   setVisible(on: boolean): void {
