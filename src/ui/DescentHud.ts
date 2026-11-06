@@ -102,7 +102,7 @@ export class DescentHud {
       <div class="siege-boons descent-cards"></div>
       <div class="descent-relics"></div>
       <div class="mh-banner"></div>
-      <div class="descent-fade"></div>
+      <div class="descent-fade"><i></i></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><div class="clash-end-table"></div><button class="clash-again">Descend again</button></div>`;
     document.body.appendChild(this.root);
     document.body.classList.add('descent-mode');
@@ -211,6 +211,12 @@ export class DescentHud {
     this.where.innerHTML = `<b>${DEPTHS[r.depth]!.name}</b><span>Chamber ${r.chamber} / ${DESCENT.chambers}</span>${r.obols ? `<em title="Charon's Obol: the next wipe is undone">&#9679; ${r.obols}</em>` : ''}`;
     this.souls();
     this.fade.classList.toggle('show', r.phase === 'descend');
+    // out of a master's chamber the team falls into the next depth, past its
+    // embers, its rising bubbles or its souls (the look stays as the black lifts)
+    if (r.phase === 'descend') {
+      this.fade.classList.toggle('plunge', r.plunging);
+      if (r.plunging) this.fade.dataset.depth = DEPTHS[r.depth + 1]?.palette ?? '';
+    }
 
     // the chamber's name as the team walks in; the first chamber of a depth
     // names the depth instead, in its own colors, and holds a little longer
