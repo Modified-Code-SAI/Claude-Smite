@@ -166,11 +166,12 @@ export class RushMode {
     return this.rush.frozen;
   }
 
-  /** The local carrier throws toward their aim point. */
+  /** The local carrier throws toward their aim point, or to the teammate the pass assist picks out (a guest sends where that is). */
   throw(): void {
     const me = this.deps.player;
-    if (this.guest) this.guest.act({ k: 'throw', a: [me.aim.x, me.aim.z] });
-    else this.rush.throwRelic(me, me.aim);
+    const at = this.rush.assistAim(me, me.aim);
+    if (this.guest) this.guest.act({ k: 'throw', a: [at.x, at.z] });
+    else this.rush.throwRelic(me, at);
   }
 
   /** The local player calls for the pass (F): shown to teammates, and a bot carrier throws it to them. */
@@ -282,7 +283,7 @@ export class RushMode {
     this.hud.pointer(this.pointer());
     this.hud.calls(this.callouts());
     this.hud.catcher(this.catchMarker());
-    this.hud.frame(dt);
+    this.hud.frame(dt, this.view.read, this.view.aim);
   }
 
   /** Light and shake for the sport's big moments: a catch, the relic knocked loose, a goal, the relic released at kickoff. */
@@ -391,7 +392,7 @@ export class RushMode {
     const p = head.project(cam);
     if (Math.abs(p.x) > 1.05 || Math.abs(p.y) > 1.05) return null;
     const ally = by.team === me.team;
-    const label = ally ? 'Pass' : this.rush.shotOnTarget(me, me.aim) ? 'Save' : 'Cut off';
+    const label = ally ? 'Pass' : this.rush.shotOnTarget(me, this.view.aim ?? me.aim) ? 'Save' : 'Cut off';
     return { x: ((p.x + 1) / 2) * window.innerWidth, y: ((1 - p.y) / 2) * window.innerHeight, ally, name: by.name, label, raised: ally && this.rush.calledAgo(by) !== null };
   }
 

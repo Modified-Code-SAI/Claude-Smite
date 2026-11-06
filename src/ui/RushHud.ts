@@ -1,6 +1,6 @@
 import type { Side } from '../game/combatant';
 import { RUSH, type Rush } from '../sim/Rush';
-import type { Unit } from '../sim/Unit';
+import type { Point, Unit } from '../sim/Unit';
 import type { RushCall, RushCatch } from '../combat/RushMode';
 import { addResult } from './records';
 import { awardLine } from './ascension';
@@ -8,6 +8,9 @@ import { RushRadar } from './RushRadar';
 import { rushAwards, type RushAwardKey } from './rushAwards';
 import './clash.css';
 import './rush.css';
+
+/** What a throw would do (see Rush.passRead). */
+type PassRead = ReturnType<Rush['passRead']>;
 
 /** A raised open hand: the call for the pass. */
 const HAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 58 V30 Q18 26 22 26 Q26 26 26 30 V14 Q26 10 30 10 Q34 10 34 14 V28 V12 Q34 8 38 8 Q42 8 42 12 V30 V18 Q42 14 46 14 Q50 14 50 18 V40 Q50 52 40 58 Z"/></svg>';
@@ -230,8 +233,8 @@ export class RushHud {
     return u === this.me ? 'You' : u.name;
   }
 
-  /** The line under the score: where the relic is and what this player should do about it. */
-  private stateText(): { text: string; tone: string } {
+  /** The line under the score: where the relic is and what this player should do about it (`read`: what their throw at `aim` would do). */
+  private stateText(read: PassRead | null, aim: Point | null): { text: string; tone: string } {
     const r = this.rush;
     const relic = r.relic;
     const me = this.me;
@@ -241,11 +244,10 @@ export class RushHud {
     if (r.phase === 'kickoff') return { text: r.overtime ? 'Golden relic: the next goal wins' : 'Kickoff: the Sun Relic waits on the pedestal', tone: r.overtime ? 'contested' : '' };
     const h = relic.holder;
     if (h === me) {
-      const read = r.passRead(me, me.aim);
-      if (read.goal) return { text: 'On target! Left click to shoot it through their gate', tone: 'contested' };
-      const by = read.catcher;
+      if (read?.goal) return { text: 'On target! Left click to shoot it through their gate', tone: 'contested' };
+      const by = read?.catcher;
       if (by && by.team === me.team) return { text: `Left click to pass to ${by.name}`, tone: 'order' };
-      if (by) return { text: r.shotOnTarget(me, me.aim) ? `${by.name} would save that shot` : `${by.name} would cut that pass off`, tone: 'chaos' };
+      if (by) return { text: r.shotOnTarget(me, aim ?? me.aim) ? `${by.name} would save that shot` : `${by.name} would cut that pass off`, tone: 'chaos' };
       return { text: 'You have the relic! Run it through their gate, or left click to pass where you aim', tone: 'order' };
     }
     if (h && h.team === me.team) return { text: `${h.name} has the relic: get open, and press F to call for the pass`, tone: 'order' };
@@ -274,7 +276,8 @@ export class RushHud {
     return { html: '', side: '' };
   }
 
-  frame(dt = 0): void {
+  /** `read` and `aim`: what the local carrier's throw would do, and where it would go (see RushView). */
+  frame(dt = 0, read: PassRead | null = null, aim: Point | null = null): void {
     const r = this.rush;
     if (r.goalCount !== this.goalSeen) {
       this.goalSeen = r.goalCount;
@@ -307,7 +310,7 @@ export class RushHud {
       this.clock.classList.toggle('gold', r.overtime);
       this.clock.classList.toggle('late', !r.overtime && r.clock <= 30);
     }
-    const s = this.stateText();
+    const s = this.stateText(read, aim);
     const key = `${s.text}|${s.tone}`;
     if (key !== this.lastState) {
       this.lastState = key;
