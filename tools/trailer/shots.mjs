@@ -127,6 +127,11 @@ function brawl(order, chaos, cam) {
 }
 
 
+/** A held key-art still in a mode (`?map=<map>`): `setup` stages it, `director` frames it. */
+function still(map, setup, director) {
+  return { url: `map=${map}&god=zeus&quality=high`, frames: 10, setup, director };
+}
+
 /** A fight in one of the other modes (`?map=<map>`), found and circled as in Conquest; the hidden player stays put. */
 function mode(map, find, opts = {}) {
   return conquest(find, { url: `map=${map}&god=zeus&quality=medium`, park: false, frames: 40, ...opts });
@@ -153,6 +158,96 @@ export const SHOTS = {
     return near.length >= 2 ? [j, j, j, ...near] : null;
   }`, { skip: 15, limit: 90, cam: { r: 20, h: 9, a0: 0.9, sweep: 0.3, fov: 55 } }),
   mdSiege: mode('siege', monsterFind, { skip: 25, limit: 90, frames: 34, cam: { r: 12, h: 9, a0: -1.4, sweep: 0.3 } }),
+  // the home page's mode art (public/keyart, see the README): stills framed for a backdrop,
+  // the subject right of center, where the menu's shade is lightest
+  kaClash: still('clash', `(s, g) => {
+      const p = s.combat.player;
+      const gods = s.combat.sim.units.filter((u) => u.kind === 'god' && u !== p);
+      const ally = gods.find((u) => u.team === p.team), foes = gods.filter((u) => u.team !== p.team);
+      g.player.model.root.visible = true;
+      s.skip(6);
+      // the hill's two sides squaring up across its middle
+      s.combat.sim.teleport(p, -0.8, 3.2, 0);
+      if (ally) s.combat.sim.teleport(ally, 2.6, 4.8, 0);
+      if (foes[0]) s.combat.sim.teleport(foes[0], 0.9, -3.0, Math.PI);
+      if (foes[1]) s.combat.sim.teleport(foes[1], -2.8, -4.6, Math.PI);
+      s.vars.p = p; s.vars.all = [p, ally, ...foes].filter(Boolean);
+      return { who: s.vars.all.map((u) => u.name) };
+    }`, `(dt, t, s) => {
+      const p = s.vars.p, f = s.vars.all.find((u) => u.team !== p.team);
+      for (const u of s.vars.all) u.combatant.health = u.combatant.stats.maxHealth;
+      if (!s.vars.cast && t > 0.02 && f) { s.vars.cast = 1; s.cast(p, 0, f.x, f.z); }
+      s.look(4.2, 2.4, 9.4, 0, 1.5, -0.6, 48);
+    }`),
+  kaDuel: still('duel', `(s, g) => {
+      const p = s.combat.player, r = s.combat.sim.units.find((u) => u.kind === 'god' && u.team === 'chaos');
+      g.player.model.root.visible = true;
+      // the ring holds 20 s then closes: run into the close with both duelists kept standing,
+      // then bring the rival out from behind the shrine to face the player
+      for (let i = 0; i < 64; i++) { s.skip(0.5); for (const u of [p, r]) u.combatant.health = u.combatant.stats.maxHealth; }
+      s.combat.sim.teleport(p, 0, 13, 0);
+      s.combat.sim.teleport(r, -1.4, 6.4, Math.PI);
+      s.vars.p = p; s.vars.r = r;
+      return { ring: s.combat.duel.ring, p: [p.x, p.z], r: [r.x, r.z] };
+    }`, `(dt, t, s) => {
+      const { p, r } = s.vars;
+      for (const u of [p, r]) u.combatant.health = u.combatant.stats.maxHealth;
+      if (!s.vars.cast && t > 0.02) { s.vars.cast = 1; s.cast(p, 0, r.x, r.z); }
+      const dx = p.x - r.x, dz = p.z - r.z, d = Math.hypot(dx, dz) || 1;
+      const bx = dx / d, bz = dz / d;
+      const cx = p.x + bx * 4.2 - bz * 2.4, cz = p.z + bz * 4.2 + bx * 2.4;
+      s.look(cx, 2.3, cz, (p.x + r.x) / 2 - bz * 1.2, 1.4, (p.z + r.z) / 2 + bx * 1.2, 46);
+    }`),
+  kaArena: still('arena', `(s, g) => {
+      const p = s.combat.player;
+      g.player.model.root.visible = true;
+      // off the spawn dais, so its rim stays out of the foreground
+      s.combat.sim.teleport(p, -1.4, 12.4, 0);
+      s.vars.p = p;
+      return { posts: s.combat.sim.units.filter((u) => u.kind === 'dummy').map((u) => [u.x, u.z]) };
+    }`, `(dt, t, s) => {
+      const p = s.vars.p;
+      if (!s.vars.c1 && t > 0.02) { s.vars.c1 = 1; s.cast(p, 0, 0, 9); }
+      s.look(2.3, 2.3, 16.4, -0.5, 1.4, 6, 46);
+    }`),
+  kaSiege: still('siege', `(s, g) => {
+      const near = () => {
+        const us = s.combat.sim.units.filter((u) => u.alive);
+        const gods = us.filter((u) => u.kind === 'god' && u !== s.combat.player);
+        const m = us.find((u) => u.kind === 'monster' && gods.some((x) => Math.hypot(x.x - u.x, x.z - u.z) < 6));
+        return m ? [m, ...gods.filter((x) => Math.hypot(x.x - m.x, x.z - m.z) < 8)] : null;
+      };
+      s.park(0, 60);
+      s.skip(28);
+      const ok = s.skipUntil(() => !!near(), 90);
+      s.vars.near = near;
+      return { ok, at: s.skipped };
+    }`, `(dt, t, s) => {
+      const who = s.vars.near();
+      if (who) { let x = 0, z = 0; for (const u of who) { x += u.x; z += u.z; } s.vars.f = { x: x / who.length, z: z / who.length }; }
+      const f = s.vars.f;
+      if (!f) return;
+      // from the plaza's middle, looking out at the gate the fight is at
+      const d = Math.hypot(f.x, f.z) || 1, ox = f.x / d, oz = f.z / d;
+      s.look(f.x - ox * 10 + oz * 3, 6.5, f.z - oz * 10 - ox * 3, f.x + ox * 2, 1.2, f.z + oz * 2, 50);
+    }`),
+  kaJotunn: still('jotunn', `(s, g) => {
+      const giant = () => s.combat.sim.units.find((u) => u.name === 'Jötunn');
+      const gods = () => s.combat.sim.units.filter((u) => u.kind === 'god' && u.alive && u !== giant() && u !== s.combat.player);
+      s.skip(12);
+      const ok = s.skipUntil(() => { const j = giant(); return !!j && gods().filter((x) => Math.hypot(x.x - j.x, x.z - j.z) < 12).length >= 2; }, 90);
+      // set the fight on the open plaza: the giant in the middle, two gods squaring up to it
+      const j = giant(), two = gods().slice(0, 2);
+      s.combat.sim.teleport(j, 0, -2, Math.PI);
+      if (two[0]) s.combat.sim.teleport(two[0], 3.2, 5.2, 0);
+      if (two[1]) s.combat.sim.teleport(two[1], -2.6, 6.4, 0);
+      s.vars.giant = giant; s.vars.two = two;
+      return { ok, at: s.skipped, gods: two.map((u) => u.name) };
+    }`, `(dt, t, s) => {
+      for (const u of s.vars.two) u.combatant.health = u.combatant.stats.maxHealth;
+      // low behind the gods, looking up at the giant over their heads
+      s.look(5.5, 2.4, 15.5, -0.4, 5.6, -1.5, 52);
+    }`),
   probeArena: {
     url: 'map=arena&god=zeus&quality=high',
     frames: 1,

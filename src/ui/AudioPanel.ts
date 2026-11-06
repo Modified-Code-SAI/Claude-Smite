@@ -84,7 +84,9 @@ export function installUiSounds(engine: AudioEngine): void {
         }, 0);
         return;
       }
-      const name = el.classList.contains('sm-play') ? 'ui.play' : el.matches('.sm-god, .sm-mode, [data-act="slot"], [data-act="god"]') ? 'ui.select' : 'ui.click';
+      // (a control that makes its own sound, like the god pick's Ready, says so)
+      if (el.dataset.sound === 'none') return;
+      const name = el.classList.contains('sm-play') ? 'ui.play' : el.matches('.sm-god, .sm-mode, .gp-god, [data-act="slot"], [data-act="god"]') ? 'ui.select' : 'ui.click';
       engine.play(name, { bus: 'ui', gain: name === 'ui.play' ? 0.9 : 0.8 }, 6, 0.03);
     },
     true,
