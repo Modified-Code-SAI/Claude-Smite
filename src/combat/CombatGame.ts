@@ -476,6 +476,10 @@ export class CombatGame implements Updatable {
       headOf: (u, out) => this.views.headOf(u, out),
       handOf: (u, out) => this.views.handOf(u, out),
       carry: (u) => (this.views.carrier = u),
+      reach: (u, x, y, z) => {
+        this.views.catcher = u;
+        this.views.catchAt.set(x, y, z);
+      },
       toast: (t) => this.hud.toast(t),
       camera: this.deps.camera,
       burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),

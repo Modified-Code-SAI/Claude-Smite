@@ -685,26 +685,67 @@ export class Rush {
 
   /** The nearest god close enough takes the relic (`h`: its height above the ground). */
   private tryCatch(reach: number, h: number): boolean {
-    const r = this.relic;
     const now = this.sim.time;
     if (now < this.noCatchAll) return false;
+    const best = this.catcherAt(this.relic.x, this.relic.z, h, reach, now);
+    if (!best) return false;
+    this.take(best);
+    return true;
+  }
+
+  /** The nearest god who could take the relic at (x, z), `h` above the ground, at sim time `at`. */
+  private catcherAt(x: number, z: number, h: number, reach: number, at: number): Unit | null {
     const K = RUSH.keeper;
     let best: Unit | null = null;
     let bestD = Infinity;
     for (const g of this.squad) {
       if (!g.alive) continue;
       const block = this.noCatch.get(g);
-      if (block !== undefined && now < block) continue;
+      if (block !== undefined && at < block) continue;
       // a keeper in front of their own gate reaches farther and higher
       const keeper = inGate(g.team as Side, g.x, g.z, K.halfWidth, K.depth);
       if (h > (keeper ? K.height : RUSH.relic.catchHeight)) continue;
-      const d = hypot(g.x - r.x, g.z - r.z);
+      const d = hypot(g.x - x, g.z - z);
       const hands = g.combatant.sport('catchReach');
       if (d <= g.radius + hands + (keeper ? Math.max(reach, K.reach) : reach) && d < bestD) [best, bestD] = [g, d];
     }
-    if (!best) return false;
-    this.take(best);
-    return true;
+    return best;
+  }
+
+  /**
+   * Who is about to catch the relic in flight, by the catching rules from
+   * where everyone stands now, within `ahead` seconds: how soon, and where
+   * (height above the ground) it meets their hands. Null when it isn't flying
+   * or nobody will. Every end can ask (a guest has the flight too); the views
+   * reach the catcher's hand out to meet it.
+   */
+  incoming(ahead: number, out: { unit: Unit | null; eta: number; x: number; z: number; h: number }): boolean {
+    const r = this.relic;
+    out.unit = null;
+    if (r.phase !== 'flying' || r.duration <= 0 || this.phase !== 'play') return false;
+    const R = RUSH.relic;
+    const now = this.sim.time;
+    const steps = 10;
+    for (let i = 0; i <= steps; i++) {
+      const dt = (ahead * i) / steps;
+      if (now + dt < this.noCatchAll) continue;
+      const p = Math.min(1, (r.t + dt) / r.duration);
+      const x = r.fx + (r.tx - r.fx) * p;
+      const z = r.fz + (r.tz - r.fz) * p;
+      const h = Rush.flightHeight(r, p);
+      const g = this.catcherAt(x, z, h, R.catchReach, now + dt);
+      // (a guest doesn't know who can't catch it yet: the thrower just let it go)
+      if (g && !(g === r.thrower && r.t + dt < R.selfCatch)) {
+        out.unit = g;
+        out.eta = dt;
+        out.x = x;
+        out.z = z;
+        out.h = h;
+        return true;
+      }
+      if (p >= 1) break;
+    }
+    return false;
   }
 
   /** The team one goal from the win ('both' at four apiece), or null. Never in golden-relic overtime, where any goal wins. */
