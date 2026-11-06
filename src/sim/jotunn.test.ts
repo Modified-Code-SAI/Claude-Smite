@@ -5,7 +5,7 @@ import { basicAttackRaw, computeDamage } from '../game/combat';
 import { ULTIMATE_SLOT } from '../game/loadout';
 import { XP_TABLE } from '../game/progression';
 import { godUnit } from './factory';
-import { Jotunn, JOTUNN, PARTS, partMult, SHRINES, weakHeft } from './Jotunn';
+import { isGiant, Jotunn, JOTUNN, PARTS, partMult, SHRINES, weakHeft } from './Jotunn';
 import { escape, jotunnBots } from './JotunnBots';
 import { Sim, type SimTerrain } from './Sim';
 import type { Flash, Unit } from './Unit';
@@ -177,6 +177,14 @@ describe('Jötunn', () => {
     expect(weakHeft(part('kneeL'), 60)).toBeLessThan(0.08);
     expect(weakHeft(part('kneeL'), 200)).toBeGreaterThanOrEqual(0.08);
     expect(weakHeft(g, 300)).toBe(0);
+  });
+
+  it('knows the giant from its weak points and the gods, whoever plays it, and owns its weak points', () => {
+    const { mode, part, g } = setup();
+    expect(isGiant(g)).toBe(true);
+    expect(isGiant(part('kneeL'))).toBe(false);
+    expect(part('kneeL').owner).toBe(g);
+    expect(mode.gods.some(isGiant)).toBe(false);
   });
 
   it('a broken knee grows back if the other holds', () => {
