@@ -178,6 +178,8 @@ export class JotunnHud {
       this.root.dataset.cine = v;
       document.body.classList.toggle('jotunn-cine', !!v);
     });
+    // the countdown, while everyone holds their mark (its number and "Click to play" would print over each other)
+    this.set('count', m.phase === 'countdown' ? '1' : '', (v) => document.body.classList.toggle('jotunn-countdown', !!v));
     // the waking: who the giant is this round
     const card = cine === 'wake' ? `${m.round}|${mine}|${m.giantPlayer.name}` : '';
     this.set('card', card, () => {
