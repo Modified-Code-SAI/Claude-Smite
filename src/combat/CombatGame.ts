@@ -522,6 +522,7 @@ export class CombatGame implements Updatable {
       cameraShot: this.deps.cameraShot,
       collision: world.collision,
       camera: this.deps.camera,
+      pings: this.pings.mapMarks,
       sun: world.environment.sunDirection,
       environment: world.environment,
       startPoints: (u) => this.startingPoints(u),

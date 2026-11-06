@@ -3,6 +3,7 @@ import { toScreen, type ScreenSpot } from '../combat/screenEdge';
 import { hypot } from '../core/math';
 import { JOTUNN, type Jotunn, type JotunnPhase, SHRINES } from '../sim/Jotunn';
 import type { Point, SimEvent } from '../sim/Unit';
+import { radarSize } from './JotunnRadar';
 
 /**
  * Jötunn's objective marks: small markers over what the round is about, and
@@ -115,19 +116,31 @@ const CLEAR_MIDDLE = 80;
  * fades back, and an edge mark pins just below it. Pixels.
  */
 export const TOP_CLEAR = 118;
+/** The round's wins under the radar (jotunn.css .jt-wins: five rows at most). Pixels. */
+export const WINS_CLEAR = 110;
 
 /**
  * Keeps a mark clear of the HUD on a w x h screen: an edge mark under the top
- * HUD moves below it; returns whether a mark in view should fade back (under
- * the top HUD, or over the aim).
+ * HUD moves below it, and one in the radar's corner slides out along its edge;
+ * returns whether a mark in view should fade back (under the top HUD or the
+ * radar, or over the aim).
  */
 export function clearOfHud(p: ScreenSpot, w: number, h: number): boolean {
   const underTop = p.y < TOP_CLEAR && Math.abs(p.x - w / 2) < Math.min(0.3 * w, 260) + 24;
+  // the radar's corner, top right (12 px in, a little room round it), and the round's wins under it
+  const corner = radarSize(w) + 22;
+  const below = corner + WINS_CLEAR;
+  const underRadar = p.x > w - corner && p.y < below;
   if (p.edge) {
     if (underTop) p.y = TOP_CLEAR;
+    // an edge mark slides out of the corner along its own edge
+    else if (underRadar) {
+      if (w - p.x < p.y) p.y = below;
+      else p.x = w - corner;
+    }
     return false;
   }
-  return underTop || (Math.abs(p.x - w / 2) < CLEAR_MIDDLE && Math.abs(p.y - h / 2) < CLEAR_MIDDLE);
+  return underTop || underRadar || (Math.abs(p.x - w / 2) < CLEAR_MIDDLE && Math.abs(p.y - h / 2) < CLEAR_MIDDLE);
 }
 
 export class JotunnMarks {
