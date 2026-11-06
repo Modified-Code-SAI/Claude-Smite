@@ -33,7 +33,9 @@ export interface KitBuild {
   readonly group: THREE.Group;
   add(geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast?: boolean): THREE.Mesh;
   /** A light that shows with this dressing (the pool lights the nearest few). */
-  light(color: number, intensity: number, distance: number, x: number, y: number, z: number): void;
+  light(color: number, intensity: number, distance: number, x: number, y: number, z: number): THREE.PointLight;
+  /** Makes a light beat like a heart: a strong pulse and a softer one, then a rest. */
+  beat(light: THREE.PointLight): void;
 }
 
 /** A chamber's dressing for one depth: its columns, the vessels of its fires, and what lines its walls. */
@@ -151,6 +153,7 @@ export const forgeKit: Kit = (k) => {
     used.push(spot.a);
   }
   if (c.boss) hoard(k, used);
+  if (c.pit) chainedHeart(k);
   const smithies = c.boss ? 2 : 3;
   for (let s = 0, tries = 0; s < smithies && tries < 40; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
@@ -348,6 +351,33 @@ function chain(k: KitBuild, link: THREE.BufferGeometry, x: number, z: number, bo
   k.add(merge(parts), mat, x, 0, z, false);
 }
 
+/**
+ * A great chain slung from `a` to `b` (both in the chamber's frame), sagging
+ * `sag` m at its middle, its links `scale` times a hanging chain's.
+ */
+function slackChain(a: THREE.Vector3, b: THREE.Vector3, sag: number, scale: number): THREE.BufferGeometry {
+  const link = chainLink().scale(scale, scale, scale);
+  // a quadratic curve's middle is a quarter of the way to its control point
+  const ctrl = a.clone().add(b).multiplyScalar(0.5);
+  ctrl.y -= sag * 2;
+  const curve = new THREE.QuadraticBezierCurve3(a, ctrl, b);
+  const n = Math.ceil(curve.getLength() / (LINK * scale));
+  const up = new THREE.Vector3(0, 1, 0);
+  const quarter = new THREE.Quaternion().setFromAxisAngle(up, Math.PI / 2);
+  const q = new THREE.Quaternion();
+  const m = new THREE.Matrix4();
+  const one = new THREE.Vector3(1, 1, 1);
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < n; i++) {
+    const u = (i + 0.5) / n;
+    q.setFromUnitVectors(up, curve.getTangentAt(u));
+    // every other link turned a quarter about the chain
+    if (i % 2) q.multiply(quarter);
+    parts.push(link.clone().applyMatrix4(m.compose(curve.getPointAt(u), q, one)));
+  }
+  return merge(parts);
+}
+
 const HOOK = merge([
   new THREE.TorusGeometry(0.2, 0.045, 6, 12, Math.PI * 1.3).rotateZ(Math.PI * 0.85).translate(0, -0.2, 0),
   new THREE.CylinderGeometry(0.04, 0.04, 0.3, 6).translate(0, 0.02, 0),
@@ -370,6 +400,97 @@ function cage(k: KitBuild, x: number, z: number, top: number, mat: THREE.Materia
   const m = k.add(merge(parts), mat, x, top, z, true);
   m.rotation.y = k.random() * Math.PI;
 }
+
+// ---------------------------------------------------------------------------
+// The Ashen Depths' landmark: the Burning Pit's chained heart
+
+/**
+ * A heart of molten metal held in an iron cage halfway up a basalt spire
+ * that rises out of the lava, bound to the four piers round the pit by great
+ * chains slung over the floor.
+ */
+function chainedHeart(k: KitBuild): void {
+  const { c, mats, add } = k;
+  const y = 5.9;
+  const crag = add(boulder(1, 9000, 3), mats.forgeStone, 0, -1.4, 0);
+  crag.scale.set(3.4, 2.6, 3.1);
+  add(spire(1.7, 16, 9010), mats.forgeStone, 0, -1, 0);
+  const heart = add(HEART, mats.molten, 0, y, 0, false);
+  heart.rotation.set(0.25, 0.6, -0.2);
+  heart.scale.setScalar(1.25);
+  add(HEART_CAGE, mats.iron, 0, y, 0);
+  for (const b of [y - 2.6, y + 2.4, 12.4]) add(band(1.55 - (b - y) * 0.05, 0.4, 0.1), mats.iron, 0, b, 0).rotation.y = b;
+  // chains out to the inner face of each pier
+  for (const [x, z, r] of c.pillars) {
+    const d = Math.hypot(x, z);
+    const from = new THREE.Vector3((x / d) * 1.7, y + 0.3, (z / d) * 1.7);
+    const to = new THREE.Vector3(x - (x / d) * (r + 0.4), 8, z - (z / d) * (r + 0.4));
+    add(slackChain(from, to, 1.3, 2.3), mats.iron, 0, 0, 0);
+  }
+  k.beat(k.light(0xff7a2a, 55, 18, 0, y, 0));
+}
+
+/** A jagged eight-sided spire tapering from `r` at its foot to a point `h` up. */
+function spire(r: number, h: number, seed: number): THREE.BufferGeometry {
+  const n = simplex2(seed);
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= 14; i++) {
+    const t = i / 14;
+    pts.push([r * (1 - t * 0.85) * (1 + n(t * 6, 0) * 0.12), t * h]);
+  }
+  pts.push([0, h + 0.4]);
+  const geo = new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 8);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  // a twist up its length, so its faces catch the light unevenly
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    const a = (y / h) * 0.6;
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    pos.setX(i, x * Math.cos(a) - z * Math.sin(a));
+    pos.setZ(i, x * Math.sin(a) + z * Math.cos(a));
+  }
+  const flat = geo.toNonIndexed();
+  flat.computeVertexNormals();
+  return flat;
+}
+
+/**
+ * The heart: two lobes at its top, narrowing to a point turned aside below,
+ * and the stumps of its great vessels rising out of it.
+ */
+const HEART = (() => {
+  const body = new THREE.SphereGeometry(1.25, 28, 18);
+  const pos = body.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i);
+    let y = pos.getY(i) / 1.25;
+    let z = pos.getZ(i);
+    if (y < 0) {
+      // narrowing to the apex, which leans aside
+      const t = 1 + y * 0.55;
+      x = x * t - y * y * 0.35;
+      z *= t;
+    }
+    // the cleft between the two lobes
+    if (y > 0) y -= Math.exp(-((x / 0.4) ** 2)) * y * y * 0.28;
+    pos.setXYZ(i, x * 1.05, y * 1.4, z * 0.9);
+  }
+  body.computeVertexNormals();
+  const vessel = (r: number, len: number, x: number, z: number, lean: number) =>
+    new THREE.CylinderGeometry(r * 0.9, r, len, 12, 1, true).translate(0, len / 2, 0).rotateZ(lean).translate(x, 0.75, z);
+  // the great arch rising over the top and turning down behind
+  const arch = new THREE.TorusGeometry(0.55, 0.3, 10, 18, Math.PI * 1.1).rotateY(Math.PI / 2).translate(0.05, 1.15, -0.35);
+  // kept with its uvs, which the molten metal flows along
+  const geo = mergeGeometries([body, vessel(0.32, 0.9, -0.45, 0.25, 0.3), vessel(0.24, 0.8, 0.55, 0.3, -0.35), arch], false);
+  if (!geo) throw new Error('heart merge failed');
+  return geo;
+})();
+/** Ribs of iron gripping the heart, belted round its middle. */
+const HEART_CAGE = merge([
+  ...[0, 1, 2, 3, 4, 5].map((i) => new THREE.TorusGeometry(1.85, 0.09, 5, 20, Math.PI).rotateZ(Math.PI / 2).scale(1, 1.3, 1).rotateY((i / 6) * Math.PI * 2)),
+  new THREE.TorusGeometry(1.86, 0.12, 5, 28).rotateX(Math.PI / 2),
+]);
 
 // ---------------------------------------------------------------------------
 // The Treasure Wyrm's arena: its hoard
@@ -613,6 +734,7 @@ export const drownedKit: Kit = (k) => {
     }
   };
   if (c.boss) foundry(k, used);
+  if (c.pit) drownedBell(k);
   place(c.boss ? 3 : 2, 0.5, (s) => mourner(k, s));
   place(c.boss ? 1 : 3, 0.45, (s) => sarcophagus(k, s));
   const rocks = Array.from({ length: 5 }, (_, i) => boulder(1, 6200 + i * 19, 3));
@@ -829,6 +951,47 @@ function lantern(k: KitBuild, x: number, z: number, top: number): void {
 const ORB = new THREE.SphereGeometry(0.24, 14, 10);
 
 // ---------------------------------------------------------------------------
+// The Drowned Halls' landmark: the Burning Pit's drowned bell
+
+/**
+ * A colossal bell of old bronze hanging low over the pit on four chains out
+ * of the dark, the soul fire lighting it from below, its clapper hanging
+ * still under its lip.
+ */
+function drownedBell(k: KitBuild): void {
+  const { mats, add } = k;
+  const y = 3.1;
+  const bell = add(BELL, mats.bronze, 0, y, 0);
+  bell.rotation.set(0.05, 0.3, 0.07);
+  add(CLAPPER, mats.iron, 0.15, y, 0.1);
+  add(new THREE.BoxGeometry(4.6, 0.55, 0.8), mats.iron, 0, y + 5.75, 0).rotation.y = 0.3;
+  for (const end of [-1, 1]) {
+    for (const side of [-1, 1]) {
+      const along = new THREE.Vector3(end * 2.1, y + 5.9, side * 0.3).applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.3);
+      const top = new THREE.Vector3(along.x * 2.6 + side * 2, 24, along.z * 2.6 + side * 3);
+      add(slackChain(along, top, 0.25, 1.7), mats.iron, 0, 0, 0, false);
+    }
+  }
+  k.light(0x6ab8ff, 26, 14, 0, y + 7, 4);
+}
+
+/** A great bell, its lip at y 0 and its crown 5.6 m up: a thick bronze wall flaring to the lip, a dome, and a loop on top. */
+const BELL = merge([
+  lathe([
+    [3.3, 0], [3.45, 0.25], [3.2, 0.6], [2.7, 1.4], [2.45, 2.6], [2.3, 3.8], [2.05, 4.7], [1.6, 5.3], [0.9, 5.6], [0, 5.65],
+    [0, 5.35], [0.85, 5.3], [1.5, 5.0], [1.85, 4.5], [2.05, 3.7], [2.2, 2.5], [2.45, 1.3], [2.95, 0.5], [3.1, 0.12], [3.3, 0],
+  ], 40),
+  new THREE.TorusGeometry(2.42, 0.11, 6, 40).rotateX(Math.PI / 2).translate(0, 2.6, 0),
+  new THREE.TorusGeometry(2.06, 0.1, 6, 40).rotateX(Math.PI / 2).translate(0, 4.7, 0),
+  new THREE.TorusGeometry(0.55, 0.18, 8, 16).translate(0, 5.95, 0),
+]);
+/** The clapper's rod from the crown and its ball just under the lip. */
+const CLAPPER = merge([
+  new THREE.CylinderGeometry(0.12, 0.12, 5.4, 8).translate(0, 2.7, 0),
+  new THREE.SphereGeometry(0.62, 16, 12).scale(1, 1.15, 1).translate(0, -0.25, 0),
+]);
+
+// ---------------------------------------------------------------------------
 // The Molten Colossus's arena: its foundry
 
 /**
@@ -1027,6 +1190,7 @@ export const abyssKit: Kit = (k) => {
     }
   }
   if (c.boss) court(k, used);
+  if (c.pit) reachingHand(k);
   for (let n = 0, tries = 0; n < (c.boss ? 2 : 3) && tries < 60; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
     if (!spot || near(spot.a, 0.42)) continue;
@@ -1277,6 +1441,70 @@ function ribcage(k: KitBuild, s: WallSpot): void {
   g.position.set(s.x + s.dx * back, 0, s.z + s.dz * back);
   g.rotation.y = facingIn(s);
   k.group.add(g);
+}
+
+// ---------------------------------------------------------------------------
+// The Abyss's landmark: the Burning Pit's reaching hand
+
+/**
+ * The bones of a colossal hand and forearm reaching up out of the pit, the
+ * wrist bent back so its palm turns up toward the way in, its fingers curled
+ * round a ball of spirit fire.
+ */
+function reachingHand(k: KitBuild): void {
+  const { mats, add } = k;
+  const parts: THREE.BufferGeometry[] = [];
+  // the arm leans a little toward the way on
+  const arm = new THREE.Matrix4().makeTranslation(0.6, -5.4, 0.8).multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(-0.12, 0, 0.1)));
+  // the forearm's two bones, crossing a little
+  for (const side of [-1, 1]) {
+    const bone = ARM_BONE.clone().applyMatrix4(new THREE.Matrix4().makeRotationZ(side * 0.04)).translate(side * 0.62, 0, 0);
+    parts.push(bone.applyMatrix4(arm));
+  }
+  // the wrist: two rows of knucklebones, then the hand bent back at it
+  const wrist = arm.clone().multiply(new THREE.Matrix4().makeTranslation(0, 9.1, 0));
+  for (let i = 0; i < 8; i++) {
+    const g = boulder(0.36 + (i % 3) * 0.06, 9100 + i, 1).translate(-1.05 + (i % 4) * 0.7, Math.floor(i / 4) * 0.62, ((i * 37) % 5) * 0.06);
+    parts.push(g.applyMatrix4(wrist));
+  }
+  const hand = wrist.clone().multiply(new THREE.Matrix4().makeTranslation(0, 1.1, 0)).multiply(new THREE.Matrix4().makeRotationX(-1.0));
+  const x = new THREE.Matrix4();
+  // each joint curls the next bone in toward the palm (and `across`, sideways over it)
+  const finger = (base: THREE.Matrix4, lengths: readonly number[], r: number, curls: readonly number[], across = 0) => {
+    const m = base.clone();
+    lengths.forEach((len, i) => {
+      parts.push(phalanx(len, r).applyMatrix4(m));
+      m.multiply(x.makeTranslation(0, len, 0)).multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(curls[i]!, 0, across)));
+      r *= 0.84;
+    });
+  };
+  // four fingers fanning from the palm (a long bone in the palm, then three joints each)
+  [-1.5, -0.5, 0.5, 1.5].forEach((across, i) => {
+    const base = hand.clone().multiply(new THREE.Matrix4().makeTranslation(across * 0.62, 0, 0)).multiply(new THREE.Matrix4().makeRotationZ(-across * 0.1));
+    const long = [3.4, 3.7, 3.5, 3.0][i]!;
+    finger(base, [long, 2.1 - Math.abs(across) * 0.25, 1.4, 1.0], 0.3, [0.45, 0.6, 0.55, 0]);
+  });
+  // the thumb, out from the side and curling back across the palm
+  const thumb = hand.clone().multiply(new THREE.Matrix4().makeTranslation(1.2, -0.3, 0.35)).multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0.55, 0, -0.75)));
+  finger(thumb, [1.9, 1.5, 1.0], 0.34, [0.35, 0.4, 0], 0.5);
+  add(merge(parts), mats.bone, 0, 0, 0);
+  // the fire it holds
+  const fire = new THREE.Vector3(0, 3.6, 1.6).applyMatrix4(hand);
+  add(EYE, mats.coals, fire.x, fire.y, fire.z, false).scale.setScalar(1.5);
+  add(FLAME_BED, mats.flameBed, fire.x, fire.y - 0.6, fire.z, false).scale.setScalar(2.2);
+  k.light(0x5aff8a, 50, 18, fire.x, fire.y + 0.5, fire.z);
+}
+
+/** One of the forearm's bones, 9 m from below the lava to the wrist. */
+const ARM_BONE = lathe([
+  [0, 0], [0.55, 0], [0.5, 2], [0.42, 5], [0.48, 7.6], [0.68, 8.5], [0.72, 8.9], [0.5, 9.2], [0, 9.25],
+], 14);
+
+/** A finger bone `len` long up y from a knuckle at its foot. */
+function phalanx(len: number, r: number): THREE.BufferGeometry {
+  return lathe([
+    [0, -0.05], [r * 1.25, 0], [r * 1.3, len * 0.12], [r * 0.85, len * 0.3], [r * 0.8, len * 0.7], [r * 1.15, len * 0.9], [r, len], [0, len + 0.05],
+  ], 10);
 }
 
 // ---------------------------------------------------------------------------

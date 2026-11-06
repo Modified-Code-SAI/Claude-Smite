@@ -38,6 +38,8 @@ export class UnderworldMap implements MapContent {
   /** The Burning Pit's light from below, in the depth's glow. */
   private readonly lakeLights: THREE.PointLight[] = [];
   readonly lights: THREE.PointLight[] = [];
+  /** Lights that beat like a heart, each with its full strength. */
+  private readonly beats: { light: THREE.PointLight; full: number }[] = [];
   readonly spawn: { x: number; z: number; yaw: number };
   readonly groundColor = new THREE.Color(0.05, 0.045, 0.055);
   /** Each chamber's shell, in CHAMBERS order. */
@@ -192,8 +194,10 @@ export class UnderworldMap implements MapContent {
       g.add(l);
       keep.push(l);
       this.lights.push(l);
+      return l;
     };
-    KITS[depth]!({ c, index, random, mats: this.mats, group: g, add, light });
+    const beat = (l: THREE.PointLight) => void this.beats.push({ light: l, full: l.intensity });
+    KITS[depth]!({ c, index, random, mats: this.mats, group: g, add, light, beat });
     mergeStatic(g, keep);
     g.position.set(c.x, 0, c.z);
     this.group.add(g);
@@ -220,6 +224,12 @@ export class UnderworldMap implements MapContent {
 
   update(_dt: number, time: number): void {
     for (const f of this.fires) f.update(time);
+    if (this.beats.length) {
+      // lub-dub, then a rest, about 50 beats a minute
+      const p = (time % 1.2) / 1.2;
+      const pulse = Math.exp(-(((p - 0.06) / 0.05) ** 2)) + 0.55 * Math.exp(-(((p - 0.24) / 0.06) ** 2));
+      for (const b of this.beats) b.light.intensity = b.full * (0.7 + 0.6 * pulse);
+    }
   }
 }
 
