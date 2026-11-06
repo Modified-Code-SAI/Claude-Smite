@@ -525,6 +525,9 @@ export class CombatGame implements Updatable {
       startPoints: (u) => this.startingPoints(u),
     });
     this.jotunn = this.jotunnMode.mode;
+    const jt = this.jotunn;
+    // the death recap names the giant and who plays it this round
+    this.hud.recapName = (u) => (u === jt.giant ? `the Jötunn (${jt.giantPlayer.name})` : null);
     this.netHost = this.jotunnMode.host;
     this.netGuest = this.jotunnMode.guest;
   }

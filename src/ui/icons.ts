@@ -389,6 +389,17 @@ function skillArt(godId: string, skill: SkillDef, withBadge: boolean): { vfx: st
   return { vfx: hex(p.vfx), core, body };
 }
 
+/** What a hit that no skill dealt shows as: a god's basic attack (melee or ranged), its passive, a monster's blow, the ground itself. */
+export type HitKind = 'melee' | 'ranged' | 'passive' | 'monster' | 'hazard';
+
+/** The icon for a hit no skill dealt, in the hitter's colors (the Jötunn's basic is its club). */
+export function hitIcon(godId: string, kind: HitKind): string {
+  const p = paletteFor(godId);
+  const core = hex(p.core);
+  const g: Glyph = kind === 'melee' ? (godId === 'jotunn' ? 'hammer' : 'dagger') : kind === 'ranged' ? 'projectile' : kind === 'passive' ? 'orb' : kind === 'monster' ? 'skull' : 'rift';
+  return iconSvg(hex(p.vfx), glyphAt(g, 32, 32, 0.72, `fill="${core}" stroke="${core}"`), false);
+}
+
 export function skillIcon(godId: string, skill: SkillDef): string {
   const a = skillArt(godId, skill, true);
   return iconSvg(a.vfx, a.body, skill.kind === 'ultimate');

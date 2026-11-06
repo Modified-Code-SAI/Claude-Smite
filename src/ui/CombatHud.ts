@@ -9,6 +9,7 @@ import { RECALL_TIME } from '../sim/Sim';
 import { isStructure, type SimEvent, type Unit } from '../sim/Unit';
 import { hex, TEAM_COLORS } from '../combat/palette';
 import { skillIcon } from './icons';
+import { DamageLog, killerHtml, recapHtml, type RecapName } from './deathRecap';
 import { hypot } from '../core/math';
 import './combat.css';
 import { BOSS_EPITHET } from './bossNames';
@@ -150,6 +151,12 @@ export class CombatHud {
   private readonly death: HTMLDivElement;
   private readonly deathTimer: HTMLSpanElement;
   private readonly deathLine: HTMLElement;
+  private readonly deathBy: HTMLElement;
+  private readonly recap: HTMLElement;
+  /** The hits the player took lately, for the death screen's recap. */
+  private readonly taken = new DamageLog();
+  /** How the recap names a unit, when a mode names it its own way (the Jötunn and who plays it). */
+  recapName: RecapName = null;
   private readonly toastBox: HTMLDivElement;
   private readonly overlay: HTMLDivElement;
   private readonly bars = new Map<Unit, Bar>();
@@ -235,9 +242,11 @@ export class CombatHud {
     this.status = el('div', 'ch-status', this.root);
     this.recall = el('div', 'ch-recall', this.root, '<span>Recalling</span>');
     this.recallFill = el('div', 'ch-recall-fill', this.recall);
-    this.death = el('div', 'ch-death', this.root, '<div class="ch-death-title">Slain</div><div class="ch-death-line">Returning in <span></span></div>');
-    this.deathTimer = this.death.querySelector('span')!;
+    this.death = el('div', 'ch-death', this.root, '<div class="ch-death-title">Slain</div><div class="ch-death-by"></div><div class="ch-death-line">Returning in <span></span></div><div class="ch-recap"></div>');
+    this.deathTimer = this.death.querySelector('.ch-death-line span')!;
     this.deathLine = this.death.querySelector('.ch-death-line')!;
+    this.deathBy = this.death.querySelector('.ch-death-by')!;
+    this.recap = this.death.querySelector('.ch-recap')!;
     this.toastBox = el('div', 'ch-toasts', this.root);
 
     const obj = el('div', 'ch-boss', this.root);
@@ -258,6 +267,7 @@ export class CombatHud {
   setPlayer(u: Unit): void {
     this.player = u;
     this.loadoutKey = '';
+    this.taken.clear();
     for (const b of this.bars.values()) b.el.remove();
     this.bars.clear();
   }
@@ -332,6 +342,7 @@ export class CombatHud {
         const mine = e.source === this.player || e.source?.owner === this.player;
         const onMe = e.target === this.player;
         if (onMe) {
+          this.taken.record(e.source, e.skill, e.ability, e.amount);
           const share = e.amount / this.player.combatant.stats.maxHealth;
           // a hit under 1% of your health flashes less: the Jötunn, chipped at by four
           // gods at once, would otherwise see red all round (a god's hits are all bigger)
@@ -363,6 +374,7 @@ export class CombatHud {
         if (e.unit === this.player && e.favor > 0) this.floater(e.unit, `+${Math.round(e.xp)} XP &middot; +${Math.round(e.favor)} Favor`, 'ch-num ch-num-reward');
         break;
       case 'death':
+        if (e.unit === this.player) this.showRecap(e.killer);
         if (e.killer === this.player && e.unit.kind === 'god') {
           this.toast(`You slew ${e.unit.name}`, 'gold');
           this.markHit('kill');
@@ -374,6 +386,18 @@ export class CombatHud {
       default:
         break;
     }
+  }
+
+  /**
+   * The death screen's recap: who killed the player and what hurt them most
+   * in the moments before (built once, as the screen fades in). The Jötunn
+   * falls only when the round is won, so it gets none.
+   */
+  private showRecap(killer: Unit | null): void {
+    const giant = isGiant(this.player);
+    this.deathBy.innerHTML = giant ? '' : killerHtml(killer, this.recapName);
+    this.recap.innerHTML = giant ? '' : recapHtml(this.taken.recap(this.recapName));
+    this.taken.clear();
   }
 
   /** Flash the hitmarker; a crit or kill outranks a plain hit still on screen. */
@@ -435,6 +459,7 @@ export class CombatHud {
     const c = p.combatant;
     const s = c.stats;
     this.ageToasts(dt);
+    this.taken.time += dt;
 
     // resources and level
     const hpPct = (c.health / s.maxHealth) * 100;

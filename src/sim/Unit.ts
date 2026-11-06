@@ -226,7 +226,8 @@ export interface Flash {
 }
 
 export type SimEvent =
-  | { type: 'damage'; target: Unit; source: Unit | null; amount: number; crit: boolean; ability: boolean }
+  /** `skill`: the id of the skill that dealt it, when one did (not a basic attack, passive or hazard). */
+  | { type: 'damage'; target: Unit; source: Unit | null; amount: number; crit: boolean; ability: boolean; skill?: string }
   /** `source`: who mended them, when someone did (a Gravekeeper's lantern). */
   | { type: 'heal'; target: Unit; amount: number; source?: Unit }
   | { type: 'cast'; unit: Unit; cast: ResolvedSkill; x: number; z: number }
