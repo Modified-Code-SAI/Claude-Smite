@@ -1,8 +1,8 @@
 /**
  * The Web Audio side: one context (created on the first user gesture, as
- * browsers require), a mixer of buses with a shared reverb, positional
- * voices with distance falloff, loops that follow moving things, and the
- * player's volume settings.
+ * browsers require), a mixer of buses with a shared reverb (the room the
+ * world is heard in, rooms.ts), positional voices with distance falloff,
+ * loops that follow moving things, and the player's volume settings.
  *
  * Sounds are rendered to Float32Arrays ahead of time (see bank.ts) and only
  * become AudioBuffers once the context exists.
@@ -10,6 +10,7 @@
 
 import { RATE } from './dsp';
 import { hypot } from '../core/math';
+import { ROOMS, roomGain, roomImpulse, type Room } from './rooms';
 
 export type Bus = 'music' | 'sfx' | 'ui' | 'voice' | 'ambience';
 
@@ -71,6 +72,14 @@ export interface LoopHandle {
 const CULL = 95;
 const MAX_VOICES = 56;
 
+/** One room's reverb: its input, the world's send into it, and whether that's connected (a room the world left long enough ago is cut off, so it costs nothing). */
+interface RoomNode {
+  input: GainNode;
+  send: GainNode;
+  live: boolean;
+  timer: number;
+}
+
 interface Voice {
   src: AudioBufferSourceNode;
   started: number;
@@ -85,7 +94,12 @@ export class AudioEngine {
   /** Per-bus extra reverb sends, scaled by the bus volume like the dry signal. */
   private wetIns = {} as Record<Bus, GainNode>;
   private readonly settingsListeners: ((s: AudioSettings) => void)[] = [];
+  /** The reverb's sends: the world's sounds go into the room they're heard in; the music and the interface always ring in the hall. */
   private reverbIn!: GainNode;
+  private hallIn!: GainNode;
+  /** The space the world is heard in (rooms.ts), and the rooms built so far. */
+  private room: Room = 'hall';
+  private readonly rooms = new Map<Room, RoomNode>();
   private readonly muffles: BiquadFilterNode[] = [];
   private readonly airLoops = new Set<AirSpot>();
   private readonly airFrom = { x: 0, z: 0 };
@@ -163,12 +177,13 @@ export class AudioEngine {
     this.master = ctx.createGain();
     this.master.connect(comp).connect(limiter).connect(ctx.destination);
 
-    const reverb = ctx.createConvolver();
-    reverb.buffer = impulse(ctx, 2.6);
     this.reverbIn = ctx.createGain();
-    const reverbOut = ctx.createGain();
-    reverbOut.gain.value = 0.9;
-    this.reverbIn.connect(reverb).connect(reverbOut).connect(this.master);
+    this.hallIn = ctx.createGain();
+    this.hallIn.connect(this.roomNode('hall').input);
+    const room = this.roomNode(this.room);
+    room.send.gain.value = 1;
+    this.reverbIn.connect(room.send);
+    room.live = true;
 
     for (const b of Object.keys(BUS_TRIM) as Bus[]) {
       const g = ctx.createGain();
@@ -186,11 +201,13 @@ export class AudioEngine {
       post.connect(this.master);
       const send = ctx.createGain();
       send.gain.value = REVERB_SEND[b];
-      post.connect(send).connect(this.reverbIn);
+      // (the music isn't anywhere, so it keeps its own hall wherever the world is)
+      const into = b === 'music' || b === 'ui' ? this.hallIn : this.reverbIn;
+      post.connect(send).connect(into);
       this.buses[b] = g;
       const wet = ctx.createGain();
-      if (muffled) wet.connect(this.muffleFilter()).connect(this.reverbIn);
-      else wet.connect(this.reverbIn);
+      if (muffled) wet.connect(this.muffleFilter()).connect(into);
+      else wet.connect(into);
       this.wetIns[b] = wet;
     }
     const l = ctx.listener;
@@ -340,6 +357,68 @@ export class AudioEngine {
     const data = mix(raw.data, raw.loop);
     this.raw.set(name, { data, loop: raw.loop });
     if (this.ctx) this.toBuffers(name, data);
+  }
+
+  /**
+   * Moves the world's sounds into another space (rooms.ts): their reverb
+   * send crossfades over `fade` seconds, and what already rings in the old
+   * room rings out there. Before audio is unlocked, it's the room it starts in.
+   */
+  setRoom(room: Room, fade = 2): void {
+    if (room === this.room) return;
+    const from = this.room;
+    this.room = room;
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (const [name, to] of [[from, 0], [room, 1]] as const) {
+      const n = this.roomNode(name);
+      clearTimeout(n.timer);
+      if (!n.live) {
+        this.reverbIn.connect(n.send);
+        n.live = true;
+      }
+      const g = n.send.gain;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(to, now + Math.max(fade, 0.02));
+    }
+    // once the old room's send has closed and its tail rung out, it's cut off
+    const old = this.roomNode(from);
+    old.timer = window.setTimeout(() => {
+      if (this.room === from || !old.live) return;
+      this.reverbIn.disconnect(old.send);
+      old.live = false;
+    }, (fade + ROOMS[from].seconds + 0.5) * 1000);
+  }
+
+  /** Builds rooms ahead (a long impulse takes a moment to set up), as soon as audio is unlocked. */
+  prepareRooms(rooms: readonly Room[]): void {
+    this.onUnlock(() => {
+      for (const r of rooms) this.roomNode(r);
+    });
+  }
+
+  /** A room's reverb, built the first time it's needed: its send, the convolver and its level out to the master. */
+  private roomNode(room: Room): RoomNode {
+    let n = this.rooms.get(room);
+    if (n) return n;
+    const ctx = this.ctx!;
+    const [l, r] = roomImpulse(ROOMS[room], ctx.sampleRate);
+    const buffer = ctx.createBuffer(2, l.length, ctx.sampleRate);
+    buffer.copyToChannel(l as Float32Array<ArrayBuffer>, 0);
+    buffer.copyToChannel(r as Float32Array<ArrayBuffer>, 1);
+    const conv = ctx.createConvolver();
+    conv.buffer = buffer;
+    const input = ctx.createGain();
+    const send = ctx.createGain();
+    send.gain.value = 0;
+    send.connect(input);
+    const out = ctx.createGain();
+    out.gain.value = 0.9 * roomGain(room);
+    input.connect(conv).connect(out).connect(this.master);
+    n = { input, send, live: false, timer: 0 };
+    this.rooms.set(room, n);
+    return n;
   }
 
   has(name: string): boolean {
@@ -639,29 +718,6 @@ function setPannerPos(p: PannerNode, x: number, y: number, z: number, t: number,
       p.positionZ.setTargetAtTime(z, t, 0.03);
     }
   } else p.setPosition(x, y, z);
-}
-
-/** A synthetic hall: stereo decaying noise that darkens as it fades. */
-function impulse(ctx: AudioContext, seconds: number): AudioBuffer {
-  const len = Math.round(seconds * ctx.sampleRate);
-  const b = ctx.createBuffer(2, len, ctx.sampleRate);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = b.getChannelData(ch);
-    let lp = 0;
-    let seed = ch ? 0x9e3779b9 : 0x2545f491;
-    for (let i = 0; i < len; i++) {
-      seed ^= seed << 13;
-      seed ^= seed >>> 17;
-      seed ^= seed << 5;
-      const n = ((seed >>> 0) / 4294967296) * 2 - 1;
-      const t = i / len;
-      const cut = 0.6 - t * 0.5;
-      lp += (n - lp) * cut;
-      const pre = i < ctx.sampleRate * 0.012 ? i / (ctx.sampleRate * 0.012) : 1;
-      d[i] = lp * Math.pow(1 - t, 3.2) * pre * 0.6;
-    }
-  }
-  return b;
 }
 
 function loadSettings(): AudioSettings {
