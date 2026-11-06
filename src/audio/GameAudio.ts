@@ -851,9 +851,11 @@ export class GameAudio {
         const ours = g.team === mine;
         const you = g.scorer === this.me;
         const hat = r.hatTrick;
-        const line = hat
-          ? you ? 'A hat trick! Three goals for you!' : ours ? `Hat trick! Three goals for ${g.scorer.name}!` : `A hat trick for ${g.scorer.name}.`
-          : you ? (g.kind === 'shot' ? 'What a shot! You score!' : 'You score!') : ours ? (g.kind === 'shot' ? 'A shot from range! Goal!' : 'Goal! Your team scores.') : 'The enemy scores.';
+        // what it did to the score follows the goal call: level, in front, or one back
+        const story = r.goalStory;
+        const tail = story === 'level' ? (ours ? ' All square!' : ' They draw level.') : story === 'lead' ? (ours ? ' Into the lead!' : ' They take the lead.') : story === 'back' ? (ours ? ' One back!' : ' They pull one back.') : '';
+        const call = you ? (g.kind === 'shot' ? 'What a shot! You score!' : 'You score!') : ours ? (g.kind === 'shot' ? 'A shot from range! Goal!' : 'Goal! Your team scores.') : 'The enemy scores.';
+        const line = hat ? (you ? 'A hat trick! Three goals for you!' : ours ? `Hat trick! Three goals for ${g.scorer.name}!` : `A hat trick for ${g.scorer.name}.`) : call + tail;
         this.herald.say(line, ours ? 'epic' : 'bad', 4);
         if (hat) {
           // and the scorer has a word of their own once the call is made, before anything else is said

@@ -179,6 +179,23 @@ describe('Relic Rush', () => {
     expect(Math.hypot(a.x - RUSH.homes.order[0]!.x, a.z - RUSH.homes.order[0]!.z)).toBeLessThan(0.5);
   });
 
+  it('tells what each goal did to the score', () => {
+    const { rush } = match();
+    const story = (team: 'order' | 'chaos', order: number, chaos: number) => {
+      rush.score.order = order;
+      rush.score.chaos = chaos;
+      rush.lastGoal = { team, scorer: null as never, assist: null, kind: 'dunk', at: 0 };
+      return rush.goalStory;
+    };
+    expect(story('order', 1, 0)).toBe('opener');
+    expect(story('chaos', 1, 1)).toBe('level');
+    expect(story('chaos', 1, 2)).toBe('lead');
+    expect(story('chaos', 1, 3)).toBe('extend');
+    expect(story('order', 2, 3)).toBe('back');
+    rush.lastGoal = null;
+    expect(rush.goalStory).toBeNull();
+  });
+
   it("a god's third goal is a hat trick, and a guest sees it too", () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);
@@ -196,6 +213,8 @@ describe('Relic Rush', () => {
       run(sim, rush, RUSH.celebrate + 0.1, () => rush.phase === 'kickoff');
     }
     expect(hats).toEqual([false, false, true]);
+    // 3-0: the first opened it, and each after stretched the lead
+    expect(rush.goalStory).toBe('extend');
     const guest = match();
     const gods = [god(guest.sim, zeus, 'order', 0), god(guest.sim, thor, 'chaos', 0)];
     guest.rush.join(gods);
