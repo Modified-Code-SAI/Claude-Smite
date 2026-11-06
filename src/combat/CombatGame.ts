@@ -90,6 +90,8 @@ export interface CombatDeps {
   camera: THREE.PerspectiveCamera;
   /** Adds camera shake (0..1 trauma). */
   shake?: (amount: number) => void;
+  /** A glow in from the screen's edges in `hex` (`strength` 0..1) and an FOV kick of `fov` degrees: the player's ultimate, a kill. */
+  pulse?: (hex: number, strength: number, fov: number) => void;
   /** A multiplayer Conquest match: the lobby's players take god slots, bots fill the rest. */
   net?: NetSession;
   /** How hard the bots are (single player only). */
@@ -1099,11 +1101,19 @@ export class CombatGame implements Updatable {
         else if (e.unit.kind === 'monster' && e.unit.radius > 2) shake(0.4 * near(e.unit.x, e.unit.z, 22));
         break;
       case 'cast':
-        if (e.unit === me && e.cast.slot === ULTIMATE_SLOT) shake(0.25);
+        if (e.unit === me && e.cast.slot === ULTIMATE_SLOT) {
+          // your ultimate: the frame rushes out and glows at the edges in your god's colors
+          shake(0.25);
+          this.deps.pulse?.(paletteFor(me.combatant.god.id).vfx, 0.6, 5);
+        }
         break;
       case 'death':
         if (isStructure(e.unit) || (e.unit.kind === 'monster' && e.unit.radius > 2)) shake(0.8 * near(e.unit.x, e.unit.z, 60));
-        else if (e.unit.kind === 'god') shake(e.killer === me || e.unit === me ? 0.4 : 0.25 * near(e.unit.x, e.unit.z, 25));
+        else if (e.unit.kind === 'god') {
+          shake(e.killer === me || e.unit === me ? 0.4 : 0.25 * near(e.unit.x, e.unit.z, 25));
+          // your kill lands with a flare of gold
+          if (e.killer === me && e.unit.team !== me.team) this.deps.pulse?.(0xffc24a, 0.4, 2);
+        }
         break;
       default:
         break;

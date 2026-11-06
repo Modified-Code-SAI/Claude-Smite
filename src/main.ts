@@ -9,6 +9,7 @@ import { GiantShowcase } from './dev/GiantShowcase';
 import { PlayerController } from './player/PlayerController';
 import { ThirdPersonCamera } from './player/ThirdPersonCamera';
 import { grading, PostFX } from './render/PostFX';
+import { screenPulse } from './render/screenPulse';
 import { AsyncPipelines } from './render/AsyncPipelines';
 import { AutoQuality } from './render/AutoQuality';
 import { PerfStats } from './render/PerfStats';
@@ -315,7 +316,7 @@ async function main(): Promise<void> {
     player.mouseSensitivity = baseSensitivity * s.sensitivity;
     player.invertY = s.invertY;
     if (changed.has('fov') && !fixedCamera) {
-      camera.fov = s.fov;
+      camera.fov = follow.baseFov = s.fov;
       camera.updateProjectionMatrix();
     }
     grading.exposure.value = baseExposure * s.brightness;
@@ -333,6 +334,10 @@ async function main(): Promise<void> {
   const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, seed: choice.seed, shake: (a) => {
     follow.addShake(a * settings().shake);
     pad.rumble(a * 1.6);
+  }, pulse: (hex, strength, fov) => {
+    // (reduce flashing: a faint glow; the FOV kick is camera motion, so it follows the shake setting)
+    screenPulse(hex, strength * (settings().reduceFlashes ? 0.35 : 1));
+    if (!fixedCamera) follow.kickFov(fov * settings().shake);
   }, cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
   void baked;

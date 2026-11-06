@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { godAsset, type GodAsset } from './gods/assets';
-import { combinedMaterials, COMBINED, godMaterials } from './gods/materials';
+import { combinedMaterials, COMBINED, godMaterials, hitUniforms } from './gods/materials';
 import { SecondaryPhysics } from './gods/Physics';
 import { castSkinnedAsOne, mergeSkinned, packScalars } from '../scene/merge';
 import { FORCED_LOD, LOD_ERROR, lodView, pickLod, type LodRange } from '../scene/lod';
 import { color, luminance } from '../render/tsl';
+import { useUniforms } from '../render/shared';
 
 /** Locomotion input the model animates from. All values are per frame. */
 export interface LocomotionState {
@@ -26,6 +27,9 @@ export interface LocomotionState {
 const NO_SHADOW = new Set(['hair', 'eye', 'gem', 'glow']);
 
 const lodViewport = new THREE.Vector2();
+/** Seconds a hit flash takes to fade. */
+const HIT_FLASH = 0.2;
+const WHITE = new THREE.Color(0xffffff);
 
 /** Geometry every model of one god shares: shadow stand-ins and pieces merged per combined material. */
 const standIns = new Map<string, { geometry?: THREE.BufferGeometry }>();
@@ -252,6 +256,10 @@ export class GodModel {
   private flinchStrength = 0;
   /** Seconds of hit-stop left: the pose all but freezes so a blow reads as landing. */
   private stopLeft = 0;
+  /** This model's hit flash, as its combined materials read it (see `flash`). */
+  private readonly hitValues = hitUniforms();
+  private hitPeak = 0;
+  private hitTime = 1e9;
   private readonly physics: SecondaryPhysics;
   private readonly tmpQ = new THREE.Quaternion();
   private readonly tmpQ2 = new THREE.Quaternion();
@@ -442,8 +450,12 @@ export class GodModel {
       }
     }
     mergeSkinned(scene, combinedPieces);
+    const shared = new Set<THREE.Material>(combined.values());
     scene.traverse((o) => {
-      if ((o as THREE.SkinnedMesh).isSkinnedMesh) packScalars((o as THREE.Mesh).geometry);
+      if (!(o as THREE.SkinnedMesh).isSkinnedMesh) return;
+      packScalars((o as THREE.Mesh).geometry);
+      // every model of this god draws with one material: each reads its own hit flash
+      if (shared.has((o as THREE.Mesh).material as THREE.Material)) useUniforms(this.hitValues, o);
     });
   }
 
@@ -552,6 +564,19 @@ export class GodModel {
     this.flinchStrength = THREE.MathUtils.clamp(strength, 0, 1);
   }
 
+  /**
+   * A flash over the whole body from a blow, brightest along the silhouette,
+   * gone in a fifth of a second; `strength` 0..1, `hex` the attacker's
+   * color (a touch of it in the white).
+   */
+  flash(strength: number, hex = 0xffffff): void {
+    if (this.deathTime >= 0) return;
+    const live = this.hitTime < HIT_FLASH ? this.hitPeak * (1 - this.hitTime / HIT_FLASH) ** 2 : 0;
+    this.hitPeak = Math.max(live, THREE.MathUtils.clamp(strength, 0, 1));
+    this.hitTime = 0;
+    this.hitValues.hitColor.setHex(hex).lerp(WHITE, 0.7);
+  }
+
   /** Hit-stop: nearly freeze the pose for a few frames, the way a heavy blow catches. */
   hitStop(seconds: number): void {
     if (this.deathTime >= 0) return;
@@ -588,6 +613,8 @@ export class GodModel {
     this.castTime = 1e9;
     this.flinchTime = 1e9;
     this.stopLeft = 0;
+    this.hitTime = 1e9;
+    this.hitValues.hit = 0;
     this.deathTime = -1;
     this.deathWeight = 0;
     this.smoothedSpeed = 0;
@@ -603,6 +630,11 @@ export class GodModel {
   }
 
   animate(dt: number, s: LocomotionState, clothDt = dt): void {
+    // the flash runs on real time: it lights the hit-stop's held frames
+    if (this.hitTime < HIT_FLASH) {
+      this.hitTime += dt;
+      this.hitValues.hit = this.hitTime < HIT_FLASH ? this.hitPeak * (1 - this.hitTime / HIT_FLASH) ** 2 : 0;
+    }
     if (this.stopLeft > 0) {
       this.stopLeft -= dt;
       dt *= 0.06;
