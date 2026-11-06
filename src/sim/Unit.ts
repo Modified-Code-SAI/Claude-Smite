@@ -223,6 +223,8 @@ export interface Flash {
   warn?: boolean;
   /** What a warning winds up: the skill id, or 'basic'. */
   act?: string;
+  /** The skill whose shape this is, so its look can play (none for basics, passives and hazards). */
+  skill?: string;
 }
 
 export type SimEvent =
@@ -232,7 +234,8 @@ export type SimEvent =
   | { type: 'heal'; target: Unit; amount: number; source?: Unit }
   | { type: 'cast'; unit: Unit; cast: ResolvedSkill; x: number; z: number }
   | { type: 'basic'; unit: Unit; melee: boolean }
-  | { type: 'impact'; x: number; z: number; owner: Unit; big: boolean }
+  /** `skill`: the skill whose shot or area struck here, when one did. */
+  | { type: 'impact'; x: number; z: number; owner: Unit; big: boolean; skill?: string }
   | { type: 'death'; unit: Unit; killer: Unit | null; assists: Unit[] }
   | { type: 'respawn'; unit: Unit }
   | { type: 'levelUp'; unit: Unit; level: number }

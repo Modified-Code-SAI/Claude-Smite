@@ -259,7 +259,8 @@ export class CombatGame implements Updatable {
       teleport: (x, z, yaw) => player.spawn(x, z, yaw !== undefined && this.isHomeTeleport(x, z) ? yaw : player.yaw),
     };
 
-    this.vfx = new CombatVfx(this.groundAt, world.spellLights);
+    this.vfx = new CombatVfx(this.groundAt, world.spellLights, deps.camera);
+    this.vfx.visible = (u) => u.stealth <= 0 || u.team === this.player.team;
     this.vfx.targets = () => (this.match ? [...this.match.brains].map(([s, b]) => [s, b.current] as const) : []);
     world.vfx.add(this.vfx.group, this.auras.group, this.status.group);
     this.shapeDecal = new GroundDecal(this.groundAt);

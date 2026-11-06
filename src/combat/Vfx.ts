@@ -11,6 +11,9 @@ import { GroundDecal, type DecalShape } from './GroundDecal';
 import { ACID, KEEPER_CORE, KEEPER_GLOW, SHADE_CORE, SHADE_GLOW, BUFF_GLOW } from './MonsterViews';
 import { paletteFor, paletteOf, type GodPalette } from './palette';
 import { hypot } from '../core/math';
+import { lookFor, type ShotLook, type ZoneLook } from './skillLooks';
+import { Pool } from './skillFx/pool';
+import { SkillFx } from './skillFx/SkillFx';
 
 type Ground = (x: number, z: number) => number;
 
@@ -30,49 +33,6 @@ function glowMaterial(col: any, intensity: any, softness = 2, additive = true, a
   m.colorNode = vec4(col.mul(intensity).mul(additive ? f : 1), 1);
   m.opacityNode = f.mul(alpha);
   return m;
-}
-
-/** Recycles effect objects so nothing is created (or compiled) mid-fight. */
-class Pool<T extends { group: THREE.Object3D }> {
-  private readonly free: T[] = [];
-  constructor(
-    private readonly parent: THREE.Object3D,
-    private readonly make: () => T,
-    warm: number,
-  ) {
-    for (let i = 0; i < warm; i++) this.release(this.make());
-  }
-
-  take(): T {
-    const t = this.free.pop() ?? this.make();
-    this.parent.add(t.group);
-    t.group.visible = true;
-    return t;
-  }
-
-  release(t: T): void {
-    t.group.visible = false;
-    this.parent.remove(t.group);
-    this.free.push(t);
-  }
-
-  /** Shows every idle object, all of its parts, until the returned function puts them away again. */
-  prime(): () => void {
-    const flipped: THREE.Object3D[] = [];
-    const shown = [...this.free];
-    for (const t of shown) {
-      this.parent.add(t.group);
-      t.group.traverse((o) => {
-        if (o.visible) return;
-        o.visible = true;
-        flipped.push(o);
-      });
-    }
-    return () => {
-      for (const o of flipped) o.visible = !o.visible;
-      for (const t of shown) this.parent.remove(t.group);
-    };
-  }
 }
 
 const TRAIL = 9;
@@ -104,6 +64,9 @@ class ProjectileView {
   private lightning = false;
   private crackle = 0;
   size = 1;
+  /** A skill's look: how big its orb and its trail are drawn (1 as is). */
+  private orb = 1;
+  private trailScale = 1;
 
   constructor() {
     const m = (shotMaterials ??= makeShotMaterials());
@@ -122,11 +85,14 @@ class ProjectileView {
     useUniforms(this.values, this.coreSprite, this.halo, this.trail);
   }
 
-  reset(p: GodPalette, size: number, at: THREE.Vector3, crackle = false): void {
+  reset(p: GodPalette, size: number, at: THREE.Vector3, crackle = false, look?: ShotLook): void {
     this.values.main.setHex(p.vfx);
     this.values.hot.setHex(p.core);
     this.size = size;
-    this.lightning = crackle || p.element === 'lightning';
+    this.orb = look?.orb ?? 1;
+    this.trailScale = look?.trail ?? 1;
+    this.coreSprite.visible = this.halo.visible = this.orb > 0;
+    this.lightning = look?.crackle ?? (crackle || p.element === 'lightning');
     this.arc.setColors(p.vfx, p.core);
     this.arc.clear();
     this.crackle = 0;
@@ -137,15 +103,17 @@ class ProjectileView {
   update(at: THREE.Vector3, t: number): void {
     this.history.unshift(this.history.pop()!.copy(at));
     const flicker = 1 + Math.sin(t * 40) * 0.08;
+    const orb = this.size * this.orb;
     this.coreSprite.position.copy(at);
-    this.coreSprite.scale.setScalar(this.size * 0.7 * flicker);
+    this.coreSprite.scale.setScalar(orb * 0.7 * flicker);
     this.halo.position.copy(at);
-    this.halo.scale.setScalar(this.size * 2.6);
+    this.halo.scale.setScalar(orb * 2.6);
+    const trail = this.size * this.trailScale;
     for (let i = 0; i < TRAIL; i++) {
       // trail puffs sit between history samples so fast shots stay continuous
       const a = this.history[Math.min(i, this.history.length - 1)]!;
       const b = this.history[Math.min(i + 1, this.history.length - 1)]!;
-      this.trailPoints.setXYZW(i, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, this.size * 1.9 * (1 - i / TRAIL));
+      this.trailPoints.setXYZW(i, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, trail * 1.9 * (1 - i / TRAIL));
     }
     this.trailPoints.needsUpdate = true;
     if (this.lightning) this.crackleArcs(at, t);
@@ -158,10 +126,10 @@ class ProjectileView {
     const a = this.arc;
     a.clear();
     const tail = this.history[this.history.length - 1]!;
-    const w = Math.max(0.05, this.size * 0.14);
+    const w = Math.max(0.05, this.size * Math.max(0.5, this.orb) * 0.14);
     if (tail.distanceToSquared(at) > 0.01) a.bolt(at, tail, w, 0.35, 0.9, 3);
     for (let i = 0; i < 2; i++) {
-      const r = this.size * (1.1 + Math.random());
+      const r = this.size * Math.max(0.6, this.orb) * (1.1 + Math.random());
       const to = ARC_TO.set((Math.random() - 0.5) * 2 * r, (Math.random() - 0.5) * r, (Math.random() - 0.5) * 2 * r).add(at);
       a.bolt(at, to, w * 0.6, 0.4, 0.6, 2);
     }
@@ -286,6 +254,7 @@ class Burst {
   private readonly flash: THREE.Sprite;
   /** Flat shockwave ring rolling out over the ground. */
   private readonly ring: THREE.Mesh;
+  private readonly sparks: THREE.Sprite;
   private readonly puffs = new Puffs(10);
 
   constructor() {
@@ -299,24 +268,27 @@ class Burst {
     const sparks = instancedSprite(m.sparks, SPARKS);
     sparks.frustumCulled = false;
     sparks.renderOrder = 13;
+    this.sparks = sparks;
     this.group.add(this.ring, this.puffs.sprite, this.flash, sparks);
     useUniforms(this.values, this.ring, this.flash, sparks);
   }
 
-  start(p: GodPalette, at: THREE.Vector3, power: number, groundY: number): void {
+  /** `cloud`: only a cloud of this color (smoke, sand, dust), no flash or sparks. */
+  start(p: GodPalette, at: THREE.Vector3, power: number, groundY: number, cloud?: { color: number; swirl: number }): void {
     this.group.position.copy(at);
     // the ring only for hits near the ground and strong enough to shake it
-    this.ring.visible = power >= 0.75 && at.y - groundY < 2.5;
+    this.ring.visible = !cloud && power >= 0.75 && at.y - groundY < 2.5;
+    this.flash.visible = this.sparks.visible = !cloud;
     this.ring.position.y = groundY - at.y + 0.12;
-    const puff = p.element ? PUFF_COLORS[p.element] : undefined;
+    const puff = cloud ? cloud.color : p.element ? PUFF_COLORS[p.element] : undefined;
     const v = this.values;
-    const cloud = this.puffs.values;
-    this.puffs.set(power >= 0.5 ? puff : undefined);
-    cloud.age = 0;
-    cloud.seed = v.seed;
-    cloud.power = power;
-    this.puffs.sprite.position.y = groundY - at.y;
-    cloud.swirl = p.element === 'sand' ? 1 : 0.15;
+    const puffs = this.puffs.values;
+    this.puffs.set(power >= 0.5 || cloud ? puff : undefined);
+    puffs.age = 0;
+    puffs.seed = v.seed;
+    puffs.power = power;
+    this.puffs.sprite.position.y = cloud ? 0 : groundY - at.y;
+    puffs.swirl = cloud ? cloud.swirl : p.element === 'sand' ? 1 : 0.15;
     this.life = this.puffs.sprite.visible ? 1.2 : 0.6;
     v.main.setHex(p.vfx);
     v.hot.setHex(p.core);
@@ -434,18 +406,21 @@ class ZoneView {
     this.group.add(this.decal.mesh, this.motes, this.arc.group, this.puffs.sprite);
   }
 
-  set(p: GodPalette, x: number, z: number, radius: number, fade: number, ground: Ground, t: number): void {
+  set(p: GodPalette, x: number, z: number, radius: number, fade: number, ground: Ground, t: number, look?: ZoneLook): void {
     this.decal.values.glyphs = p.element === 'runes' ? 1 : 0;
-    this.puffs.set(p.element ? PUFF_COLORS[p.element] : undefined);
+    const puff = look?.puff !== undefined ? look.puff ?? undefined : p.element ? PUFF_COLORS[p.element] : undefined;
+    this.puffs.set(puff);
     const cloud = this.puffs.values;
     cloud.loop = 1;
     cloud.radius = radius;
     cloud.fade = fade;
     cloud.swirl = p.element === 'sand' ? 1.4 : 0.1;
-    this.puffs.sprite.position.set(x, ground(x, z), z);
+    this.puffs.sprite.position.set(x, ground(x, z) + (look?.puffLift ?? 0), z);
+    this.motes.visible = look?.motes ?? true;
     this.arc.values.fade = fade * Math.max(0, 1 - (t - this.strikeAt) / 0.14);
     // a lightning god's storm keeps striking somewhere inside it
-    if (p.element === 'lightning' && t - this.strikeAt > 0.22) {
+    const strikes = look?.strikes ?? p.element === 'lightning';
+    if (strikes && t - this.strikeAt > 0.22) {
       this.strikeAt = t;
       this.arc.setColors(p.vfx, p.core);
       this.arc.clear();
@@ -455,10 +430,10 @@ class ZoneView {
       const sz = z + Math.cos(ang) * r;
       const top = ARC_FROM.set(sx + (Math.random() - 0.5) * 4, ground(sx, sz) + 16, sz + (Math.random() - 0.5) * 4);
       this.arc.strike(top, ARC_TO.set(sx, ground(sx, sz) + 0.1, sz), 0.4, 2, 0.12);
-    } else if (p.element !== 'lightning') this.arc.clear();
+    } else if (!strikes) this.arc.clear();
     this.decal.setColors(p.vfx, p.core);
     // clouds carry smoke and sand areas, so their ground glow steps back
-    this.decal.values.opacity = fade * (p.element === 'smoke' || p.element === 'sand' ? 0.55 : 1);
+    this.decal.values.opacity = fade * (p.element === 'smoke' || p.element === 'sand' ? 0.55 : 1) * (look?.decal ?? 1);
     this.decal.place({ type: 'circle', radius }, x, z, 0);
     this.values.radius = radius;
     this.values.main.setHex(p.vfx);
@@ -554,6 +529,8 @@ class FlashView {
   readonly decal: GroundDecal;
   readonly arc = new ArcView();
   lightning = false;
+  /** How strongly the decal shows (a skill's look can step it back for its own effect). */
+  strength = 1;
   private struck = -1;
   constructor(private readonly ground: Ground) {
     this.group.name = 'flash';
@@ -564,6 +541,7 @@ class FlashView {
 
   reset(p: GodPalette, circle: boolean): void {
     this.decal.setColors(p.vfx, p.core);
+    this.strength = 1;
     this.lightning = p.element === 'lightning';
     this.decal.values.glyphs = p.element === 'runes' && circle ? 1 : 0;
     this.arc.setColors(p.vfx, p.core);
@@ -574,7 +552,7 @@ class FlashView {
   /** Lightning gods' shapes are struck by bolts, re-forked several times while the wave rolls out. */
   update(f: Flash, wave: number, fade: number): void {
     if (!this.lightning) return;
-    this.arc.values.fade = fade;
+    this.arc.values.fade = fade * Math.min(1, this.strength + 0.4);
     const step = Math.floor(f.age / 0.06);
     if (step === this.struck || f.age > f.life * 0.6) return;
     this.struck = step;
@@ -662,18 +640,35 @@ export class CombatVfx {
   /** The local player, whose tethers are drawn brighter. */
   player: Unit | null = null;
   private readonly tmp = new THREE.Vector3();
+  /** Each skill's own look, layered on these shared effects. */
+  readonly skills: SkillFx;
+  /** Glowing trails riding gods through dashes and leaps. */
+  private readonly comets: { view: ProjectileView; unit: Unit; until: number }[] = [];
 
   /** `lights` are the map's spell lights (`World.spellLights`), placed on the brightest effects each frame. */
   constructor(
     private readonly ground: Ground,
     private readonly lights: readonly THREE.PointLight[],
+    camera: THREE.Camera | null = null,
   ) {
     this.group.name = 'combat-vfx';
-    this.projectilePool = new Pool(this.group, () => new ProjectileView(), 8);
+    this.projectilePool = new Pool(this.group, () => new ProjectileView(), 10);
     this.zonePool = new Pool(this.group, () => new ZoneView(ground), 4);
     this.flashPool = new Pool(this.group, () => new FlashView(ground), 6);
-    this.burstPool = new Pool(this.group, () => new Burst(), 16);
-    this.pillarPool = new Pool(this.group, () => new Pillar(), 2);
+    this.burstPool = new Pool(this.group, () => new Burst(), 20);
+    this.pillarPool = new Pool(this.group, () => new Pillar(), 4);
+    this.skills = new SkillFx(this.group, ground, {
+      burst: (p, x, y, z, power) => this.burst(p, x, y, z, power),
+      cloud: (color, x, y, z, power, swirl) => this.cloud(color, x, y, z, power, swirl),
+      pillar: (p, x, z, size, width) => this.pillar(p, x, z, size, width),
+      comet: (p, u, life, size, crackle) => this.comet(p, u, life, size, crackle),
+    });
+    this.skills.camera = camera;
+  }
+
+  /** Who the viewer can see (stealthed enemies hide the looks on them). */
+  set visible(f: (u: Unit) => boolean) {
+    this.skills.visible = f;
   }
 
   /**
@@ -683,6 +678,7 @@ export class CombatVfx {
    */
   prime(): () => void {
     const restore = [this.projectilePool, this.zonePool, this.flashPool, this.burstPool, this.pillarPool].map((p) => p.prime());
+    restore.push(this.skills.prime());
     return () => {
       for (const r of restore) r();
     };
@@ -698,8 +694,10 @@ export class CombatVfx {
       }
     }
     this.syncProjectiles(sim, t);
+    this.syncComets(t);
     this.syncZones(sim);
     this.syncFlashes(sim);
+    this.skills.frame(sim, dt, t);
     for (let i = this.bursts.length - 1; i >= 0; i--) {
       const b = this.bursts[i]!;
       if (!b.update(dt)) {
@@ -755,12 +753,47 @@ export class CombatVfx {
     this.bursts.push(b);
   }
 
+  /** A billow of smoke, sand or dust and nothing else. */
+  cloud(color: number, x: number, y: number, z: number, power = 1, swirl = 0.15): void {
+    const b = this.burstPool.take();
+    this.cloudLook.color = color;
+    this.cloudLook.swirl = swirl;
+    b.start(CLOUD_PALETTE, this.tmp.set(x, y, z), power, this.ground(x, z), this.cloudLook);
+    this.bursts.push(b);
+  }
+
+  private readonly cloudLook = { color: 0, swirl: 0 };
+
+  /** A glowing trail riding a unit for `life` seconds (a dash, a leap). */
+  comet(p: GodPalette, u: Unit, life: number, size: number, crackle: boolean): void {
+    const view = this.projectilePool.take();
+    view.reset(p, size, this.tmp.set(u.x, u.body.y + 1.2, u.z), crackle);
+    this.comets.push({ view, unit: u, until: this.clock + life });
+  }
+
+  private syncComets(t: number): void {
+    const c = this.comets;
+    for (let i = c.length - 1; i >= 0; i--) {
+      const m = c[i]!;
+      if (t >= m.until || !m.unit.alive) {
+        this.projectilePool.release(m.view);
+        c[i] = c[c.length - 1]!;
+        c.pop();
+        continue;
+      }
+      const u = m.unit;
+      m.view.update(this.tmp.set(u.x, u.body.y + 1.2, u.z), t);
+    }
+  }
+
   onEvent(e: SimEvent): void {
+    this.skills.onEvent(e);
     switch (e.type) {
       case 'impact': {
         const k = e.owner.kind;
-        const power = e.big ? 1.6 : k === 'minion' ? 0.35 : isStructure(e.owner) ? 1.1 : 0.8;
-        this.burst(paletteOf(e.owner), e.x, this.ground(e.x, e.z) + (e.big ? 0.4 : PROJECTILE_HEIGHT), e.z, power);
+        const look = lookFor(e.skill);
+        const power = (e.big ? 1.6 : k === 'minion' ? 0.35 : isStructure(e.owner) ? 1.1 : 0.8) * (look?.burst ?? 1);
+        if (power > 0.05) this.burst(this.skills.palette(look, e.owner), e.x, this.ground(e.x, e.z) + (e.big ? 0.4 : PROJECTILE_HEIGHT), e.z, power);
         break;
       }
       case 'basic': {
@@ -828,8 +861,9 @@ export class CombatVfx {
         v = this.projectilePool.take();
         // a Shade's soul bolt is slow and big, so it reads as one to sidestep
         const size = p.cast ? Math.min(1.3, 0.35 + p.radius * 0.45) : isStructure(p.owner) ? 0.75 : p.owner.kind === 'minion' ? 0.16 : p.owner.tag.endsWith(':shade') ? 0.55 : 0.28;
+        const look = p.cast ? lookFor(p.cast.skill.id) : undefined;
         // structure shots crackle like lightning so they read as heavy
-        v.reset(monsterPalette(p.owner), size, at, isStructure(p.owner));
+        v.reset(look ? this.skills.palette(look, p.owner) : monsterPalette(p.owner), size, at, isStructure(p.owner), look?.shot);
         this.projectiles.set(p.id, v);
       }
       v.update(at, t);
@@ -852,7 +886,8 @@ export class CombatVfx {
       }
       const fadeIn = Math.min(1, z.age / 0.25);
       const fadeOut = Math.min(1, Math.max(0, (z.duration + 0.4 - z.age) / 0.6));
-      v.set(paletteOf(z.owner), z.x, z.z, z.radius, fadeIn * fadeOut, this.ground, sim.time);
+      const look = lookFor(z.cast.skill.id);
+      v.set(this.skills.palette(look, z.owner), z.x, z.z, z.radius, fadeIn * fadeOut, this.ground, sim.time, look?.zone);
     }
     for (const [id, v] of this.zones) {
       if (live.has(id)) continue;
@@ -875,8 +910,13 @@ export class CombatVfx {
       }
       if (!v) {
         v = this.flashPool.take();
-        const p = monsterPalette(f.owner);
+        const look = f.warn ? undefined : lookFor(f.skill);
+        const p = look ? this.skills.palette(look, f.owner) : monsterPalette(f.owner);
         v.reset(p, f.shape.type === 'circle');
+        if (look) {
+          v.strength = this.skills.onFlash(f);
+          if (look.flashArcs === false) v.lightning = false;
+        }
         v.decal.setStyle(f.warn ? 'telegraph' : 'flash');
         if (f.warn) {
           // red for blows aimed at you, frost for your own
@@ -891,8 +931,8 @@ export class CombatVfx {
           this.flashes.set(f.id, v);
           continue;
         }
-        // smoke and sand gods kick up a cloud where the shape lands
-        if (p.element === 'smoke' || p.element === 'sand') {
+        // smoke and sand gods kick up a cloud where the shape lands (unless the skill has its own look there)
+        if ((p.element === 'smoke' || p.element === 'sand') && !lookFor(f.skill)?.flash) {
           const s = f.shape;
           const reach = s.type === 'circle' ? s.radius : s.type === 'line' ? s.length * 0.5 : s.range * 0.6;
           const yaw = s.type === 'circle' ? 0 : s.yaw;
@@ -910,7 +950,8 @@ export class CombatVfx {
       const wave = 1 - (1 - Math.min(1, k / 0.55)) ** 2;
       const fade = k < 0.5 ? 1 : 1 - (k - 0.5) / 0.5;
       v.decal.values.wave = wave;
-      v.decal.values.opacity = fade * 1.3;
+      v.decal.values.opacity = fade * 1.3 * v.strength;
+      v.decal.mesh.visible = v.strength > 0;
       v.update(f, wave, fade);
     }
     for (const [id, v] of this.flashes) {
@@ -944,6 +985,9 @@ export class CombatVfx {
     });
   }
 }
+
+/** The palette a plain cloud starts from (its own color is passed in). */
+const CLOUD_PALETTE: GodPalette = { cloth: 0, trim: 0, glow: 0, vfx: 0xffffff, core: 0xffffff };
 
 /** Wardens burn in their buff's color; everything else uses its usual palette. */
 function monsterPalette(u: Unit): GodPalette {
