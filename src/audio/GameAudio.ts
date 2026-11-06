@@ -19,7 +19,7 @@ import { skillPart, skillSound } from './bank';
 import type { Music, SongName } from './music';
 import { hypot } from '../core/math';
 import { DUEL } from '../sim/Duel';
-import { RUSH } from '../sim/Rush';
+import { offGate, RUSH } from '../sim/Rush';
 import { chantAt, chantBreak, chanting } from './chant';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import type { Palette } from '../map/UnderworldLayout';
@@ -817,7 +817,7 @@ export class GameAudio {
   /** Last seen Relic Rush state, so each beat is called once. */
   /** Gods whose current call for the pass has been heard. */
   private readonly rushCalls = new Set<Unit>();
-  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, save: 0, juke: 0, dodge: 0, miss: 0, relic: '', flying: false, overtime: false, minute: false, winner: '', tick: 0 };
+  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, save: 0, juke: 0, dodge: 0, miss: 0, post: 0, relic: '', flying: false, overtime: false, minute: false, winner: '', tick: 0 };
 
   /** Relic Rush: the horn at each kickoff, goals, steals and fumbles, the golden relic and the result. */
   private watchRush(): void {
@@ -950,6 +950,16 @@ export class GameAudio {
       if (b?.kind === 'miss') {
         this.engine.play('crowd.ooh', { gain: b.unit.team === mine ? 0.7 : 0.55, vary: 0.06, rate: 0.95 }, 3);
         if (b.unit === this.me) this.herald.say('So close!', 'neutral', 1);
+      }
+    }
+    if (r.beats.post !== seen.post) {
+      seen.post = r.beats.post;
+      // off the stone: a knock and the relic's ring, and off the pillar of the gate it was thrown at, the ground gasps
+      this.engine.play('relic.post', { at, ref: 10 }, 3);
+      const b = r.lastBeat;
+      if (b?.kind === 'post' && offGate(b.unit, relic)) {
+        this.engine.play('crowd.ooh', { gain: b.unit.team === mine ? 0.75 : 0.6, vary: 0.06, rate: 0.92 }, 3);
+        if (b.unit === this.me) this.herald.say('Off the pillar!', 'neutral', 1);
       }
     }
     const minute = !r.overtime && r.phase === 'play' && r.clock <= 60;

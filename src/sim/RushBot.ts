@@ -39,6 +39,14 @@ const DEAD_AHEAD = 0.6;
 const PROBE = 0.6;
 /** How far short of the pedestal a straight run at it must be clear of scenery (the pathfinder's cells nearer than this are the pedestal's own). */
 const PEDESTAL_CLEAR = 3.2;
+/**
+ * A carrier that has made no ground for `after` s (kept within `within` m,
+ * free to run) is wedged in a pocket of stone, a pillar's face and the
+ * fallen lintel behind it say, with a defender at its open side, and its
+ * steering turns it back and forth in place: it takes the pathfinder's way
+ * out for `time` s.
+ */
+const WEDGED = { after: 0.8, within: 0.6, time: 1.2 } as const;
 
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 const dist = (a: Point, b: Point) => hypot(a.x - b.x, a.z - b.z);
@@ -128,6 +136,8 @@ export class RushBot implements Brain {
   private veer = 1;
   /** Carrying: steering out from beside a gate pillar to the front of its mouth (see mouth). */
   private besidePillar = false;
+  /** Where the carrier last made ground from, and when (see WEDGED), and until when it takes the pathfinder's way out. */
+  private readonly wedge = { x: 0, z: 0, at: 0, carry: -1, until: -1 };
   /** Scratch for elbowRoom. */
   private readonly room = { x: 0, z: 0 };
 
@@ -314,6 +324,10 @@ export class RushBot implements Brain {
     }
     // run at the gate's mouth, steering around defenders in the way
     const aim = this.mouth(gate);
+    if (this.wedged()) {
+      this.walkTo(aim, 0.4, { face: true });
+      return;
+    }
     let dx = aim.x - u.x;
     let dz = aim.z - u.z;
     const d = hypot(dx, dz) || 1;
@@ -365,6 +379,18 @@ export class RushBot implements Brain {
     // (straight at the step, not through the pathfinder: the steering and the scenery probe above see to what's in the way, and the grid's tie-breaks
     // round pillars favor one way of the world, which gave Order's carriers, running at the other gate, an edge: Order won 60% of bot matches)
     this.walkTo(step, 0.1, { face: true, direct: true });
+  }
+
+  /** Whether the carrier is wedged (see WEDGED), and so should take the pathfinder's way out now. */
+  private wedged(): boolean {
+    const { u, sim } = this;
+    const w = this.wedge;
+    const now = sim.time;
+    if (!this.nav) return false;
+    const free = !u.forced && u.combatant.cc.active.length === 0;
+    if (w.carry !== this.rush.relic.since || !free || dist(u, w) > WEDGED.within) Object.assign(w, { x: u.x, z: u.z, at: now, carry: this.rush.relic.since });
+    else if (now - w.at > WEDGED.after) Object.assign(w, { x: u.x, z: u.z, at: now, until: now + WEDGED.time });
+    return now < w.until;
   }
 
   /** Whether scenery stops most of a short step this way (a column or pillar right there). */

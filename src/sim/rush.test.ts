@@ -1247,3 +1247,162 @@ describe('Relic Rush: calling for the pass', () => {
     expect(Math.hypot(mate.x - me.x, mate.z - me.z)).toBeLessThan(Math.min(apart - 3, 3.5));
   });
 });
+
+describe('Relic Rush: the relic against stone', () => {
+  /** A temple-plaza match past its kickoff, with `a` holding the relic and `c` left out of the way. */
+  function holding() {
+    const { sim, rush } = match(rushTestField());
+    const a = god(sim, zeus, 'order', 0);
+    const c = god(sim, thor, 'chaos', 0);
+    rush.begin([a, c]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(c, -24, 4);
+    sim.teleport(a, rush.relic.x + 1.6, rush.relic.z);
+    run(sim, rush, 0.6, () => rush.holder === a);
+    expect(rush.holder).toBe(a);
+    run(sim, rush, RUSH.relic.holdMin + 0.05);
+    return { sim, rush, a, c };
+  }
+
+  it('a throw into a gate pillar bounces back off its face and comes down loose in front of it, scoring nothing', () => {
+    const { sim, rush, a } = holding();
+    sim.teleport(a, 5.4, -14);
+    const at = { x: 5.4, z: -27 };
+    // the carrier's read says so before the throw (its preview turns red), and the bots read the same
+    const read = rush.passRead(a, at);
+    expect(read.goal).toBe(false);
+    expect(read.catcher).toBeNull();
+    expect(read.stone).not.toBeNull();
+    expect(read.stone!.z).toBeGreaterThan(-23.35);
+    expect(read.stone!.z).toBeLessThan(-22);
+    expect(rush.passRead(a, { x: 0, z: -20 }).stone).toBeNull();
+    expect(rush.throwRelic(a, at)).toBe(true);
+    let inside = 0;
+    for (let i = 0; i < 180 && rush.relic.phase === 'flying'; i++) {
+      run(sim, rush, 1 / 60);
+      if (rush.relic.phase === 'flying' && rush.stoneAt(rush.relic.x, rush.relic.z, rush.relic.h)) inside++;
+    }
+    expect(inside).toBe(0);
+    expect(rush.relic.phase).toBe('loose');
+    expect(rush.beats.post).toBeGreaterThanOrEqual(1);
+    expect(rush.lastBeat).toMatchObject({ kind: 'post', unit: a });
+    // back off the face, toward the thrower
+    expect(rush.relic.z).toBeGreaterThan(-23.35 + RUSH.relic.radius);
+    expect(rush.relic.z).toBeLessThan(-18);
+    expect(rush.stoneAt(rush.relic.x, rush.relic.z, rush.relic.h)).toBeNull();
+    expect(rush.score.order).toBe(0);
+    expect(rush.beats.miss).toBe(0);
+  });
+
+  it('a throw passes over the pedestal and the low braziers, but not through a column', () => {
+    const { sim, rush, a } = holding();
+    // straight over the middle, high in its arc
+    sim.teleport(a, 0, 8);
+    expect(rush.passRead(a, { x: 0, z: -8 }).stone).toBeNull();
+    // over a brazier's bowl
+    sim.teleport(a, 0, 6.72);
+    expect(rush.passRead(a, { x: 13.4, z: 6.72 }).stone).toBeNull();
+    // into a whole column on the ring, at head height
+    sim.teleport(a, 6.16, 6);
+    const col = rush.passRead(a, { x: 6.16, z: 16 }).stone;
+    expect(col).not.toBeNull();
+    expect(Math.hypot(col!.x - 6.16, col!.z - 12.79)).toBeLessThan(0.68 + RUSH.relic.radius + 0.4);
+  });
+
+  it('wherever a fumble sends it, the relic never flies through stone or comes to rest inside it', () => {
+    // (pedestal, a brazier, a whole column, a broken one, a gate pillar)
+    const stones = [[0, 0, 0.95], [6.72, 6.72, 0.75], [6.16, 12.79, 0.68], [-6.16, -12.79, 0.68], [5.4, -24.35, 1.42]] as const;
+    let bounced = 0;
+    for (const [sx, sz, sr] of stones) {
+      for (let k = 0; k < 8; k++) {
+        const { sim, rush, a, c } = holding();
+        const ang = (k / 8) * Math.PI * 2;
+        const dx = Math.cos(ang);
+        const dz = Math.sin(ang);
+        // the carrier beside the stone, knocked toward it by someone on their far side
+        sim.teleport(a, sx + dx * (sr + 1.2), sz + dz * (sr + 1.2));
+        sim.teleport(c, a.x + dx * 2, a.z + dz * 2);
+        (rush as unknown as { fumble(u: Unit, by: Unit): void }).fumble(a, c);
+        for (let i = 0; i < 240 && rush.relic.phase === 'flying'; i++) {
+          run(sim, rush, 1 / 60);
+          if (rush.relic.phase === 'flying') expect(rush.stoneAt(rush.relic.x, rush.relic.z, rush.relic.h)).toBeNull();
+        }
+        if (rush.relic.phase !== 'loose') continue;
+        expect(rush.stoneAt(rush.relic.x, rush.relic.z, rush.relic.h)).toBeNull();
+        bounced += rush.beats.post;
+      }
+    }
+    expect(bounced).toBeGreaterThan(10);
+  });
+
+  it('tells online guests about each bounce', () => {
+    const { sim, rush, a } = holding();
+    sim.teleport(a, 5.4, -14);
+    rush.throwRelic(a, { x: 5.4, z: -27 });
+    run(sim, rush, 2, () => rush.beats.post > 0);
+    const guest = match(rushTestField());
+    const ga = god(guest.sim, zeus, 'order', 0);
+    const gc = god(guest.sim, thor, 'chaos', 0);
+    guest.rush.begin([ga, gc]);
+    guest.rush.applyNet(JSON.parse(JSON.stringify(rush.netState())));
+    expect(guest.rush.beats.post).toBe(rush.beats.post);
+    expect(guest.rush.lastBeat).toMatchObject({ kind: 'post', unit: ga });
+    // between snapshots a guest's relic flying at the pillar stops at its face (the host's next snapshot has the bounce)
+    const g = guest.rush;
+    Object.assign(g.relic, { phase: 'flying', holder: null, fx: 5.4, fz: -14, tx: 5.4, tz: -27, t: 0, duration: Rush.flightTime(13), arc: 0.8 + 13 * 0.14, h0: RUSH.relic.carryHeight });
+    for (let i = 0; i < 60; i++) {
+      g.follow(1 / 60);
+      expect(g.stoneAt(g.relic.x, g.relic.z, g.relic.h)).toBeNull();
+    }
+    expect(g.relic.z).toBeGreaterThan(-23.35);
+    expect(g.relic.z).toBeLessThan(-22.5);
+  });
+});
+
+describe('Relic Rush: bots among the temple’s stones', () => {
+  it('a bot sent for a relic lying behind the fallen column’s drums walks round to its side of them and takes it', () => {
+    const terrain = rushTestField();
+    const { sim, rush } = match(terrain);
+    const nav = new Nav({ groundAt: (x, z) => terrain.groundAt(x, z), resolve: (x, z, r, y) => sim.solid(x, z, r, y) }, RUSH.pitchRadius + 2);
+    const coach = new RushCoach(sim, rush);
+    const chaser = god(sim, thor, 'chaos', 0);
+    const far = god(sim, zeus, 'order', 0);
+    chaser.brain = new RushBot(sim, chaser, rush, coach, nav);
+    rush.begin([chaser, far]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    // the drums lie in a low wall across the steps; the relic came down on their north side, the bot stands on the south
+    sim.teleport(far, 20, 20);
+    far.brain = null;
+    sim.teleport(chaser, -15.6, -5.6);
+    Object.assign(rush.relic, { phase: 'loose', holder: null, x: -17.01, z: -2.8, h: RUSH.relic.looseHeight, thrower: null, team: 'order' });
+    run(sim, rush, 8, () => rush.holder === chaser);
+    expect(rush.holder).toBe(chaser);
+  });
+
+  it('a carrier bot wedged between a gate pillar and the fallen lintel behind it, a defender at the open side, finds its way out', () => {
+    const terrain = rushTestField();
+    const { sim, rush } = match(terrain);
+    const nav = new Nav({ groundAt: (x, z) => terrain.groundAt(x, z), resolve: (x, z, r, y) => sim.solid(x, z, r, y) }, RUSH.pitchRadius + 2);
+    const coach = new RushCoach(sim, rush);
+    const carrier = god(sim, thanatos, 'chaos', 0);
+    const press = god(sim, kukulkan, 'order', 0);
+    const keeper = god(sim, kukulkan, 'order', 1);
+    carrier.brain = new RushBot(sim, carrier, rush, coach, nav);
+    rush.begin([carrier, press, keeper]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(carrier, 0, -1.6);
+    run(sim, rush, 0.4, () => rush.holder === carrier);
+    expect(rush.holder).toBe(carrier);
+    // as a bot match left them: against the outer face of the order gate's west pillar, the lintel lying behind it
+    sim.teleport(carrier, -7.0, 24.4);
+    const start = { x: carrier.x, z: carrier.z };
+    let moved = 0;
+    for (let i = 0; i < 180 && rush.holder === carrier; i++) {
+      sim.teleport(press, -7.5, 23.1);
+      sim.teleport(keeper, -2.9, 22);
+      run(sim, rush, 1 / 60);
+      moved = Math.max(moved, Math.hypot(carrier.x - start.x, carrier.z - start.z));
+    }
+    expect(moved).toBeGreaterThan(2);
+  });
+});

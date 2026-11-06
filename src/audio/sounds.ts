@@ -183,6 +183,8 @@ export const SOUNDS: Record<string, Recipe> = {
   'relic.throw': { variants: 2, peak: 0.55, make: (r) => layer([whoosh(r, 0.5, 500, 2600, { q: 1.2, peak: 0.35, gain: 1.1 }), 1], [shimmer(r, 0.7, 880, { rise: 1.5, peak: 0.3 }), 0.5, 0.03]) },
   // a throw coming down loose: a soft thud on the stones, and the relic rings as it bounces back up
   'relic.land': { variants: 2, peak: 0.45, make: (r) => layer([thump(r, 0.3, 150 + r() * 20, 55, { click: 0.25, noise: 0.5 }), 0.8], [clang(r, 0.9, 523.3, { decay: 0.5, bright: 0.3, gain: 0.3 }), 0.45, 0.01], [shimmer(r, 0.5, 1046.5, { rise: 1.1, peak: 0.12 }), 0.3, 0.04]) },
+  // a throw off stone (a pillar, a column, the pedestal): a hard knock, a spit of grit, and the relic rings high
+  'relic.post': { variants: 2, peak: 0.6, make: (r) => layer([thump(r, 0.22, 260 + r() * 30, 110, { click: 0.7, noise: 0.8 }), 1], [knock(r, 0.06, 1400 + r() * 200), 0.7], [clang(r, 1, 784, { decay: 0.6, bright: 0.55, gain: 0.45 }), 0.6, 0.005], [filter(puff(r, 0.25, { tone: 3000 }), 'highpass', 1200), 0.35, 0.02]) },
   'relic.catch': { variants: 2, peak: 0.5, make: (r) => layer([chime(r, 0.6, 1318.5), 1], [knock(r, 0.05, 1800), 0.6], [shimmer(r, 0.5, 1046.5, { rise: 1.2, peak: 0.1 }), 0.4]) },
   // a carrier's juke: a quick rush of air and a sandal's scuff on stone, with a glint off the relic
   'relic.juke': { variants: 2, peak: 0.5, make: (r) => layer([whoosh(r, 0.3, 700, 2600, { q: 0.9, peak: 0.3, gain: 1.2, grit: 0.8 }), 1], [filter(puff(r, 0.22, { tone: 2200 }), 'highpass', 700), 0.55], [shimmer(r, 0.35, 1568, { rise: 1.3, peak: 0.15 }), 0.25, 0.04]) },

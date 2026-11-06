@@ -104,6 +104,15 @@ export const RUSH = {
     selfCatch: 0.45,
     /** Thrown relics only score while this low (under the gate's lintel). */
     shotHeight: 3,
+    /** The relic's size against stone: a throw or a hop that runs into a pillar, a column, a brazier or the pedestal bounces off it. */
+    radius: 0.3,
+    /**
+     * Off stone it comes back the way a ball off a post does, mirrored across
+     * the face it hit, and drops loose up to `hop` m away (a glancing blow
+     * keeps more of its run than a square one, and each bounce after the
+     * first keeps `keep` of the last), over `time` s with an `arc` m lob.
+     */
+    bounce: { hop: 3, min: 0.8, keep: 0.6, time: 0.45, arc: 0.45 },
   },
   /** A pass counts as an assist if its catcher scores within this long. */
   assistWindow: 8,
@@ -216,7 +225,7 @@ export interface RushNet {
   w: Side | null;
   g: number;
   lg: [Side, number, number, 'dunk' | 'shot', number] | null;
-  b: [number, number, number, number, number, number, number, number, number];
+  b: [number, number, number, number, number, number, number, number, number, number];
   lb: [RushBeat, number, number] | null;
   r: [RelicPhase, number, number, number, number, number, number, number, number, number, number, number, number, number, Side | null, number];
   l: [number, number, number, number, number, number][];
@@ -231,9 +240,9 @@ export interface RushNet {
 /**
  * A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the
  * relic through a hit, `dodge` a juke that slipped a tackle, `miss` a throw
- * that came down loose by the gate it went at.
+ * that came down loose by the gate it went at, `post` a throw that hit stone.
  */
-export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug' | 'save' | 'dodge' | 'miss';
+export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug' | 'save' | 'dodge' | 'miss' | 'post';
 
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 
@@ -249,11 +258,23 @@ export function clampToPitch(x: number, z: number, margin = 0): Point {
 export function pitchTerrain(base: SimTerrain): SimTerrain {
   return {
     groundAt: (x, z) => base.groundAt(x, z),
-    resolve: (x, z, r, y) => {
-      const p = base.resolve(x, z, r, y);
-      return clampToPitch(p.x, p.z, r);
+    resolve: (x, z, r, y, step, out) => {
+      const p = base.resolve(x, z, r, y, step, out);
+      const d = hypot(p.x, p.z);
+      const max = RUSH.pitchRadius - r;
+      if (d > max) {
+        p.x *= max / d;
+        p.z *= max / d;
+      }
+      return p;
     },
   };
+}
+
+/** Whether `p` is by the gate `u` attacks: a throw of theirs that bounces off stone there hit the gate's pillar. */
+export function offGate(u: Unit, p: Point): boolean {
+  const g = RUSH.gates[other(u.team as Side)];
+  return hypot(p.x - g.x, p.z - g.z) <= RUSH.nearMiss;
 }
 
 /** Whether (x, z) is in the scoring mouth of the gate `team` defends (or a box of another size around it). */
@@ -309,8 +330,8 @@ export class Rush {
   }
   /** Counts every goal, so watchers can tell a new one from the last. */
   goalCount = 0;
-  /** Bumped on each fumble, interception, catch, Captain's shrug, save (a shot caught on its way in), juke, dodge and near miss, for sounds and banners. */
-  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0, juke: 0, dodge: 0, miss: 0 };
+  /** Bumped on each fumble, interception, catch, Captain's shrug, save (a shot caught on its way in), juke, dodge, near miss and bounce off stone, for sounds and banners. */
+  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0, juke: 0, dodge: 0, miss: 0, post: 0 };
   /** Who juked last (see `beats.juke`), for the streak and the whoosh. */
   lastJuke: Unit | null = null;
   /** The latest of those beats, with who did it. */
@@ -327,6 +348,9 @@ export class Rush {
    * of opening kickoffs between identical line-ups.
    */
   private tieSide: Side = 'order';
+  /** Times the relic has bounced off stone since it was last thrown or knocked loose (each bounce is weaker). */
+  private bounces = 0;
+  private readonly stoneOut = { x: 0, z: 0 };
   /** The last completed pass, for assists. */
   private lastPass: { from: Unit; to: Unit; at: number } | null = null;
   /** Sim time each god last called for the pass. */
@@ -558,12 +582,13 @@ export class Rush {
   /**
    * What a throw toward `at` would do if everybody kept running as they are
    * now: score (`goal`), be caught (`catcher`: a teammate taking the pass, or
-   * an enemy cutting it off), or neither and land loose. Steps the same
+   * an enemy cutting it off), bounce off stone (`stone`: where it would
+   * hit), or none of these and land loose. Steps the same
    * flight as `throwRelic` at the sim's 60 Hz with the relic's own catch rules
    * (keepers included); the thrower is left out. The carrier's throw preview
    * marks the catcher.
    */
-  passRead(u: Unit, at: Point): { goal: boolean; catcher: Unit | null } {
+  passRead(u: Unit, at: Point): { goal: boolean; catcher: Unit | null; stone: Point | null } {
     const R = RUSH.relic;
     const K = RUSH.keeper;
     const to = this.throwTarget(u, at);
@@ -578,7 +603,7 @@ export class Rush {
       const x = u.x + (to.x - u.x) * p;
       const z = u.z + (to.z - u.z) * p;
       const h = Rush.flightHeight(arc, p);
-      if (h <= R.shotHeight && inGate(foe, x, z, RUSH.shotHalfWidth)) return { goal: true, catcher: null };
+      if (h <= R.shotHeight && inGate(foe, x, z, RUSH.shotHalfWidth)) return { goal: true, catcher: null, stone: null };
       let best: Unit | null = null;
       let bestD = Infinity;
       for (const g of this.squad) {
@@ -591,8 +616,9 @@ export class Rush {
         const dd = hypot(gx - x, gz - z);
         if (dd <= g.radius + g.combatant.sport('catchReach') + (keeper ? Math.max(R.catchReach, K.reach) : R.catchReach) && this.nearer(g, dd, bestD)) [best, bestD] = [g, dd];
       }
-      if (best) return { goal: false, catcher: best };
-      if (p >= 1) return { goal: false, catcher: null };
+      if (best) return { goal: false, catcher: best, stone: null };
+      if (this.stoneAt(x, z, h)) return { goal: false, catcher: null, stone: { x, z } };
+      if (p >= 1) return { goal: false, catcher: null, stone: null };
     }
   }
 
@@ -647,6 +673,7 @@ export class Rush {
 
   private launch(from: Point, tx: number, tz: number, thrower: Unit | null, h0: number, arc?: number, duration?: number): void {
     const r = this.relic;
+    this.bounces = 0;
     const d = hypot(tx - from.x, tz - from.z);
     r.phase = 'flying';
     r.holder = null;
@@ -659,6 +686,58 @@ export class Rush {
     r.arc = arc ?? 0.8 + d * 0.14;
     r.h0 = r.h = h0;
     r.thrower = thrower;
+  }
+
+  /**
+   * Where stone would push the relic out to, at (x, z) and `h` over the
+   * ground: a pillar, a column, a brazier or the pedestal it runs into (one
+   * lower than the relic passes under it). Null when it's clear.
+   */
+  stoneAt(x: number, z: number, h: number): Point | null {
+    const R = RUSH.relic.radius;
+    // anything whose top is under the relic's underside is cleared (no stepping up, as a god's feet do)
+    const p = this.sim.terrain.resolve(x, z, R, this.sim.terrain.groundAt(x, z) + h - R, 0, this.stoneOut);
+    return hypot(p.x - x, p.z - z) > 1e-3 ? { x: p.x, z: p.z } : null;
+  }
+
+  /** A spot for the relic to lie loose at: `p`, or beside the stone it would be in. */
+  private clear(p: Point): Point {
+    return this.stoneAt(p.x, p.z, RUSH.relic.looseHeight) ?? p;
+  }
+
+  /**
+   * The relic ran into stone: it comes back off the face like a ball off a
+   * post, the way it was going mirrored across the face, and drops loose a
+   * short hop away. A bounce scores nothing and is nobody's pass.
+   */
+  private bounce(out: Point): void {
+    const r = this.relic;
+    const B = RUSH.relic.bounce;
+    // the face's normal: the way the stone pushed it out
+    let nx = out.x - r.x;
+    let nz = out.z - r.z;
+    const n = hypot(nx, nz) || 1;
+    nx /= n;
+    nz /= n;
+    let vx = r.tx - r.fx;
+    let vz = r.tz - r.fz;
+    const v = hypot(vx, vz);
+    if (v < 1e-3) [vx, vz] = [nx, nz];
+    else [vx, vz] = [vx / v, vz / v];
+    const into = vx * nx + vz * nz;
+    if (into < 0) {
+      vx -= 2 * into * nx;
+      vz -= 2 * into * nz;
+    }
+    const thrower = r.thrower;
+    const bounces = this.bounces + 1;
+    const hop = Math.max(B.min, B.hop * (1 - 0.6 * Math.abs(into)) * B.keep ** (bounces - 1));
+    const to = this.clear(clampToPitch(out.x + vx * hop, out.z + vz * hop, 1.2));
+    this.launch(out, to.x, to.z, null, r.h, B.arc * B.keep ** (bounces - 1), B.time);
+    this.bounces = bounces;
+    this.beats.post++;
+    // (a fumble's hop off stone is nobody's: only its knock is heard)
+    this.lastBeat = thrower ? { kind: 'post', unit: thrower, by: null } : null;
   }
 
   /** The relic in flight at fraction p: its height above the ground. */
@@ -708,9 +787,18 @@ export class Rush {
         }
       }
       if (this.tryCatch(R.catchReach, r.h)) return;
+      const stone = this.stoneAt(r.x, r.z, r.h);
+      if (stone) {
+        this.bounce(stone);
+        return;
+      }
       if (p >= 1) {
         r.phase = 'loose';
         r.h = R.looseHeight;
+        // (a hop that ends right against stone comes to rest beside it, never in it)
+        const at = this.clear(r);
+        r.x = at.x;
+        r.z = at.z;
         // a throw that comes down loose by the gate it went at: wide, short, or over the top
         const t = r.thrower;
         const gate = t ? RUSH.gates[other(t.team as Side)] : null;
@@ -996,7 +1084,7 @@ export class Rush {
       w: this.winner,
       g: this.goalCount,
       lg: g ? [g.team, at(g.scorer), at(g.assist), g.kind, n(g.at)] : null,
-      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge, this.beats.miss],
+      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge, this.beats.miss, this.beats.post],
       lb: b ? [b.kind, at(b.unit), at(b.by)] : null,
       r: [r.phase, at(r.holder), n(r.x), n(r.z), n(r.h), n(r.fx), n(r.fz), n(r.tx), n(r.tz), n(r.t), n(r.duration), n(r.arc), n(r.h0), at(r.thrower), r.team, n(r.since)],
       l: this.squad.map((u) => {
@@ -1026,7 +1114,7 @@ export class Rush {
     const lg = s.lg;
     const scorer = lg && god(lg[1]);
     this.lastGoal = lg && scorer ? { team: lg[0], scorer, assist: god(lg[2]), kind: lg[3], at: lg[4] } : null;
-    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge, this.beats.miss] = s.b;
+    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge, this.beats.miss, this.beats.post] = s.b;
     this.lastJuke = god(s.lj);
     const lb = s.lb;
     const unit = lb && god(lb[1]);
@@ -1057,11 +1145,17 @@ export class Rush {
       r.x = r.holder.x;
       r.z = r.holder.z;
     } else if (r.phase === 'flying' && r.duration > 0) {
-      r.t = Math.min(r.duration, r.t + dt);
-      const p = r.t / r.duration;
-      r.x = r.fx + (r.tx - r.fx) * p;
-      r.z = r.fz + (r.tz - r.fz) * p;
-      r.h = Rush.flightHeight(r, p);
+      const t = Math.min(r.duration, r.t + dt);
+      const p = t / r.duration;
+      const x = r.fx + (r.tx - r.fx) * p;
+      const z = r.fz + (r.tz - r.fz) * p;
+      const h = Rush.flightHeight(r, p);
+      // into stone the host bounces it: it waits at the face for the snapshot that says which way
+      if (this.stoneAt(x, z, h)) return;
+      r.t = t;
+      r.x = x;
+      r.z = z;
+      r.h = h;
     }
   }
 

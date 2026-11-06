@@ -138,7 +138,8 @@ export class Temple implements MapContent {
         shaft.position.set(x, y0 + 0.6, z);
         const top = this.add(new THREE.Mesh(brokenCap(R * (1 - 0.12 * (h / shaftH)), seed), this.mats.marble));
         top.position.set(x, y0 + 0.6 + h, z);
-        this.collision.addCircle(x, z, R * 1.1);
+        // as tall as the broken shaft (its jagged top rises and falls about this much): a relic flies over a short one
+        this.collision.addCircle(x, z, R * 1.1, y0 + 0.6 + h + 0.3);
         this.scatterRubble(x * 1.12, z * 1.12, 5, random, y0);
       }
     }
@@ -205,7 +206,8 @@ export class Temple implements MapContent {
       if (r < 3.6) return y0 + 0.22;
       return null;
     });
-    this.collision.addCircle(0, 0, 0.95);
+    // as tall as the pedestal: a relic thrown over it clears it, one thrown into it bounces off (see Rush)
+    this.collision.addCircle(0, 0, 0.95, y0 + 0.54 + 1.26);
     const relic = new Relic(new THREE.Vector3(0, y0 + 0.54, 0));
     this.group.add(relic.group);
     return relic;
@@ -352,7 +354,8 @@ export class Temple implements MapContent {
       const fire = new Fire(new THREE.Vector3(s.x, ground + 1.5, s.y), 0.9, i * 7.3, 18);
       this.group.add(fire.group);
       this.fires.push(fire);
-      this.collision.addCircle(s.x, s.y, 0.75);
+      // up to the bowl's rim (its fire is no obstacle)
+      this.collision.addCircle(s.x, s.y, 0.75, ground + 1.7);
     });
   }
 

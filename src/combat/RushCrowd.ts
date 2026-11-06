@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { abs, attribute, cameraPosition, color, cos, cross, dot, float, length, max, min, mix, normalView, normalize, positionLocal, positionView, sin, smoothstep, time, uniform, vec3 } from '../render/tsl';
-import { RUSH, type Rush } from '../sim/Rush';
+import { offGate, RUSH, type Rush } from '../sim/Rush';
 import { chanting, chantMotion } from '../audio/chant';
 import type { Side } from '../game/combatant';
 
@@ -183,7 +183,7 @@ export class RushCrowd {
   private readonly heat = { order: HEAT.idle, chaos: HEAT.idle };
   /** Extra excitement from a moment of play (a steal, a catch), fading. */
   private readonly spike = { order: 0, chaos: 0 };
-  private readonly seen = { steal: 0, catch: 0, fumble: 0, shrug: 0, save: 0, dodge: 0, miss: 0 };
+  private readonly seen = { steal: 0, catch: 0, fumble: 0, shrug: 0, save: 0, dodge: 0, miss: 0, post: 0 };
   private readonly motion = { bob: 0, pump: 0 };
 
   constructor(ground: Ground, mine: Side, colors: { ally: number; foe: number }) {
@@ -291,12 +291,13 @@ export class RushCrowd {
     const relic = rush.relic;
     const seen = this.seen;
     const b = rush.beats;
-    if (b.steal !== seen.steal || b.catch !== seen.catch || b.fumble !== seen.fumble || b.shrug !== seen.shrug || b.save !== seen.save || b.dodge !== seen.dodge || b.miss !== seen.miss) {
+    if (b.steal !== seen.steal || b.catch !== seen.catch || b.fumble !== seen.fumble || b.shrug !== seen.shrug || b.save !== seen.save || b.dodge !== seen.dodge || b.miss !== seen.miss || b.post !== seen.post) {
       const beat = rush.lastBeat;
-      // the end whose team just won (or kept) the relic gets up
-      const team = !beat ? null : beat.kind === 'fumble' ? (beat.by?.team as Side | undefined) : (beat.unit.team as Side);
-      // (a save brings the keeper's end to its feet, a juke the juker's, and a near miss the thrower's)
-      if (team) this.spike[team] = Math.max(this.spike[team], beat?.kind === 'save' ? HEAT.save : beat?.kind === 'dodge' ? HEAT.dodge : beat?.kind === 'miss' ? HEAT.miss : HEAT.beat);
+      // the end whose team just won (or kept) the relic gets up (a bounce off stone only stirs them off the gate's pillar)
+      const post = beat?.kind === 'post';
+      const team = !beat || (post && !offGate(beat.unit, relic)) ? null : beat.kind === 'fumble' ? (beat.by?.team as Side | undefined) : (beat.unit.team as Side);
+      // (a save brings the keeper's end to its feet, a juke the juker's, and a near miss or a shot off the pillar the thrower's)
+      if (team) this.spike[team] = Math.max(this.spike[team], beat?.kind === 'save' ? HEAT.save : beat?.kind === 'dodge' ? HEAT.dodge : beat?.kind === 'miss' || post ? HEAT.miss : HEAT.beat);
       seen.steal = b.steal;
       seen.catch = b.catch;
       seen.fumble = b.fumble;
@@ -304,6 +305,7 @@ export class RushCrowd {
       seen.save = b.save;
       seen.dodge = b.dodge;
       seen.miss = b.miss;
+      seen.post = b.post;
     }
     const base = rush.overtime ? HEAT.overtime : HEAT.idle;
     for (const side of ['order', 'chaos'] as const) {
