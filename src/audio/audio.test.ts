@@ -6,7 +6,7 @@ import { CHORDS, INST, INSTRUMENTS, Music, SONGS } from './music';
 import type { AudioEngine } from './AudioEngine';
 import { SKILL_SOUNDS } from './skillSounds';
 import { renderRecipe, SOUNDS, type Recipe } from './sounds';
-import { DEPTH_BEDS, UNDERWORLD_LIFE } from './underworldAmbience';
+import { DEPTH_BEDS, DEPTH_SONG, UNDERWORLD_LIFE } from './underworldAmbience';
 
 function check(name: string, recipe: Recipe): number {
   const variants = renderRecipe(recipe, hashSeed(name));
@@ -100,7 +100,7 @@ describe('sound bank', () => {
     expect(gains.battle).toBeGreaterThan(0.95);
   });
 
-  test('each Descent depth has beds and stirs of its own, all in the bank', () => {
+  test('each Descent depth has a theme, beds and stirs of its own, all in the bank', () => {
     const depths = ['ember', 'soul', 'spirit'] as const;
     const own = depths.map((d) => new Set([...DEPTH_BEDS.filter((b) => b.depth === d).map((b) => b.name), ...UNDERWORLD_LIFE[d].near.sounds, ...UNDERWORLD_LIFE[d].far.sounds]));
     for (const [k, d] of depths.entries()) {
@@ -113,6 +113,9 @@ describe('sound bank', () => {
       const { near, far } = UNDERWORLD_LIFE[d];
       for (const s of [near, far]) expect(s.every[0]).toBeLessThanOrEqual(s.every[1]);
     }
+    // and a theme of its own
+    expect(new Set(depths.map((d) => DEPTH_SONG[d])).size).toBe(depths.length);
+    for (const d of depths) expect(SONGS[DEPTH_SONG[d]], DEPTH_SONG[d]).toBeTruthy();
   });
 
   test('sounds are deterministic', () => {

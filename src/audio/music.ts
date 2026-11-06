@@ -115,6 +115,11 @@ function bellTone(r: Rand, len: number, freq: number): Float32Array {
   return out;
 }
 
+/** A hammer on an anvil, tuned: a bright struck ring whose lowest partial carries the note, over the blow's thud. */
+function anvilTone(r: Rand, freq: number): Float32Array {
+  return tail(layer([clang(r, 1.3, freq, { decay: 0.9, bright: 0.7 }), 1], [thump(r, 0.08, 420, 260, { click: 0.6, noise: 0.3 }), 0.25]), 0.5, 0.2, 4000);
+}
+
 function stac(r: Rand, freq: number): Float32Array {
   const len = 0.32;
   const out = ensemble(r, len, freq, 5, freq * 6, 0.02);
@@ -141,6 +146,7 @@ export const INST: Record<string, Inst> = {
   'mus.stac': { ref: 50, sustain: false },
   'mus.stac.hi': { ref: 62, sustain: false },
   'mus.bell': { ref: 81, sustain: false },
+  'mus.anvil': { ref: 76, sustain: false },
   'mus.taiko': { ref: 0, sustain: false },
   'mus.taiko.hi': { ref: 0, sustain: false },
   'mus.frame': { ref: 0, sustain: false },
@@ -162,6 +168,7 @@ export const INSTRUMENTS: Record<string, Recipe> = {
   'mus.stac': { peak: 0.7, make: (r) => stac(r, midiHz(50)) },
   'mus.stac.hi': { peak: 0.7, make: (r) => stac(r, midiHz(62)) },
   'mus.bell': { peak: 0.6, make: (r) => bellTone(r, 2.5, midiHz(81)) },
+  'mus.anvil': { peak: 0.6, make: (r) => anvilTone(r, midiHz(76)) },
   'mus.taiko': { peak: 0.95, make: (r) => taiko(r, 0.9, 55, 0.6) },
   'mus.taiko.hi': { peak: 0.8, make: (r) => taiko(r, 0.5, 110, 1.2) },
   'mus.frame': { peak: 0.6, make: (r) => layer([thump(r, 0.3, 200, 140, { click: 0.4, noise: 0.6, drive: 1.3 }), 1], [filter(noiseHit(r, 0.2, 0.06), 'bandpass', 2500), 0.5]) },
@@ -189,6 +196,11 @@ export const CHORDS: Record<string, number[]> = {
   Em: [52, 55, 59],
   Bm: [47, 50, 54],
   B: [47, 51, 54],
+  E: [52, 56, 59],
+  Cm: [48, 51, 55],
+  Fm: [41, 44, 48],
+  Ab: [44, 48, 51],
+  Db: [49, 53, 56],
 };
 
 interface Note {
@@ -410,6 +422,114 @@ const ABYSS: Song = {
 };
 
 /**
+ * The Ashen Depths: a smith's war song in C minor, leaning on its flat second
+ * (Db) like the Abyss below it. Anvils ring the beat while the team explores,
+ * over a low drone and the bellows' breath in the choir; in battle the drums
+ * hammer, low strings grind, the brass barks and a defiant horn sings.
+ */
+const FORGE: Song = {
+  bpm: 84,
+  beats: 4,
+  chords: ['Cm', 'Cm', 'Db', 'Db', 'Cm', 'Cm', 'Ab', 'G', 'Fm', 'Fm', 'Db', 'Db', 'Cm', 'Ab', 'G', 'G'],
+  write(bar, loop, ch, out) {
+    // -- base: the drone and bass, the bellows in the choir, the smith's hammer on the anvil
+    if (bar % 2 === 0) {
+      for (const n of ch) out.push({ inst: 'mus.pad.lo', midi: n, beat: 0, dur: 8, gain: 0.3, layer: 'base' });
+      out.push({ inst: 'mus.bass', midi: ch[0]! - 12, beat: 0, dur: 8, gain: 0.42, layer: 'base' });
+      if (loop >= 1) out.push({ inst: 'mus.choir', midi: ch[0]!, beat: 0, dur: 8, gain: 0.14, layer: 'base' });
+    }
+    // two heavy blows and two light taps on the root and fifth, a flurry to close each phrase
+    const hammer: [number, number, number][] = [[0, ch[0]! + 24, 0.48], [0.75, ch[2]! + 24, 0.17], [2, ch[0]! + 24, 0.4], [2.75, ch[2]! + 24, 0.16]];
+    if (bar % 4 === 3) hammer.push([3.5, ch[0]! + 24, 0.22], [3.75, ch[0]! + 24, 0.27]);
+    for (const [b, m, g] of hammer) out.push({ inst: 'mus.anvil', midi: m, beat: b, gain: g, layer: 'base', pan: -0.2 });
+    // the hammer's echo, low in the strings (an octave down where that stays in their range)
+    const low = ch[0]! >= 46 ? ch[0]! - 12 : ch[0]!;
+    out.push({ inst: 'mus.stac', midi: low, beat: 1, gain: 0.16, layer: 'base' }, { inst: 'mus.stac', midi: low, beat: 3, gain: 0.12, layer: 'base' });
+    out.push({ inst: 'mus.frame', beat: 0, gain: 0.22, layer: 'base' });
+
+    // -- battle: hammering drums, grinding strings, barking brass and the high choir
+    const drums: [number, number, string][] = [[0, 0.9, 'mus.taiko'], [0.5, 0.3, 'mus.taiko.hi'], [1, 0.5, 'mus.taiko'], [2, 0.85, 'mus.taiko'], [2.5, 0.3, 'mus.taiko.hi'], [3, 0.5, 'mus.taiko'], [3.5, 0.4, 'mus.taiko.hi']];
+    for (const [b, g, inst] of drums) out.push({ inst, beat: b, gain: g, layer: 'battle' });
+    if (bar % 4 === 3) for (const b of [3, 3 + 1 / 3, 3 + 2 / 3]) out.push({ inst: 'mus.taiko.hi', beat: b, gain: 0.42, layer: 'battle' });
+    const grind = [ch[0]!, ch[0]!, ch[0]! + 1, ch[0]!, ch[2]!, ch[0]!, ch[0]! + 1, ch[1]!];
+    grind.forEach((n, i) => out.push({ inst: 'mus.stac', midi: n, beat: i * 0.5, gain: i % 2 ? 0.22 : 0.34, layer: 'battle', pan: 0.25 }));
+    for (const n of ch) {
+      out.push({ inst: 'mus.horn.lo', midi: n, beat: 0, dur: 1.5, gain: 0.24, layer: 'battle' });
+      out.push({ inst: 'mus.horn.lo', midi: n, beat: 2.5, dur: 1, gain: 0.18, layer: 'battle' });
+    }
+    if (bar % 2 === 0) for (const n of up(ch, 12)) out.push({ inst: 'mus.choir.hi', midi: n, beat: 0, dur: 8, gain: 0.1, layer: 'battle' });
+    // the defiant horn over the second half
+    const call: Record<number, [number, number, number][]> = {
+      8: [[60, 0, 1.5], [63, 1.5, 0.5], [65, 2, 2]],
+      9: [[68, 0, 3], [67, 3, 1]],
+      10: [[65, 0, 2], [68, 2, 1], [65, 3, 1]],
+      11: [[61, 0, 4]],
+      12: [[63, 0, 1.5], [62, 1.5, 0.5], [60, 2, 2]],
+      13: [[63, 0, 2], [60, 2, 2]],
+      14: [[62, 0, 4]],
+      15: [[59, 0, 2], [62, 2, 2]],
+    };
+    for (const [m, b, d] of call[bar] ?? []) out.push({ inst: 'mus.horn', midi: m, beat: b, dur: d, gain: 0.32, layer: 'battle' });
+    if (bar === 15) out.push({ inst: 'mus.swell', beat: 4 - (1.8 * FORGE.bpm) / 60, gain: 0.5, layer: 'battle' });
+    if (bar === 0) out.push({ inst: 'mus.crash', beat: 0, gain: 0.3, layer: 'battle' });
+  },
+};
+
+/**
+ * The Drowned Halls: slow and submerged, in A minor. A glassy pad and a choir
+ * heard as if through water, the harp dripping notes out of time and a sunken
+ * bell tolling every four bars, its echo coming back off the halls; in battle
+ * heavy drums like a heart under water, strings surging in waves, low horns
+ * and a lament.
+ */
+const DROWNED: Song = {
+  bpm: 62,
+  beats: 4,
+  chords: ['Am', 'Am', 'F', 'F', 'C', 'C', 'Em', 'Em', 'Am', 'Am', 'Dm', 'Dm', 'F', 'F', 'E', 'E'],
+  write(bar, loop, ch, out) {
+    // -- base: the glassy pad and bass, the choir far off, the sunken bell, drips of harp
+    if (bar % 2 === 0) {
+      for (const n of ch) out.push({ inst: 'mus.pad.hi', midi: n, beat: 0, dur: 8, gain: 0.29, layer: 'base' });
+      out.push({ inst: 'mus.bass', midi: ch[0]! - 12, beat: 0, dur: 8, gain: 0.4, layer: 'base' });
+      if (loop >= 1) out.push({ inst: 'mus.choir.hi', midi: ch[0]! + 12, beat: 0, dur: 8, gain: 0.1, layer: 'base' });
+    }
+    if (bar % 4 === 0) {
+      out.push({ inst: 'mus.bell', midi: ch[0]! + 24, beat: 0, gain: 0.24, layer: 'base' });
+      out.push({ inst: 'mus.bell', midi: ch[0]! + 24, beat: 2.5, gain: 0.08, layer: 'base', pan: 0.5 });
+      out.push({ inst: 'mus.taiko', beat: 0, gain: 0.28, layer: 'base' });
+    }
+    // the drips fall out of step with the beat, a different few each bar
+    const drips = bar % 2 ? [[0.25, 1], [2, 2], [2.75, 0]] : [[0.5, 2], [1.75, 0], [3.25, 1]];
+    drips.forEach(([b, k], i) => out.push({ inst: 'mus.harp.hi', midi: ch[k!]! + 24, beat: b!, gain: 0.18 - i * 0.02, layer: 'base', pan: i % 2 ? 0.5 : -0.5 }));
+    out.push({ inst: 'mus.frame', beat: 0, gain: 0.18, layer: 'base' });
+
+    // -- battle: slow, heavy drums, surging strings, low horns and the choir, the lament
+    const drums: [number, number, string][] = [[0, 0.9, 'mus.taiko'], [1.5, 0.35, 'mus.taiko.hi'], [2.5, 0.7, 'mus.taiko'], [3, 0.3, 'mus.taiko.hi'], [3.5, 0.4, 'mus.taiko.hi']];
+    for (const [b, g, inst] of drums) out.push({ inst, beat: b, gain: g, layer: 'battle' });
+    if (bar % 4 === 3) for (const b of [3.25, 3.75]) out.push({ inst: 'mus.taiko.hi', beat: b, gain: 0.35, layer: 'battle' });
+    const surge = [ch[0]!, ch[1]!, ch[2]!, ch[0]! + 12, ch[2]!, ch[1]!, ch[0]!, ch[1]!];
+    surge.forEach((n, i) => out.push({ inst: 'mus.stac', midi: n, beat: i * 0.5, gain: 0.16 + Math.sin((i / 7) * Math.PI) * 0.14, layer: 'battle', pan: -0.25 }));
+    if (bar % 2 === 0) {
+      for (const n of ch) out.push({ inst: 'mus.horn.lo', midi: n, beat: 0, dur: 8, gain: 0.2, layer: 'battle' });
+      for (const n of up(ch, 12)) out.push({ inst: 'mus.choir', midi: n, beat: 0, dur: 8, gain: 0.12, layer: 'battle' });
+    }
+    const lament: Record<number, [number, number, number][]> = {
+      8: [[64, 0, 2], [65, 2, 1], [64, 3, 1]],
+      9: [[60, 0, 3], [59, 3, 1]],
+      10: [[62, 0, 2], [65, 2, 2]],
+      11: [[69, 0, 3], [67, 3, 1]],
+      12: [[65, 0, 2], [64, 2, 1], [62, 3, 1]],
+      13: [[60, 0, 4]],
+      14: [[59, 0, 2], [64, 2, 2]],
+      15: [[68, 0, 4]],
+    };
+    for (const [m, b, d] of lament[bar] ?? []) out.push({ inst: 'mus.horn', midi: m, beat: b, dur: d, gain: 0.3, layer: 'battle' });
+    if (bar === 15) out.push({ inst: 'mus.swell', beat: 4 - (1.8 * DROWNED.bpm) / 60, gain: 0.5, layer: 'battle' });
+    if (bar === 0) out.push({ inst: 'mus.crash', beat: 0, gain: 0.25, layer: 'battle' });
+  },
+};
+
+/**
  * The Jötunn's theme: a winter war song in E minor, slow as a giant's stride.
  * Open fifths and an icy bell over a low drone; in battle the war drums fall
  * like footsteps on one and three, strings drive in fifths and a northern horn
@@ -506,7 +626,7 @@ const FROST_STAND: Song = {
   },
 };
 
-export const SONGS = { hymn: HYMN, dawn: DAWN, battle: BATTLE, siege: SIEGE, abyss: ABYSS, frost: FROST, frostStand: FROST_STAND } as const;
+export const SONGS = { hymn: HYMN, dawn: DAWN, battle: BATTLE, siege: SIEGE, abyss: ABYSS, forge: FORGE, drowned: DROWNED, frost: FROST, frostStand: FROST_STAND } as const;
 export type SongName = keyof typeof SONGS;
 
 // ---------------------------------------------------------------------------

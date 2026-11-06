@@ -22,7 +22,7 @@ import { RUSH } from '../sim/Rush';
 import { chantAt, chantBreak, chanting } from './chant';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import type { Palette } from '../map/UnderworldLayout';
-import { DEPTH_BEDS, UNDERWORLD_LIFE, type Stir } from './underworldAmbience';
+import { DEPTH_BEDS, DEPTH_SONG, UNDERWORLD_LIFE, type Stir } from './underworldAmbience';
 import { relicById } from '../sim/Relics';
 import { BOSS_CALL_LINE } from '../ui/bossNames';
 import { isGiant, JOTUNN, lastStand, type PartId } from '../sim/Jotunn';
@@ -111,7 +111,7 @@ export class GameAudio {
     game.sim.listeners.push((e) => this.onEvent(e));
     window.addEventListener('keydown', (e) => this.onKey(e));
     engine.onUnlock(() => this.startAmbience());
-    this.music.play(this.conquest ? 'dawn' : game.descent ? 'abyss' : game.jotunn ? 'frost' : 'battle');
+    this.music.play(this.conquest ? 'dawn' : game.descent ? DEPTH_SONG[DEPTHS[game.descent.depth]!.palette] : game.jotunn ? 'frost' : 'battle');
     // the giant's footfalls come from its model, so each lands with the foot; souls reaching you rise in pitch along a run
     // pings are the team's voice: flat, heard anywhere on the map, your own softer
     game.onPing = (sound, mine) => {
@@ -1297,8 +1297,8 @@ export class GameAudio {
       if (r.phase === 'lost') this.herald.say('Your team is lost in the dark.', 'bad', 9);
       seen.phase = r.phase;
     }
-    // the bosses get the darkest theme; the rest of the descent its own
-    const song: SongName = r.current.kind === 'boss' && r.phase === 'fight' ? 'siege' : 'abyss';
+    // the bosses get the darkest theme; each depth its own between them
+    const song: SongName = r.current.kind === 'boss' && r.phase === 'fight' ? 'siege' : DEPTH_SONG[DEPTHS[r.depth]!.palette];
     if (song !== seen.song && !r.over) {
       seen.song = song;
       this.music.play(song);

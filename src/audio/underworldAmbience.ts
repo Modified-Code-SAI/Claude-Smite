@@ -1,9 +1,13 @@
 /**
- * The Underworld Descent's ambience, depth by depth: the beds that loop under
- * each depth and the sounds that stir in it now and then (GameAudio plays them).
+ * The Underworld Descent's sound, depth by depth: its theme, the beds that loop
+ * under it and the sounds that stir in it now and then (GameAudio plays them).
  */
 
 import type { Palette } from '../map/UnderworldLayout';
+import type { SongName } from './music';
+
+/** Each depth's theme between its bosses: the smith's war song, the drowned halls' slow one, the Abyss's own. */
+export const DEPTH_SONG: Record<Palette, SongName> = { ember: 'forge', soul: 'drowned', spirit: 'abyss' };
 
 /**
  * Each Descent depth's own air, over the cavern breath they all share: the
