@@ -4,6 +4,7 @@ import { godAsset, type GodAsset } from './gods/assets';
 import { combinedMaterials, COMBINED, godMaterials } from './gods/materials';
 import { SecondaryPhysics } from './gods/Physics';
 import { castSkinnedAsOne, mergeSkinned, packScalars } from '../scene/merge';
+import { FORCED_LOD, LOD_ERROR, lodView, pickLod, type LodRange } from '../scene/lod';
 import { color, luminance } from '../render/tsl';
 
 /** Locomotion input the model animates from. All values are per frame. */
@@ -23,6 +24,8 @@ export interface LocomotionState {
  * baked AO already darkens them in contact. Saves ~100k triangles per cascade.
  */
 const NO_SHADOW = new Set(['hair', 'eye', 'gem', 'glow']);
+
+const lodViewport = new THREE.Vector2();
 
 /** Geometry every model of one god shares: shadow stand-ins and pieces merged per combined material. */
 const standIns = new Map<string, { geometry?: THREE.BufferGeometry }>();
@@ -251,6 +254,9 @@ export class GodModel {
   /** Every bone, and its rotation as the clips last left it (before this model's own layers). */
   private readonly allBones: THREE.Bone[] = [];
   private readonly clipPose: THREE.Quaternion[] = [];
+  /** Meshes drawn at a distance level of detail (see scene/lod.ts), and the level they draw. */
+  private readonly lodMeshes: { mesh: THREE.Mesh; ranges: LodRange[]; shadow: boolean }[] = [];
+  private lod = 0;
 
   /**
    * Runs after the clips and overlays each frame, before the hands close and
@@ -304,6 +310,7 @@ export class GodModel {
     if (shadowStandIn) {
       castSkinnedAsOne(scene, standIns);
       this.combineParts(scene, variant);
+      this.useLods(scene);
     }
     const bone = (n: string) => this.bones.get(n.replace(/\./g, ''))!;
     this.head = bone('DEF-head');
@@ -427,6 +434,54 @@ export class GodModel {
     scene.traverse((o) => {
       if ((o as THREE.SkinnedMesh).isSkinnedMesh) packScalars((o as THREE.Mesh).geometry);
     });
+  }
+
+  /**
+   * Gives each merged mesh a view of its geometry with every level of detail
+   * in one index buffer, and picks the level each time it is drawn: the
+   * coarsest whose geometric error spans under LOD_MAX_PX on screen. The
+   * shadow stand-in draws one level coarser than the model (a shadow map texel
+   * is far bigger than the finest level's error).
+   */
+  private useLods(scene: THREE.Object3D): void {
+    scene.traverse((o) => {
+      const mesh = o as THREE.SkinnedMesh;
+      if (!mesh.isSkinnedMesh) return;
+      const view = lodView(mesh.geometry);
+      if (!view) return;
+      mesh.geometry = view.geometry;
+      const shadow = mesh.name === 'shadow';
+      this.lodMeshes.push({ mesh, ranges: view.ranges, shadow });
+      if (!shadow) mesh.onBeforeRender = (renderer, _scene, camera) => this.pickLevel(renderer as unknown as THREE.Renderer, camera);
+    });
+    this.setLevel(FORCED_LOD >= 0 ? FORCED_LOD : 0);
+  }
+
+  private pickLevel(renderer: THREE.Renderer, camera: THREE.Camera): void {
+    if (FORCED_LOD >= 0 || !(camera as THREE.PerspectiveCamera).isPerspectiveCamera) return;
+    const rt = renderer.getRenderTarget();
+    const height = rt ? rt.height : renderer.getDrawingBufferSize(lodViewport).y;
+    const m = this.root.matrixWorld.elements;
+    const c = camera.matrixWorld.elements;
+    const dist = Math.max(0.5, Math.hypot(m[12]! - c[12]!, m[13]! - c[13]!, m[14]! - c[14]!));
+    const scale = Math.hypot(m[4]!, m[5]!, m[6]!);
+    // pixels one metre of the model's own geometry spans at its distance
+    const pxPerMetre = (camera.projectionMatrix.elements[5]! * height * scale) / (2 * dist);
+    this.setLevel(pickLod(pxPerMetre, this.lod));
+  }
+
+  private setLevel(level: number): void {
+    if (level === this.lod && this.lod !== 0) return;
+    this.lod = level;
+    for (const v of this.lodMeshes) {
+      const r = v.ranges[v.shadow ? Math.min(level + 1, LOD_ERROR.length - 1) : level]!;
+      v.mesh.geometry.setDrawRange(r.start, r.count);
+    }
+  }
+
+  /** The level of detail this model last drew (0 = full). */
+  get lodLevel(): number {
+    return this.lod;
   }
 
   /**

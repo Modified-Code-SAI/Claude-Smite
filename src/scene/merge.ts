@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Layers } from '../render/Layers';
+import { mergeLods } from './lod';
 import { turnedVariant } from './Materials';
 
 /**
@@ -119,6 +120,10 @@ function castAsOne(
     });
     const merged = mergeGeometries(geos, false);
     if (!merged) return;
+    // distance levels (see lod.ts), wound the same way
+    const sides = new Map(list.map((m) => [m.geometry, (m.material as THREE.Material).side]));
+    const lods = indexed ? mergeLods(list.map((m) => m.geometry), (g, i) => frontFaces(g, sides.get(g)!, i)) : undefined;
+    if (lods) merged.userData.lods = lods;
     geometry = merged;
     if (shared) shared.geometry = geometry;
   }
@@ -138,10 +143,11 @@ function castAsOne(
  * double-sided one, so back-sided triangles turn around and double-sided
  * ones go in both ways.
  */
-function frontFaces(geometry: THREE.BufferGeometry, side: THREE.Side): number[] {
-  const n = geometry.index ? geometry.index.count : geometry.getAttribute('position').count;
+function frontFaces(geometry: THREE.BufferGeometry, side: THREE.Side, indices?: ArrayLike<number>): number[] {
+  const src = indices ?? geometry.index?.array;
+  const n = src ? src.length : geometry.getAttribute('position').count;
   const tri: number[] = new Array(n);
-  for (let i = 0; i < n; i++) tri[i] = geometry.index ? geometry.index.getX(i) : i;
+  for (let i = 0; i < n; i++) tri[i] = src ? src[i]! : i;
   if (side === THREE.FrontSide) return tri;
   const flipped: number[] = new Array(n);
   for (let i = 0; i < n; i += 3) {
@@ -359,6 +365,8 @@ export function mergeSkinned(root: THREE.Object3D, shared?: Map<string, THREE.Bu
       });
       merged = mergeGeometries(geos, false);
       if (!merged) continue;
+      const lods = indexed ? mergeLods(list.map((m) => m.geometry)) : undefined;
+      if (lods) merged.userData.lods = lods;
       shared?.set(key, merged);
     }
     const out = new THREE.SkinnedMesh(merged, first.material);
