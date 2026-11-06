@@ -137,6 +137,10 @@ export class CombatGame implements Updatable {
   /** Jötunn's rules, and the mode around them (bots, the giant's view, HUD, driving the giant). */
   jotunn: Jotunn | null = null;
   private jotunnMode: JotunnMode | null = null;
+  /** How hard the Jötunn's winter snows now, 0 to 1 (0 in every other mode). */
+  get winter(): number {
+    return this.jotunnMode?.weather.level ?? 0;
+  }
   private ringShown = 0;
   private difficultyApplied = false;
   /** The plaza's edge, glowing in the color of whoever holds it. */
