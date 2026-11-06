@@ -12,7 +12,7 @@ import { ConquestLayout as L, nearestOnPolyline } from '../map/ConquestLayout';
 import { isStructure, type Projectile, type SimEvent, type Unit, type Zone } from '../sim/Unit';
 import type { Announcer } from './Announcer';
 import { GodVoice } from './GodVoice';
-import type { LineKind } from './godLines';
+import type { VoiceKind } from './godLines';
 import type { AudioEngine, LoopHandle } from './AudioEngine';
 import { skillPart, skillSound } from './bank';
 import type { Music, SongName } from './music';
@@ -22,10 +22,12 @@ import { RUSH } from '../sim/Rush';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import { relicById } from '../sim/Relics';
 import { BOSS_CALL_LINE } from '../ui/bossNames';
-import { JOTUNN, lastStand, type PartId } from '../sim/Jotunn';
+import { isGiant, JOTUNN, lastStand, type PartId } from '../sim/Jotunn';
 
 /** A match's music only ever moves forward: dawn, then battle, then the siege. */
 const PHASES: SongName[] = ['dawn', 'battle', 'siege'];
+/** Seconds between the Jötunn's words over the gods it crushes. */
+const GIANT_GLOAT_GAP = 14;
 
 
 type Surface = 'stone' | 'grass' | 'dirt' | 'coins' | 'ash';
@@ -65,6 +67,8 @@ export class GameAudio {
   private heat = 0;
   /** The least the music's battle layer plays at, whatever the fighting nearby (a mode's climax holds it up). */
   private moodFloor = 0;
+  /** When the Jötunn last spoke over a god it crushed. */
+  private giantGloatAt = -1e9;
   private muffle = 0;
   /** Gain for other units' sounds: drops as the mix fills up, so your own fight stays clear. */
   private crowd = 1;
@@ -339,6 +343,8 @@ export class GameAudio {
       case 'god':
         if (u === this.game.jotunn?.giant) {
           this.at('jotunn.fall', u, { gain: 1.3, ref: 40 }, 7);
+          // its last words, under the quake of its fall
+          this.giantSays('death', 1.2, true);
           break;
         }
         this.at(this.game.rush ? 'god.daze' : 'god.death', u, { gain: u === me ? 1 : 0.8, ref: 10 }, 5);
@@ -1252,14 +1258,21 @@ export class GameAudio {
       this.at('jotunn.roar', g, { gain: 1.2, ref: 45, delay: 0.3 }, 6, 0, true);
     }
     if (j.phase !== seen.phase) {
-      if (j.phase === 'fight' && seen.phase === 'countdown') this.engine.play('jotunn.horn', { gain: 0.8 }, 5);
+      if (j.phase === 'fight' && seen.phase === 'countdown') {
+        this.engine.play('jotunn.horn', { gain: 0.8 }, 5);
+        // and the giant answers the horn
+        this.giantSays('start', 1.5);
+      }
       if (j.phase === 'over') {
         const giantWon = j.lastRound === 'giant';
         const won = giantMe === giantWon;
         const line = giantWon ? (giantMe ? 'The braziers are smashed! The round is yours.' : 'The braziers are smashed. The round is lost.') : giantMe ? 'You have fallen. The round is lost.' : 'The Jötunn has fallen! The round is yours.';
         this.herald.say(line, won ? 'good' : 'bad', 5);
-        // the giant's win: it roars over the smashed temple
-        if (giantWon) this.at('jotunn.roar', g, { gain: 1.2, ref: 45, delay: 0.35 }, 6, 0, true);
+        // the giant's win: it roars over the smashed temple, then gloats
+        if (giantWon) {
+          this.at('jotunn.roar', g, { gain: 1.2, ref: 45, delay: 0.35 }, 6, 0, true);
+          this.giantSays('win', 3.4);
+        }
       }
       if (j.phase === 'done' && !seen.done) {
         seen.done = true;
@@ -1279,6 +1292,7 @@ export class GameAudio {
     // rest of the round; a new round starts on the stride again.
     if (!seen.stand && lastStand(j)) {
       seen.stand = true;
+      this.giantSays('stand', 0.3);
       // (one brazier short has the brazier's own call)
       if (j.braziersLeft > JOTUNN.braziers.length - JOTUNN.braziersToWin + 1) this.herald.say(giantMe ? 'Your Might is failing! Smash the braziers while you stand.' : 'The Jötunn falters! Bring it down!', giantMe ? 'bad' : 'epic', 3);
     }
@@ -1296,6 +1310,7 @@ export class GameAudio {
         this.engine.play('jotunn.brazier', { at: { x: b.x, y: b.body.y + 1, z: b.z }, gain: 1.2, ref: 30 }, 6);
         const smashed = JOTUNN.braziers.length - j.braziersLeft;
         const need = JOTUNN.braziersToWin - smashed;
+        if (need > 0) this.giantSays('brazier', 0.5);
         if (need > 0) this.herald.say(giantMe ? `A brazier is smashed! ${need} more.` : `A brazier is smashed! ${need === 1 ? 'Only one more and the temple falls.' : 'Hold the rest!'}`, giantMe ? 'good' : 'bad', 3);
       }
       seen.braziers[i] = b.alive;
@@ -1310,12 +1325,14 @@ export class GameAudio {
     const kneeling = j.kneeling > 0;
     if (kneeling && !seen.kneeling) {
       this.at('jotunn.kneel', g, { gain: 1.3, ref: 40 }, 6, 0, true);
+      this.giantSays('kneel', 0.6, true);
       this.herald.say(giantMe ? 'You are on your knees! Guard your crown.' : `The Jötunn kneels! Strike the crown!`, giantMe ? 'bad' : 'epic', 4);
     }
     seen.kneeling = kneeling;
     if (j.claims > seen.claims) {
       const s = j.shrines.reduce((a, b) => (b.dormant > a.dormant ? b : a));
       this.engine.play('jotunn.claim', { at: { x: s.def.x, z: s.def.z }, gain: 1, ref: 30 }, 5);
+      this.giantSays('shrine', 0.4);
       const ult = this.game.player.combatant.god.skills.find((k) => k.id === s.def.ult)?.name ?? 'a new power';
       this.herald.say(giantMe ? `The ${s.def.name} is yours: ${ult}!` : `The Jötunn claims the ${s.def.name}!`, giantMe ? 'good' : 'bad', 3);
     }
@@ -1371,13 +1388,27 @@ export class GameAudio {
    * calls, from the god otherwise (and only near enough to hear). A hidden
    * enemy says nothing. Returns how long until it ends, or 0.
    */
-  private speak(u: Unit, kind: LineKind, o: { delay?: number; variant?: number; flat?: boolean; cut?: boolean } = {}): number {
+  private speak(u: Unit, kind: VoiceKind, o: { delay?: number; variant?: number; flat?: boolean; cut?: boolean } = {}): number {
     if (u.kind !== 'god' || (u.stealth > 0 && u.team !== this.me.team)) return 0;
     const own = u === this.me;
-    if (!own && !o.flat && this.dist(u) > 32) return 0;
-    const at = own || o.flat ? undefined : { x: u.x, y: u.body.y + 1.6, z: u.z };
-    const gain = own ? 0.95 : o.flat ? 0.7 : 0.9 * this.crowd;
-    return this.lines.say(u, u.combatant.god.id, kind, { own, at, gain, delay: o.delay, variant: o.variant, cut: o.cut });
+    // the Jötunn's voice carries over the whole temple, and nothing talks over it
+    const giant = isGiant(u);
+    if (!own && !o.flat && !giant && this.dist(u) > 32) return 0;
+    const at = own || o.flat || giant ? undefined : { x: u.x, y: u.body.y + 1.6, z: u.z };
+    const gain = own ? 0.95 : giant ? 0.9 : o.flat ? 0.7 : 0.9 * this.crowd;
+    // (it crushes gods often: a word over the body now and then, not every time)
+    const gloat = giant && (kind === 'kill' || kind === 'streak');
+    if (gloat && this.time - this.giantGloatAt < GIANT_GLOAT_GAP) return 0;
+    const said = this.lines.say(u, u.combatant.god.id, kind, { own: own || giant, at, gain, delay: o.delay, variant: o.variant, cut: o.cut });
+    if (gloat && said) this.giantGloatAt = this.time;
+    return said;
+  }
+
+  /** The Jötunn says a line for a moment of the fight; the herald waits for it to finish. */
+  private giantSays(kind: VoiceKind, delay = 0, cut = false): void {
+    const g = this.game.jotunn?.giant;
+    const said = g ? this.speak(g, kind, { delay, cut }) : 0;
+    if (said) this.herald.hold(said + 0.15);
   }
 
   private dist(u: Unit): number {

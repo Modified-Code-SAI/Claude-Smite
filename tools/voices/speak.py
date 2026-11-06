@@ -1,4 +1,4 @@
-"""Speaks the gods' lines (src/audio/godLines.ts) into public/voices/<god>/<kind>-<n>.mp3.
+"""Speaks the gods' and the Jötunn's lines (src/audio/godLines.ts) into public/voices/<god>/<kind>-<n>.mp3.
 
     pip install kokoro-onnx soundfile scipy
     # model files from https://github.com/thewh1teagle/kokoro-onnx/releases (model-files-v1.0)
@@ -29,6 +29,8 @@ CAST = {
     'odin': dict(voice='bm_fable', lang='en-gb', speed=0.96, semitones=-3.0, room=(0.7, 0.1), grit=0.0, breath=0.05, double=0.0),
     'loki': dict(voice='am_puck', lang='en-us', speed=1.04, semitones=0.0, room=(0.35, 0.05), grit=0.0, breath=0.0, double=0.14),
     'anubis': dict(voice={'am_onyx': 0.55, 'am_fenrir': 0.45}, lang='en-us', speed=0.88, semitones=-4.0, room=(0.9, 0.15), grit=0.1, breath=0.07, double=0.2),
+    # the Jötunn: far deeper than any god (the drop slows it too), hollow, in a hall of ice
+    'jotunn': dict(voice={'am_onyx': 0.65, 'am_fenrir': 0.35}, lang='en-us', speed=1.0, semitones=-5.5, room=(2.2, 0.2), grit=0.18, breath=0.04, double=0.3),
 }
 
 

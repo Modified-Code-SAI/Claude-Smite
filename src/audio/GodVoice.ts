@@ -7,7 +7,7 @@
  */
 
 import type { AudioEngine } from './AudioEngine';
-import { GOD_LINES, LINE_KINDS, lineUrl, type LineKind } from './godLines';
+import { lineUrl, VOICE_LINES, type VoiceKind } from './godLines';
 
 /** What GodVoice needs from the engine (a stand-in in tests). */
 export type VoiceEngine = Pick<AudioEngine, 'ready' | 'now' | 'has' | 'buffer' | 'play' | 'loadClips'>;
@@ -28,7 +28,7 @@ export interface SayOptions {
 /** Seconds kept clear after another god's line before the next god may speak. */
 export const ROOM_BETWEEN = 0.4;
 
-const clip = (god: string, kind: LineKind) => `line.${god}.${kind}`;
+const clip = (god: string, kind: VoiceKind) => `line.${god}.${kind}`;
 
 export class GodVoice {
   private readonly loaded = new Set<string>();
@@ -41,22 +41,23 @@ export class GodVoice {
     private readonly base: string,
   ) {}
 
-  /** Fetch a god's lines (once each), all of them or just some kinds. */
-  load(god: string, kinds: readonly LineKind[] = LINE_KINDS): void {
-    const lines = GOD_LINES[god];
+  /** Fetch a god's (or the giant's) lines (once each), all of them or just some kinds. */
+  load(god: string, kinds?: readonly VoiceKind[]): void {
+    const lines = VOICE_LINES[god];
     if (!lines) return;
-    for (const kind of kinds) {
+    for (const kind of kinds ?? (Object.keys(lines) as VoiceKind[])) {
+      const texts = lines[kind];
       const key = clip(god, kind);
-      if (this.loaded.has(key)) continue;
+      if (!texts || this.loaded.has(key)) continue;
       this.loaded.add(key);
-      void this.engine.loadClips(key, lines[kind].map((_, n) => lineUrl(this.base, god, kind, n)));
+      void this.engine.loadClips(key, texts.map((_, n) => lineUrl(this.base, god, kind, n)));
     }
   }
 
   /** Say one of a god's lines for `speaker` (its unit). Returns how long until it ends, or 0 when it was not said. */
-  say(speaker: object, god: string, kind: LineKind, o: SayOptions): number {
+  say(speaker: object, god: string, kind: VoiceKind, o: SayOptions): number {
     const key = clip(god, kind);
-    const count = GOD_LINES[god]?.[kind].length ?? 0;
+    const count = VOICE_LINES[god]?.[kind]?.length ?? 0;
     if (!count || !this.engine.ready || !this.engine.has(key)) return 0;
     const now = this.engine.now;
     const cur = this.speaking.get(speaker);
