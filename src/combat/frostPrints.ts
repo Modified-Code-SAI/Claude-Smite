@@ -8,8 +8,8 @@ import {
  * blows, slowly breaking up into patches and melting away.
  */
 export const PRINTS = {
-  /** Prints kept at once; the oldest makes room for a new one. */
-  capacity: 56,
+  /** Prints kept at once; the oldest makes room for a new one (a frost breath or a hailstorm lays a dozen). */
+  capacity: 80,
   /** Seconds a footprint lasts, and a blow's frost; both melt over their last `melt` seconds. */
   footLife: 22,
   blowLife: 18,
