@@ -1326,7 +1326,11 @@ export class Descent {
     return entranceSpot(c, side === 'order' ? 2 - i : 4 + i, 7, 2);
   }
 
-  /** Every god to the current chamber's gate; the fallen come along. */
+  /**
+   * Every god to the current chamber's gate; the fallen come along. Quietly:
+   * the team walks in under the fade, so no flash, puff or whoosh where each
+   * god left or lands (Loki's smoke and Anubis's sand hung over the camera).
+   */
   private placeTeam(): void {
     this.gods.forEach((g) => {
       const at = this.gateOf(g);
@@ -1334,7 +1338,7 @@ export class Descent {
       g.home.z = at.z;
       g.home.yaw = at.yaw;
       if (!g.alive) this.revive(g, DESCENT.returnHealth);
-      else this.sim.teleport(g, at.x, at.z, at.yaw);
+      else this.sim.teleport(g, at.x, at.z, at.yaw, true);
       g.combatant.cc.reset();
     });
   }
