@@ -514,6 +514,7 @@ export class CombatGame implements Updatable {
       cue: (name, at, k) => this.onCue?.(name, at, k),
       cameraShot: this.deps.cameraShot,
       collision: world.collision,
+      camera: this.deps.camera,
       sun: world.environment.sunDirection,
       environment: world.environment,
       startPoints: (u) => this.startingPoints(u),

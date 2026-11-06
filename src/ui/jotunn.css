@@ -89,3 +89,26 @@ body.jotunn-cine .combat-hud > :not(.ch-toasts), body.jotunn-cine .hud-hint, bod
 .jt-dip { position: fixed; inset: 0; z-index: 40; background: #03070c; opacity: 0; pointer-events: none; }
 .jt-dip.on { animation: jt-dip 0.36s ease-in-out; }
 @keyframes jt-dip { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
+
+/* objective marks (JotunnMarks): over the braziers and shrines, or pinned to the screen's edge with an arrow */
+.jm-layer { position: fixed; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; font-family: 'Cinzel', Georgia, serif; }
+.jm { position: absolute; left: 0; top: 0; --mc: #ff9a3c; will-change: transform; transition: opacity 0.25s; }
+.jm-smash { --mc: #ff9a3c; }
+.jm-defend { --mc: #ff5436; }
+.jm-shrine { --mc: #7fe3ff; }
+.jm-giant { --mc: #ff4a38; }
+.jm-disc { position: absolute; left: -15px; top: -15px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle, color-mix(in srgb, var(--mc) 50%, rgba(10, 12, 16, 0.88)) 0%, rgba(8, 10, 14, 0.84) 72%); box-shadow: 0 0 0 2px var(--mc), 0 0 12px color-mix(in srgb, var(--mc) 55%, transparent); }
+.jm-disc svg { width: 18px; height: 18px; fill: #fff; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
+.jm-defend .jm-disc::after { content: ''; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--mc); animation: jm-ring 1.1s ease-out infinite; }
+@keyframes jm-ring { from { transform: scale(1); opacity: 0.9; } to { transform: scale(1.9); opacity: 0; } }
+.jm-under { position: absolute; left: 0; top: 18px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; white-space: nowrap; }
+.jm-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 2px #000, 0 0 6px #000; }
+.jm-label:empty { display: none; }
+.jm-dist { font-family: Georgia, serif; font-size: 10.5px; font-weight: 700; color: #e8eef5; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+.jm-arrow { display: none; position: absolute; left: 0; top: 0; width: 0; height: 0; transform: rotate(var(--turn, 0rad)); }
+.jm-arrow::before { content: ''; position: absolute; left: 19px; top: -7px; width: 11px; height: 14px; clip-path: polygon(100% 50%, 0 0, 0 100%); background: var(--mc); filter: drop-shadow(0 0 3px var(--mc)); }
+.jm.edge .jm-arrow { display: block; }
+.jm.edge .jm-label { display: none; }
+.jm.edge .jm-disc { transform: scale(0.85); }
+.jm.near { opacity: 0.35; }
+.jm.hide { opacity: 0; }
