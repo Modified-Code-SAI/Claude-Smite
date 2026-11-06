@@ -322,6 +322,8 @@ function encEvent(e: SimEvent): unknown {
   }
   if (e.type === 'death') out.assists = e.assists.map((a) => a.id);
   if (e.type === 'cast') out.cast = encCast(e.cast);
+  // which skill hit is only shown for gods (the death recap): the rest would be bytes for nothing
+  if (e.type === 'damage' && (!e.skill || e.target.kind !== 'god')) delete out.skill;
   return out;
 }
 

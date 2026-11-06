@@ -521,7 +521,7 @@ export class Sim {
     const credit = owner.owner ?? owner;
     const levelBefore = credit.combatant.level;
     owner.combatant.applySkillTo(cast, c);
-    this.report(owner, target, before, wasAlive, false, true);
+    this.report(owner, target, before, wasAlive, false, true, cast.skill.id);
     if (target.team !== owner.team && c.alive) this.applyMovementCC(owner, cast, target);
     if (target.team !== owner.team) {
       for (const e of cast.hits) {
@@ -587,11 +587,11 @@ export class Sim {
     }
   }
 
-  private report(source: Unit, target: Unit, before: number, wasAlive: boolean, crit: boolean, ability: boolean): void {
+  private report(source: Unit, target: Unit, before: number, wasAlive: boolean, crit: boolean, ability: boolean, skill?: string): void {
     const c = target.combatant;
     const delta = before - (c.health + c.shieldTotal);
     if (delta > 0.05) {
-      this.emit({ type: 'damage', target, source, amount: delta, crit, ability });
+      this.emit({ type: 'damage', target, source, amount: delta, crit, ability, skill });
       this.interruptRecall(target);
       const credit = source.owner ?? source;
       if (target.kind === 'god' && credit.team !== target.team) {
