@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { Billows, BillowOptions, BillowSheet } from '../scene/Billows';
 import {
   attribute, cos, float, fract, hash, instanceIndex, mix, mx_noise_float, sin, smoothstep, time, uv, vec2, vec3, vec4,
 } from '../render/tsl';
@@ -662,6 +663,7 @@ export class CombatVfx {
     this.skills = new SkillFx(this.group, ground, {
       burst: (p, x, y, z, power) => this.burst(p, x, y, z, power),
       cloud: (color, x, y, z, power, swirl) => this.cloud(color, x, y, z, power, swirl),
+      billow: (sheet, x, y, z, size, o) => this.billow(sheet, x, y, z, size, o),
       pillar: (p, x, z, size, width) => this.pillar(p, x, z, size, width),
       comet: (p, u, life, size, crackle) => this.comet(p, u, life, size, crackle),
     });
@@ -671,6 +673,7 @@ export class CombatVfx {
   /** Ends every one-shot effect at once (the dev stage, between shots); shots and zones go with the sim's. */
   reset(): void {
     this.skills.reset();
+    this.billows?.clear();
     for (const b of this.bursts) this.burstPool.release(b);
     this.bursts.length = 0;
     for (const p of this.pillars) this.pillarPool.release(p);
@@ -776,6 +779,15 @@ export class CombatVfx {
   }
 
   private readonly cloudLook = { color: 0, swirl: 0 };
+
+  /** The world's simulated clouds (World.billows); without them a billow falls back to a puff cloud. */
+  billows: Billows | null = null;
+
+  /** A simulated cloud of smoke, dust or a blast, `size` meters across (src/scene/Billows.ts). */
+  billow(sheet: BillowSheet, x: number, y: number, z: number, size: number, o?: BillowOptions): void {
+    if (this.billows) this.billows.spawn(sheet, x, y, z, size, o);
+    else this.cloud(o?.tint ?? 0x8c847a, x, y, z, size / 3, 0.3);
+  }
 
   /** A glowing trail riding a unit for `life` seconds (a dash, a leap). */
   comet(p: GodPalette, u: Unit, life: number, size: number, crackle: boolean): void {

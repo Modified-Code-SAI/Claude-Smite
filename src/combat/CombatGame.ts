@@ -270,6 +270,7 @@ export class CombatGame implements Updatable {
     };
 
     this.vfx = new CombatVfx(this.groundAt, world.spellLights, deps.camera);
+    this.vfx.billows = world.billows;
     this.vfx.visible = (u) => u.stealth <= 0 || u.team === this.player.team;
     this.vfx.targets = () => (this.match ? [...this.match.brains].map(([s, b]) => [s, b.current] as const) : []);
     world.vfx.add(this.vfx.group, this.auras.group, this.status.group);

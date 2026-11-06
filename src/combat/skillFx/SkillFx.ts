@@ -14,6 +14,7 @@ import { Ribbon, type RibbonOpts } from './Ribbon';
 import { Shards, type ShardKind } from './Shards';
 import { Sigil, type SigilOpts } from './Sigil';
 import { Swarm, type SwarmOpts } from './Swarm';
+import type { BillowOptions, BillowSheet } from '../../scene/Billows';
 
 type Ground = (x: number, z: number) => number;
 
@@ -21,6 +22,8 @@ type Ground = (x: number, z: number) => number;
 export interface BaseFx {
   burst(p: GodPalette, x: number, y: number, z: number, power: number): void;
   cloud(color: number, x: number, y: number, z: number, power: number, swirl: number): void;
+  /** A simulated cloud from the Blender flipbooks (src/scene/Billows.ts), `size` meters across. */
+  billow(sheet: BillowSheet, x: number, y: number, z: number, size: number, o?: BillowOptions): void;
   pillar(p: GodPalette, x: number, z: number, size: number, width: number): void;
   /** A glowing trail riding on a unit for `life` seconds. */
   comet(p: GodPalette, u: Unit, life: number, size: number, crackle: boolean): void;
@@ -369,6 +372,10 @@ export class SkillFx implements FxKit {
 
   cloud(color: number, x: number, y: number, z: number, power: number, swirl = 0.15): void {
     this.base.cloud(color, x, y, z, power, swirl);
+  }
+
+  billow(sheet: BillowSheet, x: number, y: number, z: number, size: number, o?: BillowOptions): void {
+    this.base.billow(sheet, x, y, z, size, o);
   }
 
   pillar(p: GodPalette, x: number, z: number, size: number, width: number): void {
