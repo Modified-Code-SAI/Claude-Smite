@@ -51,14 +51,15 @@ const DELAY = 0.12;
  * A unit's fast-changing state:
  * id, x, y, z, yaw, vx, vz, health, mana, alive, last action time, stealth end,
  * untargetable end, recall end, windup end, death time, leap arc + 1 (0 when
- * not forced), authority sequence (see HostSync.seq). Trailing zeros are left
- * off, so most units send only the first eleven.
+ * not forced), authority sequence (see HostSync.seq), how far through a throw
+ * or shove it is + 1 (0 when not knocked about). Trailing zeros are left off,
+ * so most units send only the first eleven.
  */
 type Fast = number[];
-export const F = { x: 1, y: 2, z: 3, yaw: 4, vx: 5, vz: 6, hp: 7, mana: 8, alive: 9, action: 10, stealth: 11, untargetable: 12, recall: 13, windup: 14, dead: 15, arc: 16, seq: 17 } as const;
-const FAST_LENGTH = 18;
+export const F = { x: 1, y: 2, z: 3, yaw: 4, vx: 5, vz: 6, hp: 7, mana: 8, alive: 9, action: 10, stealth: 11, untargetable: 12, recall: 13, windup: 14, dead: 15, arc: 16, seq: 17, thrown: 18 } as const;
+const FAST_LENGTH = 19;
 /** Decimals each field keeps on the wire. */
-const DECIMALS = [0, 2, 2, 2, 2, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 0];
+const DECIMALS = [0, 2, 2, 2, 2, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 0, 2];
 
 interface Detail {
   c: CombatantNet;
@@ -282,6 +283,7 @@ export class HostSync {
       c.alive ? 0 : time - u.deadFor,
       u.forced ? u.forced.arc + 1 : 0,
       this.seq(u),
+      u.forced?.collide && u.forced.total > 0 ? 2 - u.forced.remaining / u.forced.total : 0,
     ].map((v, i) => {
       const k = 10 ** DECIMALS[i]!;
       return Math.round(v * k) / k;
@@ -336,9 +338,13 @@ interface Sample {
   f: Fast;
 }
 
-/** The forced-movement stand-in a guest keeps on a unit mid-dash, so canMove and leap poses work. */
-function forcedStub(arc: number): NonNullable<Unit['forced']> {
-  return { vx: 0, vz: 0, remaining: 1, total: 1, arc, collide: false };
+/**
+ * The forced-movement stand-in a guest keeps on a unit mid-dash, so canMove,
+ * leap poses, dash directions and a thrown god's lean work.
+ */
+function forcedStub(f: Fast): NonNullable<Unit['forced']> {
+  const thrown = f[F.thrown] ?? 0;
+  return { vx: f[F.vx]!, vz: f[F.vz]!, remaining: thrown > 0 ? 2 - thrown : 1, total: 1, arc: f[F.arc]! - 1, collide: thrown > 0 };
 }
 
 /**
@@ -478,6 +484,10 @@ export class GuestSync {
       const k = Math.min(1, (rt - a.t) / (b.t - a.t));
       f = a.f.slice();
       for (const i of [F.x, F.y, F.z, F.vx, F.vz, F.hp, F.mana]) f[i] = a.f[i]! + (b.f[i]! - a.f[i]!) * k;
+      // a throw's progress runs on between snapshots, until the one where it lands
+      const ta = a.f[F.thrown] ?? 0;
+      const tb = b.f[F.thrown] ?? 0;
+      if (ta > 0 && tb > ta) f[F.thrown] = ta + (tb - ta) * k;
       let dy = b.f[F.yaw]! - a.f[F.yaw]!;
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       f[F.yaw] = a.f[F.yaw]! + dy * k;
@@ -501,7 +511,7 @@ export class GuestSync {
     u.windup = Math.max(0, f[F.windup]! - rt);
     u.sinceAction = Math.max(0, rt - f[F.action]!);
     u.deadFor = c.alive ? 0 : Math.max(0, rt - f[F.dead]!);
-    u.forced = f[F.arc]! > 0 ? forcedStub(f[F.arc]! - 1) : null;
+    u.forced = f[F.arc]! > 0 ? forcedStub(f) : null;
   }
 
   private apply(s: Snapshot): void {

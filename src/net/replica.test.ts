@@ -4,6 +4,7 @@ import { body, godUnit } from '../sim/factory';
 import { LaneBot, spawnPoint } from '../sim/LaneBot';
 import { conquestBases, Match } from '../sim/Match';
 import { Sim, type SimTerrain } from '../sim/Sim';
+import { thrownLean } from '../combat/UnitViews';
 import { Unit, type SimEvent } from '../sim/Unit';
 import { Combatant } from '../game/combatant';
 import { GuestSync, HostSync, SNAPSHOT_EVERY, type NetMatch, type Roster, type Snapshot } from './Replica';
@@ -157,5 +158,53 @@ describe('networked match copy', () => {
     expect(guest.mode.score).toBe(7);
     expect(guest.sim.units.filter((u) => u.name === 'Totem').map((u) => [u.x, u.z])).toEqual([[5, -5]]);
     expect(guest.roster.slots[0]!.x).toBeCloseTo(4, 1);
+  });
+  it("shows a guest the host's throws as they fly: progress, direction and whether it is a throw or a leap", () => {
+    const make = () => {
+      const sim = new Sim(flat, conquestBases(), () => 0.5);
+      const mode: NetMatch = { netState: () => null, applyNet: () => {} };
+      const gods = ['zeus', 'thor', 'odin'].map((id, i) => sim.add(godUnit(godById(id)!, 'order', { x: i * 6, z: 0, yaw: 0 })));
+      return { sim, mode, roster: { slots: gods, structures: new Map() } as Roster };
+    };
+    const host = make();
+    const guest = make();
+    guest.sim.listeners.length = 0;
+    const sync = new HostSync(host.sim, host.mode, host.roster, () => 0);
+    sync.addGuest('g');
+    const self = guest.roster.slots[2]!;
+    const copy = new GuestSync(guest.sim, guest.mode, guest.roster, self);
+    const [thrown, leaper] = host.roster.slots as [Unit, Unit];
+    const at = (u: Unit) => guest.roster.slots[host.roster.slots.indexOf(u)]!;
+    const progress: { t: number; p: number }[] = [];
+    const out = { pitch: 0, roll: 0 };
+    const leans: { host: number; guest: number }[] = [];
+    for (let i = 1; i <= 120; i++) {
+      if (i === 10) {
+        // thrown sideways off its feet, and a leap of the same height
+        thrown.forced = { vx: 6, vz: 0, remaining: 1, total: 1, arc: 3, collide: true };
+        leaper.forced = { vx: 0, vz: 6, remaining: 1, total: 1, arc: 3, collide: false };
+      }
+      host.sim.step(DT);
+      const f = thrown.forced;
+      progress.push({ t: host.sim.time, p: f ? 1 - f.remaining / f.total : -1 });
+      if (i % SNAPSHOT_EVERY === 0) for (const [, snap] of sync.snapshots()) copy.receive(JSON.parse(encode(snap)) as Snapshot);
+      copy.step(DT);
+      const g = at(thrown).forced;
+      if (!g) continue;
+      expect(g.collide).toBe(true);
+      expect(g.arc).toBeCloseTo(3, 1);
+      // where the host had it at the guest's (delayed) clock
+      const near = progress.reduce((a, b) => (Math.abs(b.t - guest.sim.time) < Math.abs(a.t - guest.sim.time) ? b : a));
+      if (near.p >= 0) expect(Math.abs(1 - g.remaining / g.total - near.p)).toBeLessThan(0.08);
+      expect(g.vx).toBeCloseTo(6, 0);
+      const hp = near.p >= 0 ? thrownLean({ ...g, remaining: 1 - near.p, total: 1 }, 0, out).roll : 0;
+      leans.push({ host: hp, guest: thrownLean(g, 0, out).roll });
+      expect(at(leaper).forced?.collide).toBe(false);
+    }
+    // the guest saw the whole flight, leaning the way the host's god did
+    expect(leans.length).toBeGreaterThan(40);
+    expect(Math.max(...leans.map((l) => l.guest))).toBeGreaterThan(0.3);
+    for (const l of leans) expect(Math.abs(l.guest - l.host)).toBeLessThan(0.12);
+    expect(at(thrown).forced).toBeNull();
   });
 });
