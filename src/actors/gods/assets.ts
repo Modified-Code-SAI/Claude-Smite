@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeSkinned } from '../../scene/merge';
+import { buildLods } from '../../scene/lod';
 
 /** Gods with a built model in public/models/gods (see tools/gods/build.py). */
 export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos'] as const;
@@ -65,6 +66,8 @@ async function loadOne(id: string, clips: { animations: THREE.AnimationClip[] })
     return false;
   }
   widenVertexFormats(gltf.scene);
+  // coarser levels of each piece for distance (scene/lod.ts), carried through the merges
+  await buildLods(gltf.scene);
   // one draw per material instead of one per armor piece
   mergeSkinned(gltf.scene);
   const root = gltf.scene.getObjectByName('god') ?? gltf.scene;
