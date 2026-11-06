@@ -98,6 +98,14 @@ export class Sim {
   intercept: ((u: Unit, action: 'basic' | 'cast') => boolean) | null = null;
   /** How far a knockback throws its target, arena meters (Relic Rush throws farther). */
   knockback = 3.5;
+  /**
+   * Step the units in turn-about order, forward one frame and backward the
+   * next (Relic Rush). Each unit thinks and moves in its turn, so one stepped
+   * later sees where the others went this frame; with a fixed order the team
+   * stepped second won about 54% of bot matches.
+   */
+  alternateOrder = false;
+  private backward = false;
   /** How high (meters) a knockback's arc rises (Jötunn's giant hurls gods high). */
   knockbackArc = 0.6;
   /** How high (meters) a knock-up throws its target. */
@@ -932,7 +940,9 @@ export class Sim {
 
   step(dt: number): void {
     this.time += dt;
-    for (const u of [...this.units]) this.stepUnit(u, dt);
+    const units = [...this.units];
+    if (this.alternateOrder && (this.backward = !this.backward)) units.reverse();
+    for (const u of units) this.stepUnit(u, dt);
     this.stepWinding();
     this.stepProjectiles(dt);
     this.stepZones(dt);

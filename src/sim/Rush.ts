@@ -124,6 +124,9 @@ export const RUSH = {
   juke: { distance: 3.4, time: 0.18, guard: 0.3, cooldown: 7 },
 } as const;
 
+/** Gods this close to the same distance from the relic reach it together (see Rush.tieSide). */
+const TIE = 1e-4;
+
 /** Crowd control that knocks the relic out of its carrier's hands: anything that takes their legs or their will away. */
 export const FUMBLE_CC: ReadonlySet<CCKind> = new Set<CCKind>(['stun', 'knockup', 'knockback', 'pull', 'grab', 'fear', 'taunt', 'mesmerize', 'polymorph', 'banish', 'disorient']);
 
@@ -316,6 +319,14 @@ export class Rush {
   /** Gods who can't touch the relic until a sim time. */
   private readonly noCatch = new Map<Unit, number>();
   private noCatchAll = 0;
+  /**
+   * Who takes the relic when two gods reach it at exactly the same distance
+   * (two of the same god racing to the pedestal from mirrored spots): a coin
+   * toss for the first kickoff, then the side that conceded last, as in
+   * football. The first god in the line-up used to win, and Order took 65%
+   * of opening kickoffs between identical line-ups.
+   */
+  private tieSide: Side = 'order';
   /** The last completed pass, for assists. */
   private lastPass: { from: Unit; to: Unit; at: number } | null = null;
   /** Sim time each god last called for the pass. */
@@ -336,6 +347,7 @@ export class Rush {
   constructor(private readonly sim: Sim) {
     sim.listeners.push((e) => this.on(e));
     sim.knockback = RUSH.knockback;
+    sim.alternateOrder = true;
     // the carrier only throws (CombatGame and the bots call `throwRelic`)
     sim.intercept = (u) => this.relic.holder === u;
   }
@@ -344,6 +356,7 @@ export class Rush {
   begin(gods: readonly Unit[]): void {
     this.join(gods);
     for (const g of gods) g.combatant.addPerk('damageBonus', -RUSH.damageCut);
+    this.tieSide = this.sim.rng() < 0.5 ? 'order' : 'chaos';
     this.startKickoff();
   }
 
@@ -576,7 +589,7 @@ export class Rush {
         const keeper = inGate(g.team as Side, gx, gz, K.halfWidth, K.depth);
         if (h > (keeper ? K.height : R.catchHeight)) continue;
         const dd = hypot(gx - x, gz - z);
-        if (dd <= g.radius + g.combatant.sport('catchReach') + (keeper ? Math.max(R.catchReach, K.reach) : R.catchReach) && dd < bestD) [best, bestD] = [g, dd];
+        if (dd <= g.radius + g.combatant.sport('catchReach') + (keeper ? Math.max(R.catchReach, K.reach) : R.catchReach) && this.nearer(g, dd, bestD)) [best, bestD] = [g, dd];
       }
       if (best) return { goal: false, catcher: best };
       if (p >= 1) return { goal: false, catcher: null };
@@ -735,9 +748,14 @@ export class Rush {
       if (h > (keeper ? K.height : RUSH.relic.catchHeight)) continue;
       const d = hypot(g.x - x, g.z - z);
       const hands = g.combatant.sport('catchReach');
-      if (d <= g.radius + hands + (keeper ? Math.max(reach, K.reach) : reach) && d < bestD) [best, bestD] = [g, d];
+      if (d <= g.radius + hands + (keeper ? Math.max(reach, K.reach) : reach) && this.nearer(g, d, bestD)) [best, bestD] = [g, d];
     }
     return best;
+  }
+
+  /** Whether `g`, `d` from the relic, beats the best so far at `bestD` (a tie goes to tieSide). */
+  private nearer(g: Unit, d: number, bestD: number): boolean {
+    return d < bestD - TIE || (d < bestD + TIE && g.team === this.tieSide);
   }
 
   /**
@@ -902,6 +920,7 @@ export class Rush {
     this.lastPass = null;
     this.lastGoal = { team, scorer, assist, kind, at: this.sim.time };
     this.goalCount++;
+    this.tieSide = other(team);
     // the scorer's cheer is drawn as an action (see RushMode), so it reaches guests with the god's state
     scorer.sinceAction = 0;
     if (this.overtime || this.score[team] >= RUSH.goals) {
