@@ -223,7 +223,7 @@ export interface Flash {
   warn?: boolean;
   /** What a warning winds up: the skill id, or 'basic'. */
   act?: string;
-  /** The skill whose shape this is, so its look can play (none for basics, passives and hazards). */
+  /** The skill whose shape this is (or a passive's, `<god>:passive`), so its look can play (none for basics and hazards). */
   skill?: string;
 }
 

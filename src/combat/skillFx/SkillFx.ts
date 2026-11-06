@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 import type { Sim } from '../../sim/Sim';
 import { PROJECTILE_HEIGHT } from '../../sim/Sim';
+import { WORLD_SCALE } from '../../sim/Unit';
 import type { Flash, Projectile, SimEvent, Unit } from '../../sim/Unit';
 import { ArcView } from '../Arcs';
 import { paletteOf, type GodPalette } from '../palette';
 import { hypot } from '../../core/math';
-import { lookFor, type FxKit, type ShotLook, type SkillLook } from '../skillLooks';
+import { basicLookFor, lookFor, type FxKit, type ShotLook, type SkillLook } from '../skillLooks';
 import { Beam, type BeamOpts } from './Beam';
 import { Funnel, type FunnelOpts } from './Funnel';
 import { Pool, Running, type Live } from './pool';
@@ -229,6 +230,8 @@ interface ZoneFx {
 const UP = new THREE.Vector3(0, 1, 0);
 const A = new THREE.Vector3();
 const B = new THREE.Vector3();
+/** Meters from the camera a god's basic attacks are dressed within. */
+const BASIC_REACH = 55;
 
 /**
  * Plays each skill's own look (src/combat/skillLooks.ts) on top of the shared
@@ -431,8 +434,23 @@ export class SkillFx implements FxKit {
         look.cast(this, { owner: e.unit, p: this.palette(look, e.unit), x: e.x, z: e.z, yaw: e.unit.body.yaw, cast: e.cast });
         return;
       }
+      case 'basic': {
+        const u = e.unit;
+        const look = basicLookFor(u);
+        if (!look?.attack || !this.close(u)) return;
+        const n = this.attacks.get(u) ?? 0;
+        this.attacks.set(u, n + 1);
+        look.attack(this, { owner: u, p: this.palette(look, u), yaw: u.body.yaw, reach: u.combatant.god.basicAttack.range * WORLD_SCALE, n });
+        return;
+      }
       case 'damage': {
-        if (!e.skill || !e.source || e.amount <= 0) return;
+        if (!e.source || e.amount <= 0) return;
+        if (!e.skill) {
+          // a basic attack landing (passives and hazards count as abilities)
+          const look = e.ability ? undefined : basicLookFor(e.source);
+          if (look?.hit && this.close(e.target)) look.hit(this, { owner: e.source, p: this.palette(look, e.source), target: e.target, amount: e.amount });
+          return;
+        }
         const look = lookFor(e.skill);
         if (!look?.hit) return;
         look.hit(this, { owner: e.source, p: this.palette(look, e.source), target: e.target, amount: e.amount });
@@ -469,6 +487,23 @@ export class SkillFx implements FxKit {
   }
 
   private readonly recolored = new WeakMap<SkillLook, { base: GodPalette; out: GodPalette }>();
+
+  /** How many basic attacks each god has made (swings alternate sides). */
+  private readonly attacks = new WeakMap<Unit, number>();
+
+  /**
+   * Whether a unit is near enough the camera to dress its basic attacks: they
+   * come many times a second across a whole map, and the far ones would only
+   * cost draws.
+   */
+  private close(u: Unit): boolean {
+    const c = this.camera;
+    if (!c) return true;
+    if (!this.visible(u)) return false;
+    const dx = u.x - c.position.x;
+    const dz = u.z - c.position.z;
+    return dx * dx + dz * dz < BASIC_REACH * BASIC_REACH;
+  }
 
   // -------------------------------------------------------------------------
   // Every frame
@@ -522,12 +557,12 @@ export class SkillFx implements FxKit {
   private syncShots(sim: Sim, t: number): void {
     const n = this.frameNo;
     for (const p of sim.projectiles) {
-      if (!p.cast) continue;
-      const look = lookFor(p.cast.skill.id);
+      const look = p.cast ? lookFor(p.cast.skill.id) : basicLookFor(p.owner);
       const s = look?.shot;
       if (!s || (!s.prop && !s.tether && !s.chain && !s.sigil)) continue;
       let fx = this.shots.get(p.id);
       if (!fx) {
+        if (!p.cast && !this.close(p.owner)) continue;
         fx = this.takeShot(p, look!, s);
         fx.id = p.id;
         this.shots.set(p.id, fx);
