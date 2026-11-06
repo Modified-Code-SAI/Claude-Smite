@@ -171,6 +171,8 @@ export const SOUNDS: Record<string, Recipe> = {
   // Relic Rush: a pass whistling off, a clean catch, the relic knocked loose with a ring
   'relic.throw': { variants: 2, peak: 0.55, make: (r) => layer([whoosh(r, 0.5, 500, 2600, { q: 1.2, peak: 0.35, gain: 1.1 }), 1], [shimmer(r, 0.7, 880, { rise: 1.5, peak: 0.3 }), 0.5, 0.03]) },
   'relic.catch': { variants: 2, peak: 0.5, make: (r) => layer([chime(r, 0.6, 1318.5), 1], [knock(r, 0.05, 1800), 0.6], [shimmer(r, 0.5, 1046.5, { rise: 1.2, peak: 0.1 }), 0.4]) },
+  // a carrier's juke: a quick rush of air and a sandal's scuff on stone, with a glint off the relic
+  'relic.juke': { variants: 2, peak: 0.5, make: (r) => layer([whoosh(r, 0.3, 700, 2600, { q: 0.9, peak: 0.3, gain: 1.2, grit: 0.8 }), 1], [filter(puff(r, 0.22, { tone: 2200 }), 'highpass', 700), 0.55], [shimmer(r, 0.35, 1568, { rise: 1.3, peak: 0.15 }), 0.25, 0.04]) },
   // a teammate calls for the pass: two quick rising notes, like a whistle
   'relic.call': { variants: 2, peak: 0.45, make: (r) => layer([chime(r, 0.28, 1174.7), 0.8], [chime(r, 0.34, 1568), 0.95, 0.09]) },
   // a Captain keeps the relic through a hit: a bright deflecting ring

@@ -786,6 +786,8 @@ export class CombatGame implements Updatable {
       speed: this.sim.moveSpeed(this.player),
       // a kickoff countdown holds everyone on their marks, and a boss's entrance and fall hold the team while it rises and goes down
       canMove: this.sim.canMove(this.player) && !this.rushMode?.frozen && !this.jotunnMode?.piloting && !this.descent?.intro && !this.descent?.fall,
+      // a Relic Rush carrier's Space jukes
+      canJump: !this.rushMode?.carrying,
     };
   }
 
@@ -976,6 +978,7 @@ export class CombatGame implements Updatable {
     if (carrying) {
       this.cancelPreview();
       if (input.wasPressed('Mouse0') && input.locked) this.rushMode!.throw();
+      if (input.wasPressed('Space')) this.rushMode!.juke();
       this.suppressBasic = true;
     }
 
@@ -984,7 +987,7 @@ export class CombatGame implements Updatable {
       if (!code) return;
       if (carrying) {
         this.hud.deny(slot);
-        this.hud.toast('Carrying the relic: no skills. Left click passes it.', 'warn');
+        this.hud.toast('Carrying the relic: no skills. Left click passes it, Space jukes.', 'warn');
         return;
       }
       if (this.preview?.slot === slot) {

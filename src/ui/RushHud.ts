@@ -36,6 +36,7 @@ const SAVE_SHOW = 1.5;
  */
 const CATCH_POP: Keyframe[] = [{ transform: 'scale(0.2)' }, { transform: 'none' }];
 const COUNT_POP: Keyframe[] = [{ transform: 'scale(1.7)', opacity: 0.2 }, { transform: 'none', opacity: 1 }];
+const JUKE_POP: Keyframe[] = [{ transform: 'translateX(-50%) scale(1.25)' }, { transform: 'translateX(-50%)' }];
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
@@ -69,6 +70,11 @@ export class RushHud {
   private saveSeen = 0;
   private saver: Unit | null = null;
   private lastPoint = '';
+  /** Under the crosshair while carrying: Space to juke, and how soon it's ready. */
+  private readonly juke: HTMLElement;
+  private readonly jukeFill: HTMLElement;
+  private lastJuke = '';
+  private lastJukeFill = -1;
   private readonly arrow: HTMLElement;
   private arrowTone = '';
   /** The dip to dark that hides the kickoff reset after a goal, and how far it has faded back out. */
@@ -110,6 +116,7 @@ export class RushHud {
       <div class="duel-big"></div>
       <div class="rush-intro"><b>Relic Rush</b><small>First to ${RUSH.goals} goals: carry or throw the Sun Relic through their gate</small><div class="rush-intro-teams"><div class="ally">${this.lineUp(this.mine)}</div><i class="rush-intro-count"></i><div class="foe">${this.lineUp(this.foe)}</div></div></div>
       <div class="rush-pointer"><i></i></div>
+      <div class="rush-juke"><kbd>Space</kbd><b>Juke</b><i><s></s></i></div>
       <div class="rush-calls"></div>
       <div class="rush-catch"><span><b></b><i><svg viewBox="0 0 24 24"><path d="M3 6h18l-9 13z"/></svg></i></span></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><div class="clash-end-table"></div><button class="clash-again">${online ? 'Back to the title screen' : 'Play again'}</button></div>`;
@@ -123,6 +130,8 @@ export class RushHud {
     this.big = this.root.querySelector('.duel-big')!;
     this.end = this.root.querySelector('.clash-end')!;
     this.arrow = this.root.querySelector('.rush-pointer')!;
+    this.juke = this.root.querySelector('.rush-juke')!;
+    this.jukeFill = this.juke.querySelector('s')!;
     this.catchEl = this.root.querySelector('.rush-catch')!;
     this.catchLabel = this.catchEl.querySelector('b')!;
     this.catchPop = this.catchEl.querySelector('span')!;
@@ -268,6 +277,26 @@ export class RushHud {
     return { text: 'The relic is loose: grab it!', tone: 'contested' };
   }
 
+  /** The juke chip: shown while the local player carries the relic in play, its bar filling back up over the cooldown (a pop when ready again). */
+  private jukeFrame(): void {
+    const r = this.rush;
+    const carrying = r.phase === 'play' && r.holder === this.me && this.me.alive;
+    const left = carrying ? r.jukeLeft(this.me) : 0;
+    const state = !carrying ? '' : left > 0 ? 'cooling' : 'ready';
+    if (state !== this.lastJuke) {
+      const was = this.lastJuke;
+      this.lastJuke = state;
+      this.juke.className = `rush-juke${state ? ` show ${state}` : ''}`;
+      if (state === 'ready' && was === 'cooling') this.juke.animate(JUKE_POP, { duration: 260, easing: 'cubic-bezier(.2,1.6,.4,1)' });
+    }
+    if (!carrying) return;
+    const fill = Math.round((1 - left / RUSH.juke.cooldown) * 50) / 50;
+    if (fill !== this.lastJukeFill) {
+      this.lastJukeFill = fill;
+      this.jukeFill.style.transform = `scaleX(${fill})`;
+    }
+  }
+
   private bigText(): { html: string; side: string } {
     const r = this.rush;
     // the first countdown and its "Rush!" are on the match card
@@ -313,6 +342,7 @@ export class RushHud {
       this.lastPoint = point;
       for (const side of ['order', 'chaos'] as const) this.pips[side].parentElement!.classList.toggle('point', point === side || point === 'both');
     }
+    this.jukeFrame();
     this.dip(dt);
     this.introFrame(dt);
     this.time += dt;

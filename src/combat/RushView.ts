@@ -83,7 +83,8 @@ class Trail {
   private readonly dir = new THREE.Vector3();
   private readonly toEye = new THREE.Vector3();
 
-  constructor() {
+  /** `width`: half the ribbon's width at its head (m). */
+  constructor(private readonly width = 0.32) {
     const g = new THREE.BufferGeometry();
     this.pos = new THREE.BufferAttribute(new Float32Array(TRAIL * 2 * 3), 3);
     this.pos.setUsage(THREE.DynamicDrawUsage);
@@ -106,13 +107,16 @@ class Trail {
   frame(at: THREE.Vector3 | null, camera: THREE.Camera | null, dt: number): void {
     const pts = this.points;
     if (at) {
-      // a new sample once the relic has moved a little, the head always on the relic
-      if (this.count === 0 || pts[0]!.distanceTo(pts[1] ?? pts[0]!) > 0.35) {
+      // a new sample once the head has moved a little from the last one, the head always on the relic
+      // (the tail starts gathered where the streak began; refilling it every frame kept the ribbon one point long, so it never drew)
+      if (this.count === 0) {
+        for (const p of pts) p.copy(at);
+        this.count = 1;
+      } else if (pts[0]!.distanceTo(pts[1]!) > 0.35) {
         for (let i = TRAIL - 1; i > 0; i--) pts[i]!.copy(pts[i - 1]!);
         this.count = Math.min(TRAIL, this.count + 1);
       }
       pts[0]!.copy(at);
-      if (this.count === 1) for (const p of pts) p.copy(at);
       this.values.alpha = Math.min(1, this.values.alpha + dt * 8);
     } else {
       this.values.alpha = Math.max(0, this.values.alpha - dt * 3.5);
@@ -131,7 +135,7 @@ class Trail {
       this.toEye.subVectors(this.eye, p);
       this.side.crossVectors(this.dir, this.toEye);
       if (this.side.lengthSq() < 1e-6) this.side.set(0, 1, 0);
-      this.side.normalize().multiplyScalar(0.32 * (1 - (i / TRAIL) * 0.75));
+      this.side.normalize().multiplyScalar(this.width * (1 - (i / TRAIL) * 0.75));
       a.set([p.x + this.side.x, p.y + this.side.y, p.z + this.side.z, p.x - this.side.x, p.y - this.side.y, p.z - this.side.z], i * 6);
     }
     this.pos.needsUpdate = true;
@@ -258,6 +262,11 @@ export class RushView {
   private placed = false;
   private light: THREE.PointLight | null = null;
   private readonly trail = new Trail();
+  /** A carrier's juke: a gold streak through the sidestep, at chest height (same material as the relic's). */
+  private readonly jukeTrail = new Trail(0.42);
+  private jukeSeen = -1;
+  private juker: Unit | null = null;
+  private jukeFor = 0;
   private readonly stars = new DazeStars();
   /** The spirits watching round the pitch. */
   readonly crowd: RushCrowd;
@@ -283,7 +292,7 @@ export class RushView {
     useUniforms(this.haloValues, this.halo);
     this.relic.add(this.orb, this.ring, this.halo);
     this.locator = new RelicView(ground);
-    this.group.add(this.relic, this.locator.group, this.trail.mesh, this.stars.mesh);
+    this.group.add(this.relic, this.locator.group, this.trail.mesh, this.jukeTrail.mesh, this.stars.mesh);
 
     for (const side of ['order', 'chaos'] as const) {
       const g = RUSH.gates[side];
@@ -338,10 +347,12 @@ export class RushView {
     this.preview.mesh.visible = true;
     this.relic.visible = true;
     this.trail.mesh.visible = true;
+    this.jukeTrail.mesh.visible = true;
     this.stars.mesh.visible = true;
     return () => {
       this.preview.mesh.visible = was;
       this.trail.mesh.visible = false;
+      this.jukeTrail.mesh.visible = false;
       this.stars.mesh.visible = false;
     };
   }
@@ -391,6 +402,17 @@ export class RushView {
     this.relic.position.set(this.drawn.x, this.drawn.y + bob, this.drawn.z);
     // a thrown or knocked-loose relic streaks through the air
     this.trail.frame(r.phase === 'flying' ? this.relic.position : null, this.camera, dt);
+    // a juke streaks through the sidestep
+    if (this.jukeSeen < 0) this.jukeSeen = rush.beats.juke;
+    if (rush.beats.juke !== this.jukeSeen) {
+      this.jukeSeen = rush.beats.juke;
+      this.juker = rush.lastJuke;
+      this.jukeFor = RUSH.juke.time + 0.05;
+    }
+    this.jukeFor = Math.max(0, this.jukeFor - dt);
+    const chest = this.jukeFor > 0 && this.juker?.alive ? headOf(this.juker, this.head) : null;
+    if (chest) chest.y -= 0.8;
+    this.jukeTrail.frame(chest, this.camera, dt);
     this.stars.frame(this.gods(rush), this.ground, this.camera, dt, t);
     this.crowd.frame(rush, dt);
     this.orb.rotation.y = t * 0.8;

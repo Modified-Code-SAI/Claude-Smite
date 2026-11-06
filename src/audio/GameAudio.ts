@@ -794,7 +794,7 @@ export class GameAudio {
   /** Last seen Relic Rush state, so each beat is called once. */
   /** Gods whose current call for the pass has been heard. */
   private readonly rushCalls = new Set<Unit>();
-  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, save: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
+  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, save: 0, juke: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
 
   /** Relic Rush: the horn at each kickoff, goals, steals and fumbles, the golden relic and the result. */
   private watchRush(): void {
@@ -869,6 +869,11 @@ export class GameAudio {
         const line = b.unit === this.me ? 'What a save!' : ours ? `Saved! ${b.unit.name} keeps it out.` : b.by === this.me ? `Saved! ${b.unit.name} stops your shot.` : `Saved by ${b.unit.name}!`;
         this.herald.say(line, ours ? 'good' : 'bad', 2);
       }
+    }
+    if (r.beats.juke !== seen.juke) {
+      seen.juke = r.beats.juke;
+      const j = r.lastJuke;
+      if (j) this.engine.play('relic.juke', { at: { x: j.x, z: j.z }, ref: 8, gain: j === this.me ? 0.75 : 1 }, 2);
     }
     if (r.beats.catch !== seen.catch) {
       seen.catch = r.beats.catch;

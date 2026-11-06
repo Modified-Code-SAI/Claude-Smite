@@ -107,6 +107,13 @@ export const RUSH = {
    * leading it. The run counts from `lag` seconds back.
    */
   assist: { reach: 3, share: 0.22, lag: 0.3 },
+  /**
+   * The carrier's juke (Space): a quick sidestep of `distance` meters over
+   * `time` seconds, the way they're running. For `guard` seconds from the
+   * press, crowd control can't land on them, so a well-timed juke beats a
+   * tackle. Once every `cooldown` seconds, ready again at each kickoff.
+   */
+  juke: { distance: 3.4, time: 0.18, guard: 0.3, cooldown: 7 },
 } as const;
 
 /** Crowd control that knocks the relic out of its carrier's hands. */
@@ -170,13 +177,16 @@ export interface RushNet {
   w: Side | null;
   g: number;
   lg: [Side, number, number, 'dunk' | 'shot', number] | null;
-  b: [number, number, number, number, number, number];
+  b: [number, number, number, number, number, number, number];
   lb: [RushBeat, number, number] | null;
   r: [RelicPhase, number, number, number, number, number, number, number, number, number, number, number, number, number, Side | null, number];
   l: [number, number, number, number, number, number][];
   ps: [number, number];
   /** Seconds since each god called for the pass, -1 for none lately. */
   cl: number[];
+  /** Seconds until each god's juke is ready, and the latest juker. */
+  j: number[];
+  lj: number;
 }
 
 /** A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the relic through a hit. */
@@ -230,8 +240,10 @@ export class Rush {
   lastGoal: RushGoal | null = null;
   /** Counts every goal, so watchers can tell a new one from the last. */
   goalCount = 0;
-  /** Bumped on each fumble, interception, catch, Captain's shrug and save (a shot caught on its way in), for sounds and banners. */
-  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0 };
+  /** Bumped on each fumble, interception, catch, Captain's shrug, save (a shot caught on its way in) and juke, for sounds and banners. */
+  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0, juke: 0 };
+  /** Who juked last (see `beats.juke`), for the streak and the whoosh. */
+  lastJuke: Unit | null = null;
   /** The latest of those beats, with who did it. */
   lastBeat: { kind: RushBeat; unit: Unit; by: Unit | null } | null = null;
   private readonly squad: Unit[] = [];
@@ -245,6 +257,10 @@ export class Rush {
   /** The Captain keystone: spent for this possession, and the sim time its shrugged-off hit wears off. */
   private shrugUsed = false;
   private shrugUntil = 0;
+  /** Sim time each god's juke is ready again. */
+  private readonly jukeReady = new Map<Unit, number>();
+  /** Jukes under way: the sidestep's own forced movement (not a hit, so no fumble) and when its guard ends. */
+  private readonly juking = new Map<Unit, { forced: NonNullable<Unit['forced']>; until: number }>();
 
   constructor(private readonly sim: Sim) {
     sim.listeners.push((e) => this.on(e));
@@ -307,6 +323,7 @@ export class Rush {
   step(dt: number): void {
     if (this.phase === 'over') return;
     for (const g of this.squad) if (g.alive) this.sim.grant(g, RUSH.xpRate * dt, RUSH.favorRate * dt);
+    this.stepJukes();
     if (this.phase === 'kickoff') {
       this.timer -= dt;
       this.hold();
@@ -360,6 +377,49 @@ export class Rush {
     if (last !== undefined && this.sim.time - last < RUSH.call.gap) return false;
     this.calls.set(u, this.sim.time);
     return true;
+  }
+
+  /**
+   * The carrier jukes: a quick sidestep toward `dir` (or the way they're
+   * running, else where they face), with a moment where crowd control can't
+   * land (see RUSH.juke).
+   */
+  juke(u: Unit, dir: Point | null = null): boolean {
+    const J = RUSH.juke;
+    if (this.phase !== 'play' || this.relic.holder !== u || !this.sim.canMove(u)) return false;
+    if (this.jukeLeft(u) > 0) return false;
+    let dx = dir?.x ?? 0;
+    let dz = dir?.z ?? 0;
+    if (hypot(dx, dz) < 1e-3) [dx, dz] = hypot(u.vx, u.vz) > 1 ? [u.vx, u.vz] : [u.forward.x, u.forward.z];
+    const d = hypot(dx, dz) || 1;
+    const speed = J.distance / J.time;
+    const forced = { vx: (dx / d) * speed, vz: (dz / d) * speed, remaining: J.time, total: J.time, arc: 0, collide: true };
+    u.forced = forced;
+    u.combatant.ccImmune = true;
+    this.juking.set(u, { forced, until: this.sim.time + J.guard });
+    this.jukeReady.set(u, this.sim.time + J.cooldown);
+    this.beats.juke++;
+    this.lastJuke = u;
+    return true;
+  }
+
+  /** Seconds until this god can juke again (0: ready). */
+  jukeLeft(u: Unit): number {
+    return Math.max(0, (this.jukeReady.get(u) ?? 0) - this.sim.time);
+  }
+
+  /** Whether this god is in a juke's guard (crowd control can't land). */
+  isJuking(u: Unit): boolean {
+    return this.juking.has(u);
+  }
+
+  /** A juke's guard ends on time, or as soon as the juker no longer has the relic. */
+  private stepJukes(): void {
+    for (const [u, j] of this.juking) {
+      if (this.sim.time < j.until && u.alive && this.relic.holder === u) continue;
+      u.combatant.ccImmune = false;
+      this.juking.delete(u);
+    }
   }
 
   /** Seconds since this god's call for the pass, or null when they haven't called lately. */
@@ -655,7 +715,8 @@ export class Rush {
    */
   private fumbleCause(u: Unit): Unit | null | undefined {
     const cc = u.combatant.cc.active.find((c) => FUMBLE_CC.has(c.kind));
-    if (!cc && !u.forced) return undefined;
+    // the carrier's own juke is movement, not a hit
+    if (!cc && (!u.forced || this.juking.get(u)?.forced === u.forced)) return undefined;
     const uid = cc?.source ? Number(cc.source.split(':')[0]) : NaN;
     const by = Number.isFinite(uid) ? this.sim.unitByCombatantUid(uid) : undefined;
     return by && by.team !== u.team ? (by.owner ?? by) : null;
@@ -743,6 +804,9 @@ export class Rush {
     this.noCatch.clear();
     this.calls.clear();
     this.lastPass = null;
+    this.jukeReady.clear();
+    for (const u of this.juking.keys()) u.combatant.ccImmune = false;
+    this.juking.clear();
     for (const side of ['order', 'chaos'] as const) {
       this.team(side).forEach((g, i) => {
         const c = g.combatant;
@@ -779,7 +843,7 @@ export class Rush {
       w: this.winner,
       g: this.goalCount,
       lg: g ? [g.team, at(g.scorer), at(g.assist), g.kind, n(g.at)] : null,
-      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save],
+      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke],
       lb: b ? [b.kind, at(b.unit), at(b.by)] : null,
       r: [r.phase, at(r.holder), n(r.x), n(r.z), n(r.h), n(r.fx), n(r.fz), n(r.tx), n(r.tz), n(r.t), n(r.duration), n(r.arc), n(r.h0), at(r.thrower), r.team, n(r.since)],
       l: this.squad.map((u) => {
@@ -791,6 +855,8 @@ export class Rush {
         const ago = this.calledAgo(u);
         return ago === null ? -1 : n(ago);
       }),
+      j: this.squad.map((u) => n(this.jukeLeft(u))),
+      lj: at(this.lastJuke),
     };
   }
 
@@ -807,7 +873,8 @@ export class Rush {
     const lg = s.lg;
     const scorer = lg && god(lg[1]);
     this.lastGoal = lg && scorer ? { team: lg[0], scorer, assist: god(lg[2]), kind: lg[3], at: lg[4] } : null;
-    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save] = s.b;
+    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke] = s.b;
+    this.lastJuke = god(s.lj);
     const lb = s.lb;
     const unit = lb && god(lb[1]);
     this.lastBeat = lb && unit ? { kind: lb[0], unit, by: god(lb[2]) } : null;
@@ -823,6 +890,10 @@ export class Rush {
     s.cl.forEach((ago, i) => {
       const g = this.squad[i];
       if (g && ago >= 0) this.calls.set(g, this.sim.time - ago);
+    });
+    s.j.forEach((left, i) => {
+      const g = this.squad[i];
+      if (g) this.jukeReady.set(g, this.sim.time + left);
     });
   }
 
