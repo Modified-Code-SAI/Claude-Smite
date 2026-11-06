@@ -223,9 +223,8 @@ export class JotunnMode {
     if (mine) {
       this.deps.ctrl.spawn(g.x, g.z, g.body.yaw);
       this.deps.ctrl.pitch = GIANT_CAMERA.pitch;
-      this.deps.toast('You are the Jötunn. Smash three of the four braziers on the temple. Stand in an ice shrine to claim a new ultimate. Your knees, back rune, wrists and crown are where the gods break you.');
     } else {
-      this.deps.toast(`${p.name} is the Jötunn. Keep it from the braziers: break both knees to bring it down, then strike its crown. After a slam, break the planted wrist.`);
+      // (who the giant is and the round's aim are on the waking card, the rest on the rules card: no toast says it again over them)
       // (a guest's points are the host's to spend, as their menu's are)
       const spent = this.guest ? null : this.deps.startPoints?.(this.deps.player);
       if (spent) this.deps.toast(startingPointsLine(spent));
@@ -327,6 +326,11 @@ export class JotunnMode {
     this.view.onEvent(e);
     this.hud.onEvent(e);
     this.marks?.onEvent(e);
+  }
+
+  /** Toasts wait while the giant wakes on camera, so none prints over its card (see CombatHud.holdToasts). */
+  get holdsToasts(): boolean {
+    return this.cine?.kind === 'wake';
   }
 
   frame(dt: number, time: number): void {
