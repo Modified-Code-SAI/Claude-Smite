@@ -229,6 +229,8 @@ async function main(): Promise<void> {
   else {
     const seed = newSeed();
     const last = savedPick();
+    // the hymn gives way to the war council, which builds as the clock runs down
+    music.play('council');
     pickScreen = showGodPick({
       mode: started.mode,
       net: started.net,
@@ -241,6 +243,7 @@ async function main(): Promise<void> {
       seed,
       say,
       sound: (name, gain = 0.8) => audio.play(name, { bus: 'ui', gain }, 4, 0.05),
+      mood: (v) => music.setIntensity(v, 0.1),
     });
     hud.mirrorProgress((f, text) => pickScreen!.progress(f, text));
     hud.notesHost = pickScreen.notes;
@@ -340,6 +343,8 @@ async function main(): Promise<void> {
   const stage = params.has('stage') ? new (await import('./dev/Stage')).Stage(combat, camera, () => (player.model.root.visible = false)) : null;
   if (stage) follow.update = () => {};
   const gameAudio = new GameAudio(audio, music, herald, combat, camera, choice.mode === 'conquest', () => !player.grounded);
+  // the match's song starts calm: the god pick's swell doesn't carry over into it
+  music.setIntensity(0, 60);
   // Prepare what the match added (the player, spell effects, structures), every
   // god and monster still included, then wait (bounded) for the driver to
   // finish compiling the pipelines before revealing the scene.
@@ -353,6 +358,8 @@ async function main(): Promise<void> {
   models.removeFromParent();
   await pipelines.settle(60000, (done, total) => hud.progress(0.9 + (total ? (0.1 * done) / total : 0.1), `Preparing shaders ${done} / ${total}…`));
   clearTimeout(slow);
+  // the versus screen holds long enough to see who faces whom, then the match begins
+  await pickScreen?.shown();
   hud.ready();
   pickScreen?.finish();
   if (advice) hud.notice(advice.text, 15);
