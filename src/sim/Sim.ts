@@ -98,6 +98,10 @@ export class Sim {
   intercept: ((u: Unit, action: 'basic' | 'cast') => boolean) | null = null;
   /** How far a knockback throws its target, arena meters (Relic Rush throws farther). */
   knockback = 3.5;
+  /** How high (meters) a knockback's arc rises (Jötunn's giant hurls gods high). */
+  knockbackArc = 0.6;
+  /** How high (meters) a knock-up throws its target. */
+  knockupArc = 1.6;
 
   constructor(
     readonly terrain: SimTerrain,
@@ -675,14 +679,14 @@ export class Sim {
         // Relic Rush's Playmaker tree: Bulldozer throws farther, Iron Footing holds ground
         const dist = this.knockback * (1 + owner.combatant.sport('push')) * Math.max(0.2, 1 - target.combatant.sport('footing'));
         const time = 0.3 * Math.sqrt(dist / 3.5);
-        target.forced = { vx: (dx / d) * (dist / time), vz: (dz / d) * (dist / time), remaining: time, total: time, arc: 0.6, collide: true };
+        target.forced = { vx: (dx / d) * (dist / time), vz: (dz / d) * (dist / time), remaining: time, total: time, arc: this.knockbackArc, collide: true };
       } else if (e.cc === 'pull' || e.cc === 'grab') {
         const time = 0.3;
         const dist = Math.max(0, d - (owner.radius + target.radius + 0.6));
         target.forced = { vx: (-dx / d) * (dist / time), vz: (-dz / d) * (dist / time), remaining: time, total: time, arc: 0.3, collide: true };
       } else if (e.cc === 'knockup') {
         const time = Math.max(0.4, e.duration);
-        target.forced = { vx: 0, vz: 0, remaining: time, total: time, arc: 1.6, collide: true };
+        target.forced = { vx: 0, vz: 0, remaining: time, total: time, arc: this.knockupArc, collide: true };
       }
     }
   }

@@ -402,3 +402,38 @@ describe('dodging a warning', () => {
     expect(escape(cone, { x: 0, z: 5 }, 0.5)).toBeNull();
   });
 });
+
+describe("the giant's throws", () => {
+  it('hurl a god far back on a high arc with a stomp, where a god is only shoved', () => {
+    const { sim, mode, run, g } = setup();
+    run(JOTUNN.countdown + 0.2);
+    expect(mode.phase).toBe('fight');
+    const god = mode.gods[0]!;
+    god.combatant.gainXp(1e6);
+    sim.teleport(god, g.x, g.z + 3, 0);
+    const from = { x: god.x, z: god.z };
+    expect(sim.cast(g, g.combatant.loadout.indexOf('jotunn.stomp'))).toBeNull();
+    let peak = 0;
+    let flew = false;
+    for (let i = 0; i < 120; i++) {
+      mode.step(1 / 60);
+      sim.step(1 / 60);
+      if (god.forced) flew = true;
+      peak = Math.max(peak, god.body.y);
+    }
+    expect(flew).toBe(true);
+    expect(god.forced).toBeNull();
+    expect(peak).toBeGreaterThan(JOTUNN.thrown.arc * 0.9);
+    expect(peak).toBeLessThanOrEqual(JOTUNN.thrown.arc + 1e-6);
+    // straight back, away from the giant
+    expect(Math.hypot(god.x - from.x, god.z - from.z)).toBeCloseTo(JOTUNN.thrown.distance, 0);
+    expect(god.z).toBeGreaterThan(from.z);
+  });
+
+  it('leave every other mode with its own short shove and knock-up', () => {
+    const sim = newSim();
+    expect([sim.knockback, sim.knockbackArc, sim.knockupArc]).toEqual([3.5, 0.6, 1.6]);
+    new Jotunn(sim, GODS.map((d) => ({ name: d.name, id: null, god: d })));
+    expect([sim.knockback, sim.knockbackArc, sim.knockupArc]).toEqual([JOTUNN.thrown.distance, JOTUNN.thrown.arc, JOTUNN.thrown.toss]);
+  });
+});
