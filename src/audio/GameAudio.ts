@@ -58,6 +58,9 @@ export class GameAudio {
   /** God kills since each god's last death, for shutdown calls. */
   private readonly streaks = new Map<Unit, number>();
   private ambience: LoopHandle[] = [];
+  /** The Jötunn's winter, heard: started once its snow first falls. */
+  private blizzard: LoopHandle | null = null;
+  private blizzardIn = 0;
   private heartbeat: LoopHandle | null = null;
   private heat = 0;
   private muffle = 0;
@@ -490,6 +493,7 @@ export class GameAudio {
     this.watchRush();
     this.watchDescent();
     this.watchJotunn();
+    this.winterWind(dt);
     this.updateMood(dt);
     // while dead, the world is heard as if from far away
     this.muffle += ((me.alive ? 0 : 1) - this.muffle) * Math.min(1, dt * (me.alive ? 6 : 2.5));
@@ -1046,7 +1050,8 @@ export class GameAudio {
     add('amb.wind', { bus: 'ambience', gain: 0.55, pan: -0.5 });
     add('amb.wind', { bus: 'ambience', gain: 0.45, pan: 0.5, rate: 0.93 });
     add('amb.leaves', { bus: 'ambience', gain: 0.35, pan: 0.2 });
-    add('amb.jungle', { bus: 'ambience', gain: this.conquest ? 0.18 : 0.08, pan: -0.2 });
+    // (no insects in the Jötunn's winter)
+    if (!this.game.jotunn) add('amb.jungle', { bus: 'ambience', gain: this.conquest ? 0.18 : 0.08, pan: -0.2 });
     for (const b of Object.values(this.game.sim.bases)) {
       add('amb.fountain', { bus: 'ambience', at: { x: b.x, y: 1, z: b.z }, gain: 0.8, ref: 7 });
       add('amb.fire', { bus: 'ambience', at: { x: b.x + 6, y: 2, z: b.z }, gain: 0.5, ref: 4 });
@@ -1080,8 +1085,8 @@ export class GameAudio {
     this.birdIn -= dt;
     if (this.birdIn <= 0) {
       this.birdIn = 2.5 + Math.random() * 7;
-      // quieter when the fighting is loud
-      if (this.heat < 0.6) {
+      // quieter when the fighting is loud, and gone once it really snows
+      if (this.heat < 0.6 && this.game.winter < 0.3) {
         const a = Math.random() * Math.PI * 2;
         const r = 14 + Math.random() * 30;
         this.engine.play('amb.bird', { bus: 'ambience', at: { x: l.x + Math.cos(a) * r, y: 8 + Math.random() * 8, z: l.z + Math.sin(a) * r }, gain: 0.6, vary: 0.12, ref: 10 }, 0);
@@ -1292,6 +1297,25 @@ export class GameAudio {
       this.at('jotunn.windup', g, { gain: f.act === 'basic' ? 0.55 : 0.95, vary: 0.05, ref: 24 }, 4, 0, true);
     }
     if (seen.flashes.size > 200) seen.flashes.clear();
+  }
+
+  /**
+   * The giant's winter as a sound: a blizzard's howl that swells with the
+   * snow, from a whisper under the breeze in a first flurry to a gale that
+   * drowns it when the giant wins, and climbs in pitch as it builds.
+   */
+  private winterWind(dt: number): void {
+    if (!this.game.jotunn) return;
+    const a = this.game.winter;
+    if (!this.blizzard?.alive) {
+      // (the bank may still be baking it: try again each second)
+      if (a < 0.01 || (this.blizzardIn -= dt) > 0) return;
+      this.blizzardIn = 1;
+      this.blizzard = this.engine.loop('jotunn.blizzard', { bus: 'ambience', gain: 0 });
+      if (!this.blizzard) return;
+    }
+    this.blizzard.setGain(0.85 * a ** 1.5, 0.5);
+    this.blizzard.setRate(0.92 + 0.16 * a);
   }
 
   /** Fetch the lines of every god in the match (a few times a second is plenty), and open the match with a word from yours. */

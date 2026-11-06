@@ -124,6 +124,36 @@ function frostHorn(r: Rand, len: number, notes: readonly number[]): Float32Array
   return out;
 }
 
+/**
+ * The winter the giant brings, as a bed: a low roar of moving air, a howl
+ * wandering through it that swells with each gust, a thin whistle on the
+ * strongest, and ice grains hissing past.
+ */
+export function blizzardBed(r: Rand, len: number): Float32Array {
+  const out = buf(len + 1.5);
+  const n = pink(r);
+  const w = white(r);
+  const body = new Biquad('lowpass', 380, 0.7);
+  const howl = new Biquad('bandpass', 600, 6);
+  const whistle = new Biquad('bandpass', 1500, 12);
+  const hiss = new Biquad('highpass', 4200, 0.7);
+  const gust = wander(r, 0.2);
+  const pitch = wander(r, 0.11);
+  const pitch2 = wander(r, 0.27);
+  for (let i = 0; i < out.length; i++) {
+    // near nothing in a lull, 1 at a gust's height (it surges about 3.5x)
+    const g = Math.max(0.05, Math.min(1, 0.5 + 0.7 * gust()));
+    if ((i & 63) === 0) {
+      howl.set((380 + 360 * (0.5 + 0.5 * pitch())) * (0.75 + 0.35 * g), 6);
+      whistle.set(1150 + 750 * (0.5 + 0.5 * pitch2()), 12);
+    }
+    const x = n();
+    // (the howl about as loud as the roar under it, the whistle and the grains well below)
+    out[i] = body.run(x) * (0.35 + 0.65 * g) + howl.run(x) * 11 * g * g + whistle.run(x) * 18 * Math.max(0, g - 0.6) + hiss.run(w()) * 0.08 * (0.3 + 0.7 * g);
+  }
+  return loopable(out, 1.5);
+}
+
 // ---------------------------------------------------------------------------
 // The bank (merged into SOUNDS)
 
@@ -152,6 +182,8 @@ export const JOTUNN_SOUNDS: Record<string, Recipe> = {
   'jotunn.claim': { peak: 0.85, make: (r) => layer([shimmer(r, 2.4, 330, { rise: 1.4, peak: 0.55, voices: 6 }), 1], [frostHorn(r, 2.6, [55, 82.4]), 0.8], [shards(r, 2, 18, 2200, 5200, 0.5), 0.5, 0.4]) },
   /** A weak point grows back: ice knitting together with a creak. */
   'jotunn.regrow': { peak: 0.6, make: (r) => layer([shimmer(r, 1.2, 880, { rise: 1.6, peak: 0.8, voices: 4 }), 0.8], [crack(r, 0.5, 0.35), 0.4, 0.6]) },
+  /** The winter the giant brings (GameAudio.winter turns it up with the snow). */
+  'jotunn.blizzard': { loop: true, peak: 0.5, make: (r) => blizzardBed(r, 12) },
   /** The round's horn: deep and wintry. */
   'jotunn.horn': { peak: 0.85, make: (r) => layer([frostHorn(r, 3.2, [55, 82.4, 110]), 1], [rumble(r, 3, { tone: 80, attack: 0.4 }), 0.5]) },
   // the giant's own voice (GameAudio.voice): effort, pain, a war cry with each ultimate, and its fall
