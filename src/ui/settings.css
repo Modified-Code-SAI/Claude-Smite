@@ -102,6 +102,14 @@
 .st-key i:hover { background: #c0402a; }
 .st-key.listening { color: #1a1208 !important; background: linear-gradient(180deg, #ffe3a3, #d9a23a); border-color: #fff2c4; animation: st-listen 0.9s ease-in-out infinite alternate; }
 .st-key.listening i { display: none; }
+/* the controller: its status, and one button per action */
+.st-bind-pad { grid-template-columns: minmax(0, 1fr) 164px; }
+.st-fixed { display: block; text-align: center; font: 500 13px/1 system-ui, 'Segoe UI', Roboto, sans-serif; color: #b8a888; letter-spacing: 0.03em; }
+.st-pad-status { grid-template-columns: 40px minmax(0, 1fr); }
+.st-pad-icon { width: 34px; height: 34px; fill: none; stroke: #8a7d66; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.st-pad-status.on .st-pad-icon { stroke: #f4cf74; filter: drop-shadow(0 0 6px rgba(244, 196, 90, 0.5)); }
+.st-pad-status .st-label b { color: #e9dcc0; }
+.st-pad-status.on .st-label b { color: #ffe3a3; }
 @keyframes st-listen { from { box-shadow: 0 0 0 0 rgba(255, 212, 122, 0.6); } to { box-shadow: 0 0 0 6px rgba(255, 212, 122, 0); } }
 
 .st-subs-preview { display: flex; justify-content: center; padding: 18px 12px; margin-top: 8px; border-radius: 8px; background: linear-gradient(180deg, rgba(60, 80, 60, 0.35), rgba(30, 24, 16, 0.6)), repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 12px, transparent 12px 24px); font-size: 19px; transition: opacity 0.15s; }
@@ -126,6 +134,8 @@
   .st-ctl { justify-content: flex-start; }
   .st-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .st-bind { grid-template-columns: minmax(0, 1fr) 110px 110px; }
+  .st-bind-pad { grid-template-columns: minmax(0, 1fr) 130px; }
+  .st-pad-status { grid-template-columns: 40px minmax(0, 1fr); }
   .st-content { padding: 4px 14px 16px; }
   .st-saved { display: none; }
   .st-toast { right: 220px; }

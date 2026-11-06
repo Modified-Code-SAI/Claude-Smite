@@ -6,6 +6,7 @@
  */
 
 import { bindingOverrides, resolveBindings, SLOT_ACTIONS, type Action, type Binding, type Bindings } from './bindings';
+import { padOverrides, resolvePadBindings, type PadBindings } from './padBindings';
 
 export type TeamColorMode = 'default' | 'redgreen' | 'tritan' | 'contrast';
 export type SubtitleSize = 'small' | 'medium' | 'large' | 'huge';
@@ -18,6 +19,17 @@ export interface Settings {
   /** Skills fire the moment their key goes down, at the crosshair, with no aim preview. */
   quickCast: boolean;
   bindings: Bindings;
+  // controller
+  /** Multiplier on the right stick's turn rate. */
+  padSensitivity: number;
+  padInvertY: boolean;
+  /** How far a stick must move before it counts, 0 to 1 of its reach. */
+  padDeadzone: number;
+  /** Rumble strength, 0 (off) to 1. */
+  vibration: number;
+  /** The camera turns a little slower while the crosshair is on an enemy in reach. */
+  aimSlowdown: boolean;
+  padBindings: PadBindings;
   /** Damage and healing numbers float up from what you hit. */
   damageNumbers: boolean;
   // camera
@@ -51,9 +63,14 @@ export interface Settings {
   muteInBackground: boolean;
 }
 
-export const DEFAULTS: Readonly<Omit<Settings, 'bindings'>> = {
+export const DEFAULTS: Readonly<Omit<Settings, 'bindings' | 'padBindings'>> = {
   sensitivity: 1,
   invertY: false,
+  padSensitivity: 1,
+  padInvertY: false,
+  padDeadzone: 0.14,
+  vibration: 0.8,
+  aimSlowdown: true,
   quickCast: false,
   damageNumbers: true,
   fov: 58,
@@ -75,6 +92,9 @@ export const DEFAULTS: Readonly<Omit<Settings, 'bindings'>> = {
 
 export const LIMITS = {
   sensitivity: [0.25, 3],
+  padSensitivity: [0.3, 3],
+  padDeadzone: [0.05, 0.35],
+  vibration: [0, 1],
   fov: [50, 75],
   shake: [0, 1],
   resolution: [0.5, 1],
@@ -106,6 +126,12 @@ export function normalize(raw: unknown): Settings {
     invertY: bool('invertY'),
     quickCast: bool('quickCast'),
     bindings: resolveBindings(r.bindings),
+    padSensitivity: num('padSensitivity'),
+    padInvertY: bool('padInvertY'),
+    padDeadzone: num('padDeadzone'),
+    vibration: num('vibration'),
+    aimSlowdown: bool('aimSlowdown'),
+    padBindings: resolvePadBindings(r.padBindings),
     damageNumbers: bool('damageNumbers'),
     fov: num('fov'),
     shake: num('shake'),
@@ -165,8 +191,8 @@ export function onSettings(fn: Listener, now = true): void {
 
 function save(): void {
   try {
-    const { bindings, ...rest } = current;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, bindings: bindingOverrides(bindings) }));
+    const { bindings, padBindings, ...rest } = current;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, bindings: bindingOverrides(bindings), padBindings: padOverrides(padBindings) }));
   } catch {
     /* storage unavailable */
   }
@@ -175,6 +201,11 @@ function save(): void {
 /** The inputs bound to an action, primary first. */
 export function codesFor(a: Action): Binding {
   return current.bindings[a];
+}
+
+/** The controller button bound to an action, or null. */
+export function padCodeFor(a: Action): string | null {
+  return current.padBindings[a];
 }
 
 /** The action a keyboard code or mouse button triggers, or null. */

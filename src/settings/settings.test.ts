@@ -4,6 +4,9 @@ import { boundKeys, controlRows } from './controls';
 import { DEFAULTS, normalize, resetForTest, setSettings, settings, slotForCode } from './store';
 import { applyTeamColors, TEAM_COLOR_SETS } from './teamColors';
 import { SIDE, SIDE_CSS, TEAM_COLORS } from '../combat/palette';
+import { defaultPadBindings, padFamily, padLabel, padLayer, padOverrides, rebindPad, resolvePadBindings, STICK_ACTIONS } from './padBindings';
+import { deadzoneStick } from '../core/Gamepad';
+import { movePenalty } from '../player/PlayerController';
 
 describe('key bindings', () => {
   it('gives every action its default and binds no input twice', () => {
@@ -116,5 +119,84 @@ describe('team colors', () => {
     applyTeamColors('default', null);
     expect(TEAM_COLORS.ally).toBe('#46d7c4');
     expect(SIDE.foe.main).toBe(0xff3524);
+  });
+});
+
+describe('controller', () => {
+  it('gives every button action a default, one action per button in each layer', () => {
+    const b = defaultPadBindings();
+    const seen = { pick: new Set<string>(), main: new Set<string>() };
+    for (const a of ACTIONS) {
+      if (STICK_ACTIONS.includes(a.id)) {
+        expect(b[a.id]).toBeNull();
+        continue;
+      }
+      const c = b[a.id];
+      if (!c) continue;
+      const layer = seen[padLayer(a.id)];
+      expect(layer.has(c), `${c} bound twice`).toBe(false);
+      layer.add(c);
+    }
+    // the essentials are all on a button
+    for (const a of ['attack', 'skill1', 'skill2', 'skill3', 'ultimate', 'jump', 'cancel', 'recall', 'skills', 'ping', 'menu', 'pick1', 'pick2', 'pick3'] as const) expect(b[a]).not.toBeNull();
+  });
+
+  it('swaps a button within its layer, and lets picks share the D-pad', () => {
+    const { bindings, movedFrom } = rebindPad(defaultPadBindings(), 'skill1', 'Pad7');
+    expect(movedFrom).toBe('attack');
+    expect(bindings.skill1).toBe('Pad7');
+    expect(bindings.attack).toBe('Pad4');
+    // a pick on the ping's button leaves the ping alone
+    const shared = rebindPad(defaultPadBindings(), 'pick1', 'Pad13');
+    expect(shared.movedFrom).toBeNull();
+    expect(shared.bindings.recall).toBe('Pad13');
+  });
+
+  it('saves only what changed, and reads saves safely', () => {
+    const { bindings } = rebindPad(defaultPadBindings(), 'taunt', 'Pad2');
+    const saved = padOverrides(bindings);
+    expect(Object.keys(saved).sort()).toEqual(['callPass', 'taunt']);
+    const back = resolvePadBindings(JSON.parse(JSON.stringify(saved)));
+    expect(back.taunt).toBe('Pad2');
+    const odd = resolvePadBindings({ jump: 'Pad99', forward: 'Pad3', attack: 'Pad0', taunt: null });
+    expect(odd.jump).toBe('Pad0');
+    expect(odd.forward).toBeNull();
+    // attack took A, which jump keeps (listed first)
+    expect(odd.attack).toBeNull();
+    expect(odd.taunt).toBeNull();
+  });
+
+  it('names buttons for the controller in hand', () => {
+    expect(padFamily('Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)')).toBe('xbox');
+    expect(padFamily('DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)')).toBe('playstation');
+    expect(padFamily('Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)')).toBe('nintendo');
+    expect(padLabel('Pad0', 'xbox')).toBe('A');
+    expect(padLabel('Pad0', 'playstation', true)).toBe('✕');
+    expect(padLabel('Pad0', 'nintendo')).toBe('B');
+    expect(padLabel('Pad6', 'playstation')).toBe('L2');
+    expect(padLabel(null, 'xbox')).toBe('');
+  });
+
+  it('takes the dead zone off a stick without a jump at its edge', () => {
+    const out = { x: 0, y: 0 };
+    deadzoneStick(out, 0.1, 0, 0.15);
+    expect(out.x).toBe(0);
+    deadzoneStick(out, 0.16, 0, 0.15);
+    expect(out.x).toBeGreaterThan(0);
+    expect(out.x).toBeLessThan(0.02);
+    deadzoneStick(out, 0.8, 0.8, 0.15);
+    expect(Math.hypot(out.x, out.y)).toBeCloseTo(1);
+  });
+
+  it('runs and strafes at the keys\' speeds in their eight ways, and blends between', () => {
+    const s = Math.SQRT1_2;
+    expect(movePenalty(1, 0)).toBe(1);
+    expect(movePenalty(s, s)).toBeCloseTo(1);
+    expect(movePenalty(0, 1)).toBeCloseTo(0.8);
+    expect(movePenalty(-s, -s)).toBeCloseTo(0.6);
+    expect(movePenalty(-1, 0)).toBe(0.6);
+    const between = movePenalty(Math.cos(1.2), Math.sin(1.2));
+    expect(between).toBeGreaterThan(0.8);
+    expect(between).toBeLessThan(1);
   });
 });

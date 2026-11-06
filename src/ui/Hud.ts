@@ -2,9 +2,17 @@ import { QUALITY_PRESETS, type QualityName } from '../render/Quality';
 import { controlsHtml } from './StartMenu';
 import { setCompatibilityMode } from './Fatal';
 import { openSettings } from './SettingsMenu';
-import { bindingLabel } from '../settings/bindings';
-import { onKeyLabels } from '../settings/controls';
-import { settings } from '../settings/store';
+import { bindingLabel, keyLabel, SLOT_ACTIONS } from '../settings/bindings';
+import { actionKey, onKeyLabels } from '../settings/controls';
+import { codesFor, settings } from '../settings/store';
+
+/** The hint's first line: the keys that matter most, as the player has bound them. */
+const keysLine = () => {
+  const k = (a: Parameters<typeof codesFor>[0]) => keyLabel(codesFor(a)[0]) || '—';
+  const move = (['forward', 'left', 'back', 'right'] as const).map(k).join('');
+  const skills = SLOT_ACTIONS.slice(0, 3).map(k).join(' ');
+  return `${move} move &middot; mouse aim &middot; ${k('attack').toLowerCase()} attack &middot; ${skills} skills &middot; ${bindingLabel(codesFor('ultimate')).replace(' / ', ' or ')} ultimate`;
+};
 
 /** The hint's second line: how to reach the menus, with the player's keys. */
 const menuLine = () => {
@@ -38,7 +46,7 @@ export class Hud {
         </label>
       </div>
       <div class="hud-crosshair"></div>
-      <div class="hud-hint"><b>Click to play</b><span>WASD move &middot; mouse aim &middot; left click attack &middot; 1&ndash;3 skills &middot; 4 or R ultimate</span><span class="hud-hint-menu"></span></div>
+      <div class="hud-hint"><b>Click to play</b><span class="hud-hint-keys"></span><span class="hud-hint-menu"></span></div>
       <div class="hud-loading"><div class="hud-title">ASCENDANT</div><div class="hud-bar"><div></div></div><div class="hud-sub">Raising the temple&hellip;</div></div>
     `;
     document.body.appendChild(this.root);
@@ -57,7 +65,7 @@ export class Hud {
     this.help.querySelector('.help-resume')!.addEventListener('click', () => this.toggleHelp(false));
     this.help.querySelector('.help-quit')!.addEventListener('click', () => location.reload());
     const helpKey = this.help.querySelector<HTMLSpanElement>('.help-menu-key')!;
-    const setHelpKey = () => (helpKey.textContent = bindingLabel(settings().bindings.menu));
+    const setHelpKey = () => (helpKey.textContent = actionKey('menu'));
     setHelpKey();
     onKeyLabels(setHelpKey);
     this.help.querySelector('.help-open-settings')!.addEventListener('click', () => openSettings());
@@ -70,8 +78,13 @@ export class Hud {
     this.bar = this.root.querySelector('.hud-bar > div')!;
     this.hint = this.root.querySelector('.hud-hint')!;
     const menuHint = this.root.querySelector<HTMLSpanElement>('.hud-hint-menu')!;
-    menuHint.innerHTML = menuLine();
-    onKeyLabels(() => (menuHint.innerHTML = menuLine()));
+    const keysHint = this.root.querySelector<HTMLSpanElement>('.hud-hint-keys')!;
+    const hints = () => {
+      keysHint.innerHTML = keysLine();
+      menuHint.innerHTML = menuLine();
+    };
+    hints();
+    onKeyLabels(hints);
     const select = this.root.querySelector<HTMLSelectElement>('.hud-quality')!;
     select.addEventListener('change', () => {
       onQuality(select.value as QualityName);

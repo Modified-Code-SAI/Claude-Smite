@@ -1,0 +1,12 @@
+/* The controller's cursor in menus: a gold ring that tightens over a button. */
+.pad-cursor { position: fixed; left: 0; top: 0; z-index: 100000; width: 0; height: 0; pointer-events: none; opacity: 0; transition: opacity 0.15s; will-change: transform; }
+.pad-cursor.on { opacity: 1; }
+.pad-cursor::before, .pad-cursor::after { content: ''; position: absolute; border-radius: 50%; transform: translate(-50%, -50%); }
+.pad-cursor::before { width: 30px; height: 30px; border: 2px solid #f4cf74; background: radial-gradient(circle, rgba(244, 207, 116, 0.22), rgba(244, 207, 116, 0) 70%); box-shadow: 0 0 10px rgba(244, 196, 90, 0.65), inset 0 0 4px rgba(0, 0, 0, 0.6); transition: width 0.12s, height 0.12s, border-color 0.12s; }
+.pad-cursor::after { width: 6px; height: 6px; background: #fff3cf; box-shadow: 0 0 4px #000; }
+.pad-cursor.over::before { width: 20px; height: 20px; border-color: #fff1c4; }
+.pad-cursor.press::before { animation: pad-press 0.22s ease-out; }
+@keyframes pad-press { from { width: 14px; height: 14px; } }
+.pad-hover { outline: 2px solid rgba(244, 207, 116, 0.9) !important; outline-offset: 2px; }
+/* while the controller drives the menus the mouse pointer would only confuse */
+html.pad-menus, html.pad-menus * { cursor: none !important; }

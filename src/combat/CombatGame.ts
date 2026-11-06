@@ -835,24 +835,24 @@ export class CombatGame implements Updatable {
     this.updateAim();
     this.updateReticle();
 
+    // picks first: on a controller they share the D-pad with the ping, recall
+    // and the trees, and take the press while a pick is on offer
+    const offer = this.siege?.offer ? 'siege' : this.duel?.offer ? 'duel' : this.descent?.phase === 'reward' || this.descent?.phase === 'draft' ? 'descent' : null;
+    if (offer) {
+      const pick = input.pressedIndex(PICK_ACTIONS);
+      if (pick >= 0) {
+        input.consume(PICK_ACTIONS[pick]!);
+        if (offer === 'siege') this.takeBoon(pick);
+        else if (offer === 'duel') this.takeDuelBoon(pick);
+        else this.descentMode?.pick(pick);
+      }
+    }
     // the giant has no skill trees to grow
     if (input.actionPressed('skills') && !this.jotunnMode?.piloting) this.toggleMenu();
     // a taunt: your god says something cutting, and everyone near hears it (the giant has no words)
     if (input.actionPressed('taunt') && this.inFight && !this.jotunnMode?.piloting) {
       if (this.netGuest) this.netGuest.taunt();
       else this.sim.taunt(this.player);
-    }
-    if (this.siege?.offer) {
-      const pick = input.pressedIndex(PICK_ACTIONS);
-      if (pick >= 0) this.takeBoon(pick);
-    }
-    if (this.duel?.offer) {
-      const pick = input.pressedIndex(PICK_ACTIONS);
-      if (pick >= 0) this.takeDuelBoon(pick);
-    }
-    if (this.descent?.phase === 'reward' || this.descent?.phase === 'draft') {
-      const pick = input.pressedIndex(PICK_ACTIONS);
-      if (pick >= 0) this.descentMode?.pick(pick);
     }
     if (this.menu.isOpen && input.wasPressed('Escape')) this.menu.close();
 
@@ -942,6 +942,11 @@ export class CombatGame implements Updatable {
 
   private wasInBase = true;
 
+  /** A menu or the end screen is up: a controller drives the on-screen cursor instead of the god. */
+  get menuUp(): boolean {
+    return this.menu.isOpen || !!(this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner || this.descent?.over || this.jotunn?.phase === 'done');
+  }
+
   /** Whether the fight takes input: no menu up, and the match isn't over, counting down or watching a boss rise or fall. */
   private get inFight(): boolean {
     return !this.menu.isOpen && !this.match?.winner && !this.clash?.winner && this.siege?.phase !== 'fallen' && !this.duel?.winner && this.duel?.phase !== 'countdown' && !this.rush?.winner && !this.descent?.over && !this.descent?.intro && !this.descent?.fall && this.jotunn?.phase !== 'done';
@@ -1010,7 +1015,7 @@ export class CombatGame implements Updatable {
     if (this.rushMode && !carrying && input.actionPressed('callPass')) this.rushMode.call();
     if (carrying) {
       this.cancelPreview();
-      if (input.actionPressed('attack') && input.locked) this.rushMode!.throw();
+      if (input.actionPressed('attack') && input.engaged) this.rushMode!.throw();
       if (input.actionPressed('jump')) this.rushMode!.juke();
       this.suppressBasic = true;
     }
@@ -1040,14 +1045,14 @@ export class CombatGame implements Updatable {
 
     if (this.preview) {
       if (input.actionDown('cancel')) this.cancelPreview();
-      else if (input.actionDown('attack') && input.locked) {
+      else if (input.actionDown('attack') && input.engaged) {
         this.castSlot(this.preview.slot);
         this.suppressBasic = true;
       } else if (!input.actionDown(this.preview.action)) this.castSlot(this.preview.slot);
     }
 
     if (!input.actionDown('attack')) this.suppressBasic = false;
-    this.basicHeld = !this.preview && !this.suppressBasic && input.locked && input.actionDown('attack') && u.alive;
+    this.basicHeld = !this.preview && !this.suppressBasic && input.engaged && input.actionDown('attack') && u.alive;
     if (this.basicHeld && !this.netGuest) this.sim.basic(u);
   }
 
@@ -1137,6 +1142,7 @@ export class CombatGame implements Updatable {
     const { target, inRange } = this.aimTarget();
     this.reticle?.classList.toggle('on-target', target !== null && inRange);
     this.reticle?.classList.toggle('far-target', target !== null && !inRange);
+    this.deps.input.aimFriction = target !== null && inRange;
     this.hud.setTarget(inRange ? target : null);
   }
 
