@@ -88,9 +88,10 @@ class Crackle implements Live {
   private last = -1;
   private radius = 1;
   private height = 2;
+  private width = 0.11;
   private readonly at = new THREE.Vector3();
 
-  start(p: { vfx: number; core: number }, life: number, radius: number, height: number, every: number): this {
+  start(p: { vfx: number; core: number }, life: number, radius: number, height: number, every: number, width: number): this {
     this.arc.setColors(p.vfx, p.core);
     this.arc.clear();
     this.age = 0;
@@ -99,6 +100,7 @@ class Crackle implements Live {
     this.radius = radius;
     this.height = height;
     this.every = every;
+    this.width = width;
     return this;
   }
 
@@ -115,13 +117,13 @@ class Crackle implements Live {
       const a = this.arc;
       a.clear();
       const r = this.radius;
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 3; i++) {
         const y = this.at.y + 0.2 + Math.random() * this.height;
         const ang = Math.random() * Math.PI * 2;
         const turn = 0.8 + Math.random() * 1.4;
         A.set(this.at.x + Math.sin(ang) * r, y, this.at.z + Math.cos(ang) * r);
         B.set(this.at.x + Math.sin(ang + turn) * r, y + (Math.random() - 0.5) * 0.9, this.at.z + Math.cos(ang + turn) * r);
-        a.bolt(A, B, 0.07, 0.35, 0.8, 3);
+        a.bolt(A, B, this.width, 0.35, 0.8, 3);
       }
     }
     const left = this.life - k;
@@ -299,6 +301,27 @@ export class SkillFx implements FxKit {
     };
   }
 
+  /** Ends everything that is playing (the dev stage, between shots). */
+  reset(): void {
+    for (const r of [this.ribbons, this.beams, this.funnels, this.sigils, this.swarms, this.bolts, this.flights, this.crackles] as Running<Live>[]) r.clear();
+    this.followers.length = 0;
+    for (const fx of this.shotList) {
+      for (const p of fx.props) this.propPool.release(p);
+      fx.props.length = 0;
+      fx.sigil = null;
+      fx.tether.clear();
+      fx.chain.clear();
+      this.group.remove(fx.tether.group, fx.chain.group);
+      this.shotPool.free.push(fx);
+    }
+    this.shotList.length = 0;
+    this.shots.clear();
+    this.zoneList.length = 0;
+    this.zoneFx.clear();
+    this.rocks.clear();
+    this.spears.clear();
+  }
+
   // -------------------------------------------------------------------------
   // The kit the looks draw with
 
@@ -367,8 +390,8 @@ export class SkillFx implements FxKit {
     this.base.comet(p, u, life, size, crackle);
   }
 
-  crackle(p: { vfx: number; core: number }, u: Unit, life: number, radius: number, height: number, every = 0.08): void {
-    const c = this.crackles.start().start(p, life, radius, height, every);
+  crackle(p: { vfx: number; core: number }, u: Unit, life: number, radius: number, height: number, every = 0.08, width = 0.11): void {
+    const c = this.crackles.start().start(p, life, radius, height, every, width);
     this.attach(c, u, 0, life, (x, y, z) => c.move(x, y, z));
   }
 
@@ -581,7 +604,7 @@ export class SkillFx implements FxKit {
         const c = fx.chain;
         c.clear();
         const k = fx.kinks;
-        for (let i = 0; i < k.length; i++) c.bolt(k[i]!, i + 1 < k.length ? k[i + 1]! : fx.at, 0.14, 0.2, 0.9, 3);
+        for (let i = 0; i < k.length; i++) c.bolt(k[i]!, i + 1 < k.length ? k[i + 1]! : fx.at, 0.2, 0.2, 0.9, 3);
         c.values.fade = 0.85;
       }
     }
@@ -595,6 +618,11 @@ export class SkillFx implements FxKit {
       const o = fx.owner;
       const fl = this.fly(s.prop ?? 'hammer', fx.palette.vfx, s.size ?? 1, fx.at, B.set(o.x, o.body.y + 1.4, o.z), 0.32, 0.4, s.spin ?? 0);
       fl.home = o;
+    }
+    // the whole chain flashes once more as it finishes, then fades
+    if (s.chain) {
+      const k = fx.kinks;
+      for (let i = 0; i < k.length; i++) this.bolt(fx.palette, k[i]!, i + 1 < k.length ? k[i + 1]! : fx.at, 0.26, 0.32, 0.24);
     }
     for (const p of fx.props) this.propPool.release(p);
     fx.props.length = 0;

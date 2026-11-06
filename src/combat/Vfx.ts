@@ -666,6 +666,17 @@ export class CombatVfx {
     this.skills.camera = camera;
   }
 
+  /** Ends every one-shot effect at once (the dev stage, between shots); shots and zones go with the sim's. */
+  reset(): void {
+    this.skills.reset();
+    for (const b of this.bursts) this.burstPool.release(b);
+    this.bursts.length = 0;
+    for (const p of this.pillars) this.pillarPool.release(p);
+    this.pillars.length = 0;
+    for (const c of this.comets) this.projectilePool.release(c.view);
+    this.comets.length = 0;
+  }
+
   /** Who the viewer can see (stealthed enemies hide the looks on them). */
   set visible(f: (u: Unit) => boolean) {
     this.skills.visible = f;

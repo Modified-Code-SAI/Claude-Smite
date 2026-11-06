@@ -91,6 +91,8 @@ export interface RibbonOpts {
   life: number;
   /** Turns per second the whole arc spins about `an` (whirls). */
   spin?: number;
+  /** Stays drawn on once swept (an aura), fading only at the end of its life. */
+  hold?: boolean;
 }
 
 /**
@@ -145,16 +147,21 @@ export class Ribbon implements Live {
     this.group.position.set(x, y, z);
   }
 
+  /** Ends it in a moment (whoever wore it is gone, or its buff ended). */
+  stop(): void {
+    this.o.life = Math.min(this.o.life, this.age + 0.5);
+  }
+
   update(dt: number): boolean {
     const o = this.o;
     const k = (this.age += dt);
     const v = this.values;
     const tail = v.tail;
-    // the head runs past the end so the tail can sweep off it
-    v.head = o.sweep > 0 ? Math.min(1 + tail, k / o.sweep) : 1;
+    // the head runs past the end so the tail can sweep off it (unless it holds)
+    v.head = o.sweep > 0 ? Math.min(o.hold ? 1 : 1 + tail, k / o.sweep) : 1;
     const out = Math.min(1, k / o.life);
     if (o.radiusTo !== undefined) v.radius = o.radius + (o.radiusTo - o.radius) * (1 - (1 - out) ** 2.2);
-    const end = o.sweep > 0 ? o.sweep * (1 + tail) : 0;
+    const end = o.hold ? o.life - 0.5 : o.sweep > 0 ? o.sweep * (1 + tail) : 0;
     v.fade = k < end ? 1 : Math.max(0, 1 - (k - end) / Math.max(0.05, o.life - end)) ** 1.4;
     if (o.spin) {
       const a = k * o.spin * Math.PI * 2;

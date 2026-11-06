@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, float, fract, mix, mx_noise_float, normalView, positionView, smoothstep, time, uv, vec3, vec4 } from '../../render/tsl';
+import { abs, float, fract, max, mix, mx_noise_float, normalView, positionView, smoothstep, time, uv, vec3, vec4 } from '../../render/tsl';
 import { objectUniforms, useUniforms } from '../../render/shared';
 import type { Live } from './pool';
 
@@ -43,7 +43,9 @@ function makeMaterial(): THREE.MeshBasicNodeMaterial {
   const heat = mix(facing.pow(4).add(tip), thread, u.wraps).clamp(0, 1);
   const bright = mix(float(1.4).add(glow.mul(3)), float(1.15).add(thread.mul(2.5)), u.wraps);
   m.colorNode = vec4(mix(u.main, u.hot, heat).mul(bright), 1);
-  m.opacityNode = glow.clamp(0, 1).mul(shown).mul(u.fade);
+  // an energy beam keeps a solid body in its own color out to the silhouette, so it reads in daylight
+  const body = facing.pow(0.6).mul(0.7).mul(float(1).sub(u.wraps));
+  m.opacityNode = max(glow, body).clamp(0, 1).mul(shown).mul(u.fade);
   return m;
 }
 
