@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { rng } from '../../core/random';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { fbm2, rng, simplex2, smoothstep } from '../../core/random';
 import { chamberField, GATE, type ChamberDef } from '../../map/UnderworldLayout';
 import { boulder, brokenCap, brokenShaft, chippedBlock, columnBase, columnCapital, flutedShaft, lathe, merge } from '../Architecture';
 
@@ -18,6 +18,9 @@ export interface KitMaterials {
   waterfall: THREE.Material;
   pool: THREE.Material;
   bone: THREE.Material;
+  gold: THREE.Material;
+  molten: THREE.Material;
+  bronze: THREE.Material;
 }
 
 /** What a kit builds one chamber's dressing with, in the chamber's local frame. */
@@ -66,46 +69,36 @@ function wallAt(c: ChamberDef, a: number): WallSpot | null {
 /** Turns a part whose front faces +z to face the chamber's middle from a wall spot. */
 const facingIn = (s: WallSpot): number => Math.atan2(-s.dx, -s.dz);
 
-// ---------------------------------------------------------------------------
-// Shared by the kits
+/** A point in a wall spot's frame (x along the wall, z out toward the middle), set `back` into the rock, in the chamber's frame. */
+function fromSpot(s: WallSpot, back: number, x: number, z: number): [number, number] {
+  const t = facingIn(s);
+  const cos = Math.cos(t);
+  const sin = Math.sin(t);
+  return [s.x + s.dx * back + x * cos + z * sin, s.z + s.dz * back - x * sin + z * cos];
+}
 
-/** The boss arena's dais and broken colossi along the walls. */
-function throne({ c, mats, add }: KitBuild): void {
-  // a low round dais under the boss's spot
-  const dais = lathe([[0, 0], [7.4, 0], [7.4, 0.12], [7.1, 0.2], [0, 0.2]], 64);
-  add(dais, mats.obsidian, 0, -0.08, -c.extent * 0.35, false);
-  // four great broken statues' plinths and stumps against the walls
-  for (const a of [35, 145, 215, 325]) {
-    const rad = (a * Math.PI) / 180;
-    const x = Math.cos(rad) * (c.extent - 2.6);
-    const z = Math.sin(rad) * (c.extent - 2.6);
-    add(chippedBlock(3.2, 2.2, 3.2, 4700 + a), mats.obsidian, x, 1.1, z).rotation.y = -rad;
-    add(obsidianColumn(1.2, 5 + (a % 3), 4800 + a), mats.obsidian, x, 2.2, z).rotation.y = rad;
-  }
+/** Parts of a set piece in its own frame, each casting a shadow unless told not to. */
+function setPiece(): { g: THREE.Group; part: (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast?: boolean) => THREE.Mesh } {
+  const g = new THREE.Group();
+  const part = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.castShadow = cast;
+    m.receiveShadow = true;
+    g.add(m);
+    return m;
+  };
+  return { g, part };
+}
+
+/** Stands a set piece at a wall spot, `back` into the rock, facing the chamber's middle. */
+function standAt(k: KitBuild, g: THREE.Group, s: WallSpot, back: number): void {
+  g.position.set(s.x + s.dx * back, 0, s.z + s.dz * back);
+  g.rotation.y = facingIn(s);
+  k.group.add(g);
 }
 
 const COALS = new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.25, 1);
-
-/** A faceted obsidian monolith: an eight-sided shaft tapering up from a collar, with a flared cap. */
-function obsidianColumn(radius: number, height: number, seed: number): THREE.BufferGeometry {
-  const random = rng(seed);
-  const pts: [number, number][] = [
-    [radius * 1.35, 0], [radius * 1.35, 0.5], [radius * 1.12, 0.62], [radius * 1.05, 1.1], [radius * 1.18, 1.25],
-    [radius * 1.0, 1.4], [radius * 0.82, height * 0.82], [radius * 0.98, height * 0.86], [radius * 0.86, height * 0.9],
-    [radius * 1.15, height - 0.35], [radius * 1.2, height], [0, height],
-  ];
-  const geo = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 8);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  // a slight lean and uneven facets, so no two columns match
-  const lean = (random() - 0.5) * 0.06;
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i);
-    pos.setX(i, pos.getX(i) * (1 + (random() - 0.5) * 0.03) + lean * y);
-  }
-  const flat = geo.toNonIndexed();
-  flat.computeVertexNormals();
-  return flat;
-}
 
 // ---------------------------------------------------------------------------
 // The Ashen Depths: a forge of the dead
@@ -157,6 +150,7 @@ export const forgeKit: Kit = (k) => {
     furnace(k, spot);
     used.push(spot.a);
   }
+  if (c.boss) hoard(k, used);
   const smithies = c.boss ? 2 : 3;
   for (let s = 0, tries = 0; s < smithies && tries < 40; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
@@ -198,7 +192,6 @@ export const forgeKit: Kit = (k) => {
     else add(HOOK, mats.iron, x, bottom - 0.15, z, false).rotation.y = random() * Math.PI;
     n++;
   }
-  if (c.boss) throne(k);
 };
 
 /** A square iron collar round a pier: four flat bars. */
@@ -379,6 +372,183 @@ function cage(k: KitBuild, x: number, z: number, top: number, mat: THREE.Materia
 }
 
 // ---------------------------------------------------------------------------
+// The Treasure Wyrm's arena: its hoard
+
+/**
+ * The Treasure Wyrm's hoard: heaps of gold piled against the walls, the two
+ * greatest either side of the way on, with strongboxes burst open, chalices,
+ * stacked bars, a shield and a sword thrust into the gold, coins spilled
+ * across the foot of the walls, and warm light glinting off it all.
+ */
+function hoard(k: KitBuild, used: number[]): void {
+  for (const [deg, size] of [[-110, 1], [-70, 1], [-146, 0.75], [-34, 0.75], [146, 0.55], [34, 0.55]] as const) {
+    const s = wallAt(k.c, (deg * Math.PI) / 180);
+    if (!s) continue;
+    goldHeap(k, s, size);
+    used.push(s.a);
+  }
+}
+
+/** One heap of the hoard at a wall spot, `size` 1 for the greatest. */
+function goldHeap(k: KitBuild, s: WallSpot, size: number): void {
+  const { mats, random } = k;
+  const { g, part } = setPiece();
+  const seed = 8000 + Math.round(s.a * 100);
+  const w = 4 + size * 6.5;
+  const { geo, at } = coinHeap(w, 1.4 + size * 3, seed);
+  part(geo, mats.gold, 0, 0, 0);
+
+  // coins spilled over the floor at its toe, and a few little stacks
+  const coins: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 40 + size * 60; i++) {
+    const x = (random() - 0.5) * (w + 1.5);
+    const z = 0.6 + random() * random() * (1.6 + size * 1.4);
+    coins.push(COIN.clone().rotateX((random() - 0.5) * 0.5).rotateY(random() * Math.PI).translate(x, Math.max(0.014, at(x, z) + 0.01), z));
+  }
+  for (let i = 0; i < 2 + size * 3; i++) {
+    const x = (random() - 0.5) * w * 0.8;
+    const z = 1.4 + random() * 0.8;
+    const n = 3 + Math.floor(random() * 6);
+    for (let j = 0; j < n; j++) coins.push(COIN.clone().translate(x + (random() - 0.5) * 0.02, 0.014 + j * 0.026, z + (random() - 0.5) * 0.02));
+  }
+  part(merge(coins), mats.gold, 0, 0, 0, false);
+
+  // a strongbox burst open at each end, a chalice or two, and a stack of bars
+  for (const end of [-1, 1]) {
+    if (size < 0.7 && end > 0) continue;
+    const x = end * w * (0.3 + random() * 0.08);
+    const z = 0.7 + random() * 0.4;
+    strongbox(k, g, x, Math.max(0, at(x, z) - 0.35), z, end * (0.3 + random() * 0.4), seed + end);
+  }
+  for (let i = 0; i < 1 + Math.round(size); i++) {
+    const x = (random() - 0.5) * w * 0.6;
+    const z = 0.9 + random() * 0.5;
+    const cup = part(CHALICE, mats.gold, x, Math.max(0, at(x, z) - 0.08), z);
+    cup.rotation.set((random() - 0.5) * 0.3, 0, (random() - 0.5) * 0.3);
+    if (random() < 0.4) cup.rotation.set(Math.PI / 2 - 0.2, random() * Math.PI, 0);
+  }
+  {
+    const x = -w * 0.12 + (random() - 0.5);
+    const z = 1.75;
+    for (let layer = 0; layer < 3; layer++) {
+      for (let i = 0; i < 3 - layer; i++) {
+        const across = layer % 2 === 1;
+        const off = (i - (2 - layer) / 2) * 0.22;
+        const bar = part(GOLD_BAR, mats.gold, x + (across ? 0 : off), 0.065 + layer * 0.13, z + (across ? off : 0));
+        bar.rotation.y = across ? Math.PI / 2 : 0;
+      }
+    }
+  }
+
+  // on the greatest heaps, a sword thrust into the gold and a shield leaning on it
+  if (size >= 1) {
+    const sx = w * 0.12 * (random() < 0.5 ? -1 : 1);
+    const sz = -0.2;
+    const sword = new THREE.Group();
+    sword.position.set(sx, at(sx, sz) + 0.5, sz);
+    sword.rotation.set(-0.25, random() * Math.PI, 0.2);
+    for (const [geo, mat] of [[SWORD_BLADE, mats.iron], [SWORD_HILT, mats.gold]] as const) {
+      const m = new THREE.Mesh(geo, mat);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      sword.add(m);
+    }
+    g.add(sword);
+    const hx = -sx * 1.4;
+    const shield = part(SHIELD, mats.gold, hx, 0.62, 1.05);
+    shield.rotation.set(-0.42, (random() - 0.5) * 0.6, (random() - 0.5) * 0.3);
+  }
+  standAt(k, g, s, 0);
+  if (size >= 0.7) {
+    const [lx, lz] = fromSpot(s, 0, 0, 3.2);
+    k.light(0xffb25a, 24 + size * 22, 14, lx, 2.8, lz);
+  }
+}
+
+/**
+ * A heap of coins piled against the wall, `w` wide along it and `h` high at
+ * its crest, the wall's foot at z = 0 and its toe out on the floor toward +z.
+ * Returns it and the height of its surface at a point.
+ */
+function coinHeap(w: number, h: number, seed: number): { geo: THREE.BufferGeometry; at: (x: number, z: number) => number } {
+  const n = simplex2(seed);
+  const at = (x: number, z: number): number => {
+    const across = Math.max(0, 1 - (x / (w / 2)) ** 2);
+    // broad mounds where it has been heaped, and the roughness of loose coins over them
+    const mounds = 1 + fbm2(n, x * 0.3, z * 0.3, 2) * 0.28;
+    const rough = fbm2(n, x * 1.7 + 40, z * 1.7, 2) * 0.05;
+    // steep against the wall, then a long slope out to its toe on the floor
+    const rise = smoothstep(1.6, -0.9, z);
+    return (h * Math.pow(across, 0.6) * mounds + rough) * rise - 0.04;
+  };
+  const geo = new THREE.PlaneGeometry(w, 4.6, 44, 20).rotateX(-Math.PI / 2).translate(0, 0, -0.7);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, at(pos.getX(i), pos.getZ(i)));
+  geo.deleteAttribute('uv');
+  geo.computeVertexNormals();
+  return { geo, at };
+}
+
+const COIN = new THREE.CylinderGeometry(0.1, 0.1, 0.024, 10);
+
+/** A cup on a stem, 0.55 m tall. */
+const CHALICE = lathe([
+  [0, 0], [0.2, 0], [0.21, 0.03], [0.06, 0.08], [0.045, 0.28], [0.08, 0.31], [0.2, 0.37], [0.23, 0.55], [0.205, 0.55], [0.17, 0.39], [0, 0.37],
+], 16);
+
+const GOLD_BAR = chippedBlock(0.44, 0.13, 0.2, 8100, 0.012, [3, 2, 2]);
+
+/** A round shield, its face toward +z. */
+const SHIELD = merge([
+  new THREE.CylinderGeometry(0.72, 0.72, 0.07, 32).rotateX(Math.PI / 2),
+  new THREE.TorusGeometry(0.72, 0.05, 6, 32),
+  new THREE.SphereGeometry(0.18, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2).rotateX(Math.PI / 2).translate(0, 0, 0.03),
+]);
+
+/** A sword standing point down: the blade, then its guard, grip and pommel (y 0 at the guard). */
+const SWORD_BLADE = merge([
+  new THREE.BoxGeometry(0.11, 1.55, 0.025).translate(0, -0.78, 0),
+  new THREE.ConeGeometry(0.078, 0.16, 4).rotateX(Math.PI).rotateY(Math.PI / 4).scale(1, 1, 0.23).translate(0, -1.63, 0),
+]);
+const SWORD_HILT = merge([
+  new THREE.BoxGeometry(0.6, 0.07, 0.08),
+  new THREE.CylinderGeometry(0.03, 0.03, 0.3, 8).translate(0, 0.18, 0),
+  new THREE.SphereGeometry(0.06, 10, 8).translate(0, 0.36, 0),
+]);
+
+/** An iron strongbox at (x, y, z) in a set piece, its lid thrown back and gold heaped inside. */
+function strongbox(k: KitBuild, g: THREE.Group, x: number, y: number, z: number, turn: number, seed: number): void {
+  const { mats } = k;
+  const box = new THREE.Group();
+  box.position.set(x, y, z);
+  box.rotation.y = turn;
+  const part = (geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D, px: number, py: number, pz: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(px, py, pz);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    parent.add(m);
+    return m;
+  };
+  part(chippedBlock(1.2, 0.62, 0.76, seed, 0.02, [4, 3, 3]), mats.iron, box, 0, 0.31, 0);
+  part(STRAPS, mats.iron, box, 0, 0.31, 0);
+  part(GOLD_FILL, mats.gold, box, 0, 0.58, 0);
+  const lid = new THREE.Group();
+  lid.position.set(0, 0.62, -0.38);
+  lid.rotation.x = -1.95;
+  box.add(lid);
+  part(LID, mats.iron, lid, 0, 0, 0.38);
+  g.add(box);
+}
+
+const STRAPS = merge([-0.38, 0, 0.38].map((x) => new THREE.BoxGeometry(0.08, 0.64, 0.8).translate(x, 0, 0)));
+const LID = merge([
+  new THREE.CylinderGeometry(0.38, 0.38, 1.2, 14, 1, false, 0, Math.PI).rotateZ(Math.PI / 2),
+  new THREE.BoxGeometry(1.2, 0.04, 0.76),
+]);
+const GOLD_FILL = new THREE.SphereGeometry(0.5, 16, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1.12, 0.42, 0.7);
+
+// ---------------------------------------------------------------------------
 // The Drowned Halls: a flooded crypt
 
 /**
@@ -442,8 +612,9 @@ export const drownedKit: Kit = (k) => {
       n++;
     }
   };
-  place(c.boss ? 4 : 2, 0.5, (s) => mourner(k, s));
-  place(c.boss ? 2 : 3, 0.45, (s) => sarcophagus(k, s));
+  if (c.boss) foundry(k, used);
+  place(c.boss ? 3 : 2, 0.5, (s) => mourner(k, s));
+  place(c.boss ? 1 : 3, 0.45, (s) => sarcophagus(k, s));
   const rocks = Array.from({ length: 5 }, (_, i) => boulder(1, 6200 + i * 19, 3));
   const urns = [urn(0.55, 1.1), urn(0.4, 0.8), urn(0.32, 1.0)];
   const steps = 48;
@@ -485,7 +656,6 @@ export const drownedKit: Kit = (k) => {
     if (n < 2) k.light(0x5aa8ff, 16, 11, x, bottom - 0.8, z);
     n++;
   }
-  if (c.boss) throne(k);
 };
 
 /** A font's basin on its pedestal, the lip just under FLAME_Y. */
@@ -659,6 +829,164 @@ function lantern(k: KitBuild, x: number, z: number, top: number): void {
 const ORB = new THREE.SphereGeometry(0.24, 14, 10);
 
 // ---------------------------------------------------------------------------
+// The Molten Colossus's arena: its foundry
+
+/**
+ * The Molten Colossus's sunken foundry: two great crucibles hanging on
+ * chains either side of the way on, tipped to pour white-hot metal into
+ * casting troughs at the foot of the walls, their orange light thrown across
+ * the cold halls; and two pairs of broken bronze legs on their plinths, all
+ * that is left of the colossi this place once cast.
+ */
+function foundry(k: KitBuild, used: number[]): void {
+  for (const deg of [-126, -54]) {
+    const s = wallAt(k.c, (deg * Math.PI) / 180);
+    if (!s) continue;
+    // each pours away from the way on
+    const side = deg < -90 ? -1 : 1;
+    crucible(k, s, side);
+    used.push(s.a, s.a + side * 0.13);
+  }
+  for (const deg of [-150, -30]) {
+    const s = wallAt(k.c, (deg * Math.PI) / 180);
+    if (!s) continue;
+    bronzeLegs(k, s);
+    used.push(s.a);
+  }
+}
+
+/** How far a crucible is tipped on its trunnions, and where they hang (over the wall's foot). */
+const TIP = 0.9;
+const PIVOT = { y: 5.6, z: 1.3 } as const;
+/** How much bigger than its model a crucible is built, and where its spout ends in its own frame (the pivot at the origin, the spout toward +x). */
+const POT = 1.3;
+const SPOUT = new THREE.Vector3(2.3, 1.36, 0).multiplyScalar(POT);
+
+/** A crucible hanging by its trunnions on two chains, tipped toward `side` (+-1 along the wall) to pour into a trough. */
+function crucible(k: KitBuild, s: WallSpot, side: number): void {
+  const { mats } = k;
+  const { g, part } = setPiece();
+  const pot = new THREE.Group();
+  pot.position.set(0, PIVOT.y, PIVOT.z);
+  pot.rotation.z = -TIP * side;
+  pot.scale.setScalar(POT);
+  g.add(pot);
+  for (const [geo, mat, cast] of [[CRUCIBLE, mats.iron, true], [CRUCIBLE_MELT, mats.molten, false]] as const) {
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = cast;
+    m.receiveShadow = true;
+    // the spout toward the side it pours
+    if (side < 0) m.rotation.y = Math.PI;
+    pot.add(m);
+  }
+  part(AXLE, mats.iron, 0, PIVOT.y, PIVOT.z);
+
+  // the stream from its spout down into the trough, and the trough brimming
+  const tip = SPOUT.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), -TIP);
+  const at = 4.2 * side;
+  const from = new THREE.Vector3(tip.x * side, PIVOT.y + tip.y, PIVOT.z);
+  const curve = new THREE.QuadraticBezierCurve3(from, new THREE.Vector3(from.x + side * 0.9, from.y - 0.1, PIVOT.z), new THREE.Vector3(at, 0.6, PIVOT.z));
+  part(new THREE.TubeGeometry(curve, 24, 0.24, 8), mats.molten, 0, 0, 0, false);
+  part(SPLASH, mats.molten, at, 0.6, PIVOT.z, false);
+  part(chippedBlock(3.1, 0.62, 1.55, 8200 + Math.round(s.a * 100), 0.04), mats.tideStone, at, 0.31, 0.75);
+  part(TROUGH_MELT, mats.molten, at, 0.63, 0.75, false);
+  // where it has brimmed over and run along the foot of the wall, cooling
+  part(SPILL, mats.molten, at + side * 2.3, 0.025, 0.35, false).rotation.y = side * 0.4;
+  standAt(k, g, s, 0);
+
+  // the chains it hangs from, out of the dark
+  const link = chainLink();
+  for (const end of [-1, 1]) {
+    const [x, z] = fromSpot(s, 0, 0, PIVOT.z + end * 2.25 * POT);
+    chain(k, link, x, z, PIVOT.y + 0.1, 23);
+  }
+  const [lx, lz] = fromSpot(s, 0, at, 2.6);
+  k.light(0xff7a2a, 60, 17, lx, 1.8, lz);
+  // and the glow of its mouth
+  const [sx, sz] = fromSpot(s, 0, from.x + side * 0.4, PIVOT.z + 0.8);
+  k.light(0xff8a3a, 18, 7, sx, from.y - 0.6, sz);
+}
+
+/** A great crucible of iron, banded, its pivot at the origin and its spout toward +x. */
+const CRUCIBLE = merge([
+  lathe([
+    [0, -1.3], [0.85, -1.3], [1.3, -1.05], [1.6, -0.4], [1.75, 0.5], [1.8, 1.2], [1.98, 1.28], [1.95, 1.42],
+    [1.7, 1.4], [1.6, 0.5], [1.45, -0.4], [1.05, -0.95], [0, -1.0],
+  ], 28),
+  new THREE.TorusGeometry(1.7, 0.08, 6, 28).rotateX(Math.PI / 2).translate(0, 0.0, 0),
+  new THREE.TorusGeometry(1.79, 0.08, 6, 28).rotateX(Math.PI / 2).translate(0, 0.9, 0),
+  // the spout
+  new THREE.BoxGeometry(0.62, 0.12, 0.7).translate(2.0, 1.32, 0),
+  new THREE.BoxGeometry(0.5, 0.22, 0.08).translate(2.02, 1.42, 0.33),
+  new THREE.BoxGeometry(0.5, 0.22, 0.08).translate(2.02, 1.42, -0.33),
+  // the trunnions
+  new THREE.CylinderGeometry(0.3, 0.3, 0.5, 10).rotateX(Math.PI / 2).translate(0, 0, 1.95),
+  new THREE.CylinderGeometry(0.3, 0.3, 0.5, 10).rotateX(Math.PI / 2).translate(0, 0, -1.95),
+]);
+/** The metal inside, brimming at the lip. */
+const CRUCIBLE_MELT = new THREE.CircleGeometry(1.62, 28).rotateX(-Math.PI / 2).translate(0, 1.18, 0);
+const AXLE = new THREE.CylinderGeometry(0.2, 0.2, 4.7 * POT, 10).rotateX(Math.PI / 2);
+const SPLASH = new THREE.SphereGeometry(0.42, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.45, 1);
+const TROUGH_MELT = new THREE.PlaneGeometry(2.75, 1.2).rotateX(-Math.PI / 2);
+const SPILL = new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2).scale(1.5, 1, 0.55);
+
+/** A colossus's legs broken off above the knees, old bronze streaked green, striding on a plinth against the wall. */
+function bronzeLegs(k: KitBuild, s: WallSpot): void {
+  const { mats } = k;
+  const { g, part } = setPiece();
+  const seed = 8300 + Math.round(s.a * 100);
+  part(chippedBlock(6, 1.5, 3.2, seed, 0.04), mats.tideStone, 0, 0.75, -0.5);
+  part(chippedBlock(6.6, 0.35, 3.5, seed + 1, 0.04), mats.tideStone, 0, 0.17, -0.45);
+  for (const side of [-1, 1]) {
+    // one foot a stride ahead of the other
+    const z = -0.75 + side * 0.35;
+    part(FOOT, mats.bronze, side * 1.4, 1.5, z).scale.setScalar(1.15);
+    part(colossusLeg(seed + side), mats.bronze, side * 1.4, 1.5 + 0.55, z - 0.05).rotation.y = side * 0.08;
+  }
+  standAt(k, g, s, 0);
+  // a cold light from the floor in front, catching the bronze
+  const [lx, lz] = fromSpot(s, 0, 0, 3.4);
+  k.light(0x7ab8ff, 9, 10, lx, 1.2, lz);
+}
+
+/** A foot on its sole, toes toward +z, the ankle over its heel at y 0.5. */
+const FOOT = merge([
+  chippedBlock(1.25, 0.55, 2.0, 8400, 0.05).translate(0, 0.275, 0.45),
+  ...[0, 1, 2, 3].map((t) => new THREE.SphereGeometry(0.19 - t * 0.02, 10, 6).scale(1, 0.75, 1.3).translate(-0.4 + t * 0.27, 0.16, 1.5 - t * 0.05)),
+  new THREE.SphereGeometry(0.55, 14, 8).scale(1, 0.7, 1.1).translate(0, 0.45, -0.1),
+]);
+
+/** A leg from the ankle to a jagged break above the knee, the calf swelling behind and the knee ahead. */
+function colossusLeg(seed: number): THREE.BufferGeometry {
+  const n = simplex2(seed);
+  const top = 6.8;
+  const geo = lathe(([
+    [0, 0], [0.5, 0], [0.48, 0.5], [0.6, 1.2], [0.8, 2.1], [0.76, 2.9], [0.6, 3.6], [0.64, 4.0], [0.82, 4.7], [0.9, 5.4], [0, 5.1],
+  ] as [number, number][]).map(([r, y]) => [r * 1.18, y * (top / 5.4)]), 24);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    let y = pos.getY(i);
+    // the break: each point of the rim higher or lower round it
+    if (y > top - 0.05) y += n(Math.cos(Math.atan2(z, x)) * 1.6, Math.sin(Math.atan2(z, x)) * 1.6) * 0.6;
+    const calf = -0.17 * Math.exp(-(((y - 2.8) / 1.0) ** 2));
+    const knee = 0.13 * Math.exp(-(((y - 4.65) / 0.45) ** 2));
+    pos.setXYZ(i, x, y, z + calf + knee);
+  }
+  return smooth(geo);
+}
+
+/** Welds a reshaped part's seams and shades it smooth. */
+function smooth(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+  geo.deleteAttribute('uv');
+  geo.deleteAttribute('normal');
+  const welded = mergeVertices(geo, 1e-4);
+  welded.computeVertexNormals();
+  return welded;
+}
+
+// ---------------------------------------------------------------------------
 // The Abyss: an ossuary at the bottom of the world
 
 /**
@@ -698,7 +1026,8 @@ export const abyssKit: Kit = (k) => {
       used.push(spot.a);
     }
   }
-  for (let n = 0, tries = 0; n < (c.boss ? 4 : 3) && tries < 60; tries++) {
+  if (c.boss) court(k, used);
+  for (let n = 0, tries = 0; n < (c.boss ? 2 : 3) && tries < 60; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
     if (!spot || near(spot.a, 0.42)) continue;
     ossuary(k, spot);
@@ -738,7 +1067,6 @@ export const abyssKit: Kit = (k) => {
     if (n < 2) k.light(0x5aff8a, 14, 10, x, bottom - 0.8, z);
     n++;
   }
-  if (c.boss) throne(k);
 };
 
 /**
@@ -949,4 +1277,190 @@ function ribcage(k: KitBuild, s: WallSpot): void {
   g.position.set(s.x + s.dx * back, 0, s.z + s.dz * back);
   g.rotation.y = facingIn(s);
   k.group.add(g);
+}
+
+// ---------------------------------------------------------------------------
+// The Ossuary King's arena: its court
+
+/**
+ * The Ossuary King's court: the way on runs through the open mouth of a
+ * colossal skull sunk in the wall, and pyramids of skulls stand at the four
+ * corners, the topmost of each watching with the spirit fire in its eyes.
+ */
+function court(k: KitBuild, used: number[]): void {
+  maw(k);
+  for (const deg of [-146, -34, 146, 34]) {
+    const s = wallAt(k.c, (deg * Math.PI) / 180);
+    if (!s) continue;
+    skullPyramid(k, s);
+    used.push(s.a);
+  }
+  // the walls either side of the skull stay bare
+  used.push(-Math.PI / 2 - 0.2, -Math.PI / 2 + 0.2);
+}
+
+/** The colossal skull's half width, half height and half depth (m), the height of its middle, and how far it is sunk behind the gate. */
+const MAW = { w: 5.6, h: 7.4, d: 4.6, y: 9.6, back: 4.2 } as const;
+/** Where its sockets are on the unit sphere it is shaped from (x either side, y up), their half size, and how deep they go (share of its depth). */
+const SOCKET = { x: 0.33, y: 0.11, w: 0.19, h: 0.165, deep: 0.45 } as const;
+/** How high its mouth's top edge is: the doorway runs through under it. */
+const MOUTH = 6.6;
+
+/**
+ * The colossal skull round the way on, sunk in the wall behind the gate: the
+ * doorway is its open mouth with the upper teeth hanging over it, the black
+ * hollow of its nose over the lintel, a heavy brow overhangs two deep black
+ * sockets with the spirit fire burning at the back of each, cheekbones jut
+ * under them, and horns sweep out from its temples into the dark. The gate's
+ * flames burn just in front of its cheeks.
+ */
+function maw(k: KitBuild): void {
+  const { c, mats } = k;
+  const { g, part } = setPiece();
+  const cz = -(c.extent + MAW.back);
+  // where the face is (before its features are carved), at a point of the unit sphere
+  const narrow = (ny: number) => (ny < 0 ? 1 - 0.2 * Math.min(1, -ny / 0.7) : 1);
+  const front = (nx: number, ny: number) => cz + Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny)) * 0.82 * MAW.d;
+  // a rounded square: 1 on its edge
+  const squircle = (dx: number, dy: number) => Math.cbrt(Math.abs(dx) ** 3 + Math.abs(dy) ** 3);
+
+  // its seam at the back, which is buried and cut away
+  const sphere = new THREE.SphereGeometry(1, 128, 96, -Math.PI / 2);
+  const pos = sphere.attributes.position as THREE.BufferAttribute;
+  const dark = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const nx = pos.getX(i);
+    const ny = pos.getY(i);
+    const nz = pos.getZ(i);
+    const ax = Math.abs(nx);
+    const onFace = smoothstep(0.25, 0.6, nz);
+    // the sockets: deep pits with a sharp rim; the nose: a hollow narrowing upward
+    const sock = smoothstep(1, 0.72, squircle((ax - SOCKET.x) / SOCKET.w, (ny - SOCKET.y) / SOCKET.h));
+    const noseW = 0.04 + 0.045 * smoothstep(0.06, -0.08, ny + 0.13);
+    const nose = smoothstep(1, 0.6, Math.hypot(nx / noseW, (ny + 0.13) / 0.085));
+    // the brow over the eyes, the cheekbones under and beside them, the ridge the teeth grow from
+    const brow = Math.exp(-(((ny - 0.3) / 0.045) ** 2)) * smoothstep(0.62, 0.42, ax);
+    const cheek = Math.exp(-(((ax - 0.55) / 0.11) ** 2) - ((ny + 0.06) / 0.07) ** 2);
+    const ridge = Math.exp(-(((ny + 0.37) / 0.05) ** 2)) * smoothstep(0.5, 0.3, ax);
+    const temple = Math.exp(-(((ax - 0.85) / 0.1) ** 2) - ((ny - 0.12) / 0.16) ** 2);
+    const carve = (-SOCKET.deep * sock - 0.32 * nose + 0.07 * brow + 0.07 * cheek + 0.04 * ridge) * onFace;
+    dark[i] = Math.max(sock, nose) * onFace;
+    const x = nx * narrow(ny) * (1 - 0.1 * temple) * MAW.w;
+    // the crown of the head lower than a ball's
+    const y = MAW.y + (ny < 0.35 ? ny : 0.35 + (ny - 0.35) * 0.75) * MAW.h;
+    const z = cz + (nz > 0 ? nz * 0.82 : nz) * MAW.d + carve * MAW.d;
+    pos.setXYZ(i, x, y, z);
+  }
+  sphere.setAttribute('dark', new THREE.BufferAttribute(dark, 1));
+  sphere.computeVertexNormals();
+  // open where the doorway runs through it; nothing under the floor or at the back (buried in the rock).
+  // Bone outside, black in the sockets and the nose.
+  const [hollows, bone] = splitTriangles(sphere, (x, y, z) => !(Math.abs(x) < GATE.halfWidth + 0.25 && y < MOUTH) && y > -0.3 && z > cz - 0.5);
+  part(bone, mats.bone, 0, 0, 0);
+  part(hollows, mats.obsidian, 0, 0, 0);
+
+  // the upper teeth over the doorway, the long ones at the corners of the mouth
+  const teeth: THREE.BufferGeometry[] = [];
+  const count = 10;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    const x = (t - 0.5) * 2 * (GATE.halfWidth - 0.05);
+    const ny = (MOUTH - MAW.y) / MAW.h;
+    const nx = x / (MAW.w * narrow(ny));
+    const fang = i === 1 || i === count - 2;
+    const len = fang ? 2.1 : i === 0 || i === count - 1 ? 0.9 : 1.05 + Math.abs(t - 0.5) * 0.4;
+    const r = fang ? 0.27 : 0.24;
+    teeth.push(new THREE.ConeGeometry(r, len, 7).rotateX(Math.PI).translate(0, -len / 2, 0).scale(1, 1, 0.6).translate(x, MOUTH + 0.25, front(nx, ny) - 0.25));
+  }
+  part(merge(teeth), mats.bone, 0, 0, 0);
+
+  // fire in its eyes, far back in the sockets
+  const eyeZ = front(SOCKET.x, SOCKET.y) - SOCKET.deep * MAW.d + 0.35;
+  for (const side of [-1, 1]) {
+    const x = side * SOCKET.x * MAW.w;
+    const y = MAW.y + SOCKET.y * MAW.h;
+    part(EYE, mats.coals, x, y - 0.3, eyeZ, false);
+    part(FLAME_BED, mats.flameBed, x, y - 0.5, eyeZ + 0.1, false).scale.setScalar(1.15);
+  }
+
+  // horns from its temples, out over the walls and curling up
+  const horn = curvedBone(9.5, 0.85, 1.5, 0.06, 16).applyMatrix4(new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1, 1, 0).normalize(), Math.PI));
+  for (const side of [-1, 1]) {
+    const m = part(horn, mats.bone, side * 0.86 * MAW.w, MAW.y + 0.2 * MAW.h, front(0.86, 0.2) - 0.6);
+    m.rotation.y = side > 0 ? -0.35 : Math.PI + 0.35;
+  }
+  k.group.add(g);
+  // lit from below, out of the doorway
+  k.light(0x5aff8a, 34, 15, 0, 4.5, -c.extent + 1.8);
+}
+
+/** A glowing coal for an eye. */
+const EYE = new THREE.SphereGeometry(0.62, 16, 10).scale(1, 0.8, 0.6);
+
+/**
+ * Splits an indexed mesh's triangles whose middles pass a test (the rest are
+ * dropped) into those dark on average (its `dark` attribute over 0.5) and the
+ * rest, each unindexed.
+ */
+function splitTriangles(geo: THREE.BufferGeometry, keep: (x: number, y: number, z: number) => boolean): [THREE.BufferGeometry, THREE.BufferGeometry] {
+  const index = geo.index!.array;
+  const pos = (geo.attributes.position as THREE.BufferAttribute).array;
+  const nor = (geo.attributes.normal as THREE.BufferAttribute).array;
+  const dark = (geo.attributes.dark as THREE.BufferAttribute).array;
+  const out = [0, 1].map(() => ({ p: new Float32Array(index.length * 3), n: new Float32Array(index.length * 3), at: 0 }));
+  for (let t = 0; t < index.length; t += 3) {
+    const a = index[t]!;
+    const b = index[t + 1]!;
+    const c = index[t + 2]!;
+    const x = (pos[a * 3]! + pos[b * 3]! + pos[c * 3]!) / 3;
+    const y = (pos[a * 3 + 1]! + pos[b * 3 + 1]! + pos[c * 3 + 1]!) / 3;
+    const z = (pos[a * 3 + 2]! + pos[b * 3 + 2]! + pos[c * 3 + 2]!) / 3;
+    if (!keep(x, y, z)) continue;
+    const o = out[dark[a]! + dark[b]! + dark[c]! > 1.5 ? 0 : 1]!;
+    for (const v of [a, b, c]) {
+      o.p.set(pos.subarray(v * 3, v * 3 + 3), o.at);
+      o.n.set(nor.subarray(v * 3, v * 3 + 3), o.at);
+      o.at += 3;
+    }
+  }
+  return out.map(({ p, n, at }) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(p.slice(0, at), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(n.slice(0, at), 3));
+    return g;
+  }) as [THREE.BufferGeometry, THREE.BufferGeometry];
+}
+
+/** A pyramid of skulls on a black plinth, each looking out from its face of the heap, the topmost with fire in its eyes. */
+function skullPyramid(k: KitBuild, s: WallSpot): void {
+  const { mats, random } = k;
+  const { g, part } = setPiece();
+  part(chippedBlock(3.8, 0.8, 3.8, 7700 + Math.round(s.a * 100), 0.04), mats.obsidian, 0, 0.4, 0);
+  const skulls: THREE.BufferGeometry[] = [];
+  const sockets: THREE.BufferGeometry[] = [];
+  const r = 0.27;
+  const step = 0.62;
+  let y = 0.8 + r;
+  for (let layer = 0; layer < 4; layer++, y += 0.5) {
+    const n = 5 - layer;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        // only the outside of the heap shows
+        if (i > 0 && i < n - 1 && j > 0 && j < n - 1) continue;
+        const x = (i - (n - 1) / 2) * step + (random() - 0.5) * 0.06;
+        const z = (j - (n - 1) / 2) * step + (random() - 0.5) * 0.06;
+        const turn = Math.atan2(x, z) + (random() - 0.5) * 0.4;
+        const sr = r * (0.9 + random() * 0.2);
+        skulls.push(skull(sr).rotateY(turn).translate(x, y, z));
+        sockets.push(SOCKETS.clone().scale(sr, sr, sr).rotateY(turn).translate(x, y, z));
+      }
+    }
+  }
+  const top = 0.44;
+  y += top - r - 0.05;
+  part(merge(skulls), mats.bone, 0, 0, 0);
+  part(merge(sockets), mats.obsidian, 0, 0, 0, false);
+  part(skull(top), mats.bone, 0, y, 0);
+  part(SOCKETS.clone().scale(top, top, top), mats.coals, 0, y, 0, false);
+  standAt(k, g, s, 0.4);
 }
