@@ -174,6 +174,8 @@ export const JOTUNN_SOUNDS: Record<string, Recipe> = {
   'jotunn.kneel': { peak: 0.95, make: (r) => layer([quake(r, 1.6, 1), 1], [quake(r, 1.4, 0.8), 0.8, 0.28], [bellow(r, 2.2, 44, 0.6, 0.8), 0.7, 0.1]) },
   /** The giant falls: a long collapse, ice breaking off it as it hits the ground. */
   'jotunn.fall': { peak: 0.95, make: (r) => layer([bellow(r, 2.6, 40, 0.55, 0.9), 0.8], [quake(r, 3.5, 1.4), 1, 0.9], [debris(r, 3, { density: 40, gain: 0.7, tone: 700 }), 0.9, 1], [shards(r, 2.5, 60, 1200, 5000), 0.7, 1]) },
+  /** A god thrown by the giant hits the snow: a body's dull thud, the crust giving, powder flying up. */
+  'land.thrown': { variants: 3, peak: 0.8, make: (r) => layer([thump(r, 0.35, 120 + r() * 20, 55, { click: 0.15, noise: 0.55, drive: 1.6 }), 1], [crunch(r, 0.3, 0.9), 0.7, 0.01], [filter(puff(r, 0.7, { tone: 2200 }), 'highpass', 1200), 0.45, 0.03]) },
   /** The giant's bellow as a round starts. */
   'jotunn.roar': { peak: 0.95, make: (r) => layer([bellow(r, 3.2, 46, 0.75), 1], [gust(r, 3.4, 600, 0.7), 0.6], [shards(r, 2.4, 14, 2600, 5600, 0.4), 0.35, 0.8]) },
   /** Rearing back to strike: muscles and ice straining, a breath drawn in. */

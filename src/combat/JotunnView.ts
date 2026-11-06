@@ -29,6 +29,8 @@ export interface JotunnViewHost {
   burst(at: THREE.Vector3, power: number): void;
   /** A giant's foot came down (its sound), 0..1 how hard. */
   footfall?(at: THREE.Vector3, k: number): void;
+  /** A god it threw hit the ground (its sound), 0..1 how high it flew. */
+  landing?(at: THREE.Vector3, k: number): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -711,6 +713,7 @@ export class JotunnView {
       const k = Math.min(1, was / JOTUNN.thrown.arc);
       const at = tmp.set(u.x, this.host.ground(u.x, u.z), u.z);
       this.snow.ring(at, Math.round(5 + 7 * k), 1.5 + 2.5 * k, { life: 0.9, size0: 0.5, size1: 1.6 + 1.2 * k, alpha: 0.5, color: 0xe2edf3 });
+      this.host.landing?.(at, k);
     }
   }
 
