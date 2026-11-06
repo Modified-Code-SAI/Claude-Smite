@@ -36,6 +36,71 @@ function run(sim: Sim, rush: Rush, seconds: number, until?: () => boolean): void
 }
 
 describe('Relic Rush', () => {
+  it('two gods reaching the pedestal together: a coin toss decides the first kickoff, then the side that conceded', () => {
+    for (const [coin, first] of [[0.2, 'order'], [0.7, 'chaos']] as const) {
+      const { sim, rush } = match(flat, () => coin);
+      const a = god(sim, zeus, 'order', 0);
+      const b = god(sim, zeus, 'chaos', 0);
+      rush.begin([a, b]);
+      run(sim, rush, RUSH.countdown + 0.1);
+      // the same distance from the relic, on the same frame (the first in the line-up used to take every one)
+      sim.teleport(a, 0, 1.6);
+      sim.teleport(b, 0, -1.6);
+      run(sim, rush, 0.05);
+      expect(rush.holder!.team).toBe(first);
+      const scorer = rush.holder!;
+      sim.teleport(scorer, 0, RUSH.gates[first === 'order' ? 'chaos' : 'order'].z);
+      run(sim, rush, 0.05);
+      expect(rush.score[first]).toBe(1);
+      run(sim, rush, RUSH.celebrate + RUSH.countdown + 0.2, () => rush.phase === 'play');
+      run(sim, rush, 0.05);
+      sim.teleport(a, 0, 1.6);
+      sim.teleport(b, 0, -1.6);
+      run(sim, rush, 0.05);
+      // the next tie goes to the side that just conceded
+      expect(rush.holder!.team).not.toBe(first);
+    }
+  });
+
+  it('steps the gods forward one frame and backward the next, so neither team always moves on fresher news', () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    const b = god(sim, thor, 'chaos', 0);
+    rush.begin([a, b]);
+    const seen: string[] = [];
+    a.brain = { update: () => seen.push('order') };
+    b.brain = { update: () => seen.push('chaos') };
+    for (let i = 0; i < 4; i++) sim.step(1 / 60);
+    // a god stepped later sees where the others went this frame (a fixed order gave the team stepped second 54% of bot matches)
+    expect(seen).toEqual(['chaos', 'order', 'order', 'chaos', 'chaos', 'order', 'order', 'chaos']);
+  });
+
+  it('identical bot line-ups race to the pedestal the same way from either half of the plaza', () => {
+    const terrain = rushTestField();
+    const { sim, rush } = match(terrain);
+    const nav = new Nav({ groundAt: (x, z) => terrain.groundAt(x, z), resolve: (x, z, r, y) => sim.solid(x, z, r, y) }, RUSH.pitchRadius + 2);
+    const coach = new RushCoach(sim, rush);
+    const gods: Unit[] = [];
+    for (const side of ['order', 'chaos'] as const) {
+      [zeus, thor, zeus].forEach((d, i) => {
+        const u = god(sim, d, side, i);
+        u.brain = new RushBot(sim, u, rush, coach, nav);
+        gods.push(u);
+      });
+    }
+    rush.begin(gods);
+    run(sim, rush, RUSH.countdown + 0.05);
+    // each Order god runs the mirror image of its Chaos twin's run (the pathfinder once sent both teams round the same side of the pedestal)
+    let worst = 0;
+    for (let i = 0; i < 240 && !rush.holder; i++) {
+      run(sim, rush, 1 / 60);
+      if (rush.holder) break;
+      for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.hypot(gods[k]!.x + gods[k + 3]!.x, gods[k]!.z + gods[k + 3]!.z));
+    }
+    expect(rush.holder).not.toBeNull();
+    expect(worst).toBeLessThan(0.05);
+  });
+
   it('holds the kickoff, then the first god to reach the center takes the relic', () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);

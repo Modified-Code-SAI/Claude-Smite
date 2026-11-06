@@ -37,6 +37,8 @@ const DEAD_AHEAD = 0.6;
 
 /** How far ahead (meters) a carrier feels for scenery in the way it means to break. */
 const PROBE = 0.6;
+/** How far short of the pedestal a straight run at it must be clear of scenery (the pathfinder's cells nearer than this are the pedestal's own). */
+const PEDESTAL_CLEAR = 3.2;
 
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 const dist = (a: Point, b: Point) => hypot(a.x - b.x, a.z - b.z);
@@ -726,6 +728,14 @@ export class RushBot implements Brain {
       return;
     }
     let p = goal;
+    if (this.nav && !direct && this.rush.relic.phase === 'center' && hypot(goal.x, goal.z) < 0.5) {
+      // the relic on its pedestal sits in a blocked cell, and the grid routed both teams round to the same open cell beside
+      // it, on one side of the field (Order took 65% of opening kickoffs between identical line-ups): run straight at it
+      // whenever the way up to the pedestal is clear
+      const d = dist(u, goal);
+      const k = d > PEDESTAL_CLEAR ? (d - PEDESTAL_CLEAR) / d : 0;
+      direct = this.nav.clear(u, { x: u.x + (goal.x - u.x) * k, z: u.z + (goal.z - u.z) * k });
+    }
     if (this.nav && !direct) {
       const r = this.route;
       if (!r || dist(r.goal, goal) > 1.5 || this.sim.time - r.at > 0.4) this.route = { goal: { ...goal }, next: this.nav.next(u, goal), at: this.sim.time };
