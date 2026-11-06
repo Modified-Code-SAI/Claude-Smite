@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { ResolvedSkill } from '../game/combatant';
+import type { BillowOptions, BillowSheet } from '../scene/Billows';
 import type { FlashShape, Unit } from '../sim/Unit';
 import type { GodPalette } from './palette';
 import type { Beam, BeamOpts } from './skillFx/Beam';
@@ -43,6 +44,8 @@ export interface FxKit {
   bolt(p: Colors, from: THREE.Vector3, to: THREE.Vector3, width?: number, life?: number, jag?: number): void;
   burst(p: GodPalette, x: number, y: number, z: number, power: number): void;
   cloud(color: number, x: number, y: number, z: number, power: number, swirl?: number): void;
+  /** A simulated cloud (Blender flipbooks): 'smoke' billows up, 'dust' rolls out over the ground, 'blast' is a fireball turning to smoke. */
+  billow(sheet: BillowSheet, x: number, y: number, z: number, size: number, o?: BillowOptions): void;
   pillar(p: GodPalette, x: number, z: number, size: number, width: number): void;
   /** A glowing trail riding on a unit (through a dash or a leap). */
   comet(p: GodPalette, u: Unit, life: number, size: number, crackle?: boolean): void;
@@ -427,7 +430,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     colors: STORM,
     cast: (k, c) => {
       const u = c.owner;
-      k.cloud(0xdbe6f0, u.x, u.body.y + 0.8, u.z, 1.3, 0.8);
+      k.billow('smoke', u.x, u.body.y + 1.3, u.z, 4.4, { duration: 1.8, tint: 0xe6eef6, rise: 0.5 });
       const f = k.funnel({ x: u.x, y: u.body.y, z: u.z, main: 0xc9d6e4, hot: 0xffffff, bottom: 1.05, top: 1.35, height: 2.6, twist: 2.6, density: 0.42, glow: 0.25, sway: 0.05, life: 4 });
       k.attach(f, u, 0, 4, (x, y, z) => f.move(x, y, z));
       k.crackle(c.p, u, 4, 1.1, 2.4, 0.3);
@@ -552,6 +555,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       if (s.type !== 'circle') return;
       shock(k, f.p, s.x, s.z, 0.4, s.radius * 1.25, { life: 0.45, width: 1.1 });
       rockRing(k, s.x, s.z, s.radius * 0.75, 8, f.p.vfx, { size: 0.6 });
+      k.billow('dust', s.x, k.ground(s.x, s.z) + 0.7, s.z, s.radius * 1.6, { duration: 1.6, tint: 0xd2c4ac });
       k.strike(f.p, s.x, s.z, { width: 0.5, height: 14, forks: 3, spread: 1 });
     },
   },
@@ -570,7 +574,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       }
       k.strike(f.p, hit.x, hit.z, { width: 0.6, height: 12, forks: 3, spread: 0.5, life: 0.25 });
       shock(k, f.p, hit.x, hit.z, 0.3, 3.2, { life: 0.4, width: 0.8 });
-      k.cloud(0xb8ab98, hit.x, k.ground(hit.x, hit.z) + 0.4, hit.z, 1.1);
+      k.billow('dust', hit.x, k.ground(hit.x, hit.z) + 0.7, hit.z, 5.5, { duration: 1.5, tint: 0xd4c4aa });
     },
   },
   'thor.berserker-spin': {
@@ -643,7 +647,8 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       rockRing(k, s.x, s.z, s.radius * 0.7, 12, f.p.vfx, { size: 0.95, hold: 0.8 });
       k.strike(f.p, s.x, s.z, { width: 1.1, height: 30, forks: 5, spread: 0.5, life: 0.3 });
       k.pillar(f.p, s.x, s.z, 0.35, 2.4);
-      k.cloud(0xc0ac90, s.x, k.ground(s.x, s.z) + 0.5, s.z, 2.4);
+      k.billow('dust', s.x, k.ground(s.x, s.z) + 1, s.z, s.radius * 1.4, { duration: 2, tint: 0xd4c4a8 });
+      k.billow('smoke', s.x, k.ground(s.x, s.z) + 2, s.z, s.radius * 1.1, { duration: 2.4, delay: 0.2, tint: 0xbcae9e, rise: 1 });
     },
   },
   'thor.worldbreaker': {
@@ -671,8 +676,10 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
         const b = along(s, (i + 1) / 3);
         k.bolt(f.p, P1.set(a.x, k.ground(a.x, a.z) + 0.3, a.z), P2.set(b.x, k.ground(b.x, b.z) + 0.3, b.z), 0.22, 0.4, 0.2);
       }
-      const mid = along(s, 0.5);
-      k.cloud(0xb8ab98, mid.x, k.ground(mid.x, mid.z) + 0.4, mid.z, 1.8);
+      for (let i = 0; i < 3; i++) {
+        const at = along(s, (i + 0.5) / 3);
+        k.billow('dust', at.x, k.ground(at.x, at.z) + 0.8, at.z, 6, { duration: 1.8, delay: i * 0.08, tint: 0xd0c2aa });
+      }
     },
   },
   'thor.thunder-god': {
@@ -746,7 +753,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       slash(k, f.p, s.x, s.z, s.yaw, { radius: s.range * 0.6, width: s.range * 0.62, angle: s.angle + 15, sweep: 0.15 });
       slash(k, { vfx: f.p.core, core: 0xffffff }, s.x, s.z, s.yaw, { radius: s.range * 0.92, width: 0.22, angle: s.angle + 15, sweep: 0.15, y: 1.25 });
       const mid = along(s, 0.6);
-      k.cloud(0xc8b89a, mid.x, k.ground(mid.x, mid.z) + 0.3, mid.z, 0.9);
+      k.billow('dust', mid.x, k.ground(mid.x, mid.z) + 0.5, mid.z, 4.5, { duration: 1.3, tint: 0xd8c8aa });
     },
   },
   'odin.wisdom': {
@@ -845,8 +852,8 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   'loki.vanish': {
     cast: (k, c) => {
       const u = c.owner;
-      k.cloud(0x2c3830, u.x, u.body.y + 0.6, u.z, 1.8, 0.5);
-      k.cloud(0x4a7a52, u.x, u.body.y + 1, u.z, 1.1, 0.3);
+      k.billow('smoke', u.x, u.body.y + 1.2, u.z, 4.4, { duration: 1.7, tint: 0x2e3c32, rise: 0.5 });
+      k.billow('smoke', u.x, u.body.y + 1.4, u.z, 2.8, { duration: 1.3, delay: 0.08, tint: 0x4a7a52, rise: 0.8 });
       k.swarm({ x: u.x, y: u.body.y + 1, z: u.z, mode: 'scatter', main: 0x3dff7a, hot: 0xdcffe2, range: 2.4, spread: 0, size: 0.1, life: 1.2, count: 0.5 });
     },
   },
@@ -855,7 +862,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'circle') return;
-      k.cloud(0x3c5a44, s.x, k.ground(s.x, s.z) + 0.6, s.z, 1.4, 0.4);
+      k.billow('smoke', s.x, k.ground(s.x, s.z) + 1.3, s.z, 3.8, { duration: 1.5, tint: 0x3c5a44, rise: 0.5 });
       shock(k, f.p, s.x, s.z, 0.4, s.radius * 1.1, { life: 0.5, wall: true, width: 0.7 });
       const mock = k.sigil({ x: s.x, y: k.ground(s.x, s.z) + 3.4, z: s.z, glyph: 'eye', size: 1.1, main: f.p.vfx, hot: f.p.core, life: 1.4, open: 0.2 });
       void mock;
@@ -873,10 +880,10 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   },
   'loki.backstab': {
     shot: { prop: 'dagger', size: 1.8, orb: 0.45, trail: 0.8 },
-    cast: (k, c) => k.cloud(SMOKE, c.owner.x, c.owner.body.y + 0.8, c.owner.z, 1.1, 0.3),
+    cast: (k, c) => k.billow('smoke', c.owner.x, c.owner.body.y + 1.1, c.owner.z, 3, { duration: 1.2, tint: SMOKE, rise: 0.5 }),
     hit: (k, h) => {
       const t = h.target;
-      k.cloud(SMOKE, t.x, t.body.y + 0.8, t.z, 1, 0.3);
+      k.billow('smoke', t.x, t.body.y + 1.1, t.z, 2.8, { duration: 1.2, tint: SMOKE, rise: 0.5 });
       slash(k, h.p, t.x, t.z, h.owner.body.yaw + Math.PI, { radius: 0.9, width: 0.9, angle: 140, sweep: 0.1, life: 0.3 });
     },
   },
@@ -896,8 +903,10 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'circle') return;
-      k.cloud(0x56625a, s.x, k.ground(s.x, s.z) + 0.5, s.z, 2.6, 0.35);
-      k.cloud(0x3a5a42, s.x, k.ground(s.x, s.z) + 0.8, s.z, 1.6, 0.2);
+      // the bomb goes off in green fire and the smoke rolls out over the area
+      k.billow('blast', s.x, k.ground(s.x, s.z) + 1.1, s.z, 4.2, { duration: 1.2, tint: 0x46564a, flame: [0x22e040, 0xd4ffa0], rise: 0.4 });
+      k.billow('smoke', s.x, k.ground(s.x, s.z) + 1.4, s.z, s.radius * 1.35, { duration: 2.6, delay: 0.12, tint: 0x8c9c8e, rise: 0.4 });
+      k.billow('dust', s.x, k.ground(s.x, s.z) + 0.6, s.z, s.radius * 1.35, { duration: 1.8, delay: 0.05, tint: 0xa4b2a4 });
       k.burst(f.p, s.x, k.ground(s.x, s.z) + 0.6, s.z, 1.2);
       shock(k, f.p, s.x, s.z, 0.4, s.radius * 1.15, { life: 0.45, width: 0.8 });
     },
@@ -905,7 +914,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   'loki.shapeshift': {
     cast: (k, c) => {
       const u = c.owner;
-      k.cloud(0x3c6a48, u.x, u.body.y + 0.6, u.z, 1.2, 0.6);
+      k.billow('smoke', u.x, u.body.y + 1.1, u.z, 3.4, { duration: 1.3, tint: 0x3c6a48, rise: 0.6 });
       wrap(k, c.p, u, 0.7, { radius: u.radius + 0.5, height: 2.4, turns: 2, width: 0.55, sweep: 0.35 });
       k.swarm({ x: u.x, y: u.body.y + 0.8, z: u.z, mode: 'scatter', main: 0x3dff7a, hot: 0xffffff, range: 1.8, spread: 0, size: 0.09, life: 1, count: 0.45 });
     },
@@ -913,7 +922,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   'loki.assassinate': {
     colors: SHADOW,
     shot: { prop: 'dagger', size: 2.4, orb: 0.55, trail: 1.1 },
-    cast: (k, c) => k.cloud(0x241c34, c.owner.x, c.owner.body.y + 0.8, c.owner.z, 1.5, 0.5),
+    cast: (k, c) => k.billow('smoke', c.owner.x, c.owner.body.y + 1.1, c.owner.z, 3.8, { duration: 1.4, tint: 0x2a2040, rise: 0.5 }),
     hit: (k, h) => {
       const t = h.target;
       // two crossing cuts across the back
@@ -922,7 +931,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
         TILT.copy(UP).multiplyScalar(0.7).addScaledVector(RIGHT, side * 0.7).normalize();
         k.ribbon({ x: t.x, y: t.body.y + 1.3, z: t.z, main: h.p.vfx, hot: h.p.core, ax: FWD, ay: TILT, an: P1.crossVectors(FWD, TILT).normalize(), radius: 1.1, a0: 1.9, span: -3.8, width: 0.55, sweep: 0.09 + (side > 0 ? 0.05 : 0), tail: 0.8, taper: 0.15, life: 0.4 });
       }
-      k.cloud(0x241c34, t.x, t.body.y + 0.8, t.z, 1.3, 0.4);
+      k.billow('smoke', t.x, t.body.y + 1.1, t.z, 3.4, { duration: 1.4, tint: 0x2a2040, rise: 0.5 });
       k.burst(h.p, t.x, t.body.y + 1.3, t.z, 1.6);
     },
   },
@@ -931,10 +940,10 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     zone: { decal: 0.3, motes: false },
     cast: (k, c) => {
       const u = c.owner;
-      k.cloud(SMOKE, u.x, u.body.y + 0.7, u.z, 1.4, 0.4);
+      k.billow('smoke', u.x, u.body.y + 1.1, u.z, 3.6, { duration: 1.5, tint: SMOKE, rise: 0.5 });
       for (const s of k.units) {
         if (s.kind !== 'summon' || s.owner !== u) continue;
-        k.cloud(0x46705a, s.x, s.body.y + 0.7, s.z, 1, 0.4);
+        k.billow('smoke', s.x, s.body.y + 1.1, s.z, 2.8, { duration: 1.3, tint: 0x46705a, rise: 0.6 });
         k.burst(c.p, s.x, s.body.y + 1.3, s.z, 0.9);
       }
     },
@@ -983,7 +992,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const g = k.ground(s.x, s.z);
       for (let i = 1; i <= 3; i++) {
         const d = (s.range * i) / 4;
-        k.cloud(0xc8a060, s.x - Math.sin(s.yaw) * d, g + 0.4, s.z - Math.cos(s.yaw) * d, 0.55 + i * 0.15, 0.4);
+        k.billow('dust', s.x - Math.sin(s.yaw) * d, g + 0.5, s.z - Math.cos(s.yaw) * d, 2.4 + i * 0.9, { duration: 1.8, delay: i * 0.15, tint: 0xdcb474 });
       }
     },
   },
@@ -1014,12 +1023,12 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   'anubis.grave-grasp': {
     colors: { vfx: 0xffa040, core: 0xfff0d0 },
     shot: { prop: 'claw', size: 2.1, orb: 0.4, trail: 0.8, tether: 0.22 },
-    hit: (k, h) => k.cloud(0xd9b072, h.target.x, h.target.body.y + 0.5, h.target.z, 1, 1),
+    hit: (k, h) => k.billow('dust', h.target.x, h.target.body.y + 0.5, h.target.z, 3.4, { duration: 1.4, tint: 0xe4c086 }),
   },
   'anubis.sand-step': {
     cast: (k, c) => {
       const u = c.owner;
-      k.cloud(0xd9b072, u.x, u.body.y + 0.4, u.z, 1.2, 1);
+      k.billow('dust', u.x, u.body.y + 0.5, u.z, 4.2, { duration: 1.4, tint: 0xe4c086 });
       k.comet(c.p, u, 0.42, 0.5);
       P1.set(u.x, u.body.y + 0.4, u.z);
       ahead(P2, u, c.yaw, 10.5, 0.4);
@@ -1180,7 +1189,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     cast: (k, c) => {
       const u = c.owner;
       // the wings fold round him and he is gone into his mother's dark
-      k.cloud(0x1a1630, u.x, u.body.y + 0.8, u.z, 1.7, 0.6);
+      k.billow('smoke', u.x, u.body.y + 1.2, u.z, 4.4, { duration: 1.7, tint: 0x1e1a36, rise: 0.4 });
       wrap(k, WING, u, 0.8, { radius: u.radius + 0.4, height: 2.5, turns: 1.2, width: 0.95, sweep: 0.28, taper: 0.5 });
       feathers(k, u.x, u.body.y + 1.3, u.z, 2.2, { count: 0.5 });
       k.swarm({ x: u.x, y: u.body.y + 1.2, z: u.z, mode: 'scatter', main: c.p.vfx, hot: 0xffffff, range: 2.6, spread: 0, size: 0.1, life: 1.2, count: 0.35 });
@@ -1291,6 +1300,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const gy = k.ground(s.x, s.z);
       shock(k, f.p, s.x, s.z, 0.6, s.radius, { life: 0.6, wall: true, width: 1.2 });
       feathers(k, s.x, gy + 3.5, s.z, s.radius * 0.55, { size: 0.28, life: 1.9, count: 0.7 });
+      k.billow('dust', s.x, gy + 0.8, s.z, 7, { duration: 1.6, tint: 0xccc4ba });
       for (const a of k.near(s.x, s.z, s.radius, o.team)) {
         k.pillar(f.p, a.x, a.z, 0.45, 0.55);
         wrap(k, f.p, a, 2.5, { radius: a.radius + 0.5, height: 2.2, turns: 1.5, width: 0.16, sweep: 0.3, spin: 0.8, taper: 0.3, hold: true });

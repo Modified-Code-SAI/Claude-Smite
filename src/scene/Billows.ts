@@ -70,6 +70,16 @@ export class Billows {
     k.sprite.visible = true;
   }
 
+  /** Ends every billow at once (the dev stage, between shots). */
+  clear(): void {
+    for (const k of this.kinds.values()) {
+      for (let i = 0; i < CAPACITY; i++) k.life.setX(i, -1e6);
+      k.life.needsUpdate = true;
+      k.until = -1;
+      k.sprite.visible = false;
+    }
+  }
+
   update(dt: number): void {
     this.clock += dt;
     this.now.value = this.clock;
