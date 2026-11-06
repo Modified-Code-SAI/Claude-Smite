@@ -14,6 +14,8 @@ export interface CameraShot {
   weight: number;
 }
 
+/** How far the camera keeps from a column or wall beside it (m): any nearer, and a slab of stone fills half the screen. */
+const CLEARANCE = 0.8;
 const shotPos = new THREE.Vector3();
 const shotLook = new THREE.Vector3();
 
@@ -84,7 +86,7 @@ export class ThirdPersonCamera {
     // looking up brings the camera in so the ground doesn't swallow it
     let dist = this.distance * k * THREE.MathUtils.clamp(0.75 + pitch * 0.5, 0.6, 1.2);
     // a giant's camera rides over the columns and walls: only the ground stops it
-    const hit = this.collision.raycast(focus.x, focus.y, focus.z, dir.x, dir.y, dir.z, dist, 0.35, k <= 1);
+    const hit = this.collision.raycast(focus.x, focus.y, focus.z, dir.x, dir.y, dir.z, dist, 0.35, k <= 1, CLEARANCE);
     dist = Math.max(0.6, hit);
     // pull in fast, ease back out
     const rate = dist < this.currentDistance ? 30 : 4;

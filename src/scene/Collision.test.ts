@@ -25,3 +25,24 @@ describe('camera blockers', () => {
     expect(w.raycast(6, 3, 0, -1, 0, 0, 8)).toBe(8);
   });
 });
+
+describe('the camera probe', () => {
+  // a column 0.6 m across, standing 0.6 m to the side of where an 8 m ray ends
+  const world = () => {
+    const w = new CollisionWorld(() => 0);
+    w.addCircle(7.5, 1.2, 0.6);
+    return w;
+  };
+
+  it('keeps the camera clear of a column beside it, widening toward the far end', () => {
+    expect(world().raycast(0, 3, 0, 1, 0, 0, 8, 0.35)).toBe(8);
+    expect(world().raycast(0, 3, 0, 1, 0, 0, 8, 0.35, true, 0.8)).toBeLessThan(7.5);
+  });
+
+  it('still lets its god brush right past one', () => {
+    const w = new CollisionWorld(() => 0);
+    // the god's middle 0.5 m from a column's face: the ray starts thin, so it isn't stopped at once
+    w.addCircle(0, 1.1, 0.6);
+    expect(w.raycast(0, 3, 0, 1, 0, 0, 8, 0.35, true, 0.8)).toBe(8);
+  });
+});
