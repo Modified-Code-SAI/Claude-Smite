@@ -47,6 +47,8 @@ const PEDESTAL_CLEAR = 3.2;
  * out for `time` s.
  */
 const WEDGED = { after: 0.8, within: 0.6, time: 1.2 } as const;
+/** A carrier that makes no more than `within` m of ground for `after` s with a defender against it is pinned (see RushBot.pinned). */
+const PINNED = { after: 0.5, within: 0.4 } as const;
 /**
  * A carrier's run at the gate (see RushBot.mouth): straight at the mouth from
  * within `lane` of its middle; wider, at a point `slope` m out in front of the
@@ -145,6 +147,8 @@ export class RushBot implements Brain {
   private behindGate = false;
   /** Where the carrier last made ground from, and when (see WEDGED), and until when it takes the pathfinder's way out. */
   private readonly wedge = { x: 0, z: 0, at: 0, carry: -1, until: -1 };
+  /** Where the carrier last made ground from, and when, for being pinned by bodies (see pinned). */
+  private readonly pin = { x: 0, z: 0, at: 0, carry: -1 };
   /** Scratch for elbowRoom. */
   private readonly room = { x: 0, z: 0 };
 
@@ -320,9 +324,10 @@ export class RushBot implements Brain {
     const gate = RUSH.gates[other(mine)];
     const toGate = dist(u, gate);
     this.passCheck -= dt;
+    const pinned = this.pinned();
     if (this.passCheck <= 0 && this.sim.time - rush.relic.since > RUSH.relic.holdMin) {
       this.passCheck = 0.2;
-      if (this.tryShot(gate, toGate) || this.answerCall() || this.tryPass(gate, toGate)) return;
+      if (this.tryShot(gate, toGate) || this.answerCall() || this.tryPass(gate, toGate) || (pinned && this.reliefPass())) return;
     }
     this.jukeCheck -= dt;
     if (this.jukeCheck <= 0) {
@@ -399,6 +404,38 @@ export class RushBot implements Brain {
     if (w.carry !== this.rush.relic.since || !free || dist(u, w) > WEDGED.within) Object.assign(w, { x: u.x, z: u.z, at: now, carry: this.rush.relic.since });
     else if (now - w.at > WEDGED.after) Object.assign(w, { x: u.x, z: u.z, at: now, until: now + WEDGED.time });
     return now < w.until;
+  }
+
+  /**
+   * Whether the carrier is pinned: no ground made for `PINNED.after` (slowed
+   * or not) with a defender's body against it, the way out of a pocket of
+   * stone sealed by defenders' bodies (gods block their foes, Sim.foesBlock).
+   */
+  private pinned(): boolean {
+    const { u } = this;
+    const p = this.pin;
+    const now = this.sim.time;
+    if (p.carry !== this.rush.relic.since || u.forced || dist(u, p) > PINNED.within) Object.assign(p, { x: u.x, z: u.z, at: now, carry: this.rush.relic.since });
+    if (now - p.at < PINNED.after) return false;
+    return this.enemies().some((e) => dist(e, u) < e.radius + u.radius + 0.4);
+  }
+
+  /** Pinned (see pinned): any pass a teammate catches beats standing there until a tackle comes, open or not. The most open one. */
+  private reliefPass(): boolean {
+    const { u, rush } = this;
+    let best: { at: Point; open: number } | null = null;
+    for (const t of this.allies()) {
+      if (t.forced) continue;
+      const guess = Rush.flightTime(dist(u, t), u.combatant.sport('throwSpeed'));
+      const at = clampToPitch(t.x + t.vx * guess, t.z + t.vz * guess, 1.5);
+      const d = dist(u, at);
+      if (d < RUSH.relic.minThrow || d > Rush.maxThrow(u)) continue;
+      if (rush.passRead(u, at).catcher !== t) continue;
+      let open = Infinity;
+      for (const e of this.enemies()) open = Math.min(open, dist(e, at));
+      if (!best || open > best.open) best = { at, open };
+    }
+    return !!best && rush.throwRelic(u, best.at);
   }
 
   /** Whether scenery stops most of a short step this way (a column or pillar right there). */
