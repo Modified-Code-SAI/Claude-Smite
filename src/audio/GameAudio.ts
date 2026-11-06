@@ -45,6 +45,9 @@ const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', od
 const GOD_TRAVEL: Record<string, string> = { zeus: 'travel.zeus', anubis: 'travel.anubis' };
 const BOSSES = ['Treasure Wyrm', 'Molten Colossus', 'Ossuary King'];
 
+/** Seconds after a hat trick's call that its scorer boasts (the herald's line goes first). */
+const HAT_BOAST = 2.3;
+
 export class GameAudio {
   private readonly projectiles = new Map<Projectile, Tracked>();
   private readonly zones = new Map<Zone, Tracked>();
@@ -841,13 +844,22 @@ export class GameAudio {
         const ours = g.team === mine;
         this.engine.play('relic.goal', { at: { x: gate.x, z: gate.z }, ref: 40, gain: ours ? 1 : 0.8, rate: ours ? 1 : 0.84 }, 6);
         // and the scorers' end of the crowd is on its feet
-        this.crowdRoar(g.team, ours);
+        this.crowdRoar(g.team, ours, r.hatTrick);
         roared = true;
       }
       if (g && !r.winner) {
         const ours = g.team === mine;
-        const line = g.scorer === this.me ? (g.kind === 'shot' ? 'What a shot! You score!' : 'You score!') : ours ? (g.kind === 'shot' ? 'A shot from range! Goal!' : 'Goal! Your team scores.') : 'The enemy scores.';
+        const you = g.scorer === this.me;
+        const hat = r.hatTrick;
+        const line = hat
+          ? you ? 'A hat trick! Three goals for you!' : ours ? `Hat trick! Three goals for ${g.scorer.name}!` : `A hat trick for ${g.scorer.name}.`
+          : you ? (g.kind === 'shot' ? 'What a shot! You score!' : 'You score!') : ours ? (g.kind === 'shot' ? 'A shot from range! Goal!' : 'Goal! Your team scores.') : 'The enemy scores.';
         this.herald.say(line, ours ? 'epic' : 'bad', 4);
+        if (hat) {
+          // and the scorer has a word of their own once the call is made, before anything else is said
+          const said = this.speak(g.scorer, 'streak', { delay: HAT_BOAST, flat: true });
+          if (said) this.herald.hold(HAT_BOAST + said + 0.15);
+        }
         // one goal from the win: said once the goal call is done
         const point = r.matchPoint;
         if (point === 'both') this.herald.say('Four apiece! The next goal wins it!', 'epic', 3);
@@ -993,9 +1005,9 @@ export class GameAudio {
   }
 
   /** One end of Relic Rush's crowd roaring: from behind the gate its team defends (Order's is at +z). */
-  private crowdRoar(team: 'order' | 'chaos', ours: boolean): void {
+  private crowdRoar(team: 'order' | 'chaos', ours: boolean, big = false): void {
     const z = (team === 'order' ? 1 : -1) * (RUSH.pitchRadius + 4);
-    this.engine.play('crowd.roar', { at: { x: 0, y: 2, z }, ref: 45, gain: ours ? 0.95 : 0.7, vary: 0.04 }, 5);
+    this.engine.play('crowd.roar', { at: { x: 0, y: 2, z }, ref: 45, gain: (ours ? 0.95 : 0.7) * (big ? 1.2 : 1), vary: 0.04 }, 5);
   }
 
   private watchMatch(): void {

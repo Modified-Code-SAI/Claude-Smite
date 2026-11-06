@@ -319,7 +319,9 @@ export class RushHud {
       const you = g.scorer === this.me;
       const how = g.kind === 'shot' ? `${this.who(g.scorer)} ${you ? 'score' : 'scores'} from range` : `${this.who(g.scorer)} ${you ? 'carry' : 'carries'} it in`;
       const sub = g.assist ? `${how} · assist ${this.who(g.assist)}` : how;
-      return { html: `${ours ? 'Goal!' : 'They score'}<small>${esc(sub)}</small>`, side: ours ? 'ally' : 'foe' };
+      // a god's third goal is called as the hat trick it is, whichever side scored it
+      const title = r.hatTrick ? 'Hat trick!' : ours ? 'Goal!' : 'They score';
+      return { html: `${title}<small>${esc(sub)}</small>`, side: ours ? 'ally' : 'foe' };
     }
     const m = this.moment;
     if (m && r.phase === 'play') {
