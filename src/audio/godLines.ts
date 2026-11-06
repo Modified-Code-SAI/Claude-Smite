@@ -92,6 +92,18 @@ export const GOD_LINES: Record<string, Record<LineKind, readonly string[]>> = {
     taunt: ['Hear the rattle? That is your warning.', 'You are prey that has not noticed yet.', 'I have watched empires fall into the jungle. You are smaller.'],
     omw: ['On green wings. I am coming.', 'Hold on. The serpent strikes from above.'],
   },
+  // vast, slow and patient, barely bothering with words: a dreamer speaking from very far down
+  cthulhu: {
+    select: ['I have dreamed of this.'],
+    start: ['The stars are coming right.', 'I slept beneath the sea for ages. I am awake now.'],
+    kill: ['Sink.', 'Down into the deep with you.', 'Dream with me. Forever.'],
+    streak: ['The tide is rising.', 'They dream of me now. All of them.'],
+    ult: ['The stars are right!', "Rise, R'lyeh!"],
+    death: ['That is not dead... which can eternal lie...', 'I return... to the dreaming...'],
+    respawn: ['What is dead may wake again.', 'The sea gives me back.'],
+    taunt: ['You are a small thing, and brief.', 'I have dreamed of whole worlds drowning. You are not even a ripple.', 'Look at me, little one. Look, and despair.'],
+    omw: ['I rise. Wait for me.', 'The tide comes, and I with it.'],
+  },
 };
 
 /** Moments only the Jötunn speaks to, besides its waking, its kills and its fall. */

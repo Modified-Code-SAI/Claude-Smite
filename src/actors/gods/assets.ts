@@ -4,7 +4,7 @@ import { mergeSkinned } from '../../scene/merge';
 import { buildLods } from '../../scene/lod';
 
 /** Gods with a built model in public/models/gods (see tools/gods/build.py). */
-export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan'] as const;
+export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan', 'cthulhu'] as const;
 export type GodId = (typeof GOD_IDS)[number];
 
 export interface GodAsset {

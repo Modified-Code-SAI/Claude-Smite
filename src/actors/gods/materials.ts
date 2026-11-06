@@ -79,6 +79,12 @@ const PALETTES: Record<string, GodPalette> = {
     cloth2: 0xb8281e, leather: 0x5a3420, hair: 0x0c0a08, hairTip: 0x221c18, fur: 0x087a46, glow: 0x7affc8,
     eye: 0xffc030, gem: 0x2fbf86, furTip: 0x3cc890, scaly: true, belly: 0xe0c058,
   },
+  // the dreamer in R'lyeh: sea-green rubbery hide, black kelp, dark horn claws, bioluminescent cyan-green
+  cthulhu: {
+    skin: 0x1d4430, skinDeep: 0x050f0a, gold: 0x6e8a6a, steel: 0x2a2822, cloth: 0x2c3e38, clothDeep: 0x0a1210,
+    cloth2: 0x26321a, leather: 0x24261c, hair: 0x101410, hairTip: 0x203024, fur: 0x1a2a20, glow: 0x6effd8,
+    eye: 0xb8ffe8, gem: 0x2ad8b0, furTip: 0x3a5a48, scaly: true, deep: true,
+  },
   // the frost giant: glacier-blue skin, old bronze, black iron, dark bear fur frosted at the tips
   jotunn: {
     skin: 0x6c90c2, skinDeep: 0x16295a, gold: 0x9a7444, steel: 0x4e5560, cloth: 0x4a3a2e, clothDeep: 0x1e1610,
@@ -193,23 +199,27 @@ function skinMaterial(p: GodPalette): THREE.Material {
  * the deep, a faint glow at grazing angles.
  */
 function scalySkinMaterial(p: GodPalette): THREE.Material {
-  const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.4, clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.12, sheenRoughness: 0.4, sheenColor: new THREE.Color(p.skin).lerp(new THREE.Color(p.glow), 0.3) });
+  const deep = p.deep === true;
+  const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.4, clearcoat: deep ? 0.16 : 0.45, clearcoatRoughness: 0.3, sheen: 0.12, sheenRoughness: 0.4, sheenColor: new THREE.Color(p.skin).lerp(new THREE.Color(p.glow), 0.3) });
   const d = data();
   const crease = d.x;
   const ridge = d.y;
   const socket = d.w;
   const blotch = mx_fractal_noise_float(positionLocal.mul(7), 3).mul(0.5).add(0.5);
-  const cell = mx_worley_noise_float(positionLocal.mul(70));
+  // the deep's hide has coarser, rubbery scales; a serpent's are small and fine
+  const cell = mx_worley_noise_float(positionLocal.mul(deep ? 54 : 70));
   const seam = smoothstep(0.28, 0.62, cell);
   // belly scales: a band down the front of the torso, and every underside (throat, jaw, inner arms)
   const front = smoothstep(0.45, 0.85, normalLocal.z).mul(float(1).sub(smoothstep(0.035, 0.075, abs(positionLocal.x))));
   const under = smoothstep(0.2, 0.7, normalLocal.y.negate());
   const belly = saturate(max(front, under));
-  const base = mix(color(p.skin), color(p.skinDeep), crease.mul(0.8).add(smoothstep(0.5, 0.8, blotch).mul(0.35)));
+  // the deep: a dark back and mottled flanks, like something that lies on the sea floor
+  const dorsal = deep ? float(1).sub(smoothstep(-0.6, 0.25, normalLocal.z)).mul(0.4) : float(0);
+  const base = mix(color(p.skin), color(p.skinDeep), saturate(crease.mul(0.8).add(smoothstep(0.5, 0.8, blotch).mul(deep ? 0.55 : 0.35)).add(dorsal)));
   const pale = mix(base, p.belly !== undefined ? color(p.belly) : color(p.skin).mul(1.35), belly.mul(p.belly !== undefined ? 0.75 : 0.3));
-  const scaled = pale.mul(float(1).sub(seam.mul(0.3))).mul(float(1).add(ridge.mul(0.2)));
+  const scaled = pale.mul(float(1).sub(seam.mul(deep ? 0.42 : 0.3))).mul(float(1).add(ridge.mul(0.2)));
   m.colorNode = mix(scaled, color(p.skinDeep).mul(0.35), socket.mul(0.7));
-  m.roughnessNode = float(0.32).add(seam.mul(0.3)).add(crease.mul(0.15)).sub(ridge.mul(0.08));
+  m.roughnessNode = float(deep ? 0.44 : 0.32).add(seam.mul(0.3)).add(crease.mul(0.15)).sub(ridge.mul(0.08));
   m.emissiveNode = p.deep ? color(p.glow).mul(rim().mul(0.1)).add(color(p.skinDeep).mul(rim().mul(0.15))) : color(p.skinDeep).mul(rim().mul(0.15));
   return m;
 }

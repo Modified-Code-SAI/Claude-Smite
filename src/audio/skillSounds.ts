@@ -8,7 +8,7 @@
 
 import { ahr, bell, buf, fill, glide, Osc, perc, type Rand } from './dsp';
 import {
-  buzz, chime, choir, clang, debris, filter, fire, impact, knock, layer, puff, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
+  buzz, chime, choir, clang, debris, filter, fire, impact, knock, layer, puff, roar, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
 } from './gestures';
 import { JOTUNN_SKILL_SOUNDS } from './jotunnSounds';
 import type { Recipe } from './sounds';
@@ -445,6 +445,54 @@ export const SKILL_SOUNDS: Record<string, SkillSound> = {
     tick: (r) => layer([squeeze(r, 0.4), 0.7], [thump(r, 0.25, 100, 40, { noise: 0.4 }), 0.5]),
     impactDelay: 0.5,
   },
+  // ===== Cthulhu: wet flesh and bubbles from the sea floor, a drowned chorus a tritone apart, the swell and a voice from very far down
+  'cthulhu.prodigious-claws': {
+    cast: (r) => layer([swing(r, 0.32, 220, 1500, 1.7), 1], [swing(r, 0.32, 260, 1700, 1.6), 0.9, 0.3]),
+    impact: (r) => layer([squelch(r, 0.4), 1], [impact(r, 0.9, { tone: 105, snap: 0.5, crunch: 0.35 }), 0.7]),
+  },
+  'cthulhu.reaching-feelers': {
+    cast: (r) => layer([squelch(r, 0.35), 0.8], [whoosh(r, 0.4, 400, 1800, { q: 1, peak: 0.3, grit: 1.4 }), 0.8]),
+    travel: (r) => layer([filter(whoosh(r, 1, 520, 520, { q: 1.2, peak: 0.5, grit: 1.6 }), 'bandpass', 600, 1), 0.8], [bubbles(r, 1, 8), 0.5]),
+    impact: (r) => layer([squelch(r, 0.5), 1], [whoosh(r, 0.5, 1500, 180, { q: 1.4, peak: 0.2, gain: 1.2 }), 0.7, 0.08], [thump(r, 0.3, 120, 45, { click: 0.3, noise: 0.4 }), 0.5]),
+  },
+  'cthulhu.the-call': {
+    cast: (r) => layer([roar(r, 1.4, 68, { open: 0.6 }), 1], [abyss(r, 1.8, 98), 0.6, 0.1], [moan(r, 1.6, 146.8), 0.35, 0.2]),
+  },
+  'cthulhu.wrong-angles': {
+    cast: (r) => layer([abyss(r, 1.3, 138.6), 0.7], [shimmer(r, 1.2, 466.2, { rise: 0.6, peak: 0.4, voices: 5 }), 0.5], [whoosh(r, 1, 1800, 220, { q: 0.6, peak: 0.3 }), 0.5]),
+    impact: (r) => layer([impact(r, 1, { tone: 90, snap: 0.4, crunch: 0.6, room: 0.6 }), 0.9], [shimmer(r, 0.9, 311.1, { rise: 0.4, peak: 0.1, voices: 5 }), 0.5]),
+    impactDelay: 0.2,
+  },
+  'cthulhu.narrow-wings': {
+    cast: (r) => layer([wingFlap(r, 0.7, 1.7), 1], [squelch(r, 0.3), 0.4], [whoosh(r, 0.8, 200, 1600, { q: 0.7, peak: 0.35, gain: 1.4 }), 0.8, 0.05]),
+    impact: (r) => layer([thump(r, 0.5, 100, 38, { click: 0.4, noise: 0.8, drive: 2 }), 1], [squelch(r, 0.4), 0.8], [bubbles(r, 0.6, 8), 0.4, 0.05]),
+  },
+  'cthulhu.green-ooze': {
+    cast: (r) => layer([squelch(r, 0.6), 1], [bubbles(r, 1, 18), 0.8, 0.1], [moan(r, 1, 110), 0.3]),
+    zone: (r) => layer([bubbles(r, 2.5, 30), 0.7], [filter(puff(r, 2.5, { tone: 500 }), 'lowpass', 900), 0.6], [abyss(r, 2.5, 73.4), 0.25]),
+    tick: (r) => layer([squelch(r, 0.25), 0.7], [bubbles(r, 0.3, 3), 0.5]),
+  },
+  'cthulhu.rubbery-hide': {
+    cast: (r) => layer([squelch(r, 0.5), 0.9], [thump(r, 0.5, 80, 35, { click: 0.1, drive: 1.6 }), 0.7], [abyss(r, 1.1, 110), 0.4, 0.1]),
+  },
+  'cthulhu.the-swell': {
+    cast: (r) => layer([surf(r, 1.1), 1], [roar(r, 0.8, 80, { open: 0.4 }), 0.4]),
+  },
+  'cthulhu.stars-are-right': {
+    cast: (r) => layer([abyss(r, 2.6, 73.4), 0.9], [shimmer(r, 2.2, 1244.5, { rise: 1.6, peak: 0.7, voices: 6 }), 0.45], [moan(r, 2, 98), 0.5, 0.2]),
+    impact: (r) => layer([roar(r, 1.8, 60, { open: 0.8, gain: 1.2 }), 1], [impact(r, 1.4, { tone: 80, snap: 0.8, crunch: 0.5, room: 0.8 }), 0.9], [darkHit(r, 1.6), 0.6]),
+    impactDelay: 0.7,
+  },
+  'cthulhu.rlyeh-rises': {
+    cast: (r) => layer([rumble(r, 2.2, { tone: 70, attack: 0.8 }), 1], [abyss(r, 2.2, 82.4), 0.6], [surf(r, 1.8), 0.5, 0.4]),
+    impact: (r) => layer([impact(r, 1.8, { tone: 70, snap: 0.9, crunch: 1, room: 0.8 }), 1], [debris(r, 1.2, { density: 18, gain: 0.6, tone: 600 }), 0.8, 0.05], [bubbles(r, 1.2, 20), 0.5, 0.1]),
+    impactDelay: 0.8,
+  },
+  'cthulhu.dream-plague': {
+    cast: (r) => layer([moan(r, 2.4, 110), 0.7], [moan(r, 2.4, 155.6), 0.45, 0.2], [shimmer(r, 2.4, 622.3, { rise: 0.7, peak: 0.5, voices: 5 }), 0.4]),
+    zone: (r) => layer([abyss(r, 2.5, 92.5), 0.6], [lullaby(r, 2.5, 130.8), 0.3], [filter(puff(r, 2.5, { tone: 700 }), 'lowpass', 1200), 0.4]),
+    tick: (r) => layer([moan(r, 0.5, 220), 0.4], [thump(r, 0.25, 90, 40, { noise: 0.3 }), 0.5]),
+  },
   // ===== the Jötunn: ice, stone and a bellowing voice (jotunnSounds.ts)
   ...JOTUNN_SKILL_SOUNDS,
 };
@@ -600,6 +648,48 @@ function rain(r: Rand, len: number): Float32Array {
 /** Coils tightening: a creak of scales and a low strain. */
 function squeeze(r: Rand, len: number): Float32Array {
   return layer([filter(sand(r, len, { tone: 900, peak: 0.6, grains: 300 }), 'bandpass', 700, 1.5), 0.8], [whoosh(r, len, 400, 160, { q: 1.5, peak: 0.7, grit: 1.5 }), 0.6]);
+}
+
+/** Bubbles rising through deep water: low, wet blips that bend upward. */
+function bubbles(r: Rand, len: number, count = 14): Float32Array {
+  const out = buf(len);
+  for (let k = 0; k < count; k++) {
+    const at = r() * len * 0.85;
+    const f = 180 + r() * 420;
+    const d = 0.03 + r() * 0.06;
+    const o = new Osc();
+    fill(out, (t) => o.sine(f * (1 + t * 22)) * perc(t, 0.002, d) * 0.35, at, at + d * 1.5);
+  }
+  return filter(out, 'lowpass', 2200);
+}
+
+/** Wet flesh: the slap and squelch of something boneless. */
+function squelch(r: Rand, len: number): Float32Array {
+  return layer(
+    [filter(puff(r, len, { tone: 600, gain: 1.2 }), 'bandpass', 420, 1.8), 1],
+    [whoosh(r, len, 500, 180, { q: 2, peak: 0.25, grit: 1.6 }), 0.6],
+    [thump(r, Math.min(len, 0.3), 110, 45, { click: 0.2, noise: 0.4 }), 0.6],
+  );
+}
+
+/** The deep's chorus: two drowned choirs a tritone apart over a low, beating drone. */
+function abyss(r: Rand, len: number, f: number): Float32Array {
+  const env = (t: number): number => ahr(t, len * 0.35, len * 0.3, len * 0.35);
+  return layer([choir(r, len, f, { vowelName: 'oo', env }), 0.7], [choir(r, len, f * Math.SQRT2, { vowelName: 'oh', env }), 0.45], [darkHit(r, len), 0.5]);
+}
+
+/** A long, falling moan from very far down, like a whale or a drowned bell. */
+function moan(r: Rand, len: number, f: number): Float32Array {
+  return vowel(r, len, (t) => glide(f * 1.25, f, t, len * 0.8), VOWELS.oo, { voices: 2, detune: 0.015, breath: 0.25, vibrato: 0.01, env: (t) => ahr(t, len * 0.3, len * 0.3, len * 0.4) });
+}
+
+/** A heavy swell of seawater: a rising surge that breaks into foam and bubbles. */
+function surf(r: Rand, len: number): Float32Array {
+  return layer(
+    [whoosh(r, len, 120, 700, { q: 0.5, peak: 0.6, gain: 1.4, grit: 1.6 }), 1],
+    [filter(puff(r, len * 0.6, { tone: 2600 }), 'highpass', 1200), 0.6, len * 0.45],
+    [bubbles(r, len * 0.7, 10), 0.5, len * 0.3],
+  );
 }
 
 export function fallbackSkill(element: string | undefined, targeting: string): SkillSound {
