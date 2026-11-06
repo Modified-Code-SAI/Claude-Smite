@@ -17,6 +17,7 @@ import { mergeStatic } from '../merge';
 import type { MapContent } from '../World';
 import { abyssKit, drownedKit, FLAME_Y, forgeKit, LINTEL_Y, PYLON_H, type Kit } from './kits';
 import { DEPTH_COLORS, depthLook, depthWeights, flameHot, gateOpen, underworldGlow } from './palettes';
+import { Mist } from './mist';
 import { Shafts } from './shafts';
 import { Spirits } from './spirits';
 import { showRunes } from './UnderworldTerrain';
@@ -50,13 +51,15 @@ export class UnderworldMap implements MapContent {
   private readonly spirits = new Spirits();
   /** The light falling slantwise into the shown chamber. */
   private readonly shafts = new Shafts();
+  /** The mist lying ankle-deep over the shown chamber's floor. */
+  private readonly mist = new Mist();
   private shown = -1;
   private palette: Palette = 'ember';
   private readonly mats: ReturnType<typeof underworldMaterials>;
 
   private constructor(mats: MaterialLibrary) {
     this.group.name = 'underworld';
-    this.group.add(this.spirits.mesh, this.shafts.mesh);
+    this.group.add(this.spirits.mesh, this.shafts.mesh, this.mist.mesh);
     this.mats = underworldMaterials(mats);
     const at = entranceSpot(CHAMBERS[0]!);
     this.spawn = { x: at.x, z: at.z, yaw: at.yaw };
@@ -95,6 +98,7 @@ export class UnderworldMap implements MapContent {
     depthLook.value.set(...depthWeights(p));
     this.spirits.setDepth(p);
     this.shafts.setDepth(p);
+    this.mist.setDepth(p);
     for (const f of this.fires) {
       if (f.group.userData.gateFire) continue;
       f.low.setHex(c.fire.low);
@@ -114,6 +118,7 @@ export class UnderworldMap implements MapContent {
     showRunes(this.shown);
     this.spirits.showChamber(CHAMBERS[this.shown]!);
     this.shafts.showChamber(CHAMBERS[this.shown]!);
+    this.mist.showChamber(CHAMBERS[this.shown]!);
   }
 
   /** What every depth shares in a chamber: its gates, the fires at its brazier spots, and the pit. */
