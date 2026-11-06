@@ -15,6 +15,11 @@ const MINE_SIDE = 0.8;
 /** How far above the carrier's off hand the relic's middle sits (m): another god's, and the local carrier's smaller one. */
 export const HELD = { lift: 0.5, mine: 0.36 };
 /**
+ * The column over a throw's landing spot when a god stands within `near` (m, past their body) of it: its foot `over` m up, clear of
+ * their head and hands, eased at `ease` (1/s) so it never pops as someone steps in or out.
+ */
+const LANDING = { near: 1.2, over: RUSH.relic.catchHeight + 0.4, ease: 10 };
+/**
  * A thrown relic coming down loose: how far it dips below its hover (m), how
  * fast it springs back (rad/s), how quickly that dies away, and the seconds
  * before it is back to its plain bob.
@@ -372,6 +377,8 @@ export class RushView {
   }
 
   private readonly lineup: Unit[] = [];
+  /** The relic column's foot above the ground (eased while a throw is in the air). */
+  private lift = 0;
   /** Both teams' gods, gathered once (the line-up never changes). */
   private gods(rush: Rush): readonly Unit[] {
     if (!this.lineup.length) this.lineup.push(...rush.team('order'), ...rush.team('chaos'));
@@ -471,8 +478,13 @@ export class RushView {
     const team = r.phase === 'held' ? r.holder?.team : r.phase === 'flying' ? r.thrower?.team : null;
     const tone = team ? (team === me.team ? ALLY : FOE) : GOLD;
     const at = !shown ? null : r.phase === 'flying' ? { x: r.tx, z: r.tz } : { x: this.drawn.x, z: this.drawn.z };
-    // the column rises from just above the relic (never around the gods), and marks a throw's landing spot from the ground
-    const lift = !shown || r.phase === 'flying' ? 0 : this.drawn.y - this.ground(this.drawn.x, this.drawn.z) + 0.7;
+    // the column rises from just above the relic, never around the gods: a throw's landing spot is marked from the ground, unless someone
+    // stands there waiting for it, when it starts above their head instead so they're still seen (reaching for the catch)
+    let lift = !shown ? 0 : r.phase === 'flying' ? 0 : this.drawn.y - this.ground(this.drawn.x, this.drawn.z) + 0.7;
+    if (shown && r.phase === 'flying') {
+      for (const g of this.gods(rush)) if (g.alive && Math.hypot(g.x - r.tx, g.z - r.tz) < g.radius + LANDING.near) lift = LANDING.over;
+      lift = this.lift += (lift - this.lift) * (1 - Math.exp(-dt * LANDING.ease));
+    } else this.lift = lift;
     // (none over the local carrier: from behind it would stand right where they aim)
     const width = r.phase === 'held' ? (mine ? 0 : 0.34) : r.phase === 'flying' ? 0.5 : 0.4;
     this.locator.set(at, r.phase === 'held' ? 1.2 : 1.6, team ? 1 : 0, t, tone.main, tone.core, { lift, width });

@@ -217,6 +217,9 @@ export class UnitViews {
   dazes = false;
   /** Relic Rush: the god carrying the relic, who holds it up in their off hand (null: nobody). */
   carrier: Unit | null = null;
+  /** Relic Rush: the god a pass is about to reach, whose off hand goes out to meet it at `catchAt` (null: nobody). */
+  catcher: Unit | null = null;
+  readonly catchAt = new THREE.Vector3();
   /** Underworld Descent: the dead claw their way up out of the floor instead of appearing on it. */
   emergeMonsters = false;
   /** Turns laid over how gods face (see `turn`), by god. */
@@ -593,6 +596,8 @@ export class UnitViews {
       const target = u.sinceAction < v.model.castHold ? 1 : 0;
       v.model.castWeight += (target - v.model.castWeight) * (1 - Math.exp(-dt * (target ? 22 : 6)));
       v.model.carrying = u === this.carrier && u.alive;
+      v.model.reaching = u === this.catcher && u.alive;
+      if (v.model.reaching) v.model.reachTo.copy(this.catchAt);
     }
 
     const liftGoal = u.untargetable > 0 && u.alive ? 5 : 0;

@@ -123,8 +123,9 @@ export const ALOFT = {
   pole: [1, 0, -0.45] as const,
   /** How much of the arm's length the hand reaches out (a straight arm looks locked). */
   reach: 0.93,
-  /** How fast the arm goes up on a catch, and comes down once the relic is gone (1/s). */
+  /** How fast the arm goes up on a catch, out to meet a pass coming in, and comes down once the relic is gone (1/s). */
   rise: 12,
+  meet: 14,
   drop: 7,
   /** A throw: the arm whips forward over `whip` s, then hands back to the clips by `time`. */
   whip: 0.11,
@@ -178,6 +179,10 @@ export class GodModel {
   castWeight = 0;
   /** Relic Rush: whether this god carries the relic (the off hand holds it up; eased in and out here). */
   carrying = false;
+  /** Relic Rush: whether a pass is about to come to this god, whose off hand then reaches out to meet it at `reachTo` (world). */
+  reaching = false;
+  readonly reachTo = new THREE.Vector3();
+  private reach = 0;
   private aloft = 0;
   private throwTime = 1e9;
   private readonly upperArmL: THREE.Bone;
@@ -509,6 +514,8 @@ export class GodModel {
     this.prevSpeed = 0;
     this.airWeight = 0;
     this.carrying = false;
+    this.reaching = false;
+    this.reach = 0;
     this.aloft = 0;
     this.throwTime = 1e9;
   }
@@ -641,17 +648,20 @@ export class GodModel {
    */
   private holdAloft(dt: number): void {
     this.aloft += ((this.carrying ? 1 : 0) - this.aloft) * (1 - Math.exp(-dt * (this.carrying ? ALOFT.rise : ALOFT.drop)));
+    this.reach += ((this.reaching ? 1 : 0) - this.reach) * (1 - Math.exp(-dt * (this.reaching ? ALOFT.meet : ALOFT.drop)));
     this.throwTime += dt;
     let w = this.aloft;
     const to = aloftDir.fromArray(ALOFT.hold);
-    if (this.throwTime < ALOFT.time) {
+    const throwing = this.throwTime < ALOFT.time;
+    if (throwing) {
       // the throw takes the arm down itself
       this.aloft = 0;
       const t = this.throwTime;
       to.lerp(aloftTo.fromArray(ALOFT.release), THREE.MathUtils.smoothstep(t, 0, ALOFT.whip));
       w = 1 - THREE.MathUtils.smoothstep(t, ALOFT.whip, ALOFT.time);
     }
-    if (w < 0.01) return;
+    const reach = throwing ? 0 : this.reach;
+    if (w < 0.01 && reach < 0.01) return;
     this.root.updateMatrixWorld(true);
     this.root.getWorldQuaternion(this.tmpQ);
     to.normalize().applyQuaternion(this.tmpQ);
@@ -661,7 +671,18 @@ export class GodModel {
     const W = this.leftHand.getWorldPosition(aloftW);
     const a = S.distanceTo(E);
     const b = E.distanceTo(W);
-    const d = (a + b) * ALOFT.reach;
+    // where the hand goes: up overhead, or out to meet a catch (as far as the arm reaches), and on up from the one to the other as the catch lands
+    let d = (a + b) * ALOFT.reach;
+    if (reach >= 0.01) {
+      const k = w / (w + reach);
+      aloftTo.copy(this.reachTo).sub(S);
+      const far = Math.min(aloftTo.length(), (a + b) * 0.97);
+      aloftTo.normalize();
+      to.multiplyScalar(d).lerp(aloftTo.multiplyScalar(far), 1 - k);
+      d = Math.max(Math.abs(a - b) + 1e-3, to.length());
+      to.normalize();
+      w = Math.max(w, reach);
+    }
     // the elbow out of line toward the pole, as far as the reach bends it
     pole.addScaledVector(to, -pole.dot(to)).normalize();
     const cosA = THREE.MathUtils.clamp((a * a + d * d - b * b) / (2 * a * d), -1, 1);

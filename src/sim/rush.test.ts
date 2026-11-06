@@ -76,6 +76,42 @@ describe('Relic Rush', () => {
     expect(rush.lines.get(a)!.passes).toBe(1);
   });
 
+  it('knows who a pass is about to reach in the moment before it does (never the thrower letting it go)', () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    const b = god(sim, odin, 'order', 1);
+    const c = god(sim, thor, 'chaos', 0);
+    rush.begin([a, b, c]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(a, 0, 1.6);
+    sim.teleport(b, 14, 1.6);
+    sim.teleport(c, -20, 20);
+    run(sim, rush, 0.5);
+    const inc = { unit: null as Unit | null, eta: 0, x: 0, z: 0, h: 0 };
+    // carried: nothing on its way
+    expect(rush.incoming(0.45, inc)).toBe(false);
+    expect(rush.throwRelic(a, { x: 14, z: 1.6 })).toBe(true);
+    // just let go, right by the thrower: still a long way from anyone
+    expect(rush.incoming(0.45, inc)).toBe(false);
+    let first = -1;
+    let at = { x: 0, h: 0 };
+    run(sim, rush, 2, () => {
+      if (first < 0 && rush.incoming(0.45, inc)) {
+        first = sim.time;
+        at = { x: inc.x, h: inc.h };
+        expect(inc.unit).toBe(b);
+      }
+      return rush.holder !== null;
+    });
+    expect(rush.holder).toBe(b);
+    // seen coming about the lead asked for, where it then met them: in reach of the catcher and low enough to take
+    const lead = sim.time - first;
+    expect(lead).toBeGreaterThan(0.3);
+    expect(lead).toBeLessThan(0.55);
+    expect(Math.abs(at.x - b.x)).toBeLessThan(b.radius + RUSH.relic.catchReach + 0.05);
+    expect(at.h).toBeLessThanOrEqual(RUSH.relic.catchHeight);
+  });
+
   it('a throw that comes down loose by the gate it went at is a near miss; one in midfield is not', () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);

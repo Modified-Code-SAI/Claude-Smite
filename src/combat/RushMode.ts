@@ -22,6 +22,10 @@ import type { GodPalette } from './palette';
 const VICTORY_PUMPS = [0.45, 1.55, 2.65, 3.6];
 /** The goal cam's subject turning to face it: how quickly (per second), and the walking speed that turns them fully back. */
 const TURN = { rate: 5, walk: 2.5 } as const;
+/** Seconds before a pass arrives that its catcher's off hand starts out to meet it. */
+const CATCH_AHEAD = 0.45;
+/** How far under the relic's middle the hand goes to meet it (m): the palm under the orb. */
+const CATCH_PALM = 0.35;
 const tone = (main: number, core: number): GodPalette => ({ cloth: main, trim: core, glow: main, vfx: main, core });
 const GOLD = tone(0xffc23a, 0xfff2c4);
 const ALLY = tone(0x4fb2ff, 0xe6f4ff);
@@ -46,6 +50,8 @@ export interface RushDeps {
   handOf?: (u: Unit, out: THREE.Vector3) => THREE.Vector3 | null;
   /** Who carries the relic, so their off hand holds it up (null: nobody). */
   carry?: (u: Unit | null) => void;
+  /** Who a pass is about to reach, and where (world) their off hand meets it (null: nobody). */
+  reach?: (u: Unit | null, x: number, y: number, z: number) => void;
   toast: (text: string) => void;
   camera: THREE.Camera;
   /** A burst of light and sparks (CombatVfx.burst). */
@@ -103,6 +109,8 @@ export class RushMode {
   /** The beats already shown, so each catch, fumble and goal flashes once. */
   private readonly seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, juke: 0, dodge: 0, goals: 0, phase: '' as string, relic: '' as string };
   private readonly v = new THREE.Vector3();
+  /** Who the relic in flight is about to reach (Rush.incoming), reused each frame. */
+  private readonly incoming: { unit: Unit | null; eta: number; x: number; z: number; h: number } = { unit: null, eta: 0, x: 0, z: 0, h: 0 };
   private readonly fwd = new THREE.Vector3();
   private readonly toHead = new THREE.Vector3();
   private lastThrower: Unit | null = null;
@@ -378,6 +386,10 @@ export class RushMode {
     this.goalCamFrame(dt);
     const r = this.rush.relic;
     this.deps.carry?.(r.phase === 'held' ? r.holder : null);
+    // the hands go out to meet a pass in the moment before it arrives
+    const inc = this.incoming;
+    if (this.rush.incoming(CATCH_AHEAD, inc) && inc.unit) this.deps.reach?.(inc.unit, inc.x, this.deps.groundAt(inc.x, inc.z) + inc.h - CATCH_PALM, inc.z);
+    else this.deps.reach?.(null, 0, 0, 0);
     this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time, this.deps.handOf);
     this.beats();
     this.victory(dt);
