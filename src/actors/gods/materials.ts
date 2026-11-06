@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, color, float, fract, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
-  mx_worley_noise_float, positionLocal, positionView, pow, saturate, select, sin, smoothstep, time, uv, vec3,
+  abs, attribute, color, dot, float, fract, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
+  mx_worley_noise_float, positionGeometry, positionView, pow, saturate, select, sin, smoothstep, time, uv, vec3,
 } from '../../render/tsl';
 import { objectUniforms } from '../../render/shared';
+import { reliefFade, reliefNormal } from './relief';
 
 /**
  * Stylized PBR materials for the gods, keyed by the material names the build
@@ -146,6 +147,8 @@ function studioEnv(): THREE.DataTexture {
       const rr = Math.pow(Math.max(0, d.dot(rimDir)), 40) * 7;
       const ff = Math.pow(Math.max(0, d.dot(fill)), 20) * 1.5;
       const o = (j * w + i) * 4;
+      // a little light everywhere, warmer below, so no angle mirrors pure black
+      r += y > 0 ? 0.16 : 0.13; g += y > 0 ? 0.15 : 0.1; b += y > 0 ? 0.14 : 0.07;
       data[o] = r + k * 1.0 + rr * 0.8 + ff * 0.7;
       data[o + 1] = g + k * 0.95 + rr * 0.9 + ff * 0.8;
       data[o + 2] = b + k * 0.85 + rr * 1.0 + ff * 1.0;
@@ -171,13 +174,19 @@ const ao = () => attribute('_ao', 'float');
 /** Fresnel-ish rim factor in view space, for the painted rim light Smite characters have. */
 const rim = () => pow(float(1).sub(saturate(normalView.dot(positionView.normalize().negate()))), 3);
 
+/** A material with fine surface relief: its height in meters (see relief.ts). */
+type Relief = THREE.MeshPhysicalNodeMaterial & { reliefNode?: any };
+const relief = (m: THREE.MeshPhysicalNodeMaterial, height: any): void => {
+  (m as Relief).reliefNode = height;
+};
+
 function skinMaterial(p: GodPalette): THREE.Material {
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.55, sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xff9a7a) });
   const d = data();
   const crease = d.x;
   const ridge = d.y;
-  const mottle = mx_fractal_noise_float(positionLocal.mul(18), 3).mul(0.5).add(0.5);
-  const fine = mx_noise_float(positionLocal.mul(220)).mul(0.04);
+  const mottle = mx_fractal_noise_float(positionGeometry.mul(18), 3).mul(0.5).add(0.5);
+  const fine = mx_noise_float(positionGeometry.mul(220)).mul(0.04);
   const base = mix(color(p.skin), color(p.skinDeep), crease.mul(0.75).add(mottle.mul(0.12)));
   // warm subsurface-looking tint in creases, light catches the ridges of muscle
   const lit = base.mul(float(1).add(ridge.mul(0.22))).add(fine);
@@ -187,9 +196,11 @@ function skinMaterial(p: GodPalette): THREE.Material {
   const lipColor = color(p.skin).mul(vec3(0.82, 0.5, 0.48));
   const painted = mix(mix(lit, color(p.skinDeep).mul(0.55), socket.mul(0.65)), lipColor, lips.mul(0.55));
   m.colorNode = painted;
-  m.roughnessNode = float(0.5).add(crease.mul(0.15)).sub(ridge.mul(0.12)).add(mx_noise_float(positionLocal.mul(90)).mul(0.06)).sub(lips.mul(0.2));
+  m.roughnessNode = float(0.5).add(crease.mul(0.15)).sub(ridge.mul(0.12)).add(mx_noise_float(positionGeometry.mul(90)).mul(0.06)).sub(lips.mul(0.2));
   // a little warm back-scatter at grazing angles
   m.emissiveNode = color(p.skinDeep).mul(rim().mul(0.18));
+  // pores, and the soft lumps of flesh over muscle
+  relief(m, fine.mul(0.006).mul(reliefFade(0.005)).add(mottle.mul(0.0009).mul(reliefFade(0.06))));
   return m;
 }
 
@@ -206,12 +217,13 @@ function scalySkinMaterial(p: GodPalette): THREE.Material {
   const crease = d.x;
   const ridge = d.y;
   const socket = d.w;
-  const blotch = mx_fractal_noise_float(positionLocal.mul(7), 3).mul(0.5).add(0.5);
+  const blotch = mx_fractal_noise_float(positionGeometry.mul(7), 3).mul(0.5).add(0.5);
   // the deep's hide has coarser, rubbery scales; a serpent's are small and fine
-  const cell = mx_worley_noise_float(positionLocal.mul(deep ? 54 : 70));
+  const freq = deep ? 54 : 70;
+  const cell = mx_worley_noise_float(positionGeometry.mul(freq));
   const seam = smoothstep(0.28, 0.62, cell);
   // belly scales: a band down the front of the torso, and every underside (throat, jaw, inner arms)
-  const front = smoothstep(0.45, 0.85, normalLocal.z).mul(float(1).sub(smoothstep(0.035, 0.075, abs(positionLocal.x))));
+  const front = smoothstep(0.45, 0.85, normalLocal.z).mul(float(1).sub(smoothstep(0.035, 0.075, abs(positionGeometry.x))));
   const under = smoothstep(0.2, 0.7, normalLocal.y.negate());
   const belly = saturate(max(front, under));
   // the deep: a dark back and mottled flanks, like something that lies on the sea floor
@@ -222,6 +234,8 @@ function scalySkinMaterial(p: GodPalette): THREE.Material {
   m.colorNode = mix(scaled, color(p.skinDeep).mul(0.35), socket.mul(0.7));
   m.roughnessNode = float(deep ? 0.44 : 0.32).add(seam.mul(0.3)).add(crease.mul(0.15)).sub(ridge.mul(0.08));
   m.emissiveNode = p.deep ? color(p.glow).mul(rim().mul(0.1)).add(color(p.skinDeep).mul(rim().mul(0.15))) : color(p.skinDeep).mul(rim().mul(0.15));
+  // each scale domed, sunk at its seams
+  relief(m, float(1).sub(seam).mul(deep ? 0.0028 : 0.002).mul(reliefFade(1 / freq)).add(blotch.mul(0.001).mul(reliefFade(0.14))));
   return m;
 }
 
@@ -237,12 +251,12 @@ function frostSkinMaterial(p: GodPalette): THREE.Material {
   const ridge = d.y;
   const lips = d.z;
   const socket = d.w;
-  const mottle = mx_fractal_noise_float(positionLocal.mul(9), 3).mul(0.5).add(0.5);
-  const fine = mx_noise_float(positionLocal.mul(160)).mul(0.035);
+  const mottle = mx_fractal_noise_float(positionGeometry.mul(9), 3).mul(0.5).add(0.5);
+  const fine = mx_noise_float(positionGeometry.mul(160)).mul(0.035);
   const base = mix(color(p.skin), color(p.skinDeep), crease.mul(0.85).add(mottle.mul(0.18)));
   // rime: patchy frost on the ridges and on top of the shoulders, arms and head
   const up = saturate(normalLocal.y);
-  const patches = mx_fractal_noise_float(positionLocal.mul(16), 3).mul(0.5).add(0.5);
+  const patches = mx_fractal_noise_float(positionGeometry.mul(16), 3).mul(0.5).add(0.5);
   const frost = smoothstep(0.6, 0.9, ridge.mul(0.9).add(up.mul(0.45)).add(patches.mul(0.35)).sub(crease.mul(0.7))).mul(float(1).sub(lips));
   const lit = base.mul(float(1).add(ridge.mul(0.25))).add(fine);
   const frosted = mix(lit, color(0xdcecff), frost.mul(0.6));
@@ -250,31 +264,40 @@ function frostSkinMaterial(p: GodPalette): THREE.Material {
   m.colorNode = painted;
   m.roughnessNode = mix(float(0.58).add(crease.mul(0.12)).sub(ridge.mul(0.1)), float(0.3), frost);
   // ice glints in the frost, and a cold rim
-  const glint = smoothstep(0.88, 0.95, mx_noise_float(positionLocal.mul(420)).mul(0.5).add(0.5)).mul(frost);
+  const glint = smoothstep(0.88, 0.95, mx_noise_float(positionGeometry.mul(420)).mul(0.5).add(0.5)).mul(frost);
   m.emissiveNode = color(p.glow).mul(rim().mul(0.35)).add(color(0xe8f8ff).mul(glint.mul(0.9)));
+  // a crust of rime standing proud of the hide, gritty with ice
+  relief(m, frost.mul(0.0025).mul(reliefFade(0.06)).add(frost.mul(fine).mul(0.014).mul(reliefFade(0.006))));
   return m;
 }
 
 function metalMaterial(base: number, trim: number, opts: { engrave?: boolean; dark?: number } = {}): THREE.Material {
-  const m = new THREE.MeshPhysicalNodeMaterial({ metalness: 1, roughness: 0.3, clearcoat: 0.4, clearcoatRoughness: 0.2 });
+  // not quite a mirror: a fifth of the color lights like paint, so gold reads gold from
+  // every angle instead of going dark brown wherever it reflects the ground (stylized metal)
+  const m = new THREE.MeshPhysicalNodeMaterial({ metalness: 0.82, roughness: 0.3, clearcoat: 0.4, clearcoatRoughness: 0.2 });
   m.envMap = studioEnv();
   m.envMapIntensity = 1.0;
   const e = edge();
   const inside = float(1).sub(side());
   const band = float(1).sub(smoothstep(0.012, 0.02, e)); // polished trim along plate borders
   const groove = smoothstep(0.02, 0.024, e).mul(float(1).sub(smoothstep(0.026, 0.03, e))); // engraved line inside the trim
-  const hammer = mx_fractal_noise_float(positionLocal.mul(30), 2).mul(0.5).add(0.5);
+  const hammer = mx_fractal_noise_float(positionGeometry.mul(30), 2).mul(0.5).add(0.5);
   let col: any = mix(color(base).mul(0.88), color(base), hammer.mul(0.6).add(0.4));
+  // beaten metal: shallow hammer dents, a raised polished trim and the engraved line inside it
+  let height: any = hammer.mul(0.0013).mul(reliefFade(0.035)).add(band.mul(0.0012)).sub(groove.mul(0.0012));
   if (opts.engrave) {
     // scrolling filigree: a band of interference lines that reads as engraving
-    const fil = abs(sin(positionLocal.x.mul(140).add(sin(positionLocal.y.mul(90)).mul(2.2)))).mul(abs(sin(positionLocal.y.mul(120).add(positionLocal.z.mul(60)))));
+    const fil = abs(sin(positionGeometry.x.mul(140).add(sin(positionGeometry.y.mul(90)).mul(2.2)))).mul(abs(sin(positionGeometry.y.mul(120).add(positionGeometry.z.mul(60)))));
     const inBand = smoothstep(0.03, 0.035, e).mul(float(1).sub(smoothstep(0.06, 0.065, e)));
-    col = col.mul(float(1).sub(smoothstep(0.75, 0.95, fil).mul(inBand).mul(0.45)));
+    const cut = smoothstep(0.75, 0.95, fil).mul(inBand);
+    col = col.mul(float(1).sub(cut.mul(0.45)));
+    height = height.sub(cut.mul(0.0009).mul(reliefFade(0.008)));
   }
+  relief(m, height);
   col = mix(col, color(trim), band);
   col = col.mul(float(1).sub(groove.mul(0.55))).mul(float(1).sub(inside.mul(0.55)));
   m.colorNode = col;
-  m.roughnessNode = mix(float(0.22).add(hammer.mul(0.1)), float(0.12), band).add(groove.mul(0.3)).add(inside.mul(0.3));
+  m.roughnessNode = mix(float(0.3).add(hammer.mul(0.1)), float(0.16), band).add(groove.mul(0.3)).add(inside.mul(0.3));
   m.emissiveNode = color(trim).mul(rim().mul(0.08));
   return m;
 }
@@ -283,12 +306,15 @@ function clothMaterial(c: number, deep: number, trim: number, opts: { pattern?: 
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.82, sheen: 0.45, sheenRoughness: 0.5, side: THREE.DoubleSide });
   m.sheenColor = new THREE.Color(c).lerp(new THREE.Color(0xffffff), 0.25);
   const v = uv();
-  const weave = mx_noise_float(positionLocal.mul(vec3(260, 260, 260))).mul(0.03);
+  const weave = mx_noise_float(positionGeometry.mul(vec3(260, 260, 260))).mul(0.03);
   // painted drape: long vertical folds plus a little broad variation
-  const drape = mx_fractal_noise_float(positionLocal.mul(vec3(10, 1.6, 10)), 2).mul(0.5).add(0.5);
-  const broad = mx_fractal_noise_float(positionLocal.mul(4), 2).mul(0.5).add(0.5);
+  const drape = mx_fractal_noise_float(positionGeometry.mul(vec3(10, 1.6, 10)), 2).mul(0.5).add(0.5);
+  const broad = mx_fractal_noise_float(positionGeometry.mul(4), 2).mul(0.5).add(0.5);
   const folds = smoothstep(0.2, 0.8, drape.mul(0.7).add(broad.mul(0.3)));
   let col: any = mix(color(deep), color(c), folds.mul(0.65).add(0.35)).add(weave);
+  // the folds stand out in relief, and the threads cross in a fine weave
+  const threads = abs(sin(dot(positionGeometry, vec3(1, 0.35, 0.6)).mul(1400))).add(abs(sin(dot(positionGeometry, vec3(-0.4, 1, 0.5)).mul(1400))));
+  let height: any = folds.mul(0.016).mul(reliefFade(0.12)).add(threads.mul(0.00015).mul(reliefFade(0.004)));
   if (opts.pattern) {
     // gold embroidered border: along uv edges (cloth panels have 0..1 uv)
     const ex = min(v.x, float(1).sub(v.x));
@@ -303,8 +329,11 @@ function clothMaterial(c: number, deep: number, trim: number, opts: { pattern?: 
     col = mix(col, color(trim), t);
     m.metalnessNode = t.mul(0.9);
     m.roughnessNode = mix(float(0.82), float(0.3), t);
+    // gold thread embroidery sits on top of the cloth
+    height = height.add(t.mul(0.0012));
   }
   m.colorNode = col;
+  relief(m, height);
   return m;
 }
 
@@ -313,21 +342,22 @@ function stripesMaterial(c: number, trim: number): THREE.Material {
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.7, sheen: 0.5, sheenRoughness: 0.4, side: THREE.DoubleSide });
   m.sheenColor = new THREE.Color(c).lerp(new THREE.Color(0xffffff), 0.4);
   const v = uv();
-  const weave = mx_noise_float(positionLocal.mul(vec3(240, 240, 240))).mul(0.05);
+  const weave = mx_noise_float(positionGeometry.mul(vec3(240, 240, 240))).mul(0.05);
   const band = smoothstep(0.42, 0.5, fract(v.y.mul(9))).mul(float(1).sub(smoothstep(0.92, 1.0, fract(v.y.mul(9)))));
   const hem = float(1).sub(smoothstep(0.03, 0.045, min(v.x, float(1).sub(v.x)))).max(smoothstep(0.95, 0.965, v.y));
   const t = max(band, hem);
   m.colorNode = mix(color(c).add(weave), color(trim), t);
   m.metalnessNode = t.mul(0.9);
   m.roughnessNode = mix(float(0.7), float(0.28), t);
+  relief(m, t.mul(0.0012));
   return m;
 }
 
 function leatherMaterial(c: number, trim: number): THREE.Material {
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.6, clearcoat: 0.15, clearcoatRoughness: 0.5 });
   const e = edge();
-  const grain = mx_fractal_noise_float(positionLocal.mul(70), 3).mul(0.5).add(0.5);
-  const stitch = smoothstep(0.006, 0.008, e).mul(float(1).sub(smoothstep(0.01, 0.012, e))).mul(fract(positionLocal.y.mul(260).add(positionLocal.x.mul(260))).step(0.5));
+  const grain = mx_fractal_noise_float(positionGeometry.mul(70), 3).mul(0.5).add(0.5);
+  const stitch = smoothstep(0.006, 0.008, e).mul(float(1).sub(smoothstep(0.01, 0.012, e))).mul(fract(positionGeometry.y.mul(260).add(positionGeometry.x.mul(260))).step(0.5));
   const band = float(1).sub(smoothstep(0.004, 0.006, e));
   let col: any = mix(color(c).mul(0.65), color(c).mul(1.15), grain);
   col = mix(col, color(0xd8c8a0), stitch.mul(0.6));
@@ -335,6 +365,8 @@ function leatherMaterial(c: number, trim: number): THREE.Material {
   m.colorNode = col;
   m.metalnessNode = band;
   m.roughnessNode = mix(float(0.55).add(grain.mul(0.2)), float(0.25), band);
+  // pebbled grain, the stitches pressed in and the gilt edge raised
+  relief(m, grain.mul(0.001).mul(reliefFade(0.014)).sub(stitch.mul(0.0008)).add(band.mul(0.0012)));
   return m;
 }
 
@@ -342,7 +374,7 @@ function hairMaterial(root: number, tip: number): THREE.Material {
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.45, sheen: 0.35, sheenRoughness: 0.35, side: THREE.DoubleSide });
   m.sheenColor = new THREE.Color(tip);
   const v = uv();
-  const strands = abs(sin(v.x.mul(6.283).mul(7).add(mx_noise_float(positionLocal.mul(40)).mul(2)))).pow(0.6);
+  const strands = abs(sin(v.x.mul(6.283).mul(7).add(mx_noise_float(positionGeometry.mul(40)).mul(2)))).pow(0.6);
   const t = data().x; // root 0 .. tip 1
   const tint = data().y.mul(0.16).add(0.88); // per-clump variation
   // roots sit in the shadow of the clumps around them
@@ -351,6 +383,8 @@ function hairMaterial(root: number, tip: number): THREE.Material {
   const shine = smoothstep(0.18, 0.3, t).mul(float(1).sub(smoothstep(0.38, 0.52, t))).mul(strands).mul(0.22);
   m.colorNode = mix(color(root), color(tip), t.mul(0.8)).mul(strands.mul(0.3).add(0.62)).mul(occl).mul(tint).add(color(tip).mul(shine));
   m.roughnessNode = float(0.5).sub(strands.mul(0.15));
+  // each lock is a bundle of strands: ridges along it catch the light
+  relief(m, strands.mul(0.0015).mul(reliefFade(0.005)));
   return m;
 }
 
@@ -369,7 +403,7 @@ function eyeMaterial(c: number, glow = 1.4): THREE.Material {
   const iris = smoothstep(0.84, 0.87, d);
   const limbal = smoothstep(0.84, 0.87, d).mul(float(1).sub(smoothstep(0.87, 0.9, d)));
   const pupil = smoothstep(0.965, 0.975, d);
-  const fibers = mx_noise_float(positionLocal.mul(900)).mul(0.25).add(0.85);
+  const fibers = mx_noise_float(positionGeometry.mul(900)).mul(0.25).add(0.85);
   const sclera = mix(color(0xd8cfc4), color(0xf2ece4), smoothstep(0.3, 0.75, d));
   let col: any = mix(sclera, color(c).mul(fibers), iris);
   col = mix(col, color(c).mul(0.15), limbal.mul(0.8));
@@ -420,6 +454,8 @@ function buildMaterials(id: string, variant?: string): Map<string, THREE.Materia
     // contact shadows on everything lit; glow and eyes stay bright
     const nm = mat as THREE.MeshPhysicalNodeMaterial;
     if (nm.colorNode && name !== 'glow' && name !== 'eye') nm.colorNode = nm.colorNode.mul(mix(float(1), ao(), 0.92));
+    const h = (mat as Relief).reliefNode;
+    if (h) nm.normalNode = reliefNormal(h);
   }
   return m;
 }
@@ -502,6 +538,8 @@ function combine(name: string, parts: readonly (THREE.MeshPhysicalNodeMaterial |
     c.clearcoatNode = pick((m, lit) => float(lit ? m.clearcoat : 0));
     c.clearcoatRoughnessNode = pick((m, lit) => float(lit ? m.clearcoatRoughness : 0));
   }
+  // one bump for the whole god from each part's relief height
+  if (used.some((m) => (m as Relief).reliefNode)) c.normalNode = reliefNormal(pick((m, lit) => (lit && (m as Relief).reliefNode ? float((m as Relief).reliefNode) : float(0))));
   const env = used.find((m) => m.envMap);
   if (env) {
     c.envMap = env.envMap;
