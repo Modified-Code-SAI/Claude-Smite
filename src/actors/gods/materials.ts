@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, color, dot, float, fract, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
-  mx_worley_noise_float, positionGeometry, positionView, pow, saturate, select, sin, smoothstep, time, uv, vec3,
+  abs, atan, attribute, color, dot, exp, float, fract, fwidth, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
+  mx_worley_noise_float, positionGeometry, positionView, pow, reflectView, saturate, select, sin, smoothstep, time, uv, vec3,
 } from '../../render/tsl';
 import { objectUniforms } from '../../render/shared';
 import { reliefFade, reliefNormal } from './relief';
@@ -100,69 +100,6 @@ const EINHERJAR: Partial<GodPalette> = { cloth: 0x4a4f5a, clothDeep: 0x1a1d22, g
 export function paletteOf(id: string, variant?: string): GodPalette {
   const p = PALETTES[id] ?? PALETTES.zeus!;
   return variant === 'einherjar' ? { ...p, ...EINHERJAR } : p;
-}
-
-let studio: THREE.DataTexture | null = null;
-
-/**
- * A painted "studio" environment for character metals: bright warm sky,
- * dark ground, a key light and a rim light. Reflecting only the real sky
- * makes gold read as flat yellow; this gives it the dark-to-bright range
- * stylized metal needs.
- */
-function studioEnv(): THREE.DataTexture {
-  if (studio) return studio;
-  const w = 256;
-  const h = 128;
-  const data = new Float32Array(w * h * 4);
-  const key = new THREE.Vector3(0.55, 0.6, 0.6).normalize();
-  const rimDir = new THREE.Vector3(-0.5, 0.35, -0.8).normalize();
-  const fill = new THREE.Vector3(-0.8, 0.2, 0.5).normalize();
-  const d = new THREE.Vector3();
-  for (let j = 0; j < h; j++) {
-    const lat = (0.5 - (j + 0.5) / h) * Math.PI;
-    for (let i = 0; i < w; i++) {
-      const lon = ((i + 0.5) / w) * Math.PI * 2 - Math.PI;
-      d.set(Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon));
-      const y = d.y;
-      let r: number, g: number, b: number;
-      if (y > 0) {
-        // dim zenith, bright band at the horizon: curved metal gets light-dark-light streaks
-        const t = Math.pow(y, 0.6);
-        const band = Math.exp(-y * y * 40) * 1.6;
-        r = 0.55 - t * 0.2 + band; g = 0.56 - t * 0.18 + band * 0.95; b = 0.62 - t * 0.1 + band * 0.85;
-      } else {
-        const t = Math.pow(-y, 0.4);
-        const band = Math.exp(-y * y * 60) * 0.9;
-        r = 0.28 - t * 0.22 + band; g = 0.2 - t * 0.16 + band * 0.85; b = 0.13 - t * 0.1 + band * 0.7;
-      }
-      // tall softboxes left and right of the key make vertical highlights
-      for (const sx of [-1, 1]) {
-        const ax = Math.abs(lon - sx * 1.15);
-        r += Math.exp(-ax * ax * 30) * Math.exp(-lat * lat * 3) * 1.4;
-        g += Math.exp(-ax * ax * 30) * Math.exp(-lat * lat * 3) * 1.35;
-        b += Math.exp(-ax * ax * 30) * Math.exp(-lat * lat * 3) * 1.3;
-      }
-      const k = Math.pow(Math.max(0, d.dot(key)), 60) * 14 + Math.pow(Math.max(0, d.dot(key)), 8) * 1.2;
-      const rr = Math.pow(Math.max(0, d.dot(rimDir)), 40) * 7;
-      const ff = Math.pow(Math.max(0, d.dot(fill)), 20) * 1.5;
-      const o = (j * w + i) * 4;
-      // a little light everywhere, warmer below, so no angle mirrors pure black
-      r += y > 0 ? 0.16 : 0.13; g += y > 0 ? 0.15 : 0.1; b += y > 0 ? 0.14 : 0.07;
-      data[o] = r + k * 1.0 + rr * 0.8 + ff * 0.7;
-      data[o + 1] = g + k * 0.95 + rr * 0.9 + ff * 0.8;
-      data[o + 2] = b + k * 0.85 + rr * 1.0 + ff * 1.0;
-      data[o + 3] = 1;
-    }
-  }
-  studio = new THREE.DataTexture(data, w, h, THREE.RGBAFormat, THREE.FloatType);
-  studio.mapping = THREE.EquirectangularReflectionMapping;
-  studio.colorSpace = THREE.LinearSRGBColorSpace;
-  studio.minFilter = THREE.LinearFilter;
-  studio.magFilter = THREE.LinearFilter;
-  studio.flipY = true;
-  studio.needsUpdate = true;
-  return studio;
 }
 
 const edge = () => attribute('_edge', 'float');
@@ -272,11 +209,11 @@ function frostSkinMaterial(p: GodPalette): THREE.Material {
 }
 
 function metalMaterial(base: number, trim: number, opts: { engrave?: boolean; dark?: number } = {}): THREE.Material {
-  // not quite a mirror: a fifth of the color lights like paint, so gold reads gold from
-  // every angle instead of going dark brown wherever it reflects the ground (stylized metal)
+  // not quite a mirror: a fifth of the color lights like paint, so metal keeps its color
+  // where it reflects the ground (stylized metal). It reflects the map's own sky and
+  // ground like everything else: a painted studio map came out of PMREM nearly black,
+  // which is what made steel read as black plastic and gold as dark brown.
   const m = new THREE.MeshPhysicalNodeMaterial({ metalness: 0.82, roughness: 0.3, clearcoat: 0.4, clearcoatRoughness: 0.2 });
-  m.envMap = studioEnv();
-  m.envMapIntensity = 1.0;
   const e = edge();
   const inside = float(1).sub(side());
   const band = float(1).sub(smoothstep(0.012, 0.02, e)); // polished trim along plate borders
@@ -296,6 +233,13 @@ function metalMaterial(base: number, trim: number, opts: { engrave?: boolean; da
   relief(m, height);
   col = mix(col, color(trim), band);
   col = col.mul(float(1).sub(groove.mul(0.55))).mul(float(1).sub(inside.mul(0.55)));
+  // the dark-to-bright range of a studio, painted in from what each point mirrors (in view
+  // space, so it reads the same from the game camera as up close): a bright band where the
+  // metal faces the camera, darker where it turns to mirror the ground, a softer sky above.
+  // The map's real sky alone is too even, and gold reads as flat yellow plastic in it.
+  const ry = reflectView.normalize().y;
+  const studio = mix(float(0.58), float(1), smoothstep(-0.55, -0.05, ry)).add(exp(ry.mul(ry).mul(-28)).mul(0.18)).sub(smoothstep(0.35, 0.95, ry).mul(0.14));
+  col = col.mul(studio);
   m.colorNode = col;
   m.roughnessNode = mix(float(0.3).add(hammer.mul(0.1)), float(0.16), band).add(groove.mul(0.3)).add(inside.mul(0.3));
   m.emissiveNode = color(trim).mul(rim().mul(0.08));
@@ -374,7 +318,10 @@ function hairMaterial(root: number, tip: number): THREE.Material {
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.45, sheen: 0.35, sheenRoughness: 0.35, side: THREE.DoubleSide });
   m.sheenColor = new THREE.Color(tip);
   const v = uv();
-  const strands = abs(sin(v.x.mul(6.283).mul(7).add(mx_noise_float(positionGeometry.mul(40)).mul(2)))).pow(0.6);
+  const phase = v.x.mul(7).add(mx_noise_float(positionGeometry.mul(40)).mul(0.32));
+  // the strands settle to their average once a pixel spans one, instead of beating
+  // into moire stripes across a fur collar or a beard seen from the game camera
+  const strands = mix(abs(sin(phase.mul(6.283))).pow(0.6), float(0.73), smoothstep(0.2, 0.55, fwidth(phase)));
   const t = data().x; // root 0 .. tip 1
   const tint = data().y.mul(0.16).add(0.88); // per-clump variation
   // roots sit in the shadow of the clumps around them
@@ -396,20 +343,32 @@ function glowMaterial(c: number, strength = 6): THREE.Material {
 }
 
 function eyeMaterial(c: number, glow = 1.4): THREE.Material {
-  // a lit, wet eye: off-white sclera, a colored iris with a dark limbal ring and pupil,
-  // and a faint godly glow in the iris only
+  // a lit, wet eye: off-white sclera under the shadow of the upper lid, a large stylized
+  // iris streaked out from the pupil with a dark limbal ring and a bright collarette,
+  // a faint godly glow in the iris only, and the catchlight of a key light in the cornea
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.03 });
-  const d = data().x; // 1 at the pupil, falling off toward the white
-  const iris = smoothstep(0.84, 0.87, d);
-  const limbal = smoothstep(0.84, 0.87, d).mul(float(1).sub(smoothstep(0.87, 0.9, d)));
-  const pupil = smoothstep(0.965, 0.975, d);
-  const fibers = mx_noise_float(positionGeometry.mul(900)).mul(0.25).add(0.85);
+  const e = data();
+  const d = e.x; // 1 at the pupil, falling off toward the white
+  const real = e.w; // a real eyeball, with its up and across directions in y and z
+  const up = e.y.mul(2).sub(1).mul(real);
+  const iris = smoothstep(0.78, 0.81, d);
+  const limbal = iris.mul(float(1).sub(smoothstep(0.81, 0.86, d)));
+  const pupil = smoothstep(0.955, 0.965, d);
+  const collarette = smoothstep(0.9, 0.935, d).mul(float(1).sub(pupil));
+  const grain = mx_noise_float(positionGeometry.mul(900)).mul(0.25).add(0.85);
+  // fibers radiate from the pupil: streaks around the eye's axis, broken up by noise
+  const around = atan(e.y.mul(2).sub(1), e.z.mul(2).sub(1));
+  const streak = abs(sin(around.mul(19).add(mx_noise_float(positionGeometry.mul(500)).mul(2.5)))).mul(0.35).add(0.75);
+  const fibers = mix(grain, grain.mul(streak), real);
   const sclera = mix(color(0xd8cfc4), color(0xf2ece4), smoothstep(0.3, 0.75, d));
-  let col: any = mix(sclera, color(c).mul(fibers), iris);
-  col = mix(col, color(c).mul(0.15), limbal.mul(0.8));
+  let col: any = mix(sclera, color(c).mul(fibers).mul(float(1).add(collarette.mul(0.45))), iris);
+  col = mix(col, color(c).mul(0.12), limbal.mul(0.85));
   col = mix(col, color(0x050404), pupil);
-  m.colorNode = col;
-  m.emissiveNode = color(c).mul(iris.mul(float(1).sub(pupil)).mul(fibers).mul(glow));
+  // the upper lid shades the top of the eye, and the corners sit in shadow
+  const lid = float(1).sub(smoothstep(0.05, 0.6, up).mul(0.5)).mul(float(1).sub(float(1).sub(smoothstep(0.2, 0.55, d)).mul(real).mul(0.35)));
+  m.colorNode = col.mul(lid);
+  const key = smoothstep(0.991, 0.996, normalView.dot(vec3(-0.25, 0.32, 1).normalize())).mul(real);
+  m.emissiveNode = color(c).mul(iris.mul(float(1).sub(pupil)).mul(fibers).mul(lid).mul(glow)).add(vec3(1, 0.98, 0.95).mul(key.mul(2.2)));
   return m;
 }
 
@@ -462,8 +421,7 @@ function buildMaterials(id: string, variant?: string): Map<string, THREE.Materia
 
 /**
  * The part materials each combined material draws, in the order of the
- * `_part` vertex attribute. Metals share the studio reflections; everything
- * else is the body.
+ * `_part` vertex attribute: the metals, and everything else (the body).
  */
 export const COMBINED: Record<string, readonly string[]> = {
   metal: ['gold', 'goldplain', 'steel'],
@@ -540,11 +498,6 @@ function combine(name: string, parts: readonly (THREE.MeshPhysicalNodeMaterial |
   }
   // one bump for the whole god from each part's relief height
   if (used.some((m) => (m as Relief).reliefNode)) c.normalNode = reliefNormal(pick((m, lit) => (lit && (m as Relief).reliefNode ? float((m as Relief).reliefNode) : float(0))));
-  const env = used.find((m) => m.envMap);
-  if (env) {
-    c.envMap = env.envMap;
-    c.envMapIntensity = env.envMapIntensity;
-  }
   c.name = name;
   return c;
 }
