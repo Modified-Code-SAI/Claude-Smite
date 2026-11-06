@@ -47,6 +47,25 @@
 .jt-wins span.me { color: #ffe08a; font-weight: 600; }
 .jt-wins span.giant::before { content: '❄ '; color: var(--frost); }
 .jt-wins b { color: #ffe9b8; }
+/* the end screen: frost medals over the table, and the felling blow marked by a name */
+.jt-awards { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 94vw; }
+.jt-award { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; min-width: 168px; padding: 8px 16px 8px 10px; background: rgba(4, 10, 18, 0.76); border-radius: 6px; box-shadow: 0 0 0 1px rgba(150, 215, 255, 0.38), 0 6px 18px rgba(0, 0, 0, 0.45); text-align: left; animation: jt-award-in 0.5s 0.35s ease-out both; }
+.jt-award:nth-child(2) { animation-delay: 0.5s; }
+.jt-award:nth-child(3) { animation-delay: 0.65s; }
+.jt-award i { grid-row: 1 / 4; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #ffffff, #8fd3ff 74%); box-shadow: 0 0 0 1px rgba(232, 248, 255, 0.75), 0 0 14px rgba(120, 200, 255, 0.6); }
+.jt-award i svg { width: 21px; height: 21px; fill: #0c2740; stroke: #dff4ff; }
+.jt-award b { font-size: 11px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #9fdcff; }
+.jt-award span { font-size: 15px; letter-spacing: 0.04em; color: #eaf6ff; }
+.jt-award.me span { color: #ffe08a; }
+.jt-award small { font-size: 11px; letter-spacing: 0.03em; color: #d8e8f2; opacity: 0.85; }
+.jt-award[data-award='slayer'] { box-shadow: 0 0 0 1px rgba(170, 225, 255, 0.8), 0 0 22px rgba(120, 200, 255, 0.35), 0 6px 18px rgba(0, 0, 0, 0.45); }
+.jt-felled, .jt-legend { color: #bfe6ff; text-shadow: 0 0 8px rgba(140, 210, 255, 0.8); }
+.jt-felled { margin-right: 6px; }
+.jt-legend { margin-top: 6px; font: 12px system-ui, sans-serif; text-align: right; opacity: 0.8; }
+/* the match's result has the screen: the round's bar, the wins and the god's own HUD stand aside */
+.jotunn:has(.clash-end.show) :is(.jt-top, .jt-wins, .clash-state) { display: none; }
+body:has(.jotunn .clash-end.show) .combat-hud { display: none; }
+@keyframes jt-award-in { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
 @media (max-width: 700px) { .jt-top { width: 92vw; } .jt-shrine em { display: none; } }
 /* the settings panel moves off the wins list, as in Temple Clash */
 body:has(.jotunn) .hud-panel { top: auto; bottom: 12px; right: 12px; }

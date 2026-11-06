@@ -149,6 +149,18 @@ export interface ShrineState {
   dormant: number;
 }
 
+/** What a player did over the match, for its end screen. */
+export interface JotunnTally {
+  /** Might torn from the giant as a god: its weak points' hits, and the shattering of those they broke. */
+  might: number;
+  /** Weak points they broke (the last hit on each). */
+  breaks: number;
+  /** Rounds in which theirs was the blow that felled the giant. */
+  felled: number;
+  /** Gods taken down while they were the giant. */
+  takedowns: number;
+}
+
 /** Someone taking part: they play their god, and the giant in their round. */
 export interface JotunnPlayer {
   name: string;
@@ -158,6 +170,7 @@ export interface JotunnPlayer {
   wins: number;
   /** How their round as the giant went, once it has. */
   giantRound: { braziers: number; time: number; won: boolean } | null;
+  readonly tally: JotunnTally;
 }
 
 export type JotunnPhase = 'countdown' | 'fight' | 'over' | 'done';
@@ -178,6 +191,8 @@ export interface JotunnNet {
   w: number[];
   /** Each player's round as the giant: braziers, seconds, won (1); 0 before it. */
   gr: ([number, number, number] | 0)[];
+  /** Each player's tally: Might, breaks, felled, takedowns. */
+  ta?: [number, number, number, number][];
 }
 
 /** What starts a round's bots, so the rules don't depend on how they play. */
@@ -246,7 +261,7 @@ export class Jotunn {
       god.home.x = spawn.x;
       god.home.z = spawn.z;
       god.home.yaw = spawn.yaw;
-      return { name: p.name, id: p.id, god, wins: 0, giantRound: null };
+      return { name: p.name, id: p.id, god, wins: 0, giantRound: null, tally: { might: 0, breaks: 0, felled: 0, takedowns: 0 } };
     });
     for (const p of this.players) if (!sim.units.includes(p.god)) sim.add(p.god);
     this.order = opts.order ?? defaultOrder(this.players, opts.rounds);
@@ -304,6 +319,7 @@ export class Jotunn {
       s: this.shrines.map((x) => [Math.round(x.progress * 100) / 100, x.contested ? 1 : 0, r1(x.dormant)]),
       w: this.players.map((x) => x.wins),
       gr: this.players.map((x) => (x.giantRound ? [x.giantRound.braziers, Math.round(x.giantRound.time), x.giantRound.won ? 1 : 0] : 0)),
+      ta: this.players.map(({ tally: t }) => [Math.round(t.might), t.breaks, t.felled, t.takedowns]),
     };
   }
 
@@ -328,6 +344,8 @@ export class Jotunn {
       x.wins = n.w[i] ?? x.wins;
       const gr = n.gr[i];
       x.giantRound = gr ? { braziers: gr[0], time: gr[1], won: gr[2] === 1 } : null;
+      const ta = n.ta?.[i];
+      if (ta) Object.assign(x.tally, { might: ta[0], breaks: ta[1], felled: ta[2], takedowns: ta[3] });
     });
     if (fresh && this.round > 0) this.onRound?.(this.giantPlayer);
   }
@@ -341,13 +359,33 @@ export class Jotunn {
     }
     if (e.type === 'damage') {
       const id = this.partOf(e.target);
-      if (id && this.giant.alive && this.phase === 'fight') this.giant.combatant.takeDamage(e.amount * PARTS[id].mult);
+      if (id && this.giant.alive && this.phase === 'fight') this.tear(e.amount * PARTS[id].mult, this.playerOf(e.source));
       return;
     }
     if (e.type !== 'death') return;
     const id = this.partOf(e.unit);
-    if (id) this.broke(id);
-    else if (this.players.some((p) => p.god === e.unit)) e.unit.combatant.respawnTimer = JOTUNN.godRespawn;
+    if (id) this.broke(id, this.playerOf(e.killer));
+    else if (this.players.some((p) => p.god === e.unit)) {
+      e.unit.combatant.respawnTimer = JOTUNN.godRespawn;
+      const k = e.killer?.owner ?? e.killer;
+      if (k === this.giant && this.phase === 'fight') this.giantPlayer.tally.takedowns++;
+    }
+  }
+
+  /** Whose god (or summon of a god's) a unit is. */
+  private playerOf(u: Unit | null): JotunnPlayer | null {
+    const g = u?.owner ?? u;
+    return (g && this.players.find((p) => p.god === g)) ?? null;
+  }
+
+  /** Might torn from the giant, credited to whoever tore it (and the round's felling blow, if this was it). */
+  private tear(amount: number, by: JotunnPlayer | null): void {
+    const c = this.giant.combatant;
+    const before = c.health;
+    c.takeDamage(amount);
+    if (!by) return;
+    by.tally.might += before - Math.max(0, c.health);
+    if (!c.alive) by.tally.felled++;
   }
 
   private partOf(u: Unit): PartId | null {
@@ -357,10 +395,11 @@ export class Jotunn {
   }
 
   /** A weak point gives way: Might torn away, and what that part does. */
-  private broke(id: PartId): void {
+  private broke(id: PartId, by: JotunnPlayer | null): void {
     const def = PARTS[id];
     const g = this.giant;
-    if (g.alive && def.shatter > 0) g.combatant.takeDamage(this.might * def.shatter);
+    if (by && this.phase === 'fight') by.tally.breaks++;
+    if (g.alive && def.shatter > 0) this.tear(this.might * def.shatter, by);
     if (def.regrow > 0) this.regrow.set(id, def.regrow);
     switch (id) {
       case 'kneeL':

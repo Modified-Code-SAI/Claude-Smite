@@ -298,6 +298,35 @@ describe('Jötunn', () => {
     expect(mode.champions).not.toContain(mode.players[1]);
   });
 
+  it("tallies each player's fight: Might torn, weak points broken, the felling blow, the giant's takedowns; guests get it too", () => {
+    const { mode, sim, run, part, g } = setup();
+    run(JOTUNN.countdown + 0.1);
+    const [a, b, c] = mode.gods.map((u) => mode.players.find((p) => p.god === u)!);
+    hit(sim, a!.god, part('kneeL'), 500);
+    expect(a!.tally.might).toBeCloseTo(500 * PARTS.kneeL.mult, 0);
+    expect(a!.tally.breaks).toBe(0);
+    // the breaking blow takes the part's shattering with it
+    const before = g.combatant.health;
+    hit(sim, b!.god, part('kneeL'), 1e5);
+    expect(b!.tally.breaks).toBe(1);
+    expect(b!.tally.might).toBeCloseTo(before - g.combatant.health, 0);
+    sim.strike(g, c!.god, 1e9, 'true');
+    expect(c!.god.alive).toBe(false);
+    expect(mode.giantPlayer.tally.takedowns).toBe(1);
+    // a's blow fells it: only the Might it still had counts
+    g.combatant.health = 30;
+    hit(sim, a!.god, part('kneeR'), 50);
+    expect(a!.tally.felled).toBe(1);
+    expect(a!.tally.might).toBeCloseTo(500 * PARTS.kneeL.mult + 30, 0);
+    expect(b!.tally.felled).toBe(0);
+    run(0.1);
+    expect(mode.lastRound).toBe('gods');
+    // an online guest's end screen shows the same
+    const guest = new Jotunn(newSim(), GODS.map((x, i) => ({ name: x.name, id: i === 0 ? '' : null, god: x })));
+    guest.applyNet(JSON.parse(JSON.stringify(mode.netState())));
+    guest.players.forEach((p, i) => expect(p.tally).toEqual({ ...mode.players[i]!.tally, might: Math.round(mode.players[i]!.tally.might) }));
+  });
+
   it('online, each person takes a turn as the giant', () => {
     const sim = newSim();
     const players = GODS.map((g, i) => ({ name: g.name, id: i < 3 ? `peer${i}` : null, god: g }));
