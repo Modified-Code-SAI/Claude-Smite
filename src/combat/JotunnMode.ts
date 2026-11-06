@@ -54,8 +54,8 @@ export interface JotunnDeps {
   giantPower?: number;
   /** Online: up to five friends, bots filling the rest; each takes a turn as the giant. */
   net?: NetSession;
-  /** A moment of the giant's that has its own sound ('step': a footfall, k how hard). */
-  cue?: (name: 'step', at: THREE.Vector3, k: number) => void;
+  /** A moment of the giant's that has its own sound ('step': a footfall, k how hard; 'land': a god it threw coming down, k how high it flew). */
+  cue?: (name: 'step' | 'land', at: THREE.Vector3, k: number) => void;
   /** Lays a shot of the giant over the follow camera (see JotunnCine); null hands it back. */
   cameraShot?: (shot: CameraShot | null) => void;
   /** The map's columns and walls, which a shot's camera keeps clear of. */
@@ -180,6 +180,7 @@ export class JotunnMode {
       },
       burst: (at, power) => deps.burst(FROST, at.x, at.y, at.z, power),
       footfall: (at, k) => deps.cue?.('step', at, k),
+      landing: (at, k) => deps.cue?.('land', at, k),
     });
     deps.vfx.add(this.view.group);
     this.weather = new JotunnWeather(deps.environment);

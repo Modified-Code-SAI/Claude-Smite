@@ -124,6 +124,8 @@ export class GameAudio {
     game.onCue = (name, at, k) => {
       if (!this.engine.ready) return;
       if (name === 'step') this.engine.play('step.giant', { at, gain: 0.45 + 0.55 * k, vary: 0.05, ref: 26 }, 3);
+      // a god the giant threw hitting the snow (a stomp throws several at once: they land close together, so they share a few voices)
+      else if (name === 'land') this.engine.play('land.thrown', { at, gain: 0.35 + 0.45 * k, vary: 0.08, ref: 12 }, 2, 0.04);
       else if (name === 'soul') this.engine.play('soul.absorb', { gain: 0.32, rate: 1 + Math.min(k, 10) * 0.055, vary: 0.03 }, 1, 0.05);
       // the dead clawing up out of the floor: one rumble for a wave rising together, a boss louder and lower
       else if (name === 'emerge') this.engine.play('monster.emerge', { at, gain: 0.5 + k * 0.6, rate: 1.15 - k * 0.35, vary: 0.06, ref: 12 + k * 20 }, 2, 0.12);

@@ -116,7 +116,7 @@ export class CombatGame implements Updatable {
   /** The local player's own god: the same as `player` except while the Jötunn hands them the giant. */
   ownGod!: Unit;
   /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls; souls reaching the player and the dead climbing out of the floor in Underworld Descent. */
-  onCue: ((name: 'step' | DescentCue, at: { x: number; y: number; z: number }, k: number) => void) | null = null;
+  onCue: ((name: 'step' | 'land' | DescentCue, at: { x: number; y: number; z: number }, k: number) => void) | null = null;
   /** A ping went up for the player's team (set by GameAudio): its sound, and whether it was the player's own. */
   onPing: ((sound: PingSound, mine: boolean) => void) | null = null;
   bot: Unit | null = null;
