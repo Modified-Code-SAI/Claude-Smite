@@ -143,12 +143,17 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const rock = triplanar(textures.get('rock'), 0.055, 6);
   const fine = triplanar(textures.get('rock'), 0.2, 6);
 
-  // polished black basalt, a touch cool, the slabs varied by the macro noise
-  // each depth's own look, by weight (see depthLook): the Ashen Depths' forge
+  // each depth's own look, by weight (see depthLook): the Abyss where both
+  // weights are 0, the Ashen Depths' forge, the Drowned Halls' crypt
   const ember = depthLook.x;
-  const basalt = vec3(lum(flag.color)).mul(mix(vec3(0.17, 0.162, 0.19), vec3(0.2, 0.158, 0.146), ember)).mul(mix(float(0.75), float(1.2), macro));
-  // the Ashen Depths: the ash drifted against the walls is a black crust of cooling lava
-  const ashCol = mix(vec3(lum(dust.color)).mul(vec3(0.36, 0.34, 0.33)), vec3(lum(dust.color)).mul(vec3(0.075, 0.06, 0.055)), ember);
+  const soul = depthLook.y;
+  const depthTint = (abyss: any, forge: any, drowned: any) => mix(mix(abyss, forge, ember), drowned, soul);
+  // polished black basalt tinted by the depth, the slabs varied by the macro noise
+  const basalt = vec3(lum(flag.color)).mul(depthTint(vec3(0.135, 0.15, 0.14), vec3(0.2, 0.158, 0.146), vec3(0.13, 0.15, 0.16))).mul(mix(float(0.75), float(1.2), macro));
+  // what has drifted against the walls: in the Abyss pale bone dust, in the
+  // Ashen Depths a black crust of cooling lava, in the Drowned Halls the
+  // grey-green silt the water left behind
+  const ashCol = vec3(lum(dust.color)).mul(depthTint(vec3(0.44, 0.42, 0.37), vec3(0.075, 0.06, 0.055), vec3(0.2, 0.235, 0.215)));
   const ashW = smoothstep(0.2, 0.8, ash.add(dust.color.g.mul(0.6)).sub(0.25));
   let col: any = mix(basalt, ashCol, ashW);
   let nrm: any = mix(flag.normal, dust.normal, ashW);
@@ -159,11 +164,13 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const rockNrm = rock.normal.add(fine.normal).normalize();
   const raw = rock.color.mul(fine.color.mul(1.7));
   const strata = sin(positionWorld.y.mul(1.1).add(rock.color.r.mul(5))).mul(0.5).add(0.5);
-  const rockCol = vec3(lum(raw)).mul(mix(vec3(0.3, 0.28, 0.31), vec3(0.33, 0.25, 0.215), ember)).mul(mix(float(0.8), float(1.12), strata));
+  // the Drowned Halls: water running down the rock in dark, glossy streaks
+  const streak = smoothstep(0.45, 0.85, sin(xz.x.mul(1.9).add(xz.y.mul(1.6)).add(fine.color.r.mul(5))).mul(0.5).add(0.5)).mul(soul);
+  const rockCol = vec3(lum(raw)).mul(depthTint(vec3(0.24, 0.26, 0.25), vec3(0.33, 0.25, 0.215), vec3(0.24, 0.27, 0.28))).mul(mix(float(0.8), float(1.12), strata)).mul(float(1).sub(streak.mul(0.35)));
   const rockW = max(smoothstep(0.82, 0.6, n.y), smoothstep(0.25, 1.2, positionWorld.y));
   col = mix(col, rockCol, rockW);
   nrm = mix(nrm, rockNrm, rockW);
-  rough = mix(rough, mix(float(0.7), float(0.92), strata), rockW);
+  rough = mix(rough, mix(mix(float(0.7), float(0.92), strata), float(0.3), streak), rockW);
   col = col.mul(float(1).sub(scorch.mul(0.35)));
   // the runes are cut into the slabs: a dark groove around each glowing line
   const floorW = float(1).sub(rockW);
@@ -197,6 +204,19 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const crustCracks = smoothstep(0.07, 0.0, crackN).mul(ashW);
   const seep = joint.mul(1.25).add(crustCracks.mul(2.4)).mul(floorW).mul(ember);
   col = col.mul(float(1).sub(joint.mul(ember).mul(floorW).mul(0.6)));
+  // the Drowned Halls: the slabs are wet, moss grows in their joints, and
+  // still water stands in the hollows, stirred by slow ripples
+  const wetFloor = floorW.mul(soul);
+  const moss = smoothstep(0.955, 0.998, flag.roughness).mul(float(1).sub(ashW));
+  col = mix(col, vec3(0.04, 0.075, 0.062).mul(lum(flag.color).add(0.5)), moss.mul(wetFloor).mul(0.85));
+  const puddle = smoothstep(0.44, 0.36, macro).mul(smoothstep(-0.35, 0.05, wornN)).mul(wetFloor);
+  const ripple = textures.get('dirt').nr;
+  const r1 = texture(ripple, xz.mul(0.21).add(vec2(time.mul(0.021), time.mul(0.013)))).xy;
+  const r2 = texture(ripple, xz.mul(0.17).sub(vec2(time.mul(0.011), time.mul(0.019)))).xy;
+  const rippleN = vec3(r1.x.add(r2.x).sub(1).mul(0.12), 1, r1.y.add(r2.y).sub(1).mul(0.12)).normalize();
+  col = col.mul(float(1).sub(puddle.mul(0.55)));
+  nrm = mix(nrm, rippleN, puddle);
+  rough = mix(rough.mul(mix(float(1), float(0.6), wetFloor)), float(0.03), puddle);
   mat.colorNode = col;
   mat.normalNode = transformNormalToView(nrm.normalize());
   mat.roughnessNode = rough;

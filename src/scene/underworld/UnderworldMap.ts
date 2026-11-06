@@ -5,7 +5,7 @@ import {
   addUnderworldColliders, CHAMBERS, entranceSpot, GATE, type ChamberDef, type Palette,
 } from '../../map/UnderworldLayout';
 import {
-  abs, atan, cameraPosition, cos, dot, exp, float, length, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, sin, smoothstep, time,
+  abs, atan, cos, dot, exp, float, length, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, sin, smoothstep, time,
   transformNormalToView, uv, vec2, vec3, vec4,
 } from '../../render/tsl';
 import type { QualitySettings } from '../../render/Quality';
@@ -15,8 +15,8 @@ import { Fire } from '../Effects';
 import { triplanar, type MaterialLibrary } from '../Materials';
 import { mergeStatic } from '../merge';
 import type { MapContent } from '../World';
-import { cavernKit, FLAME_Y, forgeKit, type Kit } from './kits';
-import { DEPTH_COLORS, depthLook, depthWeights, gateOpen, underworldGlow } from './palettes';
+import { abyssKit, drownedKit, FLAME_Y, forgeKit, type Kit } from './kits';
+import { DEPTH_COLORS, depthLook, depthWeights, flameHot, gateOpen, underworldGlow } from './palettes';
 import { showRunes } from './UnderworldTerrain';
 
 /** How tall the gate pylons stand, and the lintel across them. */
@@ -35,6 +35,8 @@ const LINTEL_Y = 6.4;
 export class UnderworldMap implements MapContent {
   readonly group = new THREE.Group();
   readonly fires: Fire[] = [];
+  /** The Burning Pit's light from below, in the depth's glow. */
+  private readonly lakeLights: THREE.PointLight[] = [];
   readonly lights: THREE.PointLight[] = [];
   readonly spawn: { x: number; z: number; yaw: number };
   readonly groundColor = new THREE.Color(0.05, 0.045, 0.055);
@@ -81,6 +83,8 @@ export class UnderworldMap implements MapContent {
     this.palette = p;
     const c = DEPTH_COLORS[p];
     underworldGlow.value.setHex(c.glow);
+    flameHot.value.setHex(c.fire.high);
+    for (const l of this.lakeLights) l.color.setHex(c.glow);
     depthLook.value.set(...depthWeights(p));
     for (const f of this.fires) {
       if (f.group.userData.gateFire) continue;
@@ -172,8 +176,7 @@ export class UnderworldMap implements MapContent {
     g.name = `chamber-${index}-${PALETTES[depth]}`;
     g.userData.shownLater = true;
     const keep: THREE.Object3D[] = [];
-    // the caverns' dressing draws on the sequence the chambers were first built with, so they look as they did
-    const random = rng(4100 + index * 31);
+    const random = rng(4100 + index * 31 + depth * 7919);
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true): THREE.Mesh => {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(x, y, z);
@@ -208,6 +211,7 @@ export class UnderworldMap implements MapContent {
     light.castShadow = false;
     lake.add(light);
     this.lights.push(light);
+    this.lakeLights.push(light);
     g.add(lake);
     return lake;
   }
@@ -219,14 +223,16 @@ export class UnderworldMap implements MapContent {
   }
 }
 
-/** The depths in order, and the kit each dresses its chambers with (the Drowned Halls and the Abyss keep the caverns' for now). */
+/** The depths in order, and the kit each dresses its chambers with. */
 const PALETTES: readonly Palette[] = ['ember', 'soul', 'spirit'];
-const KITS: readonly Kit[] = [forgeKit, cavernKit, cavernKit];
+const KITS: readonly Kit[] = [forgeKit, drownedKit, abyssKit];
 
 /**
  * The underworld's own materials, all shared across the chambers: obsidian
- * (glassy black with the depth's glow in its cracks), dark basalt rock,
- * bronze, glowing coals and crystals, the lava lake and the gate veils.
+ * (glassy black with the depth's glow in its cracks), glowing coals, the lava
+ * lake and the gate veils, then each depth's kit's own: the forge's stone,
+ * iron, slag and fires, the crypt's limestone, verdigris and water, the
+ * ossuary's bone.
  */
 function underworldMaterials(lib: MaterialLibrary) {
   const tex = lib.textures;
@@ -262,31 +268,8 @@ function underworldMaterials(lib: MaterialLibrary) {
     forgeStone.name = 'forgeStone';
   }
 
-  const basalt = new THREE.MeshStandardNodeMaterial();
-  {
-    const s = triplanar(tex.get('rock'), 0.12, 6);
-    const l = lum(s.color.mul(1.6));
-    basalt.colorNode = vec3(l).mul(vec3(0.3, 0.29, 0.31));
-    basalt.roughnessNode = float(0.85);
-    basalt.metalnessNode = float(0);
-    basalt.normalNode = transformNormalToView(s.normal);
-    basalt.name = 'basalt';
-  }
-
   const coals = new THREE.MeshStandardNodeMaterial({ color: 0x140a08, roughness: 0.9 });
   coals.emissiveNode = underworldGlow.mul(mx_noise_float(positionWorld.mul(3).add(vec3(0, time.mul(0.6), 0))).mul(0.5).add(0.5).mul(2.6));
-
-  const crystal = new THREE.MeshStandardNodeMaterial({ roughness: 0.2, metalness: 0 });
-  {
-    // light runs up each shard; the facets turned away from the eye glow
-    // brightest, so the flat-shaded shards read as cut glass, not paper
-    const along = sin(positionWorld.y.mul(2.2).sub(time.mul(1.4))).mul(0.25).add(0.75);
-    const view = cameraPosition.sub(positionWorld).normalize();
-    const edge = float(1).sub(abs(dot(normalWorld.normalize(), view))).pow(1.5);
-    const core = smoothstep(3.2, 0.2, positionWorld.y).mul(0.5).add(0.5);
-    crystal.colorNode = vec3(0.02, 0.02, 0.03);
-    crystal.emissiveNode = underworldGlow.mul(edge.mul(2.6).add(0.3)).mul(along).mul(core);
-  }
 
   // the lake: dark crust drifting over a bright molten flow
   const lava = new THREE.MeshBasicNodeMaterial();
@@ -378,9 +361,81 @@ function underworldMaterials(lib: MaterialLibrary) {
     const reach = sides.mul(0.7).add(0.05);
     const body = smoothstep(reach, reach.mul(0.35), u.y.add(n.mul(0.8)).sub(0.42)).mul(smoothstep(0.0, 0.08, u.y)).mul(sides);
     const heat = body.mul(float(1).sub(u.y.mul(0.7))).mul(n.mul(0.5).add(0.6)).clamp(0, 1);
-    flameBed.colorNode = vec4(mix(underworldGlow.mul(0.7), vec3(1.0, 0.78, 0.42).mul(2.4), smoothstep(0.5, 0.95, heat)).mul(heat), 1);
+    flameBed.colorNode = vec4(mix(underworldGlow.mul(0.7), flameHot.mul(2.4), smoothstep(0.5, 0.95, heat)).mul(heat), 1);
     flameBed.name = 'flameBed';
   }
 
-  return { obsidian, forgeStone, basalt, coals, crystal, lava, portal, sealed, bronze: lib.bronze, iron, slag, furnace, flameBed };
+  // the Drowned Halls' masonry: pale limestone the water has worn and stained,
+  // dark and slick below the old waterline, green with algae in its pores
+  const tideStone = new THREE.MeshStandardNodeMaterial();
+  {
+    const s = triplanar(tex.get('rock'), 0.25, 6);
+    const fine = triplanar(tex.get('rock'), 0.8, 6);
+    const l = lum(s.color.mul(fine.color).mul(1.8));
+    const line = mx_noise_float(positionWorld.xz.mul(0.4)).mul(0.25).add(1.4);
+    const below = smoothstep(line.add(0.15), line.sub(0.15), positionWorld.y);
+    const algae = smoothstep(0.24, 0.1, l).mul(below.mul(0.6).add(0.4));
+    const pale = vec3(l).mul(vec3(0.68, 0.69, 0.64)).add(0.06);
+    tideStone.colorNode = mix(mix(pale, pale.mul(vec3(0.42, 0.5, 0.5)), below), vec3(0.06, 0.11, 0.09), algae.mul(0.6));
+    tideStone.roughnessNode = mix(mix(float(0.62), float(0.9), smoothstep(0.1, 0.35, l)), float(0.22), below);
+    tideStone.metalnessNode = float(0);
+    tideStone.normalNode = transformNormalToView(s.normal.add(fine.normal).normalize().mix(normalWorld, 0.3).normalize());
+    tideStone.name = 'tideStone';
+  }
+
+  // bronze gone green: verdigris crusted in its hollows, the worn high spots still showing metal
+  const verdigris = new THREE.MeshStandardNodeMaterial();
+  {
+    const s = triplanar(tex.get('rock'), 0.9, 6);
+    const g = lum(s.color);
+    const crust = smoothstep(0.38, 0.22, g);
+    verdigris.colorNode = mix(vec3(0.42, 0.3, 0.16), vec3(0.16, 0.36, 0.3).mul(g.add(0.6)), crust);
+    verdigris.metalnessNode = mix(float(0.85), float(0.05), crust);
+    verdigris.roughnessNode = mix(float(0.35), float(0.8), crust);
+    verdigris.normalNode = transformNormalToView(s.normal.mix(normalWorld, 0.5).normalize());
+    verdigris.name = 'verdigris';
+  }
+
+  // falling water: streaks racing down a sheet, catching the soul light, thinning at its edges and breaking into spray at its foot
+  const waterfall = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  {
+    const u = uv();
+    const fall = mx_fractal_noise_float(vec3(u.x.mul(14), u.y.mul(3).add(time.mul(1.7)), time.mul(0.2)), 3, 2.0, 0.5).mul(0.5).add(0.5);
+    const streaks = smoothstep(0.42, 0.85, fall);
+    const sides = smoothstep(0.0, 0.2, u.x).mul(smoothstep(1.0, 0.8, u.x));
+    const foot = smoothstep(0.25, 0.0, u.y);
+    const top = smoothstep(1.0, 0.85, u.y);
+    const glow = streaks.mul(0.5).add(0.1).add(foot.mul(fall).mul(0.7)).mul(sides).mul(top).mul(0.55);
+    waterfall.colorNode = vec4(mix(underworldGlow.mul(0.55), vec3(0.55, 0.78, 1.0), streaks.mul(0.4).add(foot.mul(0.35))).mul(glow), 1);
+    waterfall.name = 'waterfall';
+  }
+
+  // a pool's still black water: a mirror for the lights, ripples spreading from where the water falls in
+  const pool = new THREE.MeshStandardNodeMaterial({ roughness: 0.04, metalness: 0 });
+  {
+    const u = uv();
+    const r = length(u.sub(vec2(0.5, 0.5)));
+    const rings = sin(r.mul(48).sub(time.mul(4.5))).mul(smoothstep(0.5, 0.05, r));
+    const n = mx_noise_float(vec3(positionWorld.xz.mul(1.3), time.mul(0.4)));
+    pool.colorNode = vec3(0.006, 0.012, 0.018);
+    pool.normalNode = transformNormalToView(vec3(rings.mul(0.06).add(n.mul(0.04)), 1, n.mul(0.04)).normalize());
+    // foam where the fall lands
+    pool.emissiveNode = underworldGlow.mul(0.15).add(vec3(0.5, 0.6, 0.7)).mul(smoothstep(0.16, 0.0, r).mul(n.mul(0.5).add(0.5)).mul(0.6));
+    pool.name = 'pool';
+  }
+
+  // old bone: ivory gone yellow, brown in its pits and cracks, dull and dry
+  const bone = new THREE.MeshStandardNodeMaterial();
+  {
+    const s = triplanar(tex.get('rock'), 1.1, 6);
+    const l = lum(s.color);
+    const pit = smoothstep(0.34, 0.16, l);
+    bone.colorNode = mix(vec3(0.6, 0.55, 0.44), vec3(0.2, 0.15, 0.09), pit).mul(l.mul(0.5).add(0.75));
+    bone.roughnessNode = mix(float(0.55), float(0.9), pit);
+    bone.metalnessNode = float(0);
+    bone.normalNode = transformNormalToView(s.normal.mix(normalWorld, 0.55).normalize());
+    bone.name = 'bone';
+  }
+
+  return { obsidian, forgeStone, coals, lava, portal, sealed, iron, slag, furnace, flameBed, tideStone, verdigris, waterfall, pool, bone };
 }
