@@ -12,7 +12,7 @@ import type { CollisionWorld } from '../scene/Collision';
 import type { Fire } from '../scene/Effects';
 import type { Environment } from '../scene/Environment';
 import { JOTUNN, Jotunn, type JotunnBrains, type JotunnPlayer } from '../sim/Jotunn';
-import { jotunnBots } from '../sim/JotunnBots';
+import { jotunnBots, WardenCalls } from '../sim/JotunnBots';
 import type { Sim } from '../sim/Sim';
 import type { Point, SimEvent, Unit } from '../sim/Unit';
 import { JotunnHud } from '../ui/JotunnHud';
@@ -104,6 +104,8 @@ export class JotunnMode {
   /** The local player drives the giant this round. */
   piloting = false;
   private readonly brains: JotunnBrains | null;
+  /** The bot gods' own calls (where the match runs: the host, or solo). */
+  private readonly calls: WardenCalls | null;
   /** On the host: what the guest driving the giant this round last asked for, and how long ago. */
   private remote: { move: Point | null; yaw: number; age: number } | null = null;
   /** On a guest driving the giant: what was last sent, and how long ago. */
@@ -123,6 +125,7 @@ export class JotunnMode {
     const foes = jotunnBots(sim, { reaction: deps.reaction });
     this.brains = guest ? null : { giant: fair.giant, god: (m, u) => (m.giantPlayer.id !== null ? foes : fair).god(m, u) };
     this.mode = new Jotunn(sim, players, { order, brains: this.brains ?? undefined });
+    this.calls = guest ? null : new WardenCalls(sim, this.mode);
     const mode = this.mode;
     mode.onRound = (p) => this.round(p);
     // the same units on every end: the gods in roster order, the giant's parts by name
@@ -257,6 +260,7 @@ export class JotunnMode {
       this.steer(this.remote.yaw, this.remote.age < 0.5 ? this.remote.move : null, dt);
     }
     this.mode.step(dt);
+    this.calls?.step();
   }
 
   /** After the simulation's step: the camera's anchor follows the giant. */
