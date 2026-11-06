@@ -7,6 +7,7 @@ import { GroundDecal } from './GroundDecal';
 import { PitchLines } from './PitchLines';
 import { RushCrowd } from './RushCrowd';
 import { RelicView } from './Vfx';
+import { SIDE } from './palette';
 
 type Ground = (x: number, z: number) => number;
 
@@ -26,8 +27,9 @@ const LANDING = { near: 1.2, over: RUSH.relic.catchHeight + 0.4, ease: 10 };
  */
 const LAND = { depth: 0.7, rate: 9, damp: 4.2, time: 1.2 } as const;
 
-const ALLY = { main: 0x4fb2ff, core: 0xe6f4ff };
-const FOE = { main: 0xff3524, core: 0xffe0c8 };
+// (the colorblind setting changes these in place)
+const ALLY = SIDE.ally;
+const FOE = SIDE.foe;
 const GOLD = { main: 0xffc23a, core: 0xfff2c4 };
 
 /** Each gate veil's own colors and how hard it glows, for the one material both share. */

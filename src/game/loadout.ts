@@ -4,14 +4,12 @@ import type { GodDef, SkillDef } from './types';
 export type Loadout = readonly [string, string, string, string];
 export const ULTIMATE_SLOT = 3;
 export const SLOT_COUNT = 4;
-export const SLOT_KEYS = ['1', '2', '3', '4'] as const;
-/** Keyboard codes per slot. The ultimate also answers to R, the old key. */
-export const SLOT_CODES: readonly (readonly string[])[] = [['Digit1'], ['Digit2'], ['Digit3'], ['Digit4', 'KeyR']];
-
-/** The slot a keyboard code casts, or -1. */
-export function slotForCode(code: string): number {
-  return SLOT_CODES.findIndex((codes) => codes.includes(code));
-}
+/**
+ * Each slot's key as the action bar and menus print it. The player can rebind
+ * the slots (src/settings/bindings.ts), which rewrites these in place, so read
+ * them when drawing rather than copying them.
+ */
+export const SLOT_KEYS: string[] = ['1', '2', '3', '4'];
 
 /**
  * Bring any older or malformed loadout to the 3 + 1 shape: three regular

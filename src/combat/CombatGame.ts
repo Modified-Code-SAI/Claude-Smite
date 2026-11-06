@@ -5,7 +5,9 @@ import type { Updatable } from '../core/Loop';
 import type { CastError } from '../game/combatant';
 import { GODS, godById } from '../game/gods';
 import type { GodDef } from '../game/types';
-import { SLOT_CODES, ULTIMATE_SLOT } from '../game/loadout';
+import { ULTIMATE_SLOT } from '../game/loadout';
+import { PICK_ACTIONS, SLOT_ACTIONS, type Action } from '../settings/bindings';
+import { settings } from '../settings/store';
 import { FAVOR_THRESHOLDS, XP_TABLE } from '../game/progression';
 import type { PlayerController } from '../player/PlayerController';
 import type { CameraShot } from '../player/ThirdPersonCamera';
@@ -21,7 +23,7 @@ import { LoadoutMenu } from '../ui/LoadoutMenu';
 import { BuildBook, fittingBuild, spendAlong, startingPointsLine } from '../game/builds';
 import { MatchHud } from '../ui/MatchHud';
 import { GroundDecal, type DecalShape } from './GroundDecal';
-import { paletteFor } from './palette';
+import { paletteFor, SIDE } from './palette';
 import type { StructureModel } from './structures';
 import { UnitViews } from './UnitViews';
 import { BuffAuras } from './BuffAuras';
@@ -166,7 +168,7 @@ export class CombatGame implements Updatable {
   private readonly builds: BuildBook;
   private readonly body: Body;
   private readonly bases: Record<'order' | 'chaos', BaseZone>;
-  private preview: { slot: number; code: string } | null = null;
+  private preview: { slot: number; action: Action } | null = null;
   private readonly shapeDecal: GroundDecal;
   private readonly rangeDecal: GroundDecal;
   private suppressBasic = false;
@@ -834,22 +836,22 @@ export class CombatGame implements Updatable {
     this.updateReticle();
 
     // the giant has no skill trees to grow
-    if (input.wasPressed('KeyK') && !this.jotunnMode?.piloting) this.toggleMenu();
+    if (input.actionPressed('skills') && !this.jotunnMode?.piloting) this.toggleMenu();
     // a taunt: your god says something cutting, and everyone near hears it (the giant has no words)
-    if (input.wasPressed('KeyV') && this.inFight && !this.jotunnMode?.piloting) {
+    if (input.actionPressed('taunt') && this.inFight && !this.jotunnMode?.piloting) {
       if (this.netGuest) this.netGuest.taunt();
       else this.sim.taunt(this.player);
     }
     if (this.siege?.offer) {
-      const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
+      const pick = input.pressedIndex(PICK_ACTIONS);
       if (pick >= 0) this.takeBoon(pick);
     }
     if (this.duel?.offer) {
-      const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
+      const pick = input.pressedIndex(PICK_ACTIONS);
       if (pick >= 0) this.takeDuelBoon(pick);
     }
     if (this.descent?.phase === 'reward' || this.descent?.phase === 'draft') {
-      const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
+      const pick = input.pressedIndex(PICK_ACTIONS);
       if (pick >= 0) this.descentMode?.pick(pick);
     }
     if (this.menu.isOpen && input.wasPressed('Escape')) this.menu.close();
@@ -882,7 +884,7 @@ export class CombatGame implements Updatable {
 
     this.views.frame(this.sim.units, dt, alpha, time);
     this.pings.frame(dt);
-    this.matchHud?.frame(dt, this.sim.units, input.isDown('Tab'));
+    this.matchHud?.frame(dt, this.sim.units, input.actionDown('scoreboard'));
     this.clashHud?.frame(dt);
     this.siegeHud?.frame();
     this.duelHud?.frame();
@@ -910,13 +912,13 @@ export class CombatGame implements Updatable {
     if (this.plazaRing && this.clash) {
       const state = this.clash.plaza;
       const [main, core] =
-        state === 'contested' ? [0xffe08a, 0xffffff] : state === 'neutral' ? [0xd9a845, 0xfff0c0] : state === this.player.team ? [0x4fb2ff, 0xe6f4ff] : [0xff3524, 0xffe0c8];
+        state === 'contested' ? [0xffe08a, 0xffffff] : state === 'neutral' ? [0xd9a845, 0xfff0c0] : state === this.player.team ? [SIDE.ally.main, SIDE.ally.core] : [SIDE.foe.main, SIDE.foe.core];
       // during the blessing the ring's core flickers gold
       const blessed = this.clash.blessing > 0 && Math.sin(time * 8) > 0;
       this.plazaRing.setColors(main, blessed ? 0xffd34a : core);
       const relic = this.clash.relic;
       const mine = relic?.claimer === this.player.team;
-      this.relicView?.set(relic, CLASH.relic.radius, relic?.progress ?? 0, time, mine ? 0x4fb2ff : 0xff3524, mine ? 0xe6f4ff : 0xffe0c8);
+      this.relicView?.set(relic, CLASH.relic.radius, relic?.progress ?? 0, time, mine ? SIDE.ally.main : SIDE.foe.main, mine ? SIDE.ally.core : SIDE.foe.core);
     }
     // the end screens take the place of your god's bars and skills
     if (this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner) this.hud.setVisible(false);
@@ -994,7 +996,7 @@ export class CombatGame implements Updatable {
     const input = this.deps.input;
     const u = this.player;
 
-    if (input.wasPressed('KeyB') && !this.jotunnMode?.piloting) {
+    if (input.actionPressed('recall') && !this.jotunnMode?.piloting) {
       if (this.netGuest) {
         if (u.alive && u.recall <= 0 && !u.combatant.inBase) {
           this.netGuest.recall();
@@ -1005,17 +1007,16 @@ export class CombatGame implements Updatable {
 
     // a Relic Rush carrier can't fight: their click throws the relic instead
     const carrying = this.rushMode?.carrying ?? false;
-    if (this.rushMode && !carrying && input.wasPressed('KeyF')) this.rushMode.call();
+    if (this.rushMode && !carrying && input.actionPressed('callPass')) this.rushMode.call();
     if (carrying) {
       this.cancelPreview();
-      if (input.wasPressed('Mouse0') && input.locked) this.rushMode!.throw();
-      if (input.wasPressed('Space')) this.rushMode!.juke();
+      if (input.actionPressed('attack') && input.locked) this.rushMode!.throw();
+      if (input.actionPressed('jump')) this.rushMode!.juke();
       this.suppressBasic = true;
     }
 
-    SLOT_CODES.forEach((codes, slot) => {
-      const code = codes.find((c) => input.wasPressed(c));
-      if (!code) return;
+    SLOT_ACTIONS.forEach((action, slot) => {
+      if (!input.actionPressed(action)) return;
       if (carrying) {
         this.hud.deny(slot);
         this.hud.toast('Carrying the relic: no skills. Left click passes it, Space jukes.', 'warn');
@@ -1032,20 +1033,21 @@ export class CombatGame implements Updatable {
       }
       const t = u.combatant.resolve(slot).targeting;
       // self casts fire at once; everything else shows where it will land first
-      if (t.type === 'self') this.castSlot(slot);
-      else this.preview = { slot, code };
+      // (quick cast fires every skill at the crosshair the moment its key goes down)
+      if (t.type === 'self' || settings().quickCast) this.castSlot(slot);
+      else this.preview = { slot, action };
     });
 
     if (this.preview) {
-      if (input.isMouseDown(2)) this.cancelPreview();
-      else if (input.isMouseDown(0) && input.locked) {
+      if (input.actionDown('cancel')) this.cancelPreview();
+      else if (input.actionDown('attack') && input.locked) {
         this.castSlot(this.preview.slot);
         this.suppressBasic = true;
-      } else if (!input.isDown(this.preview.code)) this.castSlot(this.preview.slot);
+      } else if (!input.actionDown(this.preview.action)) this.castSlot(this.preview.slot);
     }
 
-    if (!input.isMouseDown(0)) this.suppressBasic = false;
-    this.basicHeld = !this.preview && !this.suppressBasic && input.locked && input.isMouseDown(0) && u.alive;
+    if (!input.actionDown('attack')) this.suppressBasic = false;
+    this.basicHeld = !this.preview && !this.suppressBasic && input.locked && input.actionDown('attack') && u.alive;
     if (this.basicHeld && !this.netGuest) this.sim.basic(u);
   }
 

@@ -404,7 +404,7 @@ describe('3 + 1 action bar', () => {
   });
 
   it('casts the ultimate from 4 or R', async () => {
-    const { slotForCode } = await import('./loadout');
+    const { slotForCode } = await import('../settings/store');
     expect(slotForCode('Digit4')).toBe(3);
     expect(slotForCode('KeyR')).toBe(3);
     expect(slotForCode('Digit5')).toBe(-1);

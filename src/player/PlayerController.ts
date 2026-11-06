@@ -39,6 +39,8 @@ export class PlayerController implements Updatable {
   private readonly localDir = new THREE.Vector2();
   private verticalSpeed = 0;
   mouseSensitivity = 0.0022;
+  /** Mouse up looks down (Settings > Controls). */
+  invertY = false;
 
   constructor(
     private readonly input: Input,
@@ -69,14 +71,15 @@ export class PlayerController implements Updatable {
   look(): void {
     const d = this.input.consumeMouseDelta();
     this.yaw -= d.x * this.mouseSensitivity;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + d.y * this.mouseSensitivity, -0.35, 1.05);
+    this.pitch = THREE.MathUtils.clamp(this.pitch + (this.invertY ? -d.y : d.y) * this.mouseSensitivity, -0.35, 1.05);
   }
 
   update(dt: number): void {
     const i = this.input;
     const free = this.movement?.canMove ?? true;
-    const f = free ? (i.isDown('KeyW') ? 1 : 0) - (i.isDown('KeyS') ? 1 : 0) : 0;
-    const r = free ? (i.isDown('KeyD') ? 1 : 0) - (i.isDown('KeyA') ? 1 : 0) : 0;
+    const axes = i.moveAxes();
+    const f = free ? axes.forward : 0;
+    const r = free ? axes.right : 0;
     this.localDir.set(r, f);
     if (this.localDir.lengthSq() > 1) this.localDir.normalize();
 
@@ -93,7 +96,7 @@ export class PlayerController implements Updatable {
     this.velocity.x += (wx - this.velocity.x) * k;
     this.velocity.z += (wz - this.velocity.z) * k;
 
-    if (free && (this.movement?.canJump ?? true) && this.grounded && i.wasPressed('Space')) {
+    if (free && (this.movement?.canJump ?? true) && this.grounded && i.actionPressed('jump')) {
       this.verticalSpeed = 5.2;
       this.grounded = false;
     }
