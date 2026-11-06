@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anubis, kukulkan, loki, odin, thanatos, thor, zeus } from '../game/gods';
+import { anubis, cthulhu, kukulkan, loki, odin, thanatos, thor, zeus } from '../game/gods';
 import type { GodDef } from '../game/types';
 import { godUnit } from './factory';
 import { conquestBases } from './Match';
@@ -168,5 +168,32 @@ describe('god passives', () => {
     c.receiveCC('stun', 3);
     sim.strike(t, k, 1, 'true');
     expect(c.cc.has('stun')).toBe(false);
+  });
+
+  it('Cthulhu: a fifth of every hit he takes flows back over four seconds', () => {
+    const sim = setup();
+    const k = place(sim, cthulhu, 'order', 0, 0);
+    const t = place(sim, thor, 'chaos', 0, -2);
+    k.brain = null;
+    t.brain = null;
+    const c = k.combatant;
+    const gain = (seconds: number): number => {
+      const before = c.health;
+      for (let i = 0; i < seconds * 60; i++) sim.step(1 / 60);
+      return c.health - before;
+    };
+    c.health = c.stats.maxHealth * 0.5;
+    const regen = gain(4);
+    c.health = c.stats.maxHealth * 0.5;
+    sim.strike(t, k, 300, 'true');
+    // gradual, not all at once: about half of it in the first two seconds
+    const early = gain(2) - regen / 2;
+    expect(early).toBeGreaterThan(25);
+    expect(early).toBeLessThan(35);
+    const total = early + gain(2.5) - regen * (2.5 / 4);
+    expect(total).toBeGreaterThan(57);
+    expect(total).toBeLessThan(63);
+    // and nothing more once it has all flowed back
+    expect(Math.abs(gain(2) - regen / 2)).toBeLessThan(2);
   });
 });

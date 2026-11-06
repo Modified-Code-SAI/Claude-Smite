@@ -33,6 +33,8 @@ export const GOD_VOICES: Record<string, Voice> = {
   // soft, unhurried and close, a faint second voice under it
   thanatos: { pitch: 118, throat: 0.98, growl: 0, breath: 0.3, voices: 2 },
   kukulkan: { pitch: 104, throat: 1.02, growl: 0.05, breath: 0.35, voices: 2 },
+  // vast and wet, from very far down, several throats at once
+  cthulhu: { pitch: 62, throat: 0.76, growl: 0.22, breath: 0.4, voices: 3 },
 };
 
 type Vowel = keyof typeof VOWELS;

@@ -33,6 +33,8 @@ CAST = {
     'thanatos': dict(voice={'bm_george': 0.5, 'am_echo': 0.5}, lang='en-gb', speed=0.9, semitones=-1.5, room=(1.4, 0.14), grit=0.0, breath=0.05, double=0.08),
     # Kukulkan: a priest-king's measured voice in a stone temple, with a serpent's breath under it
     'kukulkan': dict(voice={'am_liam': 0.45, 'am_onyx': 0.55}, lang='en-us', speed=0.88, semitones=-2.5, room=(1.8, 0.18), grit=0.0, breath=0.12, double=0.1),
+    # Cthulhu: slow and enormous, a drowned cathedral of a room, a second voice under the first
+    'cthulhu': dict(voice={'bm_lewis': 0.5, 'am_onyx': 0.5}, lang='en-gb', speed=0.84, semitones=-4.5, room=(2.0, 0.2), grit=0.12, breath=0.1, double=0.35),
     # the Jötunn: far deeper than any god (the drop slows it too), hollow, in a hall of ice
     'jotunn': dict(voice={'am_onyx': 0.65, 'am_fenrir': 0.35}, lang='en-us', speed=1.0, semitones=-5.5, room=(2.2, 0.2), grit=0.18, breath=0.04, double=0.3),
 }
