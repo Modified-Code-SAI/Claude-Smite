@@ -267,6 +267,17 @@ describe('skill shapes', () => {
     expect(damaged(run(sim, 0.2), spot)).toHaveLength(0);
     const later = run(sim, 1);
     expect(damaged(later, spot)).toHaveLength(1);
+    // (on the foe standing there: beside them, not inside)
+    expect(Math.hypot(t.x - 0, t.z + 10)).toBeGreaterThanOrEqual(t.radius + spot.radius - 0.01);
+    expect(Math.hypot(t.x - 0, t.z + 10)).toBeLessThan(t.radius + spot.radius + 0.5);
+  });
+
+  it('a leap onto open ground lands where it was aimed', () => {
+    const sim = setup();
+    const t = god(sim, thor, 'order', 0, 0);
+    target(sim, 6, -10);
+    castAt(sim, t, 'thor.tempest-leap', 0, -10);
+    run(sim, 1.2);
     expect(Math.hypot(t.x - 0, t.z + 10)).toBeLessThan(0.5);
   });
 
@@ -320,6 +331,73 @@ describe('skill shapes', () => {
     expect(sim.units).toHaveLength(3);
     run(sim, 8.5);
     expect(sim.units).toHaveLength(1);
+  });
+});
+
+describe('gods blocking gods', () => {
+  /** Walks `u` along `dir` for `seconds`, returning the closest it came to `other`. */
+  function walkPast(sim: Sim, u: Unit, other: Unit, dir: { x: number; z: number }, seconds: number): number {
+    let closest = Infinity;
+    for (let t = 0; t < seconds; t += 1 / 60) {
+      u.move = dir;
+      sim.step(1 / 60);
+      closest = Math.min(closest, Math.hypot(u.x - other.x, u.z - other.z));
+    }
+    return closest;
+  }
+
+  it('a god walking straight at an enemy god goes round them instead of through', () => {
+    const sim = setup();
+    const z = god(sim, zeus, 'order', 0, 0);
+    const foe = target(sim, 0, -4);
+    const closest = walkPast(sim, z, foe, { x: 0, z: -1 }, 2.5);
+    expect(closest).toBeGreaterThanOrEqual(z.radius + foe.radius - 0.01);
+    // round, and on past
+    expect(z.z).toBeLessThan(foe.z - 1);
+    expect(foe.x).toBe(0);
+    expect(foe.z).toBe(-4);
+  });
+
+  it('allies still walk through each other', () => {
+    const sim = setup();
+    const z = god(sim, zeus, 'order', 0, 0);
+    const mate = target(sim, 0, -4, 'order');
+    expect(walkPast(sim, z, mate, { x: 0, z: -1 }, 2.5)).toBeLessThan(0.3);
+  });
+
+  it('a god walking into an enemy god with a wall behind them never shoves them or ends up inside them or the wall', () => {
+    const sim = setup(walled(6));
+    const z = god(sim, zeus, 'order', 5.2, 0);
+    const foe = target(sim, 3, 0);
+    for (let t = 0; t < 1.5; t += 1 / 60) {
+      foe.move = { x: 1, z: 0 };
+      sim.step(1 / 60);
+      expect(Math.hypot(z.x - foe.x, z.z - foe.z)).toBeGreaterThanOrEqual(z.radius + foe.radius - 0.01);
+      expect(foe.x).toBeLessThanOrEqual(6 - foe.radius + 1e-6);
+    }
+    expect(z.x).toBe(5.2);
+    expect(z.z).toBe(0);
+  });
+
+  it('a dash runs through the enemy gods in its way and stops clear of one at its end', () => {
+    const sim = setup();
+    const o = god(sim, odin, 'order', 0, 0);
+    const mid = target(sim, 0, -4);
+    const end = target(sim, 0, -6 * WORLD_SCALE);
+    castAt(sim, o, 'odin.lunge', 0, -30);
+    const events = run(sim, 1);
+    expect(damaged(events, mid)).toHaveLength(1);
+    expect(damaged(events, end)).toHaveLength(1);
+    expect(o.z).toBeLessThan(mid.z);
+    expect(Math.hypot(o.x - end.x, o.z - end.z)).toBeGreaterThanOrEqual(o.radius + end.radius - 0.01);
+  });
+
+  it('without foesBlock (the Jötunn mode) enemy gods pass through each other', () => {
+    const sim = setup();
+    sim.foesBlock = false;
+    const z = god(sim, zeus, 'order', 0, 0);
+    const foe = target(sim, 0, -4);
+    expect(walkPast(sim, z, foe, { x: 0, z: -1 }, 2.5)).toBeLessThan(0.3);
   });
 });
 
