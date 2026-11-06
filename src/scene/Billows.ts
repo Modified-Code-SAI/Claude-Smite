@@ -17,6 +17,10 @@ export interface BillowOptions {
   delay?: number;
   /** Hot and cool ends of the flame ramp, for sheets with flame (default orange to pale gold). */
   flame?: [number, number];
+  /** How much light the smoke gives back, times its tint (default 1): above 1 for snow and steam. */
+  bright?: number;
+  /** How solid the cloud is, 0..1 (default 1). */
+  opacity?: number;
 }
 
 /** Billows each sheet can play at once; the oldest is reused past that. */
@@ -60,8 +64,8 @@ export class Billows {
     const duration = o.duration ?? 2;
     k.at.setXYZW(i, x, y, z, size);
     k.life.setXYZW(i, start, duration, Math.random() * 100, o.rise ?? 0);
-    const c = new THREE.Color(o.tint ?? 0x8c847a);
-    k.tint.setXYZW(i, c.r, c.g, c.b, 1);
+    const c = new THREE.Color(o.tint ?? 0x8c847a).multiplyScalar(o.bright ?? 1);
+    k.tint.setXYZW(i, c.r, c.g, c.b, o.opacity ?? 1);
     // both ends of the flame ramp as 0xRRGGBB numbers (exact in a float32)
     const [hot, cool] = o.flame ?? [0xff5a14, 0xffd890];
     k.flame.setXYZW(i, hot, cool, 0, 0);
@@ -150,7 +154,7 @@ function billowMaterial(sheet: BillowSheet, now: any): THREE.SpriteNodeMaterial 
   // late dust frames rise out of the top of their frame: fade every border so a big card never shows a straight edge
   const edge = smoothstep(0, 0.1, min(fu, float(1).sub(fu))).mul(smoothstep(0, 0.05, u.y)).mul(smoothstep(0, 0.2, float(1).sub(u.y)));
   const fade = float(1).sub(t.pow(3)).mul(alive).mul(edge);
-  const a = s.alpha.mul(fade);
+  const a = s.alpha.mul(fade).mul(tint.w);
   const hot = hexColor(flame.x);
   const cool = hexColor(flame.y);
   // (heat^1.25 keeps the cooler folds of a fireball dark between its hot rolls)
