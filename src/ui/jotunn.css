@@ -9,6 +9,9 @@
 .jt-lag, .jt-fill { position: absolute; left: 0; top: 0; bottom: 0; }
 .jt-lag { background: rgba(230, 248, 255, 0.55); }
 .jt-fill { background: linear-gradient(180deg, #bff0ff 0%, #4fcfff 45%, #1d6fb8 100%); box-shadow: 0 0 12px rgba(79, 207, 255, 0.8); transition: width 0.12s linear; }
+/* the last stand: a cold light pulses through the Might that is left (opacity only, so it costs no layout or paint) */
+.jotunn.jt-stand .jt-fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(190, 240, 255, 0.35)); opacity: 0; animation: jt-stand 1.4s ease-in-out infinite; }
+@keyframes jt-stand { 50% { opacity: 1; } }
 .jt-pct { position: absolute; inset: 0; display: grid; place-items: center; font: 700 9px/1 system-ui, sans-serif; letter-spacing: 0.14em; color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
 .jt-parts { display: flex; gap: 6px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85)); }
 .jt-part { --hp: 1; position: relative; width: 20px; height: 20px; display: grid; place-items: center; font-style: normal; clip-path: polygon(50% 0, 100% 30%, 100% 70%, 50% 100%, 0 70%, 0 30%); background: linear-gradient(180deg, #2a4a66, #13263a); transition: transform 0.15s, filter 0.2s; }

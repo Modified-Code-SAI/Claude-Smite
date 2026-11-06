@@ -5,7 +5,7 @@ import { basicAttackRaw, computeDamage } from '../game/combat';
 import { ULTIMATE_SLOT } from '../game/loadout';
 import { XP_TABLE } from '../game/progression';
 import { godUnit } from './factory';
-import { isGiant, Jotunn, JOTUNN, PARTS, partMult, SHRINES, weakHeft } from './Jotunn';
+import { isGiant, Jotunn, JOTUNN, lastStand, PARTS, partMult, SHRINES, weakHeft } from './Jotunn';
 import { escape, jotunnBots } from './JotunnBots';
 import { Sim, type SimTerrain } from './Sim';
 import type { Flash, Unit } from './Unit';
@@ -257,6 +257,29 @@ describe('Jötunn', () => {
     expect(g.combatant.canCast(ULTIMATE_SLOT)).toBeNull();
     expect(mode.shrines[1]!.dormant).toBeGreaterThan(0);
     expect(g.combatant.stats.damageBonus).toBeCloseTo(JOTUNN.shrineDamage);
+  });
+
+  it('comes to a last stand one brazier from the giant\'s win, or with its Might nearly spent', () => {
+    const { mode, run, g } = setup();
+    expect(lastStand(mode)).toBe(false);
+    run(JOTUNN.countdown + 0.1);
+    expect(mode.phase).toBe('fight');
+    expect(lastStand(mode)).toBe(false);
+    const c = g.combatant;
+    const might = c.health;
+    c.health = c.stats.maxHealth * (JOTUNN.lastStand - 0.01);
+    expect(lastStand(mode)).toBe(true);
+    c.health = might;
+    // one brazier smashed is not yet the brink; two (with three to win) is
+    const smash = (b: Unit) => {
+      b.combatant.health = 0;
+      b.combatant.alive = false;
+    };
+    smash(mode.braziers[0]!);
+    expect(lastStand(mode)).toBe(false);
+    smash(mode.braziers[1]!);
+    expect(mode.braziersLeft).toBe(JOTUNN.braziers.length - JOTUNN.braziersToWin + 1);
+    expect(lastStand(mode)).toBe(true);
   });
 
   it('only the giant\'s club breaks braziers; three broken win the round, and the next round you are the giant', () => {

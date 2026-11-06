@@ -58,6 +58,8 @@ export const JOTUNN = {
   /** Each claimed shrine: more damage for the rest of the round, and some Might back. */
   shrineDamage: 0.08,
   shrineHeal: 0.06,
+  /** The giant's Might, as a share, under which the fight comes to its last stand (see lastStand). */
+  lastStand: 0.25,
   giantSpawn: { x: 0, z: -64, yaw: Math.PI },
   godSpawns: [
     { x: 0, z: 36, yaw: 0 },
@@ -129,6 +131,17 @@ export function isGiant(u: Unit): boolean {
  */
 export function weakHeft(u: Unit, amount: number): number {
   return u.kind === 'weakpoint' ? (amount * partMult(u)) / 1500 : 0;
+}
+
+/**
+ * Whether a round's fight has come to its last stand: one more brazier wins
+ * the giant the temple, or its Might is nearly spent. (A shrine's Might can
+ * lift it back over the line, so what follows it holds it for the round.)
+ */
+export function lastStand(m: Pick<Jotunn, 'phase' | 'braziersLeft' | 'giant'>): boolean {
+  if (m.phase !== 'fight') return false;
+  const c = m.giant.combatant;
+  return m.braziersLeft <= JOTUNN.braziers.length - JOTUNN.braziersToWin + 1 || c.health < c.stats.maxHealth * JOTUNN.lastStand;
 }
 
 export interface ShrineDef {

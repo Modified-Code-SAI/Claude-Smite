@@ -1,5 +1,5 @@
 import type { CineKind } from '../combat/jotunnCine';
-import { JOTUNN, PART_IDS, PARTS, type Jotunn, type PartId } from '../sim/Jotunn';
+import { JOTUNN, lastStand, PART_IDS, PARTS, type Jotunn, type PartId } from '../sim/Jotunn';
 import type { SimEvent, Unit } from '../sim/Unit';
 import { awardLine } from './ascension';
 import { clockText, jotunnAwards, mightText, type JotunnAwardKey } from './jotunnAwards';
@@ -55,6 +55,8 @@ export class JotunnHud {
   private idleFor = 0;
   private readonly last: Record<string, string> = {};
   private shownEnd = false;
+  /** The round whose fight came to its last stand (held once it does, as the music is). */
+  private standRound = 0;
 
   constructor(
     private readonly mode: Jotunn,
@@ -184,6 +186,10 @@ export class JotunnHud {
     this.set('round', `${m.round}/${m.rounds}`, () => (this.round.textContent = `ROUND ${m.round} / ${m.rounds}`));
     this.set('who', `${mine}:${m.giantPlayer.name}`, () => (this.who.textContent = mine ? 'You are the Jötunn' : `${m.giantPlayer.name} is the Jötunn`));
     this.root.classList.toggle('as-giant', mine);
+    // the last stand: the Might bar pulses with a cold light for the rest of the round
+    if (lastStand(m)) this.standRound = m.round;
+    const stand = this.standRound === m.round && m.phase === 'fight';
+    this.root.classList.toggle('jt-stand', stand);
 
     // Might: the bar falls at once, the pale lag behind it follows
     const hp = g.alive ? g.combatant.health / g.combatant.stats.maxHealth : 0;
@@ -238,6 +244,11 @@ export class JotunnHud {
       } else if (m.planted) {
         text = mine ? 'Your fist is planted: the wrist is open' : 'Its fist is planted: break the wrist!';
         tone = 'contested';
+      } else if (stand) {
+        const brink = m.braziersLeft <= JOTUNN.braziers.length - JOTUNN.braziersToWin + 1;
+        if (brink) text = mine ? 'One more brazier and the temple is yours' : 'One more brazier and the temple falls: hold it!';
+        else text = mine ? 'Your Might is failing: smash the braziers!' : 'Its Might is failing: bring it down!';
+        tone = mine === brink ? 'order' : 'chaos';
       } else if (m.fury > 0) {
         text = `The Jötunn's fury grows: +${Math.round(m.fury * 100)}% damage`;
         tone = 'chaos';
