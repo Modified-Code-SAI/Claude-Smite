@@ -4,6 +4,7 @@ import type { Team } from '../../map/ConquestLayout';
 import { dot, mix, vec3 } from '../../render/tsl';
 import { columnCapital, flutedShaft, roundedBox } from '../Architecture';
 import type { MaterialLibrary } from '../Materials';
+import { Collapse, collapseAsset, collapseLibrary, type CollapseAsset } from './collapse';
 import { agedMarble, clamp01, crackedStone, ease, mergeStatic, Rubble, shieldMesh, showWear, TEAM_STYLE, TeamMaterials, wearUniforms } from './common';
 
 /** What every structure view exposes to the combat code. */
@@ -23,6 +24,8 @@ export interface StructureModel {
   setDestroyed(t: number): void;
   /** Height above the root that still blocks the follow camera: everything while standing, the rubble once fallen. */
   readonly solidTop: number;
+  /** Seconds `setDestroyed` takes to run from 0 to 1 (2.2 when not given). */
+  readonly fallTime?: number;
   /** `camera` lets a model spend less on animation far from the view. */
   update(dt: number, time: number, camera?: THREE.Camera): void;
 }
@@ -37,13 +40,38 @@ function frustum(bottom: number, top: number, y0: number, y1: number): THREE.Buf
   return flat;
 }
 
+const fallMaterials = new WeakMap<MaterialLibrary, Map<Team, Record<string, THREE.Material>>>();
+
+/** The tower's materials reading the collapse's rest pose, by the names bake.py gives them. One set per library and team. */
+function towerFall(asset: CollapseAsset, lib: MaterialLibrary, team: Team): Record<string, THREE.Material> {
+  const rest = collapseLibrary(asset, lib.textures);
+  let byTeam = fallMaterials.get(rest);
+  if (!byTeam) fallMaterials.set(rest, (byTeam = new Map()));
+  let m = byTeam.get(team);
+  if (!m) {
+    const style = TEAM_STYLE[team];
+    const tm = new TeamMaterials(rest, style);
+    m = {
+      towerStone: crackedStone(limestone(rest), style.glow, asset.space),
+      agedMarble: agedMarble(rest),
+      trim: tm.trim,
+      runes: tm.runes,
+      banner: tm.banner,
+      crystal: tm.crystal,
+      bronze: team === 'order' ? rest.bronze : tm.trim,
+    };
+    byTeam.set(team, m);
+  }
+  return m;
+}
+
 const limestones = new WeakMap<MaterialLibrary, THREE.MeshStandardNodeMaterial>();
 
 /**
  * Pale, sun-bleached limestone rather than orange sandstone, so the gold trim
  * and team colors carry the tower. One per library, shared by every tower.
  */
-function limestone(lib: MaterialLibrary): THREE.MeshStandardNodeMaterial {
+export function limestone(lib: MaterialLibrary): THREE.MeshStandardNodeMaterial {
   let m = limestones.get(lib);
   if (!m) {
     m = lib.sandstone.clone() as THREE.MeshStandardNodeMaterial;
@@ -65,12 +93,16 @@ export class TowerModel implements StructureModel {
   get solidTop(): number {
     return this.destroyed > 0.5 ? 1.2 : Infinity;
   }
+  /** The baked collapse's length, or the old sink's. */
+  readonly fallTime: number;
   readonly muzzle = new THREE.Object3D();
   private readonly upper = new THREE.Group();
   private readonly crystal: THREE.Mesh;
   private readonly light: THREE.PointLight;
   private readonly shield: THREE.Mesh;
   private readonly rubble: Rubble;
+  /** The baked fall (tools/collapse), when it loaded; the keep sinks into the rubble without it. */
+  private readonly fall: Collapse | null;
   private readonly wear = wearUniforms();
   private readonly seed: number;
   private fire = 0;
@@ -174,8 +206,12 @@ export class TowerModel implements StructureModel {
     this.root.add(this.shield);
     this.rubble = new Rubble(4.2, 22, [stone, marble, lib.sandstone], 300 + seed);
     this.root.add(this.rubble.group);
+    const asset = collapseAsset('tower');
+    this.fall = asset ? new Collapse(asset, towerFall(asset, lib, team), { damage: 0 }) : null;
+    this.fallTime = asset ? asset.duration : 2.2;
+    if (this.fall) this.root.add(this.fall.mesh);
     mergeStatic(this.upper, [this.crystal]);
-    mergeStatic(this.root, [this.upper, this.shield, this.rubble.group]);
+    mergeStatic(this.root, [this.upper, this.shield, this.rubble.group, ...(this.fall ? [this.fall.mesh] : [])]);
     showWear(this.root, stone, this.wear);
   }
 
@@ -190,10 +226,18 @@ export class TowerModel implements StructureModel {
   setDamage(d: number): void {
     this.dmg = clamp01(d);
     this.wear.damage = this.dmg;
+    if (this.fall) this.fall.values.damage = this.dmg;
   }
 
   setDestroyed(t: number): void {
     this.destroyed = clamp01(t);
+    if (this.fall) {
+      // the keep breaks into its baked blocks, which fall and stay as the rubble
+      this.upper.visible = this.destroyed <= 0;
+      this.fall.play(this.destroyed > 0 ? this.destroyed * this.fallTime : null);
+      if (this.destroyed > 0) this.shield.visible = false;
+      return;
+    }
     // The upper keep sinks and leans as it collapses into the rubble.
     const fall = ease(this.destroyed * 1.25);
     const r = rng(this.seed);

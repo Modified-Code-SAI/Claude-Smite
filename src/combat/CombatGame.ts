@@ -294,6 +294,7 @@ export class CombatGame implements Updatable {
       (u) => this.jotunnMode?.view.viewFor(u),
     );
     this.views.camera = deps.camera;
+    this.views.billows = world.billows;
     world.actors.add(this.views.group);
     this.setPlayerModel(mine.id);
 

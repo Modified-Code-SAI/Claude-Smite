@@ -7,7 +7,7 @@ import { objectUniforms, useUniforms } from '../../render/shared';
 import { rng } from '../../core/random';
 import type { Team } from '../../map/ConquestLayout';
 import { boulder, chippedBlock } from '../Architecture';
-import type { MaterialLibrary } from '../Materials';
+import { drawnSpace, type MaterialLibrary, type SurfaceSpace } from '../Materials';
 
 /** Team colors: Order is blue and gold, Chaos crimson and black. */
 export interface TeamStyle {
@@ -48,7 +48,7 @@ export class TeamMaterials {
       this.trim = lib.gold;
     } else {
       this.trim = new THREE.MeshStandardNodeMaterial();
-      const n = mx_noise_float(positionWorld.mul(3.1)).mul(0.5).add(0.5);
+      const n = mx_noise_float(lib.space.world.mul(3.1)).mul(0.5).add(0.5);
       this.trim.colorNode = mix(color(0x1a1414), color(0x3a2222), n);
       this.trim.metalnessNode = float(0.9);
       this.trim.roughnessNode = float(0.38).add(n.mul(0.2));
@@ -57,7 +57,7 @@ export class TeamMaterials {
     this.crystal = new THREE.MeshBasicNodeMaterial();
     this.crystal.colorNode = color(style.glow).mul(sin(time.mul(2.2)).mul(0.25).add(1.2)).mul(5);
     this.runes = new THREE.MeshBasicNodeMaterial();
-    this.runes.colorNode = color(style.glow).mul(sin(time.mul(1.3).add(positionWorld.x.mul(0.3))).mul(0.3).add(1)).mul(3);
+    this.runes.colorNode = color(style.glow).mul(sin(time.mul(1.3).add(lib.space.world.x.mul(0.3))).mul(0.3).add(1)).mul(3);
   }
 }
 
@@ -122,18 +122,19 @@ const cracked = new WeakMap<THREE.Material, Map<number, THREE.MeshStandardNodeMa
  * One per stone and glow color, shared by every structure that uses it; each
  * shows its own wear through `showWear`.
  */
-export function crackedStone(base: THREE.MeshStandardNodeMaterial, glow: number): THREE.MeshStandardNodeMaterial {
+export function crackedStone(base: THREE.MeshStandardNodeMaterial, glow: number, space: SurfaceSpace = drawnSpace): THREE.MeshStandardNodeMaterial {
   let byGlow = cracked.get(base);
   if (!byGlow) cracked.set(base, (byGlow = new Map()));
   let mat = byGlow.get(glow);
   if (mat) return mat;
   const { damage } = objectUniforms(wearUniforms());
   mat = base.clone();
-  const n = mx_noise_float(positionLocal.mul(1.3));
-  const n2 = mx_noise_float(positionLocal.mul(3.7).add(5));
+  const local = space.local;
+  const n = mx_noise_float(local.mul(1.3));
+  const n2 = mx_noise_float(local.mul(3.7).add(5));
   const line = smoothstep(0.06, 0.0, abs(n)).max(smoothstep(0.04, 0.0, abs(n2)).mul(0.7));
   // cracks spread as damage rises: the noise threshold widens with damage
-  const spread = smoothstep(float(1).sub(damage.mul(1.2)), float(1.05).sub(damage.mul(1.2)), mx_noise_float(positionLocal.mul(0.35)).mul(0.5).add(0.5));
+  const spread = smoothstep(float(1).sub(damage.mul(1.2)), float(1.05).sub(damage.mul(1.2)), mx_noise_float(local.mul(0.35)).mul(0.5).add(0.5));
   const crack = line.mul(spread).mul(step(0.01, damage));
   mat.colorNode = (base.colorNode as any).mul(float(1).sub(crack.mul(0.85)));
   mat.emissiveNode = color(glow).mul(crack).mul(damage).mul(1.5);
@@ -168,6 +169,8 @@ export class Rubble {
       this.group.add(mesh);
       this.pieces.push({ mesh, delay: (d / radius) * 0.4 });
     }
+    // drawn while loading (if only at a speck's size), so a fall builds no shader mid-match
+    this.group.userData.shownLater = true;
     this.setGrowth(0);
   }
 
@@ -188,7 +191,7 @@ export function agedMarble(lib: MaterialLibrary): THREE.MeshStandardNodeMaterial
   if (!m) {
     m = lib.marble.clone() as THREE.MeshStandardNodeMaterial;
     const base = lib.marble.colorNode as any;
-    const grime = mx_noise_float(positionWorld.mul(0.9)).mul(0.5).add(0.5);
+    const grime = mx_noise_float(lib.space.world.mul(0.9)).mul(0.5).add(0.5);
     // weathered, warm and a step darker than fresh marble, so it doesn't glare
     // white under the sun the way polished stone would
     m.colorNode = base.mul(vec3(0.66, 0.63, 0.58)).mul(mix(float(0.78), float(1.0), grime));

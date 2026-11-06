@@ -7,6 +7,7 @@ import type { Team } from '../../map/ConquestLayout';
 import { lathe } from '../Architecture';
 import { Fire } from '../Effects';
 import type { MaterialLibrary } from '../Materials';
+import { Collapse, collapseAsset, collapseLibrary, type CollapseAsset } from './collapse';
 import { agedMarble, clamp01, crackedStone, ease, mergeStatic, Rubble, shieldMesh, showWear, TEAM_STYLE, TeamMaterials, wearUniforms } from './common';
 import type { StructureModel } from './TowerModel';
 
@@ -23,15 +24,20 @@ function feather(length: number, width: number): THREE.BufferGeometry {
 const birdUniforms = () => ({ heat: 1 });
 const birdMaterials = new Map<Team, THREE.MeshStandardNodeMaterial>();
 
-/** The bird: gilded body whose feathers burn toward their tips. One per team, shared by its Phoenixes. */
-function birdMaterial(team: Team): THREE.MeshStandardNodeMaterial {
-  let mat = birdMaterials.get(team);
+/**
+ * The bird: gilded body whose feathers burn toward their tips. One per team,
+ * shared by its Phoenixes (and one more per team for its collapse, which
+ * reads the bird's rest pose as `local`).
+ */
+function birdMaterial(team: Team, local?: any): THREE.MeshStandardNodeMaterial {
+  let mat = local ? undefined : birdMaterials.get(team);
   if (mat) return mat;
+  const p = local ?? positionLocal;
   const { heat } = objectUniforms(birdUniforms());
   const fire = TEAM_STYLE[team].fire;
   mat = new THREE.MeshStandardNodeMaterial();
-  const tip = smoothstep(0.4, 2.4, positionLocal.y.abs().add(positionLocal.z.abs().mul(0.6)));
-  const flow = mx_noise_float(vec3(positionLocal.x.mul(1.8), positionLocal.y.mul(1.8).sub(time.mul(1.4)), positionLocal.z.mul(1.8))).mul(0.5).add(0.5);
+  const tip = smoothstep(0.4, 2.4, p.y.abs().add(p.z.abs().mul(0.6)));
+  const flow = mx_noise_float(vec3(p.x.mul(1.8), p.y.mul(1.8).sub(time.mul(1.4)), p.z.mul(1.8))).mul(0.5).add(0.5);
   const burn = pow(tip.mul(flow.mul(0.6).add(0.6)), float(1.3)).clamp(0, 1);
   const fireCol = mix(color(fire.low), color(fire.high), flow.mul(0.45));
   // gold stays gold until the flame takes over, so the two hues never mix into a pastel
@@ -40,8 +46,24 @@ function birdMaterial(team: Team): THREE.MeshStandardNodeMaterial {
   mat.metalnessNode = float(1).sub(flameW);
   mat.roughnessNode = float(0.3);
   mat.emissiveNode = fireCol.mul(flameW.mul(3.5).add(burn.mul(0.4))).mul(heat);
-  birdMaterials.set(team, mat);
+  if (!local) birdMaterials.set(team, mat);
   return mat;
+}
+
+const fallMaterials = new WeakMap<MaterialLibrary, Map<Team, Record<string, THREE.Material>>>();
+
+/** The bird's materials reading the collapse's rest pose, by the names bake.py gives them. One set per library and team. */
+function birdFall(asset: CollapseAsset, lib: MaterialLibrary, team: Team): Record<string, THREE.Material> {
+  const rest = collapseLibrary(asset, lib.textures);
+  let byTeam = fallMaterials.get(rest);
+  if (!byTeam) fallMaterials.set(rest, (byTeam = new Map()));
+  let m = byTeam.get(team);
+  if (!m) {
+    const tm = new TeamMaterials(rest, TEAM_STYLE[team]);
+    m = { bird: birdMaterial(team, asset.space.local), trim: tm.trim, crystal: tm.crystal };
+    byTeam.set(team, m);
+  }
+  return m;
 }
 
 /**
@@ -60,6 +82,10 @@ export class PhoenixModel implements StructureModel {
   private readonly fire: Fire;
   private readonly shield: THREE.Mesh;
   private readonly rubble: Rubble;
+  /** The baked burst (tools/collapse), when it loaded; the bird shrinks into the brazier without it. */
+  private readonly fall: Collapse | null;
+  /** The baked burst's length, or the old shrink's. */
+  readonly fallTime: number;
   private readonly wear = wearUniforms();
   private readonly burn = birdUniforms();
   private shot = 0;
@@ -161,9 +187,13 @@ export class PhoenixModel implements StructureModel {
     this.rubble = new Rubble(3.2, 12, [stone, lib.bronze], 500);
     this.rubble.group.position.y = 1.0;
     this.root.add(this.rubble.group);
+    const asset = collapseAsset('phoenix');
+    this.fall = asset ? new Collapse(asset, birdFall(asset, lib, team), { heat: 1 }) : null;
+    this.fallTime = asset ? asset.duration : 2.2;
+    if (this.fall) this.root.add(this.fall.mesh);
     for (const w of this.wings) mergeStatic(w);
     mergeStatic(this.bird, this.wings);
-    mergeStatic(this.root, [this.bird, this.fire.group, this.shield, this.rubble.group]);
+    mergeStatic(this.root, [this.bird, this.fire.group, this.shield, this.rubble.group, ...(this.fall ? [this.fall.mesh] : [])]);
     showWear(this.root, stone, this.wear);
     this.root.traverse((o) => {
       if ((o as THREE.Mesh).material === birdMat) useUniforms(this.burn, o);
@@ -200,6 +230,14 @@ export class PhoenixModel implements StructureModel {
   }
 
   private applyLife(): void {
+    if (this.fall) {
+      // the bird bursts into its baked feathers, which fall and burn away; rising, the same run backward
+      const dead = 1 - this.rebirth;
+      this.bird.visible = dead <= 0;
+      this.fall.play(dead > 0 && dead < 1 ? dead * this.fallTime : null);
+      this.fire.strength = 0.35 + 0.65 * ease(this.rebirth);
+      return;
+    }
     const life = ease(this.rebirth);
     this.bird.visible = life > 0.02;
     this.bird.scale.setScalar(Math.max(0.02, life) * this.birdScale);
@@ -213,6 +251,7 @@ export class PhoenixModel implements StructureModel {
     // A dying or rising Phoenix burns hotter.
     const flare = 1 + (1 - Math.abs(life * 2 - 1)) * 3 * (life < 1 && life > 0 ? 1 : 0);
     this.burn.heat = (1 + this.shot * 2.5) * flare;
+    if (this.fall) this.fall.values.heat = this.burn.heat;
     const flap = Math.sin(time * 1.4) * 0.22 + this.shot * 0.3;
     this.wings[0]!.rotation.set(0, 0, -flap);
     this.wings[1]!.rotation.set(0, 0, flap);

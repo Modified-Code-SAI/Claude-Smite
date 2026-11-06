@@ -12,3 +12,5 @@ __pycache__/
 
 # trailer build scratch (tools/trailer/README.md)
 tools/trailer/out/
+tools/vfx/out/
+tools/collapse/out/

@@ -4,6 +4,7 @@ import { arenaTerrain } from './ArenaTerrain';
 import { CollisionWorld } from './Collision';
 import { ConquestMap } from './conquest/ConquestMap';
 import { conquestTerrain } from './conquest/ConquestTerrain';
+import { Billows } from './Billows';
 import { DustMotes, FireBatch, type Fire } from './Effects';
 import { Environment } from './Environment';
 import { occlusionFocus } from './Foliage';
@@ -66,6 +67,8 @@ export class World {
   readonly materials: MaterialLibrary;
   collision!: CollisionWorld;
   dust!: DustMotes;
+  /** One-shot clouds of smoke, dust and fire (collapses, blasts). */
+  readonly billows = new Billows();
   /** The flames and embers of every fire on the map, drawn together. */
   private readonly fireBatch = new FireBatch();
   /**
@@ -122,7 +125,7 @@ export class World {
     w.static.add(w.content.group, w.grass.group);
     if (w.content.dynamic) w.scene.add(w.content.dynamic);
     w.dust = new DustMotes(600, w.environment.sunDirection);
-    w.vfx.add(w.dust.sprite, w.fireBatch.group);
+    w.vfx.add(w.dust.sprite, w.fireBatch.group, w.billows.group);
     for (let i = 0; i < SPELL_LIGHTS; i++) {
       const l = new THREE.PointLight(0xffffff, 0, 14, 2);
       l.castShadow = false;
@@ -220,6 +223,7 @@ export class World {
     this.environment.update();
     this.content.update(dt, t, this.camera);
     this.fireBatch.update();
+    this.billows.update(dt);
     this.grass.update(this.camera, focus);
     // the map's own lights only say where the light is; the pool does the lighting
     const near = this.near;

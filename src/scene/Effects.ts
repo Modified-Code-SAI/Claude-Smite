@@ -1,14 +1,18 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, cameraPosition, color, float, fract, hash, instanceIndex, mix, mx_fractal_noise_float, mx_noise_float,
-  pow, sin, cos, smoothstep, time, uniform, uv, vec2, vec3, vec4,
+  abs, attribute, cameraPosition, color, float, fract, hash, instanceIndex, mix, mx_noise_float,
+  pow, select, sin, cos, smoothstep, time, uniform, uv, vec2, vec3, vec4,
 } from '../render/tsl';
+import { sampleFlipbook, unpackFlipbook } from '../render/flipbook';
 import { spriteQuads } from '../render/shared';
 
 type FirePalette = { low: number; high: number; ember: number; light: number };
 
 /** Embers each fire throws up. */
 const EMBERS = 28;
+/** Height of a fire's flame sprite, and how far below the fire's base the sprite's foot hangs, per unit of size. */
+const FLAME_HEIGHT = 2.3;
+const FLAME_FOOT = 0.18;
 let fireMaterials: { flame: THREE.SpriteNodeMaterial; embers: THREE.SpriteNodeMaterial } | null = null;
 
 /**
@@ -27,20 +31,20 @@ function makeFireMaterials(): NonNullable<typeof fireMaterials> {
   const ember = attribute('fireEmber', 'vec3');
   const flame = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const u = uv();
-  const t = time.mul(1.6).add(s);
-  const p = vec2(u.x.sub(0.5).mul(2.2), u.y);
-  const n = mx_fractal_noise_float(vec3(p.x.mul(2.4), p.y.mul(2.2).sub(t.mul(1.9)), s.add(t.mul(0.35))), 3, 2.0, 0.5).mul(0.5).add(0.5);
-  const width = float(1).sub(u.y.mul(0.85)).mul(0.62);
-  const sway = mx_noise_float(vec3(u.y.mul(1.5).sub(t), s, 0)).mul(0.2).mul(u.y);
-  const body = smoothstep(width, width.mul(0.2), abs(p.x.sub(sway)));
-  const core = body.mul(smoothstep(1.0, 0.1, u.y)).mul(smoothstep(0.0, 0.12, u.y));
-  const lick = smoothstep(0.32, 0.85, core.mul(n.mul(1.25).add(0.25))).toVar();
+  // a simulated flame (tools/vfx/flipbooks.py), each fire at its own point in
+  // the loop, half of them mirrored, and a touch faster when it burns hot
+  const flip = hash(s.mul(1.37)).greaterThan(0.5);
+  const at2 = vec2(select(flip, float(1).sub(u.x), u.x), u.y);
+  const frame = time.mul(mix(float(26), float(32), hash(s))).add(s.mul(9.7));
+  const heatRaw = unpackFlipbook(sampleFlipbook('fire', frame, at2, true)).heat;
+  const lick = heatRaw.mul(1.15).clamp(0, 1).toVar();
   const heat = pow(lick, float(1.6));
   const col = mix(low, high, heat).mul(mix(float(2.2), float(9.0), heat));
   flame.colorNode = vec4(col.mul(lick).mul(strength), 1);
   flame.opacityNode = lick.mul(strength);
-  flame.positionNode = at.xyz.add(vec3(0, sz.mul(0.62), 0));
-  flame.scaleNode = vec2(0.85, 1.5).mul(sz);
+  // the sheet's frames are twice as tall as wide, the flame's base near their foot
+  flame.positionNode = at.xyz.add(vec3(0, sz.mul(FLAME_HEIGHT * 0.5 - FLAME_FOOT), 0));
+  flame.scaleNode = vec2(FLAME_HEIGHT * 0.5, FLAME_HEIGHT).mul(sz);
 
   // Embers: instanced sprites whose motion is computed entirely on the GPU.
   const embers = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });

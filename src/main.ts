@@ -18,6 +18,8 @@ import { gpuAdvice } from './render/gpuAdvice';
 import { Layers } from './render/Layers';
 import { initialQuality, QUALITY_PRESETS, saveQuality, type QualityName } from './render/Quality';
 import { TextureLibrary } from './scene/Materials';
+import { loadFlipbooks } from './render/flipbook';
+import { loadCollapses } from './scene/structures/collapse';
 import { mapFromUrl, World } from './scene/World';
 import { Hud } from './ui/Hud';
 import { CombatGame } from './combat/CombatGame';
@@ -93,7 +95,8 @@ async function main(): Promise<void> {
 
   // textures and god models load behind the title screen
   const textures = new TextureLibrary(renderer.getMaxAnisotropy?.() ?? 8);
-  await textures.load((f) => hud.progress(0.05 + f * 0.5, 'Quarrying marble…'));
+  // (with the simulated smoke and fire sheets: effects build their shaders on them)
+  await Promise.all([textures.load((f) => hud.progress(0.05 + f * 0.5, 'Quarrying marble…')), loadFlipbooks(), loadCollapses()]);
 
   await preloadGodAssets((f) => hud.progress(0.55 + f * 0.05, 'Summoning the gods…'));
 
