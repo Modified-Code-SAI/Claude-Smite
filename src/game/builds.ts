@@ -104,6 +104,11 @@ export function fittingBuild(god: GodDef, bar: readonly string[]): Build {
   return best;
 }
 
+/** The toast for a match's starting points spent up a tree for the player. */
+export function startingPointsLine(s: { tree: string; points: number }): string {
+  return `Your ${s.points} skill point${s.points === 1 ? '' : 's'} went into ${s.tree}. Press K to spend them your own way.`;
+}
+
 /** Spend every free point along a build: true when any point went in. */
 export function spendAlong(c: Combatant, b: Build): boolean {
   const order = spendOrder(c.god, b);
