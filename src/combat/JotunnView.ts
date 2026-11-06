@@ -88,7 +88,8 @@ class Puffs {
     for (let i = 0; i < max; i++) this.free.push({ p: new THREE.Vector3(), v: new THREE.Vector3(), age: 0, life: 1, size0: 1, size1: 1, alpha: 1, drag: 0, rise: 0, c: new THREE.Color() });
   }
 
-  spawn(p: THREE.Vector3, v: THREE.Vector3, o: { life: number; size0: number; size1: number; alpha: number; color: number; drag?: number; rise?: number }): void {
+  /** `bright` lifts the color past white (HDR), for puffs that must read white against a sunlit surface. */
+  spawn(p: THREE.Vector3, v: THREE.Vector3, o: { life: number; size0: number; size1: number; alpha: number; color: number; drag?: number; rise?: number; bright?: number }): void {
     const q = this.free.pop() ?? this.live.shift();
     if (!q) return;
     q.p.copy(p);
@@ -100,7 +101,7 @@ class Puffs {
     q.alpha = o.alpha;
     q.drag = o.drag ?? 1.5;
     q.rise = o.rise ?? 0;
-    q.c.setHex(o.color);
+    q.c.setHex(o.color).multiplyScalar(o.bright ?? 1);
     this.live.push(q);
   }
 
@@ -438,6 +439,7 @@ class ShrineView {
 
 const tmp = new THREE.Vector3();
 const tmp2 = new THREE.Vector3();
+const tmp3 = new THREE.Vector3();
 
 /**
  * The Jötunn mode's 3D side: the giant (a GiantModel posed from its own unit,
@@ -471,6 +473,9 @@ export class JotunnView {
   private windup: { act: GiantAct; flash: Flash } | null = null;
   private landed: { act: GiantAct; flash: Flash } | null = null;
   private breath = 0;
+  /** Seconds to the giant's next breath out in the cold, and to a snort after a big blow (below 0: none due). */
+  private exhaleIn = 1.5;
+  private snortIn = -1;
   /** Seconds until a roar for the camera lands (see roar), or below 0. */
   private cheer = -1;
   private storm: { x: number; z: number; r: number; left: number } | null = null;
@@ -691,6 +696,8 @@ export class JotunnView {
     const shape = (this.landed?.act === act ? this.landed.flash : this.windup?.flash)?.shape;
     this.landed = null;
     at.y = this.host.ground(at.x, at.z);
+    // a big blow forces a snort of frost out of it a moment later
+    if (act === 'club' || act === 'stomp' || act === 'slam' || act === 'boulder') this.snortIn = 0.35;
     switch (act) {
       case 'club':
         this.host.burst(tmp.copy(at).setY(at.y + 0.6), 1.4);
@@ -775,6 +782,24 @@ export class JotunnView {
     this.host.shake(0.3, at);
   }
 
+  /** One breath out: a plume of frost rolling out of its mouth, a few meters long, spreading as it fades. */
+  private exhale(k: number): void {
+    this.model.mouth(tmp, tmp2);
+    // out more than down, however low it looks (or it pours down its chest), from just clear of the beard
+    tmp2.y = Math.max(tmp2.y, -0.25);
+    tmp2.normalize();
+    tmp.addScaledVector(tmp2, 0.9);
+    const n = Math.round(4 + 3 * k);
+    for (let i = 0; i < n; i++) {
+      const v = tmp3.copy(tmp2).multiplyScalar((3.5 + Math.random() * 2.5) * k);
+      v.x += (Math.random() - 0.5) * 1.6;
+      v.y += -0.5 + (Math.random() - 0.5) * 0.8;
+      v.z += (Math.random() - 0.5) * 1.6;
+      // (as bright as the snowflakes, so it reads as white vapor against its sunlit hide, never as grey smoke)
+      this.snow.spawn(tmp, v, { life: 2.2 + Math.random() * 0.8, size0: 1 * k, size1: (5 + Math.random() * 2) * k, alpha: 0.26, color: 0xeef7fc, drag: 1.1, rise: 0.25, bright: 1.5 });
+    }
+  }
+
   private fall(at: THREE.Vector3, k: number): void {
     at.y = this.host.ground(at.x, at.z);
     this.snow.ring(at, Math.round(30 * k), 14, { life: 2, size0: 2, size1: 6, alpha: 0.6, color: 0xe2edf3 });
@@ -806,6 +831,18 @@ export class JotunnView {
         const gx = tmp.x + tmp2.x * d;
         const gz = tmp.z + tmp2.z * d;
         this.spikes.add(tmp.set(gx, this.host.ground(gx, gz), gz), Math.random() * 6.28, 0.5 + Math.random() * 0.5, 0, 0.8);
+      }
+    }
+    // its breath in the cold, every few seconds (quick and heavy while it kneels), but not over its frost breath
+    const st = this.state;
+    if (!st.dead && this.breath <= 0) {
+      if (this.snortIn >= 0 && (this.snortIn -= dt) < 0) {
+        this.exhale(1.5);
+        this.exhaleIn = Math.max(this.exhaleIn, 1.5);
+      }
+      if ((this.exhaleIn -= dt) <= 0) {
+        this.exhale(st.kneel ? 1.25 : 1);
+        this.exhaleIn = st.kneel ? 1.3 + Math.random() * 0.4 : 3 + Math.random() * 1.6;
       }
     }
     // hail: stones falling all over the storm
