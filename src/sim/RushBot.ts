@@ -344,12 +344,17 @@ export class RushBot implements Brain {
       sx = dx * 0.5 - dz * this.veer;
       sz = dz * 0.5 + dx * this.veer;
     }
-    if (this.blocked(sx, sz)) {
-      // breaking into a column or pillar: break the other way past them, or failing that run straight on
+    const into = this.probe(sx, sz);
+    if (into.len < PROBE * 0.5) {
+      // breaking into a column or pillar: slide along its face while that still gains ground (breaking away from it instead
+      // turned a carrier pressed against a pillar about every other step, as each step left it a little further off the face),
+      // else break the other way past it, or failing that run straight on
+      const along = into.len > PROBE * 0.15 ? (into.x * dx + into.z * dz) / into.len : 0;
       const lat = sx * -dz + sz * dx;
       const mx = sx + 2 * lat * dz;
       const mz = sz - 2 * lat * dx;
-      if (!this.blocked(mx, mz)) {
+      if (along > 0.2) [sx, sz] = [into.x, into.z];
+      else if (!this.blocked(mx, mz)) {
         [sx, sz] = [mx, mz];
         this.veer = -this.veer;
       } else [sx, sz] = [dx, dz];
@@ -362,13 +367,21 @@ export class RushBot implements Brain {
 
   /** Whether scenery stops most of a short step this way (a column or pillar right there). */
   private blocked(x: number, z: number): boolean {
+    return this.probe(x, z).len < PROBE * 0.5;
+  }
+
+  /** Where a short step this way gets to once scenery has had its say (sliding along a pillar's face): how far, and which way. */
+  private probe(x: number, z: number): { x: number; z: number; len: number } {
     const { u, sim } = this;
     const d = hypot(x, z);
-    if (d < 1e-3) return false;
+    if (d < 1e-3) return { x: 0, z: 0, len: PROBE };
     const nx = u.x + (x / d) * PROBE;
     const nz = u.z + (z / d) * PROBE;
     const r = sim.solid(nx, nz, u.radius, u.body.y + u.stepOver, u, sim.terrain, u);
-    return hypot(r.x - u.x, r.z - u.z) < PROBE * 0.5;
+    const mx = r.x - u.x;
+    const mz = r.z - u.z;
+    const len = hypot(mx, mz);
+    return len < 1e-6 ? { x: 0, z: 0, len: 0 } : { x: mx / len, z: mz / len, len };
   }
 
   /**
@@ -447,7 +460,8 @@ export class RushBot implements Brain {
     const x = Math.max(-3, Math.min(3, u.x * 0.5));
     // beside a pillar: step in front of the mouth first, and keep at it until in line with the mouth (at the region's
     // edge the two aims point opposite ways, and a carrier on it, pushed back and forth by defenders, turned about every step)
-    this.besidePillar = Math.abs(u.x) > RUSH.gateHalfWidth + 0.5 && Math.abs(u.z - gate.z) < (this.besidePillar ? 5 : 3);
+    const was = this.besidePillar;
+    this.besidePillar = Math.abs(u.x) > RUSH.gateHalfWidth + (was ? -0.5 : 0.5) && Math.abs(u.z - gate.z) < (was ? 5 : 3);
     if (this.besidePillar) return { x: 0, z: gate.z - out * 3.5 * (behind ? -1 : 1) };
     return { x, z: gate.z + out * (behind ? -0.2 : 0.4) };
   }
