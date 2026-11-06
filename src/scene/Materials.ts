@@ -1,7 +1,9 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, cross, float, normalWorld, positionWorld, sqrt, texture, transformNormalToView, uniform, vec3,
+  abs, attribute, cross, float, fract, normalWorld, positionWorld, sqrt, texture, transformNormalToView, uniform, vec3,
 } from '../render/tsl';
+
+import { frosted } from './frost';
 
 /** Names of the generated PBR sets in public/textures/pbr (see tools/textures/gen.py). */
 export type PbrName = 'flagstone' | 'marble' | 'sandstone_blocks' | 'rock' | 'grass_ground' | 'dirt' | 'bark';
@@ -161,7 +163,8 @@ export function turnedVariant(mat: THREE.Material): THREE.Material | null {
 }
 
 export function applySurface(mat: THREE.MeshStandardNodeMaterial, s: SurfaceNodes, opts: { tint?: any; roughnessMul?: any; aoStrength?: number } = {}): void {
-  mat.colorNode = opts.tint ? s.color.mul(opts.tint) : s.color;
+  // the Jötunn's frost settles on the stone's tops as rime in its grain (folded over 0 to 1, whatever the stone's brightness)
+  mat.colorNode = frosted(opts.tint ? s.color.mul(opts.tint) : s.color, fract(s.color.g.mul(7)));
   lightWith(mat, s.normal);
   mat.roughnessNode = opts.roughnessMul ? s.roughness.mul(opts.roughnessMul) : s.roughness;
   const k = opts.aoStrength ?? 1;

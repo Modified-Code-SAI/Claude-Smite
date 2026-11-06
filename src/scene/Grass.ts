@@ -6,6 +6,7 @@ import {
 } from '../render/tsl';
 import { rng } from '../core/random';
 import type { Terrain } from './Terrain';
+import { frosted } from './frost';
 import type { QualitySettings } from '../render/Quality';
 import { hypot } from '../core/math';
 import { slice } from '../core/slices';
@@ -160,7 +161,8 @@ export class Grass {
     // sunlit tips must stay close to the ground's albedo, or exposed ridges glow
     const tipGreen = mix(vec3(0.13, 0.3, 0.045), vec3(0.2, 0.34, 0.06), smoothstep(0.6, 0.97, variation));
     const col = mix(base, tipGreen, pow(h, float(0.9)));
-    mat.colorNode = col;
+    // the Jötunn's frost whitens the upper blades, a clump at a time
+    mat.colorNode = frosted(col, fract(variation.mul(7.3)), h, 0.75);
     // rough enough that blades on sunward ridges don't flare with specular
     mat.roughnessNode = float(0.82).add(h.mul(0.1));
     mat.metalnessNode = float(0);

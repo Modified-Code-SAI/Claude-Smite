@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import type { Environment } from '../scene/Environment';
+import { frost, frostFor } from '../scene/frost';
 import { JOTUNN } from '../sim/Jotunn';
 import { JotunnWeather, snowFor, WINTER, type WinterState } from './jotunnWeather';
 
@@ -57,6 +58,8 @@ describe("the Jötunn's winter", () => {
     expect(w.level).toBe(1);
     expect(e.sun.intensity).toBeLessThan(6.6);
     expect(e.fogStart.value).toBeLessThan(35);
+    // the temple is white over
+    expect(frost.value).toBe(1);
 
     const f = env();
     const v = new JotunnWeather(f);
@@ -68,6 +71,20 @@ describe("the Jötunn's winter", () => {
     expect(f.fogStart.value).toBeCloseTo(35, 9);
     expect(f.sun.color.getHex()).toBe(new THREE.Color(1, 0.86, 0.68).getHex());
     expect(f.sky.cloudCoverage.value).toBeCloseTo(0.55, 9);
+    // and the frost melts to nothing, so the surfaces are the map's own again
+    expect(frost.value).toBe(0);
+  });
+
+  it('frosts nothing in a first flurry, dusts the ground in a fight, whitens it all on a win', () => {
+    expect(frostFor(0)).toBe(0);
+    expect(frostFor(WINTER.waking)).toBeLessThan(0.05);
+    const dusting = frostFor(snowFor(fight()));
+    expect(dusting).toBeGreaterThan(0.05);
+    expect(dusting).toBeLessThan(0.2);
+    expect(frostFor(snowFor(fight(2)))).toBeGreaterThan(dusting * 2);
+    // never past half while the fight goes on, whatever the giant's fury
+    expect(frostFor(snowFor(fight(2, 1)))).toBeLessThanOrEqual(0.5);
+    expect(frostFor(1)).toBe(1);
   });
 
   it('works without a map to light (a test, or a view without one)', () => {

@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { abs, cameraPosition, float, fract, hash, instanceIndex, max, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
 import { instancedSprite } from '../render/shared';
 import type { Environment } from '../scene/Environment';
+import { frost, frostFor } from '../scene/frost';
 import { JOTUNN, type JotunnPhase } from '../sim/Jotunn';
 
 /**
@@ -153,6 +154,8 @@ export class JotunnWeather {
     snow.drift.value.z += this.wind.y * gust * dt;
     // and blows the flakes down faster in a storm
     snow.drift.value.y -= 1.6 * a * a * dt;
+    // and the world frosts over as it deepens, melting back as it clears
+    frost.value = frostFor(a);
     this.light(a);
   }
 
