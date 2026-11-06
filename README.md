@@ -40,6 +40,7 @@ npm install
 npm run dev        # http://localhost:5173
 npm test
 npm run build
+npm run smoke      # after a build: boots every mode headless and checks errors, shaders and draw calls
 ```
 
 URL options: `?map=conquest` or `?map=arena` skip the title screen (`&god=thor` picks the god), `?quality=low|medium|high|ultra`, `?webgl` forces WebGL 2.
