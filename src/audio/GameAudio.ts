@@ -22,7 +22,7 @@ import { RUSH } from '../sim/Rush';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import { relicById } from '../sim/Relics';
 import { BOSS_CALL_LINE } from '../ui/bossNames';
-import { JOTUNN, type PartId } from '../sim/Jotunn';
+import { JOTUNN, lastStand, type PartId } from '../sim/Jotunn';
 
 /** A match's music only ever moves forward: dawn, then battle, then the siege. */
 const PHASES: SongName[] = ['dawn', 'battle', 'siege'];
@@ -63,6 +63,8 @@ export class GameAudio {
   private blizzardIn = 0;
   private heartbeat: LoopHandle | null = null;
   private heat = 0;
+  /** The least the music's battle layer plays at, whatever the fighting nearby (a mode's climax holds it up). */
+  private moodFloor = 0;
   private muffle = 0;
   /** Gain for other units' sounds: drops as the mix fills up, so your own fight stays clear. */
   private crowd = 1;
@@ -1032,7 +1034,7 @@ export class GameAudio {
     const me = this.me;
     const c = me.combatant;
     const low = me.alive ? 1 - c.health / c.stats.maxHealth : 0;
-    if (!this.ended) this.music.setIntensity(Math.min(1, this.heat + (low > 0.6 ? 0.3 : 0)), dt);
+    if (!this.ended) this.music.setIntensity(Math.min(1, Math.max(this.moodFloor, this.heat + (low > 0.6 ? 0.3 : 0))), dt);
     const pulse = me.alive && low > 0.72;
     if (pulse && !this.heartbeat) this.heartbeat = this.engine.loop('heartbeat', { gain: 0, bus: 'sfx' });
     if (this.heartbeat) {
@@ -1227,7 +1229,7 @@ export class GameAudio {
   // -------------------------------------------------------------------------
 
   /** Last seen Jötunn state, so each beat is called once. */
-  private jotunnSeen = { round: 0, phase: '', tick: 0, kneeling: false, claims: 0, fury: false, braziers: [] as boolean[], parts: new Map<PartId, boolean>(), flashes: new Set<number>(), done: false };
+  private jotunnSeen = { round: 0, phase: '', tick: 0, kneeling: false, claims: 0, fury: false, stand: false, song: 'frost' as SongName, braziers: [] as boolean[], parts: new Map<PartId, boolean>(), flashes: new Set<number>(), done: false };
 
   /** The Jötunn: the giant's bellow and the round's call, the horn, smashed braziers, the kneel, shrines, regrowth and the result. */
   private watchJotunn(): void {
@@ -1240,6 +1242,7 @@ export class GameAudio {
     if (j.round !== seen.round) {
       seen.round = j.round;
       seen.fury = false;
+      seen.stand = false;
       seen.claims = j.claims;
       seen.braziers = j.braziers.map((b) => b.alive);
       for (const [id, p] of j.parts) seen.parts.set(id, p.alive);
@@ -1271,6 +1274,22 @@ export class GameAudio {
     const tick = j.phase === 'countdown' ? Math.ceil(j.timer) : 0;
     if (tick !== seen.tick && tick >= 1 && tick <= 3) this.engine.play('ui.point', { gain: 0.5, rate: 0.7 + (3 - tick) * 0.06 }, 2);
     seen.tick = tick;
+    // The last stand: one brazier from the giant's win, or its Might nearly
+    // spent. The war song quickens to a charge and holds its drums up for the
+    // rest of the round; a new round starts on the stride again.
+    if (!seen.stand && lastStand(j)) {
+      seen.stand = true;
+      // (one brazier short has the brazier's own call)
+      if (j.braziersLeft > JOTUNN.braziers.length - JOTUNN.braziersToWin + 1) this.herald.say(giantMe ? 'Your Might is failing! Smash the braziers while you stand.' : 'The Jötunn falters! Bring it down!', giantMe ? 'bad' : 'epic', 3);
+    }
+    if (j.phase === 'fight' || j.phase === 'countdown') {
+      const song: SongName = seen.stand ? 'frostStand' : 'frost';
+      if (song !== seen.song) {
+        seen.song = song;
+        this.music.play(song);
+      }
+    }
+    this.moodFloor = seen.stand && j.phase === 'fight' ? 0.75 : 0;
     if (j.phase !== 'fight') return;
     j.braziers.forEach((b, i) => {
       if (seen.braziers[i] && !b.alive) {

@@ -456,7 +456,57 @@ const FROST: Song = {
   },
 };
 
-export const SONGS = { hymn: HYMN, dawn: DAWN, battle: BATTLE, siege: SIEGE, abyss: ABYSS, frost: FROST } as const;
+/**
+ * The Jötunn's last stand, when one more brazier wins it the temple or its
+ * Might is nearly spent: the winter war song quickened from a stride to a
+ * charge. The bell tolls every bar like an alarm, the heartbeat doubles, the
+ * strings drive in sixteenths, the drums land on every beat, and the northern
+ * horn's call comes twice a loop with the high choir over it.
+ */
+const FROST_STAND: Song = {
+  bpm: 80,
+  beats: 4,
+  chords: ['Em', 'Em', 'C', 'D', 'Em', 'Em', 'Am', 'B', 'Em', 'C', 'D', 'Bm', 'C', 'D', 'B', 'B'],
+  write(bar, _loop, ch, out) {
+    // -- base: drone and open fifths, the bass pulsing in eighths, the tolling bell, a quick heartbeat
+    if (bar % 2 === 0) {
+      for (const n of ch) out.push({ inst: 'mus.pad.lo', midi: n, beat: 0, dur: 8, gain: 0.26, layer: 'base' });
+      for (const n of [ch[0]! + 12, ch[0]! + 19]) out.push({ inst: 'mus.choir', midi: n, beat: 0, dur: 8, gain: 0.12, layer: 'base' });
+    }
+    for (let i = 0; i < 8; i++) out.push({ inst: 'mus.bass', midi: ch[0]! - 12, beat: i * 0.5, dur: 0.4, gain: i % 2 ? 0.2 : 0.32, layer: 'base' });
+    out.push({ inst: 'mus.bell', midi: ch[0]! + 24, beat: 0, gain: bar % 4 === 0 ? 0.18 : 0.11, layer: 'base' });
+    for (const b of [0, 0.5, 2, 2.5]) out.push({ inst: 'mus.frame', beat: b, gain: b % 2 ? 0.16 : 0.24, layer: 'base' });
+
+    // -- battle: drums on every beat, strings in sixteenths, low horn stabs, the high choir and the call
+    const drums: [number, number, string][] = [[0, 0.9, 'mus.taiko'], [1, 0.55, 'mus.taiko'], [1.5, 0.3, 'mus.taiko.hi'], [2, 0.85, 'mus.taiko'], [3, 0.55, 'mus.taiko'], [3.5, 0.35, 'mus.taiko.hi']];
+    for (const [b, g, inst] of drums) out.push({ inst, beat: b, gain: g, layer: 'battle' });
+    if (bar % 2 === 1) for (const b of [3.25, 3.5, 3.75]) out.push({ inst: 'mus.taiko.hi', beat: b, gain: 0.3 + (b - 3.25) * 0.4, layer: 'battle' });
+    const drive = [ch[0]!, ch[0]!, ch[2]!, ch[0]!];
+    for (let i = 0; i < 16; i++) out.push({ inst: 'mus.stac', midi: i === 14 ? ch[1]! : drive[i % 4]!, beat: i * 0.25, gain: i % 4 === 0 ? 0.3 : 0.18, layer: 'battle', pan: 0.3 });
+    for (const b of [0, 2.5]) for (const n of ch) out.push({ inst: 'mus.horn.lo', midi: n, beat: b, dur: b ? 1.5 : 2, gain: 0.24, layer: 'battle' });
+    if (bar % 2 === 0) for (const n of up(ch, 12)) out.push({ inst: 'mus.choir.hi', midi: n, beat: 0, dur: 8, gain: 0.12, layer: 'battle' });
+    // the northern horn's call, twice a loop: rising, then falling home
+    const call: Record<number, [number, number, number][]> = {
+      0: [[64, 0, 1], [67, 1, 1], [71, 2, 2]],
+      1: [[71, 0, 1.5], [69, 1.5, 0.5], [67, 2, 2]],
+      2: [[67, 0, 2], [72, 2, 2]],
+      3: [[74, 0, 3], [72, 3, 1]],
+      8: [[71, 0, 1], [74, 1, 1], [76, 2, 2]],
+      9: [[72, 0, 2], [71, 2, 2]],
+      10: [[69, 0, 2], [74, 2, 2]],
+      11: [[71, 0, 4]],
+      12: [[72, 0, 1.5], [71, 1.5, 0.5], [69, 2, 2]],
+      13: [[66, 0, 2], [69, 2, 2]],
+      14: [[71, 0, 4]],
+      15: [[63, 0, 2], [66, 2, 2]],
+    };
+    for (const [m, b, d] of call[bar] ?? []) out.push({ inst: 'mus.horn', midi: m, beat: b, dur: d, gain: 0.32, layer: 'battle' });
+    if (bar === 7 || bar === 15) out.push({ inst: 'mus.swell', beat: 4 - (1.8 * FROST_STAND.bpm) / 60, gain: 0.5, layer: 'battle' });
+    if (bar === 0 || bar === 8) out.push({ inst: 'mus.crash', beat: 0, gain: 0.35, layer: 'battle' });
+  },
+};
+
+export const SONGS = { hymn: HYMN, dawn: DAWN, battle: BATTLE, siege: SIEGE, abyss: ABYSS, frost: FROST, frostStand: FROST_STAND } as const;
 export type SongName = keyof typeof SONGS;
 
 // ---------------------------------------------------------------------------
