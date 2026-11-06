@@ -243,6 +243,84 @@ describe('Relic Rush', () => {
     expect(d.holder).not.toBe(d.foe);
   });
 
+  it('a bot pressing the carrier marks them at arm’s length instead of standing inside them', () => {
+    const { sim, rush } = match();
+    const coach = new RushCoach(sim, rush);
+    const carrier = god(sim, zeus, 'order', 0);
+    const bot = god(sim, thor, 'chaos', 0);
+    // (no crowd control: this is about where it stands)
+    bot.brain = new RushBot(sim, bot, rush, coach, null, { aggression: 0 });
+    rush.begin([carrier, bot]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(carrier, 0, 1.6);
+    run(sim, rush, 0.4, () => rush.holder === carrier);
+    expect(rush.holder).toBe(carrier);
+    // the carrier stops to look for a pass; the presser comes out to them
+    sim.teleport(bot, 1, -9);
+    run(sim, rush, 2, () => Math.hypot(bot.x - carrier.x, bot.z - carrier.z) < 1.6);
+    let closest = Infinity;
+    for (let i = 0; i < 120; i++) {
+      run(sim, rush, 1 / 60);
+      closest = Math.min(closest, Math.hypot(bot.x - carrier.x, bot.z - carrier.z));
+    }
+    expect(rush.holder).toBe(carrier);
+    // two gods' radii are 1.2 m: it used to stand on the carrier's spot
+    expect(closest).toBeGreaterThan(1);
+  });
+
+  it('a carrier bot steers round a defender ahead on the far side from them', () => {
+    const pass = (off: number) => {
+      const { sim, rush } = match();
+      const coach = new RushCoach(sim, rush);
+      const carrier = god(sim, zeus, 'order', 0);
+      const foe = god(sim, thor, 'chaos', 0);
+      carrier.brain = new RushBot(sim, carrier, rush, coach, null);
+      rush.begin([carrier, foe]);
+      run(sim, rush, RUSH.countdown + 0.1);
+      sim.teleport(carrier, 0, 1.6);
+      run(sim, rush, 0.4, () => rush.holder === carrier);
+      expect(rush.holder).toBe(carrier);
+      expect(rush.juke(carrier, { x: 0, z: -1 })).toBe(true);
+      run(sim, rush, 0.3);
+      // running for the chaos gate (toward -z), a defender standing a little off its line 6 m on
+      sim.teleport(carrier, 0, -2);
+      sim.teleport(foe, off, -8);
+      run(sim, rush, 2, () => carrier.z < foe.z || rush.holder !== carrier);
+      return carrier.x - foe.x;
+    };
+    // it goes by on the open side: left of a defender off to its right, and right of one off to its left
+    expect(pass(0.8)).toBeLessThan(-1);
+    expect(pass(-0.8)).toBeGreaterThan(1);
+  });
+
+  it('a carrier bot with defenders on both shoulders breaks to one side instead of freezing', () => {
+    const { sim, rush } = match();
+    const coach = new RushCoach(sim, rush);
+    const carrier = god(sim, zeus, 'order', 0);
+    const a = god(sim, thor, 'chaos', 0);
+    const b = god(sim, zeus, 'chaos', 1);
+    carrier.brain = new RushBot(sim, carrier, rush, coach, null);
+    rush.begin([carrier, a, b]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(carrier, 0, 1.6);
+    run(sim, rush, 0.4, () => rush.holder === carrier);
+    expect(rush.holder).toBe(carrier);
+    // its juke spent, so only its running can get it out
+    expect(rush.juke(carrier, { x: 1, z: 0 })).toBe(true);
+    run(sim, rush, 0.3);
+    // as a match left them: the carrier (heading for the chaos gate) with two defenders a few centimeters off, one either side of its run
+    sim.teleport(carrier, -0.15, -15.2);
+    sim.teleport(a, -0.1, -15.23);
+    sim.teleport(b, -0.17, -15.23);
+    // it used to stand there for seconds: the two pushes away from them cancelled out (now it breaks free, and may well shoot once clear)
+    let got = 0;
+    for (let i = 0; i < 60 && rush.holder === carrier; i++) {
+      run(sim, rush, 1 / 60);
+      got = Math.max(got, Math.hypot(carrier.x + 0.15, carrier.z + 15.2));
+    }
+    expect(got).toBeGreaterThan(2);
+  });
+
   it('a juke sidesteps the carrier, beats a stun in its guard, keeps the relic, and waits out its cooldown', () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);
