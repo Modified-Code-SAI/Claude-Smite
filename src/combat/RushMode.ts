@@ -210,7 +210,7 @@ export class RushMode {
       this.flyoverDone = true;
       if (this.flyover) set(null);
       this.flyover = null;
-      document.body.classList.remove('rush-cine');
+      this.setCine(false);
       return;
     }
     const me = this.deps.player;
@@ -235,7 +235,7 @@ export class RushMode {
     shot.weight = 1 - back * back * (3 - 2 * back);
     set(shot.weight > 0.001 ? shot : null);
     // the action bar, health bars and nameplates stand aside while the camera is up in the stands
-    document.body.classList.toggle('rush-cine', shot.weight > 0.4);
+    this.setCine(shot.weight > 0.4);
   }
 
   /** The goal cam (see GOAL_CAM) for the goal it was set up for. */
@@ -250,7 +250,7 @@ export class RushMode {
       if (this.goalCam) {
         set(null);
         this.goalCam = null;
-        document.body.classList.remove('rush-cine');
+        this.setCine(false);
       }
       return;
     }
@@ -281,7 +281,21 @@ export class RushMode {
     shot.pos.y += (ground(shot.pos.x, shot.pos.z) + GOAL_CAM.height - shot.pos.y) * k;
     shot.weight = RUSH.celebrate - r.timer >= GOAL_CAM.cutAt ? 1 : 0;
     set(shot.weight > 0 ? shot : null);
-    document.body.classList.toggle('rush-cine', shot.weight > 0.4);
+    this.setCine(shot.weight > 0.4);
+  }
+
+  /** Whether a camera shot (the fly-over, a goal cam) has the HUD stood aside. */
+  private cine = false;
+
+  private setCine(on: boolean): void {
+    if (on === this.cine) return;
+    this.cine = on;
+    document.body.classList.toggle('rush-cine', on);
+  }
+
+  /** Toasts wait while the HUD stands aside for a camera shot or the match card is up (see CombatHud.holdToasts). */
+  get holdsToasts(): boolean {
+    return this.cine || this.hud.introShowing;
   }
 
   frame(dt: number, time: number): void {

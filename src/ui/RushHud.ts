@@ -88,6 +88,10 @@ export class RushHud {
   /** The match card over the first kickoff (who plays whom, and how to win), and how much of it is left as it fades. */
   private readonly intro: HTMLElement;
   private introLeft = 0;
+  /** Whether the match card is still up (fading included). */
+  get introShowing(): boolean {
+    return this.introLeft > 0;
+  }
   private lastIntro = '';
   private readonly introCount: HTMLElement;
   private lastCount = '';

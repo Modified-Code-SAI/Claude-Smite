@@ -488,7 +488,7 @@ export class CombatGame implements Updatable {
     this.rush = mode.rush;
     this.netHost = mode.host;
     this.netGuest = mode.guest;
-    this.hud.toast('Carry the Sun Relic through their gate. Left click passes it; stun the carrier to knock it loose. F calls for the pass. Press K to spend your skill points.');
+    this.startToast('Carry the Sun Relic through their gate. Left click passes it, Space jukes; stun the carrier to knock it loose. F calls for the pass.');
   }
 
   /** Jötunn: one frost giant against four gods, round by round, everyone (you too) taking a turn as the giant. */
@@ -524,7 +524,7 @@ export class CombatGame implements Updatable {
   }
 
   /**
-   * A match that starts high (Temple Clash, Duel, each Jötunn round): spends
+   * A match that starts high (Temple Clash, Duel, Relic Rush, each Jötunn round): spends
    * the god's free points up the ready-made tree that fits its bar, when the
    * player follows no build; bots spend theirs the moment they get them.
    * Says which tree, or null when nothing was spent.
@@ -901,6 +901,7 @@ export class CombatGame implements Updatable {
     this.status.frame(this.sim.units, time, (u) => u.stealth <= 0 || u.team === this.player.team);
     this.updatePreview();
     this.hud.setPreview(this.preview?.slot ?? null);
+    this.hud.holdToasts = this.rushMode?.holdsToasts ?? false;
     this.hud.frame(this.sim.units, dt);
     // (the tips are about your god, not the giant you drive)
     if (!this.jotunnMode?.piloting) this.coach.frame(dt);
