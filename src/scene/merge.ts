@@ -4,7 +4,7 @@ import { Layers } from '../render/Layers';
 import { mergeLods } from './lod';
 import { turnedVariant } from './Materials';
 
-/** Off only while tools/collapse exports a structure's separate parts. */
+/** Off only while tools/collapse and tools/hero export a model's separate parts. */
 export const mergeSwitch = { on: true };
 
 /**
@@ -338,6 +338,7 @@ function bakeRigid(parts: readonly { mesh: THREE.Mesh; bone: number }[], fromSpa
  * source can share the merged geometry through `shared`.
  */
 export function mergeSkinned(root: THREE.Object3D, shared?: Map<string, THREE.BufferGeometry>): void {
+  if (!mergeSwitch.on) return;
   const groups = new Map<string, THREE.SkinnedMesh[]>();
   root.traverse((o) => {
     const m = o as THREE.SkinnedMesh;
