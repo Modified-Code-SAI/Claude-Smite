@@ -64,6 +64,7 @@ export const SOUNDS: Record<string, Recipe> = {
   'basic.thor': { variants: 3, make: (r) => layer([whoosh(r, 0.32, 300, 900, { q: 1.1, peak: 0.6, gain: 1.4 }), 1], [zap(r, 0.1, 220, { hiss: 0.3, gain: 0.3 }), 1, 0.15]) },
   'basic.odin': { variants: 3, make: (r) => whoosh(r, 0.26, 500, 1600, { q: 1.6, peak: 0.55, gain: 1.3 }) },
   'basic.loki': { variants: 3, make: (r) => layer([whoosh(r, 0.16, 1400, 3800, { q: 2, peak: 0.6 }), 1], [clang(r, 0.2, 3100, { decay: 0.12, gain: 0.2 }), 1]) },
+  'basic.thanatos': { variants: 3, make: (r) => layer([whoosh(r, 0.26, 600, 2600, { q: 1.6, peak: 0.55, gain: 1.3 }), 1], [clang(r, 0.25, 1900 + r() * 300, { decay: 0.15, gain: 0.18 }), 1, 0.03], [whoosh(r, 0.3, 200, 600, { q: 0.6, peak: 0.4, gain: 0.5, grit: 1.2 }), 0.4]) },
   'basic.anubis': { variants: 3, make: (r) => layer([sand(r, 0.3, { tone: 2600, peak: 0.25 }), 1], [vowel(r, 0.25, (t) => glide(180, 120, t, 0.25), [[600, 5, 1], [1300, 6, 0.4]], { breath: 0.6, gain: 0.4 }), 1]) },
   'basic.minion.melee': { variants: 3, peak: 0.55, make: (r) => whoosh(r, 0.2, 700, 1900, { q: 1.6, peak: 0.6 }) },
   'basic.minion.archer': { variants: 3, peak: 0.55, make: (r) => layer([twang(r, 0.35, 180 + r() * 40), 0.8], [whoosh(r, 0.15, 2500, 1500, { q: 2 }), 0.4, 0.02]) },
@@ -132,6 +133,7 @@ export const SOUNDS: Record<string, Recipe> = {
   // Zeus's basic is a small bolt: the blow, the arc's sparks and a bark of thunder
   'hit.zap': { variants: 4, peak: 0.85, make: (r) => layer([impact(r, 0.9, { tone: 160, crunch: 0.4 }), 0.9], [zap(r, 0.18, 420 + r() * 200, { chaos: 0.8, hiss: 1 }), 0.7], [thunder(r, 0.3, { crack: 1.4, rumble: 0.15 }), 0.55]) },
   'hit.sand': { variants: 3, peak: 0.8, make: (r) => layer([impact(r, 0.9, { tone: 135, crunch: 0.3, snap: 0.6 }), 1], [sand(r, 0.3, { tone: 3000, peak: 0.1 }), 0.8]) },
+  'hit.soulblade': { variants: 4, peak: 0.8, make: (r) => layer([hitFlesh(r, 0.8), 1], [clang(r, 0.3, 1700 + r() * 500, { decay: 0.18, gain: 0.3 }), 0.7], [filter(fire(r, 0.25, { gain: 0.3 }), 'highpass', 1200), 0.5]) },
   'hit.structure': { variants: 4, peak: 0.75, make: (r) => layer([impact(r, 1.1, { tone: 95, crunch: 0.9, sub: 0.8 }), 0.8], [knock(r, 0.2, 500 + r() * 300), 1], [knock(r, 0.12, 1400), 0.5, 0.01], [debris(r, 0.4, { density: 15, gain: 0.25, tone: 1300 }), 1]) },
   'hit.crit': { variants: 2, peak: 0.85, make: (r) => layer([impact(r, 1.7, { tone: 120, crunch: 1, sub: 1.3, room: 0.25 }), 1], [clang(r, 0.6, 1500, { decay: 0.4, gain: 0.6 }), 0.6], [whoosh(r, 0.15, 6000, 3000, { q: 0.8 }), 0.5]) },
   'hit.monster': { variants: 3, peak: 0.8, make: (r) => layer([hitFlesh(r, 1.2), 1], [vowel(r, 0.2, (t) => glide(300, 200, t, 0.2), VOWELS.eh, { breath: 0.5, growl: 0.2, gain: 0.3 }), 1]) },

@@ -47,7 +47,7 @@ interface Tracked {
 const RELIC_GAIN: Record<string, number> = { 'relic.knell': 0.75, 'relic.chain': 0.45, 'relic.echo': 0.5, 'relic.aegis': 0.45, 'relic.harvest': 0.35, 'relic.spite': 0.7 };
 
 /** Which god basic-hit sound each god makes. */
-const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand', jotunn: 'hit.jotunn' };
+const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand', thanatos: 'hit.soulblade', jotunn: 'hit.jotunn' };
 const GOD_TRAVEL: Record<string, string> = { zeus: 'travel.zeus', anubis: 'travel.anubis' };
 const BOSSES = ['Treasure Wyrm', 'Molten Colossus', 'Ossuary King'];
 

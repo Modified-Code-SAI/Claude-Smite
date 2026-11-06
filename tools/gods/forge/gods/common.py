@@ -211,15 +211,18 @@ def _pleat(a):
     return np.sign(x) * np.abs(x) ** 0.45
 
 
-def add_skirt(god, name, material, top, length, flare=0.08, pleats=20, depth=0.008, clearance=0.025, rows=8, seg=48):
-    """A pleated cloth skirt wrapped around the hips, flaring toward the hem."""
+def add_skirt(god, name, material, top, length, flare=0.08, pleats=20, depth=0.008, clearance=0.025, rows=8, seg=48, seam=0.0, hem=None):
+    """A pleated cloth skirt wrapped around the hips, flaring toward the hem.
+
+    `seam` turns where the cloth's uv seam (and its patterned border) falls: 0 at the front, pi at the back.
+    `hem(angles)` (optional) gives how far to lift the hem at each angle, for a ragged or cut-away edge."""
     seg = max(seg, pleats * 8)  # enough columns that each pleat has a crisp fold and a shadowed valley
     from ..geo import lathe
     b = god.body
     P = b.verts[b.used]
     keep = god.F.arms()[b.used] < 0.05
     P = P[keep]
-    ang = np.arange(seg) / seg * 2 * np.pi
+    ang = np.arange(seg) / seg * 2 * np.pi + seam
     dirs = np.stack([np.sin(ang), np.zeros(seg), np.cos(ang)], axis=1)
     rad = np.zeros((rows, seg))
     ys = top - np.linspace(0, 1, rows) ** 1.1 * length
@@ -241,6 +244,9 @@ def add_skirt(god, name, material, top, length, flare=0.08, pleats=20, depth=0.0
     v[..., 0] = rad * np.sin(ang)[None]
     v[..., 1] = ys[:, None]
     v[..., 2] = rad * np.cos(ang)[None] + cz
+    if hem is not None:
+        # lift the lower rows, the hem fully and the rows above it less, so the cut stays smooth
+        v[..., 1] += np.asarray(hem(ang))[None] * np.clip((t - 0.45) / 0.55, 0, 1) ** 1.5
     m = lathe(np.stack([np.ones(rows), ys], axis=1), segments=seg)
     m.v = v.reshape(-1, 3)
     vv = m.v

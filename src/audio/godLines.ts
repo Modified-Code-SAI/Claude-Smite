@@ -69,6 +69,18 @@ export const GOD_LINES: Record<string, Record<LineKind, readonly string[]>> = {
     taunt: ['I have embalmed kings. You will not take long.', 'Your heart is lighter than a feather. That is not a compliment.', 'Run. The sand remembers your steps.'],
     omw: ['I am coming.', 'Death is on its way.'],
   },
+  // gentle and patient, never cruel: he is the death that comes kindly
+  thanatos: {
+    select: ['Hush now. I am here.'],
+    start: ['Every road ends with me. Let us walk it gently.', 'Sleep keeps my left hand. I keep the rest.'],
+    kill: ['Rest now.', 'There. No more pain.', 'Close your eyes.'],
+    streak: ['So many lanterns going out.', 'The ferryman will be busy tonight.'],
+    ult: ['Sleep, all of you.', 'Lie down, and do not wake.'],
+    death: ['Even I... may rest...', 'My brother... will keep my place...'],
+    respawn: ['Death does not stay dead.', 'I was never far away.'],
+    taunt: ['Do not fight it. Nobody ever wins.', 'I have met kings and beggars. You are not special.', 'You are tired. I can tell.'],
+    omw: ['I am coming, softly.', 'On black wings. Wait for me.'],
+  },
 };
 
 /** Moments only the Jötunn speaks to, besides its waking, its kills and its fall. */
