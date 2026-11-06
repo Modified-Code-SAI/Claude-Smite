@@ -54,6 +54,8 @@ export interface JotunnDeps {
   giantPower?: number;
   /** Online: up to five friends, bots filling the rest; each takes a turn as the giant. */
   net?: NetSession;
+  /** Alone: the dice that pick the bots' gods (seeded, so they are the ones the god pick showed). */
+  shuffle?: () => number;
   /** A moment of the giant's that has its own sound ('step': a footfall, k how hard; 'land': a god it threw coming down, k how high it flew). */
   cue?: (name: 'step' | 'land', at: THREE.Vector3, k: number) => void;
   /** Lays a shot of the giant over the follow camera (see JotunnCine); null hands it back. */
@@ -122,7 +124,7 @@ export class JotunnMode {
   constructor(private readonly deps: JotunnDeps) {
     const { sim, player, net } = deps;
     const me = net?.me ?? '';
-    const slots = jotunnRoster(net?.players ?? [{ id: '', name: 'You', god: player.combatant.god.id, team: 'order' }]);
+    const slots = jotunnRoster(net?.players ?? [{ id: '', name: 'You', god: player.combatant.god.id, team: 'order' }], net ? undefined : deps.shuffle);
     const players = slots.map((s) => ({ name: s.name, id: s.player, god: s.player === me ? player : (godById(s.god) ?? GODS[0]!) }));
     // alone, the local player is first and a bot second (see jotunnRoster)
     const order = net ? undefined : deps.role === 'giant' ? [0] : deps.role === 'god' ? [1] : undefined;

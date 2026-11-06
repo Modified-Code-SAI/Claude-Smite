@@ -18,6 +18,8 @@ describe('Jötunn rules card', () => {
     expect(all).toContain(`×${PARTS.crown.mult}`);
     expect(all).toContain('<b>wrist</b>');
     expect(all).toContain(`${JOTUNN.braziersToWin} of the ${JOTUNN.braziers.length}`);
+    // the giant shrugs off crowd control, so a person knows to bring damage
+    expect(all).toContain('slide off it: bring damage');
   });
 
   it('tells the giant what to smash and what to guard', () => {

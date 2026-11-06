@@ -142,7 +142,7 @@ export function lineupFor(s: LineupSetup): Lineup {
       return { order: side('order'), chaos: side('chaos') };
     }
     case 'jotunn': {
-      const slots = jotunnRoster(s.players);
+      const slots = jotunnRoster(s.players, s.net ? undefined : rng());
       const people = slots.filter((x) => x.player !== null).length;
       // alone a bot is the giant first (or you, or only the bot, by role); online the first person
       const first = people >= 2 ? 0 : s.role === 'giant' ? 0 : 1;

@@ -539,6 +539,8 @@ export class CombatGame implements Updatable {
       reaction: d === 'easy' ? 0.55 : d === 'hard' ? 0.18 : undefined,
       giantPower: d === 'easy' ? 0.85 : d === 'hard' ? 1.2 : undefined,
       net,
+      // without a seed (?map=jotunn, tools) the same bots every time
+      shuffle: net || this.deps.seed === undefined ? undefined : this.rng(),
       cue: (name, at, k) => this.onCue?.(name, at, k),
       cameraShot: this.deps.cameraShot,
       collision: world.collision,
