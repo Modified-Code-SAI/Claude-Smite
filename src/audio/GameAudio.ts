@@ -21,6 +21,8 @@ import { DUEL } from '../sim/Duel';
 import { RUSH } from '../sim/Rush';
 import { chantAt, chantBreak, chanting } from './chant';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
+import type { Palette } from '../map/UnderworldLayout';
+import { DEPTH_BEDS, UNDERWORLD_LIFE, type Stir } from './underworldAmbience';
 import { relicById } from '../sim/Relics';
 import { BOSS_CALL_LINE } from '../ui/bossNames';
 import { isGiant, JOTUNN, lastStand, type PartId } from '../sim/Jotunn';
@@ -1206,31 +1208,51 @@ export class GameAudio {
     }
   }
 
-  /** The underworld's life: drips in the dark, a far groan of rock, the moan of souls, and the lava pit's bubbling. */
+  /** The underworld's life: the depth's own beds and the things that stir in it, and the lava pit's bubbling. */
   private underworldLife(dt: number): void {
+    const run = this.game.descent!;
+    const depth = DEPTHS[run.depth]!.palette;
+    this.depthBeds(depth);
+    const life = UNDERWORLD_LIFE[depth];
     const l = this.engine.listenerPos;
-    const around = (r0: number, r1: number, y: number) => {
+    const stir = (s: Stir) => {
       const a = Math.random() * Math.PI * 2;
-      const r = r0 + Math.random() * (r1 - r0);
-      return { x: l.x + Math.cos(a) * r, y, z: l.z + Math.sin(a) * r };
+      const r = s.dist[0] + Math.random() * (s.dist[1] - s.dist[0]);
+      const at = { x: l.x + Math.cos(a) * r, y: s.y + Math.random() * 4, z: l.z + Math.sin(a) * r };
+      this.engine.play(s.sounds[Math.floor(Math.random() * s.sounds.length)]!, { bus: 'ambience', at, gain: s.gain, vary: 0.1, ref: s.ref }, 0);
     };
+    const wait = (s: Stir) => s.every[0] + Math.random() * (s.every[1] - s.every[0]);
     this.birdIn -= dt;
     if (this.birdIn <= 0) {
-      this.birdIn = 2 + Math.random() * 6;
-      if (this.heat < 0.7) this.engine.play('amb.drip', { bus: 'ambience', at: around(8, 26, 6 + Math.random() * 6), gain: 0.55, vary: 0.15, ref: 8 }, 0);
+      this.birdIn = wait(life.near);
+      if (this.heat < 0.7) stir(life.near);
     }
     this.crowIn -= dt;
     if (this.crowIn <= 0) {
-      this.crowIn = 18 + Math.random() * 30;
-      this.engine.play(Math.random() < 0.55 ? 'amb.groan' : 'amb.souls', { bus: 'ambience', at: around(30, 45, 10), gain: 0.65, vary: 0.08, ref: 20 }, 0);
+      this.crowIn = wait(life.far);
+      stir(life.far);
     }
     // the lava pit bubbles where there is one; the loop drifts far off where there isn't
-    const run = this.game.descent!;
     const c = run.layout;
     if (!this.lava || !this.lava.alive) this.lava = this.engine.loop('amb.fire', { bus: 'ambience', gain: 0.9, rate: 0.45, at: { x: c.x, y: -1, z: c.z }, ref: 9 });
     if (this.lava) {
       if (c.pit) this.lava.setPosition(c.x, -1, c.z);
       else this.lava.setPosition(c.x, -400, c.z);
+    }
+  }
+
+  /** The depth beds, started (silent unless theirs is shown) as soon as their sounds are baked. */
+  private readonly beds = DEPTH_BEDS.map((b) => ({ ...b, loop: null as LoopHandle | null }));
+  private bedsDepth: Palette | null = null;
+
+  /** Fades the shown depth's beds in and the others out. */
+  private depthBeds(depth: Palette): void {
+    const turned = depth !== this.bedsDepth;
+    this.bedsDepth = depth;
+    for (const b of this.beds) {
+      if (!b.loop?.alive) b.loop = this.engine.loop(b.name, { bus: 'ambience', gain: b.depth === depth ? b.gain : 0, pan: b.pan, rate: b.rate });
+      // a slow crossfade as the team goes down
+      else if (turned) b.loop.setGain(b.depth === depth ? b.gain : 0, 1.4);
     }
   }
 

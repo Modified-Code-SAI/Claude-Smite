@@ -6,6 +6,7 @@ import { CHORDS, INST, INSTRUMENTS, Music, SONGS } from './music';
 import type { AudioEngine } from './AudioEngine';
 import { SKILL_SOUNDS } from './skillSounds';
 import { renderRecipe, SOUNDS, type Recipe } from './sounds';
+import { DEPTH_BEDS, UNDERWORLD_LIFE } from './underworldAmbience';
 
 function check(name: string, recipe: Recipe): number {
   const variants = renderRecipe(recipe, hashSeed(name));
@@ -97,6 +98,21 @@ describe('sound bank', () => {
     // and it comes back quicker than it went
     run(2.5, 0);
     expect(gains.battle).toBeGreaterThan(0.95);
+  });
+
+  test('each Descent depth has beds and stirs of its own, all in the bank', () => {
+    const depths = ['ember', 'soul', 'spirit'] as const;
+    const own = depths.map((d) => new Set([...DEPTH_BEDS.filter((b) => b.depth === d).map((b) => b.name), ...UNDERWORLD_LIFE[d].near.sounds, ...UNDERWORLD_LIFE[d].far.sounds]));
+    for (const [k, d] of depths.entries()) {
+      expect(DEPTH_BEDS.some((b) => b.depth === d), `${d} has a bed`).toBe(true);
+      for (const name of own[k]!) expect(SOUNDS[name], name).toBeTruthy();
+      for (const name of DEPTH_BEDS.filter((b) => b.depth === d).map((b) => b.name)) expect(SOUNDS[name]!.loop, `${name} loops`).toBe(true);
+      // something heard at this depth and no other
+      const others = own.filter((_, j) => j !== k);
+      expect([...own[k]!].some((n) => others.every((o) => !o.has(n))), `${d} sounds like itself`).toBe(true);
+      const { near, far } = UNDERWORLD_LIFE[d];
+      for (const s of [near, far]) expect(s.every[0]).toBeLessThanOrEqual(s.every[1]);
+    }
   });
 
   test('sounds are deterministic', () => {
