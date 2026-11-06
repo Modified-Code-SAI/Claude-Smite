@@ -16,7 +16,8 @@ import './descent.css';
 
 const KEYS = 'ZXC';
 
-/** What the status line says in the first chamber a new kind of monster rises in. */
+/** How to fight a new kind of monster, shown under the status line for a while in the first chamber it rises in. */
+const HINT_TIME = 14;
 const HINTS: readonly (readonly [tag: string, hint: string])[] = [
   [':shade', 'Shades blink away when you close in: sidestep their slow bolts'],
   [':gravekeeper', 'Gravekeepers mend the monsters around them: take them down first'],
@@ -56,8 +57,12 @@ export class DescentHud {
   private readonly tally: KillTally | null;
   private readonly banner: HTMLElement;
   private bannerUntil = 0;
-  /** The first chamber each new monster rose in this run, where the status line says how to fight it. */
-  private readonly hintAt = new Map<string, number>();
+  /** The first chamber each new monster rose in this run, and when, so its hint shows there for a while. */
+  private readonly hintAt = new Map<string, { chamber: number; at: number }>();
+  private readonly hint: HTMLElement;
+  private lastHint = '';
+  /** What the top of the screen holds, as body classes (descent-cursed, descent-boss-up) that stack it. */
+  private readonly stack = { cursed: false, boss: false };
   /** A boss's name and title as it rises (see DESCENT.bossIntro). */
   private readonly bossCard: HTMLElement;
   private bossShown = '';
@@ -81,6 +86,7 @@ export class DescentHud {
       <div class="clash-bar">${run.versus ? souls('ally', 'Your souls') : ''}<div class="descent-where"></div>${run.versus ? souls('foe', 'Rival souls') : ''}</div>
       <div class="clash-state"></div>
       <div class="descent-curses"></div>
+      <div class="descent-hint"></div>
       <div class="descent-card"><div class="descent-card-depth"></div><div class="descent-card-name"></div><div class="descent-card-kind"></div></div>
       <div class="descent-boss"><small></small><b></b><span></span></div>
       <div class="siege-boons descent-cards"></div>
@@ -93,6 +99,7 @@ export class DescentHud {
     this.where = this.root.querySelector('.descent-where')!;
     this.state = this.root.querySelector('.clash-state')!;
     this.curses = this.root.querySelector('.descent-curses')!;
+    this.hint = this.root.querySelector('.descent-hint')!;
     this.card = this.root.querySelector('.descent-card')!;
     this.bossCard = this.root.querySelector('.descent-boss')!;
     this.cards = this.root.querySelector('.descent-cards')!;
@@ -218,6 +225,18 @@ export class DescentHud {
       this.state.dataset.state = r.phase === 'exit' ? 'order' : r.downed.size ? 'chaos' : '';
     }
 
+    const hint = this.hintText();
+    if (hint !== this.lastHint) {
+      this.lastHint = hint;
+      if (hint) this.hint.innerHTML = hint;
+      this.hint.classList.toggle('show', !!hint);
+    }
+    // the top of the screen stacks: status line, curses, a boss's bar, hints (see descent.css)
+    const cursed = r.curses.length > 0 || !!r.nextCurse;
+    const bossUp = r.phase === 'fight' && !!r.boss?.alive;
+    if (cursed !== this.stack.cursed) document.body.classList.toggle('descent-cursed', (this.stack.cursed = cursed));
+    if (bossUp !== this.stack.boss) document.body.classList.toggle('descent-boss-up', (this.stack.boss = bossUp));
+
     const curseKey = `${r.curses.length}|${r.nextCurse?.id ?? ''}`;
     if (curseKey !== this.shownCurses) {
       this.shownCurses = curseKey;
@@ -268,6 +287,19 @@ export class DescentHud {
     this.relicTray.classList.toggle('open', this.run.phase === 'reward' || this.run.phase === 'draft' || this.run.phase === 'exit');
   }
 
+  /** How to fight each kind of monster rising for the first time this run, one line each, for HINT_TIME seconds. */
+  private hintText(): string {
+    const r = this.run;
+    if (r.phase !== 'fight') return '';
+    let s = '';
+    for (const [tag, hint] of HINTS) {
+      if (!this.hintAt.has(tag) && r.monsters.some((m) => m.alive && m.tag.endsWith(tag))) this.hintAt.set(tag, { chamber: r.chamber, at: r.time });
+      const seen = this.hintAt.get(tag);
+      if (seen && seen.chamber === r.chamber && r.time - seen.at < HINT_TIME) s += `<span>${hint}</span>`;
+    }
+    return s;
+  }
+
   private stateText(): string {
     const r = this.run;
     const me = this.me;
@@ -285,10 +317,6 @@ export class DescentHud {
         else if (r.champion?.alive) s += r.versus ? ' · a Champion leads them: its fall empowers whoever lands it' : ' · a Champion leads them';
         if (r.gilded) s += r.versus ? ' · catch the Gilded Thornback before the rivals!' : ' · catch the Gilded Thornback!';
         if (r.erupting) s += ' · soul fire!';
-        for (const [tag, hint] of HINTS) {
-          if (!this.hintAt.has(tag) && r.monsters.some((m) => m.alive && m.tag.endsWith(tag))) this.hintAt.set(tag, r.chamber);
-          if (this.hintAt.get(tag) === r.chamber) s += ` · ${hint}`;
-        }
         return s + downText;
       }
       case 'reward':
