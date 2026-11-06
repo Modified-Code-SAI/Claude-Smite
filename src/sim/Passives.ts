@@ -147,7 +147,7 @@ export class Passives {
     c.heal(c.stats.maxHealth * SHED_HEAL);
     c.addTimedMod('bonusMoveSpeed', SHED_SPEED, SHED_SPEED_DURATION);
     this.shedReady.set(v, this.sim.time + SHED_COOLDOWN);
-    this.sim.flashAt(v, { type: 'circle', x: v.x, z: v.z, radius: 1.6 });
+    this.sim.flashAt(v, { type: 'circle', x: v.x, z: v.z, radius: 1.6 }, 'kukulkan:passive');
   }
 
   /** Thanatos's Drowse: a stack per hit, up to 3, each slowing a little more (one slow, refreshed and deepened). */
@@ -174,7 +174,7 @@ export class Passives {
       if (hypot(t.x - cx, t.z - cz) <= 2.8 + t.radius) this.sim.strike(thor, t, raw, 'physical');
     }
     this.proc = false;
-    this.sim.flashAt(thor, { type: 'circle', x: cx, z: cz, radius: 2.8 });
+    this.sim.flashAt(thor, { type: 'circle', x: cx, z: cz, radius: 2.8 }, 'thor:passive');
   }
 
   private anubisWard(v: Unit): void {

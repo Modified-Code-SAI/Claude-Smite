@@ -202,6 +202,26 @@ function slash(k: FxKit, c: Colors, x: number, z: number, yaw: number, o: { radi
   });
 }
 
+const NORMAL = new THREE.Vector3();
+
+/**
+ * A diagonal cut in front at height `y`: a slash in a plane tilted `tilt`
+ * degrees off level about the facing (rising to the right when positive), so
+ * it crosses the screen from behind a god instead of lying flat.
+ */
+function cut(k: FxKit, c: Colors, x: number, y: number, z: number, yaw: number, o: { radius: number; width: number; angle: number; tilt: number; sweep?: number; life?: number; reverse?: boolean; tail?: number; delay?: number }): Ribbon {
+  basis(yaw);
+  const t = o.tilt * DEG;
+  TILT.copy(RIGHT).multiplyScalar(Math.cos(t)).addScaledVector(UP, Math.sin(t));
+  NORMAL.crossVectors(FWD, TILT);
+  const half = (o.angle * DEG) / 2;
+  return k.ribbon({
+    x, y, z, main: c.vfx, hot: c.core, ax: FWD, ay: TILT, an: NORMAL,
+    radius: o.radius, a0: o.reverse ? half : -half, span: o.reverse ? -2 * half : 2 * half, width: o.width,
+    sweep: o.sweep ?? 0.1, tail: o.tail ?? 0.6, taper: 0.2, life: o.life ?? 0.3, delay: o.delay,
+  });
+}
+
 /** An overhead blow: an arc in the upright plane through the facing, from behind the shoulder down to the ground in front. */
 function swing(k: FxKit, c: Colors, x: number, z: number, yaw: number, o: { radius: number; width: number; y?: number; sweep?: number; life?: number }): Ribbon {
   basis(yaw);
@@ -1881,8 +1901,205 @@ function SPIRIT_PALETTE(p: GodPalette): GodPalette {
   return { ...p, ...SPIRIT };
 }
 
+// ---------------------------------------------------------------------------
+// Basic attacks and passives: what a god does most, in its own hand
+
+export interface AttackCtx {
+  owner: Unit;
+  p: GodPalette;
+  yaw: number;
+  /** Meters a melee blow reaches. */
+  reach: number;
+  /** Which of the god's attacks this is, from 0: swings alternate sides. */
+  n: number;
+}
+
+/** A god's basic attack: `attack` as it swings or throws, `hit` on each target it lands on, `shot` in flight. */
+export interface BasicLook extends SkillLook {
+  attack?(k: FxKit, a: AttackCtx): void;
+}
+
+/** Where a blow lands on `t`: its skin on the side facing the attacker, at chest height. */
+function contact(out: THREE.Vector3, from: Unit, t: Unit, h = 1.2): THREE.Vector3 {
+  const dx = from.x - t.x;
+  const dz = from.z - t.z;
+  const d = Math.hypot(dx, dz) || 1;
+  const r = t.radius * 0.8;
+  return out.set(t.x + (dx / d) * r, t.body.y + h, t.z + (dz / d) * r);
+}
+
+/** The hand a ranged god throws from, a little ahead of the chest. */
+function hand(out: THREE.Vector3, u: Unit, yaw: number): THREE.Vector3 {
+  return ahead(out, u, yaw, 0.75, 1.5);
+}
+
+const P3 = new THREE.Vector3();
+const SAND = { vfx: 0xe0a040, core: 0xfff0c8 };
+const THUNDER = { vfx: 0x2a6cff, core: 0xeaf4ff };
+const CLAW = { vfx: 0x10d49a, core: 0xd0fff0 };
+
+export const BASIC_LOOKS: Record<string, BasicLook> = {
+  zeus: {
+    // a spark leaps off his fingers with each bolt
+    attack: (k, a) => {
+      hand(P1, a.owner, a.yaw);
+      ahead(P2, a.owner, a.yaw + (Math.random() - 0.5) * 0.5, 1.9, 1.5 + (Math.random() - 0.5) * 0.5);
+      k.bolt(STORM, P1, P2, 0.08, 0.12, 0.35);
+    },
+    hit: (k, h) => zap(k, STORM, h.target, 2, 0.06),
+  },
+  thor: {
+    // the hammer's heavy arc, one way and then back, with a lightning edge along it
+    attack: (k, a) => {
+      const u = a.owner;
+      const back = a.n % 2 === 1;
+      const tilt = back ? -26 : 26;
+      const y = u.body.y + 1.3;
+      cut(k, THUNDER, u.x, y, u.z, a.yaw, { radius: a.reach * 0.48, width: 2.1, angle: 130, tilt, reverse: back, delay: 0.06, life: 0.34, tail: 0.85 });
+      cut(k, STORM, u.x, y, u.z, a.yaw, { radius: a.reach * 0.66, width: 0.34, angle: 130, tilt, reverse: back, delay: 0.06, life: 0.32, tail: 0.9 });
+    },
+    hit: (k, h) => {
+      contact(P1, h.owner, h.target);
+      k.burst(h.p, P1.x, P1.y, P1.z, 0.5);
+      zap(k, STORM, h.target, 1, 0.07);
+    },
+  },
+  odin: {
+    // a spear thrust: a streak driving straight out, ringed where the point goes through
+    attack: (k, a) => {
+      const u = a.owner;
+      ahead(P1, u, a.yaw, 0.4, 1.35);
+      ahead(P2, u, a.yaw, a.reach * 0.95, 1.3);
+      k.beam({ from: P1, to: P2, width: 0.2, main: a.p.vfx, hot: a.p.core, reach: 0.06, chase: 0.07, hold: 0.02, fadeOut: 0.16, flow: 24 });
+      basis(a.yaw);
+      // (seen from behind, the streak hides behind him: the rings carry it)
+      for (let i = 0; i < 2; i++) {
+        k.ribbon({ x: P2.x, y: P2.y, z: P2.z, main: a.p.vfx, hot: RUNE.core, ax: RIGHT, ay: UP, an: FWD, radius: 0.2, radiusTo: 1.35 - i * 0.45, a0: 0, span: Math.PI * 2, width: 0.65 - i * 0.2, sweep: 0, tail: 3, life: 0.28, delay: 0.04 + i * 0.07 });
+      }
+    },
+    hit: (k, h) => {
+      contact(P1, h.owner, h.target, 1.3);
+      k.burst(h.p, P1.x, P1.y, P1.z, 0.45);
+    },
+  },
+  loki: {
+    // a spinning dagger with a poison trail
+    shot: { prop: 'dagger', size: 1.2, orb: 0.6, trail: 1.6, spin: 4 },
+    hit: (k, h) => {
+      const t = h.target;
+      contact(P1, h.owner, t);
+      k.swarm({ x: P1.x, y: P1.y, z: P1.z, mode: 'scatter', main: VENOM.vfx, hot: VENOM.core, range: 0.7, spread: 0, size: 0.09, life: 0.45, count: 0.3 });
+    },
+  },
+  anubis: {
+    // the ankh flies, trailing sand
+    shot: { sigil: 'ankh', size: 0.7, orb: 1.2, trail: 1.7 },
+    attack: (k, a) => {
+      hand(P1, a.owner, a.yaw);
+      k.swarm({ x: P1.x, y: P1.y, z: P1.z, mode: 'scatter', main: SAND.vfx, hot: SAND.core, range: 0.45, spread: 0, size: 0.07, life: 0.4, count: 0.3 });
+    },
+    hit: (k, h) => {
+      contact(P1, h.owner, h.target);
+      k.swarm({ x: P1.x, y: P1.y, z: P1.z, mode: 'scatter', main: SAND.vfx, hot: SAND.core, range: 0.9, spread: 0, size: 0.09, life: 0.6, count: 0.4 });
+    },
+  },
+  thanatos: {
+    // the scythe reaps a wide crescent of cold light, one way and then back
+    attack: (k, a) => {
+      const u = a.owner;
+      const back = a.n % 2 === 1;
+      const tilt = back ? -16 : 16;
+      const y = u.body.y + 1.2;
+      cut(k, BLADE, u.x, y, u.z, a.yaw, { radius: a.reach * 0.5, width: 2.3, angle: 160, tilt, sweep: 0.12, life: 0.38, reverse: back, delay: 0.05, tail: 0.85 });
+      cut(k, COLD_FIRE, u.x, y, u.z, a.yaw, { radius: a.reach * 0.72, width: 0.3, angle: 160, tilt, sweep: 0.12, life: 0.36, reverse: back, delay: 0.05, tail: 0.9 });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      // a wisp of the soul tears loose
+      k.swarm({ x: t.x, y: t.body.y + 1, z: t.z, mode: 'scatter', main: COLD_FIRE.vfx, hot: COLD_FIRE.core, range: 0.9, spread: 0, size: 0.12, life: 0.7, count: 0.3 });
+    },
+  },
+  kukulkan: {
+    // each bolt goes out on a ring of wind, jade and gold
+    shot: { orb: 1.25, trail: 1.8 },
+    colors: JADE,
+    attack: (k, a) => {
+      hand(P1, a.owner, a.yaw);
+      basis(a.yaw);
+      k.ribbon({ x: P1.x, y: P1.y, z: P1.z, main: SUNLIT.vfx, hot: SUNLIT.core, ax: RIGHT, ay: UP, an: FWD, radius: 0.15, radiusTo: 1.15, a0: 0, span: Math.PI * 2, width: 0.42, sweep: 0, tail: 3, life: 0.26 });
+    },
+    hit: (k, h) => {
+      contact(P1, h.owner, h.target);
+      plumes(k, P1.x, P1.y, P1.z, 0.8, { size: 0.17, life: 0.8, count: 0.25 });
+    },
+  },
+  cthulhu: {
+    // three claws rake across, one hand and then the other
+    attack: (k, a) => {
+      const u = a.owner;
+      const back = a.n % 2 === 1;
+      // three cuts side by side, wide enough to clear his wings from behind
+      for (let i = 0; i < 3; i++) {
+        cut(k, CLAW, u.x, u.body.y + 1.75 - i * 0.22, u.z, a.yaw, { radius: a.reach * (0.62 + i * 0.15), width: 0.9, angle: 125, tilt: back ? -38 : 38, sweep: 0.08, life: 0.3, reverse: back, delay: 0.05 + i * 0.015, tail: 0.9 });
+      }
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      // the marks of three claws torn across the body, facing whoever struck it
+      contact(P1, h.owner, t, 1.35);
+      basis(h.owner.body.yaw);
+      for (let i = 0; i < 3; i++) {
+        const side = (i - 1) * 0.26;
+        P2.copy(P1).addScaledVector(RIGHT, side - 0.45).addScaledVector(UP, 0.6);
+        P3.copy(P1).addScaledVector(RIGHT, side + 0.45).addScaledVector(UP, -0.6);
+        k.beam({ from: P2, to: P3, width: 0.16, main: CLAW.vfx, hot: CLAW.core, reach: 0.05 + i * 0.02, hold: 0.1, fadeOut: 0.25 });
+      }
+      k.swarm({ x: t.x, y: t.body.y + 1.2, z: t.z, mode: 'drip', main: OOZE.vfx, hot: OOZE.core, range: 0.5, spread: 1.1, size: 0.1, life: 0.7, count: 0.35 });
+    },
+  },
+};
+
+/** A god's basic attack look (none for minions, monsters and gods without one). */
+export function basicLookFor(u: Unit): BasicLook | undefined {
+  return u.kind === 'god' ? BASIC_LOOKS[u.combatant.god.id] : undefined;
+}
+
+/** Passives that show in the world, by the look their flash names (`<god>:passive`, sent from sim/Passives). */
+const PASSIVE_LOOKS: Record<string, SkillLook> = {
+  // every third blow: the ground breaks behind the target with a thunderclap
+  'thor:passive': {
+    decal: 0.5,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'circle') return;
+      const gy = k.ground(s.x, s.z);
+      shock(k, f.p, s.x, s.z, 0.3, s.radius, { life: 0.4, width: 0.7 });
+      shock(k, STORM, s.x, s.z, 0.2, s.radius * 0.8, { life: 0.3, wall: true, width: 0.45 });
+      rockRing(k, s.x, s.z, s.radius * 0.45, 5, 0.6, { size: 0.45, hold: 0.35 });
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.random();
+        P1.set(s.x, gy + 0.25, s.z);
+        P2.set(s.x + Math.sin(a) * s.radius, gy + 0.2, s.z + Math.cos(a) * s.radius);
+        k.bolt(STORM, P1, P2, 0.1, 0.2, 0.3);
+      }
+      k.billow('dust', s.x, gy + 0.5, s.z, 3.6, { duration: 1.1, tint: 0xc8bca8 });
+    },
+  },
+  // Shed Skin: the old skin peels up off him and falls away, and he comes out bright
+  'kukulkan:passive': {
+    decal: 0.3,
+    flash: (k, f) => {
+      const u = f.owner;
+      wrap(k, { vfx: 0xd8c89a, core: SUNLIT.core }, u, 0.8, { radius: u.radius + 0.35, height: 2.6, turns: 3, width: 0.5, sweep: 0.45, taper: 0.4 });
+      wrap(k, QUETZAL, u, 0.6, { radius: u.radius + 0.2, height: 2.2, turns: 2, width: 0.2, sweep: 0.3 });
+      k.burst(f.p, u.x, u.body.y + 1.2, u.z, 1);
+      plumes(k, u.x, u.body.y + 1.4, u.z, 1.6, { size: 0.22, life: 1.2, count: 0.45 });
+    },
+  },
+};
+
 export function lookFor(skill: string | undefined): SkillLook | undefined {
-  return skill === undefined ? undefined : SKILL_LOOKS[skill];
+  return skill === undefined ? undefined : (SKILL_LOOKS[skill] ?? PASSIVE_LOOKS[skill]);
 }
 
 export { UP as LOOK_UP, along, yawOf };

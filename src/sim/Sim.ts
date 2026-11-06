@@ -849,8 +849,9 @@ export class Sim {
   }
 
   /** A flash for effects outside skills (passive procs). */
-  flashAt(owner: Unit, shape: FlashShape): void {
-    this.flash(owner, shape);
+  /** `look`: the look it plays (a passive's, `<god>:passive`), if any. */
+  flashAt(owner: Unit, shape: FlashShape, look?: string): void {
+    this.flash(owner, shape, look);
   }
 
   private flash(owner: Unit, shape: FlashShape, skill?: string): void {
