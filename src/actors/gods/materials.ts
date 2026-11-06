@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, atan, attribute, color, dot, exp, float, fract, fwidth, length, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
-  mx_worley_noise_float, positionGeometry, positionLocal, positionView, pow, reflectView, saturate, select, sin, smoothstep, time, uv, vec3,
+  abs, atan, attribute, color, dot, exp, float, floor, Fn, fract, fwidth, length, Loop, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
+  positionGeometry, positionLocal, positionView, pow, reflectView, saturate, select, sin, smoothstep, time, uv, vec3, vec4,
 } from '../../render/tsl';
 import { objectUniforms } from '../../render/shared';
 import { reliefFade, reliefNormal, surfaceGradient } from './relief';
@@ -117,6 +117,40 @@ const relief = (m: THREE.MeshPhysicalNodeMaterial, height: any): void => {
   (m as Relief).reliefNode = height;
 };
 
+/**
+ * A 3D Voronoi for scales: x and y are the two nearest feature distances (F1, F2,
+ * in cell units), z is how far below its own scale's center the point sits, and w
+ * is a random tone for that scale. three's mx_worley_noise_vec3 rendered flat here
+ * (every pixel at its 1e6 seed), so this keeps F1 and F2 in scalars and sorts with
+ * min/max and selects.
+ */
+const scaleCells = Fn(([pos]: [any]) => {
+  const cell = floor(pos).toVar();
+  const local = pos.sub(cell).toVar();
+  const f1 = float(8).toVar();
+  const f2 = float(8).toVar();
+  const below = float(0).toVar();
+  const tone = float(0).toVar();
+  Loop({ start: -1, end: 1, condition: '<=', name: 'i' }, ({ i }: any) => {
+    Loop({ start: -1, end: 1, condition: '<=', name: 'j' }, ({ j }: any) => {
+      Loop({ start: -1, end: 1, condition: '<=', name: 'k' }, ({ k }: any) => {
+        const o = vec3(float(i), float(j), float(k));
+        const c = cell.add(o);
+        // a small sin hash: cell coordinates stay within a few hundred on a body
+        const h = fract(sin(vec3(dot(c, vec3(12.9898, 78.233, 37.719)), dot(c, vec3(39.346, 11.135, 83.155)), dot(c, vec3(73.156, 52.235, 9.151)))).mul(43758.5453));
+        const d = o.add(h.mul(0.85).add(0.075)).sub(local);
+        const dd = dot(d, d);
+        const nearer = dd.lessThan(f1);
+        below.assign(select(nearer, d.y, below));
+        tone.assign(select(nearer, h.x.add(h.y).mul(0.5), tone));
+        f2.assign(min(f2, max(f1, dd)));
+        f1.assign(min(f1, dd));
+      });
+    });
+  });
+  return vec4(f1.sqrt(), f2.sqrt(), below, tone);
+});
+
 function skinMaterial(p: GodPalette): THREE.Material {
   // the peach fuzz of skin, tinted by the god's own skin so a dark hide doesn't glitter red
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.55, sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xff9a7a).lerp(new THREE.Color(p.skin), 0.45) });
@@ -159,8 +193,19 @@ function scalySkinMaterial(p: GodPalette): THREE.Material {
   const blotch = mx_fractal_noise_float(positionGeometry.mul(7), 3).mul(0.5).add(0.5);
   // the deep's hide has coarser, rubbery scales; a serpent's are small and fine
   const freq = deep ? 54 : 70;
-  const cell = mx_worley_noise_float(positionGeometry.mul(freq));
-  const seam = smoothstep(0.28, 0.62, cell);
+  // Voronoi scales: F2 - F1 is the distance to the nearest edge between two scales, so
+  // the grooves come out an even width and each scale domes up from its own rim
+  // (distance to the nearest point alone made soft cones creased along hairline cracks)
+  const f = scaleCells(positionGeometry.mul(freq));
+  const edge = f.y.sub(f.x);
+  // each scale eases up from its seam (zero slope there, so the derivative bump stays
+  // smooth) into a rounded dome, and lies shingled: its lower edge stands proud and the
+  // top tucks under the scale above, as a serpent's do
+  const dome = smoothstep(0.0, 0.5, edge);
+  const shingle = f.z.mul(0.6).add(0.75).clamp(0.4, 1);
+  const groove = float(1).sub(smoothstep(0.0, 0.1, edge));
+  const seam = max(groove, float(1).sub(dome).mul(0.35));
+  const tone = f.w.sub(0.5).mul(deep ? 0.14 : 0.2);
   // belly scales: a band down the front of the torso, and every underside (throat, jaw, inner arms)
   const front = smoothstep(0.45, 0.85, normalLocal.z).mul(float(1).sub(smoothstep(0.035, 0.075, abs(positionGeometry.x))));
   const under = smoothstep(0.2, 0.7, normalLocal.y.negate());
@@ -169,12 +214,12 @@ function scalySkinMaterial(p: GodPalette): THREE.Material {
   const dorsal = deep ? float(1).sub(smoothstep(-0.6, 0.25, normalLocal.z)).mul(0.4) : float(0);
   const base = mix(color(p.skin), color(p.skinDeep), saturate(crease.mul(0.8).add(smoothstep(0.5, 0.8, blotch).mul(deep ? 0.55 : 0.35)).add(dorsal)));
   const pale = mix(base, p.belly !== undefined ? color(p.belly) : color(p.skin).mul(1.35), belly.mul(p.belly !== undefined ? 0.75 : 0.3));
-  const scaled = pale.mul(float(1).sub(seam.mul(deep ? 0.42 : 0.3))).mul(float(1).add(ridge.mul(0.2)));
+  const scaled = pale.mul(float(1).sub(seam.mul(deep ? 0.42 : 0.3)).add(tone).add(shingle.sub(0.5).mul(0.08))).mul(float(1).add(ridge.mul(0.2)));
   m.colorNode = mix(scaled, color(p.skinDeep).mul(0.35), socket.mul(0.7));
   m.roughnessNode = float(deep ? 0.44 : 0.32).add(seam.mul(0.3)).add(crease.mul(0.15)).sub(ridge.mul(0.08));
   m.emissiveNode = p.deep ? color(p.glow).mul(rim().mul(0.1)).add(color(p.skinDeep).mul(rim().mul(0.15))) : color(p.skinDeep).mul(rim().mul(0.15));
   // each scale domed, sunk at its seams
-  relief(m, float(1).sub(seam).mul(deep ? 0.0028 : 0.002).mul(reliefFade(1 / freq)).add(blotch.mul(0.001).mul(reliefFade(0.14))));
+  relief(m, dome.mul(shingle).mul(deep ? 0.0021 : 0.0026).mul(reliefFade(1 / freq)).add(blotch.mul(0.001).mul(reliefFade(0.14))));
   return m;
 }
 
