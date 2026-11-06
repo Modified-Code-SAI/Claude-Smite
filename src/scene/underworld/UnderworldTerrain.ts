@@ -138,18 +138,21 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const n = normalWorld.normalize();
   const lum = (c: any) => dot(c, vec3(0.3, 0.59, 0.11));
 
-  const flag = planar(textures.get('flagstone'), positionWorld.xz.mul(0.085), n);
-  const dust = planar(textures.get('dirt'), positionWorld.xz.mul(0.23).add(vec2(0.31, 0.17)), n);
-  const rock = triplanar(textures.get('rock'), 0.055, 6);
-  const fine = triplanar(textures.get('rock'), 0.2, 6);
-
   // each depth's own look, by weight (see depthLook): the Abyss where both
   // weights are 0, the Ashen Depths' forge, the Drowned Halls' crypt
   const ember = depthLook.x;
   const soul = depthLook.y;
+  const abyss = float(1).sub(ember).sub(soul);
   const depthTint = (abyss: any, forge: any, drowned: any) => mix(mix(abyss, forge, ember), drowned, soul);
+
+  // each depth lays its own slabs: great black ones in the Abyss, the forge's
+  // middling basalt, the crypt's small worn paving
+  const flag = planar(textures.get('flagstone'), positionWorld.xz.mul(depthTint(float(0.058), float(0.085), float(0.115))), n);
+  const dust = planar(textures.get('dirt'), positionWorld.xz.mul(0.23).add(vec2(0.31, 0.17)), n);
+  const rock = triplanar(textures.get('rock'), 0.055, 6);
+  const fine = triplanar(textures.get('rock'), 0.2, 6);
   // polished black basalt tinted by the depth, the slabs varied by the macro noise
-  const basalt = vec3(lum(flag.color)).mul(depthTint(vec3(0.135, 0.15, 0.14), vec3(0.2, 0.158, 0.146), vec3(0.13, 0.15, 0.16))).mul(mix(float(0.75), float(1.2), macro));
+  const basalt = vec3(lum(flag.color)).mul(depthTint(vec3(0.1, 0.112, 0.106), vec3(0.2, 0.158, 0.146), vec3(0.13, 0.15, 0.16))).mul(mix(float(0.75), float(1.2), macro));
   // what has drifted against the walls: in the Abyss pale bone dust, in the
   // Ashen Depths a black crust of cooling lava, in the Drowned Halls the
   // grey-green silt the water left behind
@@ -157,8 +160,9 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const ashW = smoothstep(0.2, 0.8, ash.add(dust.color.g.mul(0.6)).sub(0.25));
   let col: any = mix(basalt, ashCol, ashW);
   let nrm: any = mix(flag.normal, dust.normal, ashW);
-  // polished enough to catch the braziers' light
-  let rough: any = mix(flag.roughness.mul(0.5).add(0.08), float(0.95), ashW);
+  // polished enough to catch the braziers' light; the Abyss's slabs are black
+  // glass, polished to a mirror between their scratches
+  let rough: any = mix(flag.roughness.mul(mix(float(0.5), float(0.32), abyss)).add(mix(float(0.08), float(0.04), abyss)), float(0.95), ashW);
 
   // rock: dark and faintly banded, steep faces and everything above the floor
   const rockNrm = rock.normal.add(fine.normal).normalize();
@@ -217,10 +221,23 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   col = col.mul(float(1).sub(puddle.mul(0.55)));
   nrm = mix(nrm, rippleN, puddle);
   rough = mix(rough.mul(mix(float(1), float(0.6), wetFloor)), float(0.03), puddle);
+  // the Abyss: bone dust ground into some of the joints, and in the scorched
+  // patches the black slabs split clean through, spirit light welling up from
+  // the dark below (both masks reuse noise already sampled above)
+  const bare = floorW.mul(abyss).mul(float(1).sub(ashW));
+  const boneJoint = smoothstep(0.955, 0.998, flag.roughness).mul(smoothstep(-0.25, 0.25, wornN));
+  col = mix(col, vec3(0.36, 0.34, 0.29).mul(lum(dust.color).add(0.55)), boneJoint.mul(bare).mul(0.7));
+  rough = mix(rough, float(0.9), boneJoint.mul(bare));
+  const rift = smoothstep(0.06, 0.26, scorch).mul(bare);
+  const split = smoothstep(crackW.mul(0.75), 0.0, crackN).mul(rift);
+  const rim = smoothstep(crackW.mul(6), crackW, crackN).mul(rift);
+  col = col.mul(float(1).sub(rim.mul(0.5)));
+  rough = mix(rough, float(0.6), rim);
+  const fissure = split.mul(2.3).add(rim.mul(0.1));
   mat.colorNode = col;
   mat.normalNode = transformNormalToView(nrm.normalize());
   mat.roughnessNode = rough;
   mat.metalnessNode = float(0);
-  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).add(seep).mul(breathe));
+  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).add(seep).add(fissure).mul(breathe));
   return mat;
 }
