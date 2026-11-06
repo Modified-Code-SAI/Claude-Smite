@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { toScreen } from '../combat/screenEdge';
-import { pickMarks, THREAT_HIT, type MarkScene } from './JotunnMarks';
+import { clearOfHud, pickMarks, THREAT_HIT, TOP_CLEAR, type MarkScene } from './JotunnMarks';
 
 const W = 1600;
 const H = 900;
@@ -92,5 +92,20 @@ describe('Jötunn marks', () => {
     expect(pickMarks(scene({ giant: { x: 0, y: 9, z: -40, alive: false } }))).toEqual([]);
     // the giant gets its bearings in the countdown
     expect(pickMarks(scene({ phase: 'countdown', piloting: true })).length).toBeGreaterThan(0);
+  });
+});
+
+describe('Jötunn marks and the HUD', () => {
+  it('fades a mark under the Might bar or over the aim, and moves an edge mark out from under the bar', () => {
+    expect(clearOfHud({ x: W / 2 + 100, y: 60, edge: false, angle: 0 }, W, H)).toBe(true);
+    expect(clearOfHud({ x: W / 2 + 10, y: H / 2 - 20, edge: false, angle: 0 }, W, H)).toBe(true);
+    expect(clearOfHud({ x: 120, y: 60, edge: false, angle: 0 }, W, H)).toBe(false);
+    expect(clearOfHud({ x: W / 2 + 300, y: H / 2 + 200, edge: false, angle: 0 }, W, H)).toBe(false);
+    const pinned = { x: W / 2 - 50, y: 0.1 * H, edge: true, angle: -1.5 };
+    expect(clearOfHud(pinned, W, H)).toBe(false);
+    expect(pinned.y).toBe(TOP_CLEAR);
+    const side = { x: 0.04 * W, y: 0.1 * H, edge: true, angle: -2.5 };
+    clearOfHud(side, W, H);
+    expect(side.y).toBe(0.1 * H);
   });
 });

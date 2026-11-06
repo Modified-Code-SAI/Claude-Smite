@@ -109,6 +109,26 @@ interface Shown {
 
 /** Marks near the middle of the screen (the aim) fade back, so they never sit over what you're hitting. Pixels. */
 const CLEAR_MIDDLE = 80;
+/**
+ * The top HUD (jotunn.css: the Might bar block, min(60vw, 520px) wide, and
+ * the state line under it, about 100 px down): a mark in view under it
+ * fades back, and an edge mark pins just below it. Pixels.
+ */
+export const TOP_CLEAR = 118;
+
+/**
+ * Keeps a mark clear of the HUD on a w x h screen: an edge mark under the top
+ * HUD moves below it; returns whether a mark in view should fade back (under
+ * the top HUD, or over the aim).
+ */
+export function clearOfHud(p: ScreenSpot, w: number, h: number): boolean {
+  const underTop = p.y < TOP_CLEAR && Math.abs(p.x - w / 2) < Math.min(0.3 * w, 260) + 24;
+  if (p.edge) {
+    if (underTop) p.y = TOP_CLEAR;
+    return false;
+  }
+  return underTop || (Math.abs(p.x - w / 2) < CLEAR_MIDDLE && Math.abs(p.y - h / 2) < CLEAR_MIDDLE);
+}
 
 export class JotunnMarks {
   private readonly root = document.createElement('div');
@@ -185,7 +205,7 @@ export class JotunnMarks {
         s.edge = p.edge;
         s.el.classList.toggle('edge', p.edge);
       }
-      const near = !p.edge && Math.abs(p.x - w / 2) < CLEAR_MIDDLE && Math.abs(p.y - h / 2) < CLEAR_MIDDLE;
+      const near = clearOfHud(p, w, h);
       if (near !== s.near) {
         s.near = near;
         s.el.classList.toggle('near', near);
