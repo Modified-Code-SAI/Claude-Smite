@@ -53,6 +53,8 @@ export interface PlayOptions {
   pan?: number;
   /** Positional reference distance (meters at full volume); bigger = carries further. */
   ref?: number;
+  /** Loops: seconds into the buffer to start from (random when omitted, so beds never play in step). */
+  offset?: number;
 }
 
 export interface LoopHandle {
@@ -410,7 +412,7 @@ export class AudioEngine {
     g.gain.setTargetAtTime(target, ctx.currentTime, 0.05);
     src.connect(g);
     const { panner, air, send } = this.route(g, o);
-    src.start(ctx.currentTime, Math.random() * buffer.duration);
+    src.start(ctx.currentTime, o.offset !== undefined ? o.offset % buffer.duration : Math.random() * buffer.duration);
     let alive = true;
     // the air between loop and listener changes as either one moves
     const spot: AirSpot | null = air && send && o.at ? { air, send, base: o.wet ?? 0, x: o.at.x, z: o.at.z } : null;

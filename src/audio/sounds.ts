@@ -11,6 +11,7 @@ import {
 import { CREATURE_SOUNDS } from './creatures';
 import { JOTUNN_SOUNDS } from './jotunnSounds';
 import { VOICE_SOUNDS } from './voices';
+import { CHANT, CHANT_BEAT, CHANT_LOOP } from './chant';
 
 export interface Recipe {
   make: (r: Rand, variant: number) => Float32Array;
@@ -18,6 +19,8 @@ export interface Recipe {
   variants?: number;
   /** Rendered as a seamless loop. */
   loop?: boolean;
+  /** A loop built to wrap on its own length (a rhythm): it gets no crossfaded seam or filtering, which would pull it off the beat. */
+  exact?: boolean;
   /** Peak level after normalizing (default 0.9). */
   peak?: number;
 }
@@ -211,6 +214,8 @@ export const SOUNDS: Record<string, Recipe> = {
   'crowd.ooh': { variants: 2, peak: 0.6, make: (r) => tail(crowd(r, 1.9, { voices: 18, pitch: 165, rise: 0.3, breath: 0.25, babble: 0.1, lp: 3000, vowels: ['oo', 'oh'], arc: true, env: (t) => ahr(t, 0.16, 0.45, 1.1) }), 0.8, 0.3, 2800) },
   'amb.crowd': { loop: true, peak: 0.45, make: (r) => loopable(crowd(r, 10, { voices: 20, pitch: 150, rise: 0, breath: 0.35, babble: 1, lp: 2200, env: () => 1 }), 1.2) },
   // the same crowd on its feet: higher, brighter, held shouts instead of chatter (faded in as the play heats up)
+  // (both ends: each its own take, on the same beat)
+  'amb.chant': { loop: true, exact: true, variants: 2, peak: 0.6, make: (r) => chant(r) },
   'amb.cheer': { loop: true, peak: 0.5, make: (r) => loopable(crowd(r, 6, { voices: 22, pitch: 205, rise: 0, breath: 0.55, babble: 0.45, lp: 3400, env: () => 1 }), 1.2) },
   // the Sun Relic's song, a low sung drone that follows it round the pitch
   'relic.hum': { loop: true, peak: 0.4, make: (r) => relicHum(r, 6) },
@@ -447,7 +452,7 @@ function relicHum(r: Rand, len: number): Float32Array {
 function crowd(
   r: Rand,
   len: number,
-  o: { voices: number; pitch: number; rise: number; breath: number; babble: number; lp: number; env: (t: number) => number; vowels?: (keyof typeof VOWELS)[]; arc?: boolean },
+  o: { voices: number; pitch: number; rise: number; breath: number; babble: number; lp: number; env: (t: number) => number; vowels?: (keyof typeof VOWELS)[]; arc?: boolean; stagger?: number },
 ): Float32Array {
   const out = buf(len);
   const shapes = (o.vowels ?? ['ah', 'eh', 'oh']).map((v) => VOWELS[v].map(([f, q, g]) => ({ b: new Biquad('bandpass', f * (0.92 + r() * 0.16), q * 0.6), g })));
@@ -457,7 +462,7 @@ function crowd(
     // shouting voices waver: a few percent of pitch, several times a second
     drift: wander(r, 3 + r() * 4),
     loud: wander(r, 2 + r() * 3 + o.babble * 5),
-    start: o.babble > 0.5 ? 0 : r() * 0.3,
+    start: o.babble > 0.5 ? 0 : r() * (o.stagger ?? 0.3),
     shape: k % shapes.length,
   }));
   const sums = shapes.map(() => 0);
@@ -484,6 +489,76 @@ function crowd(
     out[i] = lp.run(y) * env;
   }
   return out;
+}
+
+/**
+ * The stands chanting {@link CHANT}'s pattern: the stamp of hundreds of feet,
+ * a crowd's claps and a shout to end each phrase, every hit made fresh, in a
+ * stadium's air. Built to wrap exactly on its length (the reverb runs over two
+ * laps and the second is kept), so it stays on the beat the stands move to.
+ */
+function chant(r: Rand): Float32Array {
+  const n = Math.round(CHANT_LOOP * RATE);
+  const out = new Float32Array(n);
+  const nz = white(r);
+  // each hit is built with 30 ms of room before its beat, for the stragglers
+  const lead = 0.03;
+  const put = (b: Float32Array, beat: number, gain: number) => {
+    const at = Math.round((beat * CHANT_BEAT - lead) * RATE) + n;
+    for (let i = 0; i < b.length; i++) out[(at + i) % n]! += b[i]! * gain;
+  };
+  // a few feet and hands, each its own, drawn on again and again in every stamp and clap
+  // (a foot: the thud of the body, and the knock of the stand it lands on)
+  const feet = Array.from({ length: 6 }, () => layer(thump(r, 0.2 + r() * 0.1, 140 + r() * 90, 75, { click: 0.15, noise: 0.75 }), [knock(r, 0.12, 240 + r() * 280), 5]));
+  const blows = Array.from({ length: 3 }, () => thump(r, 0.4, 104 + r() * 12, 58, { click: 0, noise: 0.15 }));
+  const hands = Array.from({ length: 12 }, () => {
+    const bp = new Biquad('bandpass', 950 + r() * 1700, 1 + r() * 0.8);
+    const decay = 0.03 + r() * 0.035;
+    const o = buf(decay * 1.4);
+    fill(o, (t) => bp.run(nz()) * perc(t, 0.0006, decay));
+    return o;
+  });
+  const pick = <T>(of: T[]) => of[Math.floor(r() * of.length)]!;
+  /** `count` of `parts` summed into a new hit, spread over `spread` seconds from just before the beat (most a touch late, the way a crowd keeps time). */
+  const many = (parts: Float32Array[], count: number, spread: number, len: number, gain: number) => {
+    const o = buf(len);
+    for (let k = 0; k < count; k++) {
+      const p = pick(parts);
+      const at = Math.round((lead + (r() - 0.2) * spread) * RATE);
+      const g = gain * (0.4 + r() * 0.6);
+      for (let i = 0; i < p.length; i++) o[at + i]! += p[i]! * g;
+    }
+    return o;
+  };
+  const stamp = () => {
+    const o = many(feet, 16, 0.05, 0.5, 0.3);
+    // one deep blow under it all, so the stamp lands as one
+    const body = pick(blows);
+    for (let i = 0; i < body.length; i++) o[i + Math.round(lead * RATE)]! += body[i]! * 0.4;
+    // (no sub below the thud: it would only eat the headroom the knock needs)
+    return filter(filter(o, 'highpass', 70), 'lowpass', 2400);
+  };
+  const clap = () => many(hands, 32, 0.045, 0.2, 1);
+  const shout = () => {
+    const s = crowd(r, 0.62, { voices: 20, pitch: 178, rise: 0.12, breath: 0.45, babble: 0, stagger: 0.04, lp: 3600, vowels: ['eh', 'ah'], env: (t) => ahr(t, 0.03, 0.13, 0.36) });
+    const o = buf(0.62 + lead);
+    o.set(s, Math.round(lead * RATE));
+    return o;
+  };
+  // each hit's level, matched by its own peak so the mix holds whatever the take
+  const level = (b: Float32Array, to: number) => normalize(b, to);
+  for (let take = 0; take < CHANT.takes; take++) {
+    const top = take * CHANT.beats;
+    for (const s of CHANT.stomps) put(level(stamp(), 1), top + s, 0.92 + r() * 0.16);
+    for (const c of CHANT.claps) put(level(clap(), 0.45), top + c, 0.9 + r() * 0.2);
+    put(level(shout(), 0.8), top + CHANT.shout, 1);
+    put(level(clap(), 0.35), top + CHANT.shout, 1);
+  }
+  // the stadium's air, run over two laps so the tail of the last hit is in the first
+  const laps = new Float32Array(n * 2);
+  laps.set(out);
+  laps.set(out, n);
+  return dcBlock(tail(laps, 0.95, 0.32, 2600)).slice(n);
 }
 
 function windBed(r: Rand, len: number): Float32Array {
@@ -596,9 +671,9 @@ export function renderRecipe(recipe: Recipe, seed: number): Float32Array[] {
   for (let v = 0; v < n; v++) {
     const r = rngFor(seed + v * 7919);
     let b = recipe.make(r, v);
-    b = normalize(dcBlock(b), recipe.peak ?? 0.9);
+    b = normalize(recipe.exact ? b : dcBlock(b), recipe.peak ?? 0.9);
     // loops get a crossfaded seam so they never click when they wrap
-    b = recipe.loop ? loopable(b, 0.2) : declick(b, 0.5, 12);
+    if (!recipe.exact) b = recipe.loop ? loopable(b, 0.2) : declick(b, 0.5, 12);
     out.push(b);
   }
   return out;

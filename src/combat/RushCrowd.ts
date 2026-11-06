@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { abs, attribute, cameraPosition, color, cos, cross, dot, float, length, max, min, mix, normalView, normalize, positionLocal, positionView, sin, smoothstep, time, uniform, vec3 } from '../render/tsl';
 import { RUSH, type Rush } from '../sim/Rush';
+import { chanting, chantMotion } from '../audio/chant';
 import type { Side } from '../game/combatant';
 
 type Ground = (x: number, z: number) => number;
@@ -29,11 +30,17 @@ export const CROWD = {
  * Rises fast and settles slowly, so a goal's roar outlasts the goal.
  */
 const HEAT = { idle: 0.1, overtime: 0.24, rise: 5, fall: 1.1, near: 18, beat: 0.4, save: 0.75, dodge: 0.6, miss: 0.5 };
+/** How fast the chant spreads through the stands, per second (the sound swells over about the same). */
+const CHANT_SPREAD = 0.35;
 
 const GOLD_TRIM = 0xffc23a;
 let crowdMaterial: THREE.MeshBasicNodeMaterial | null = null;
 const heatOrder = uniform(HEAT.idle);
 const heatChaos = uniform(HEAT.idle);
+/** How far the chant has spread through the stands (0 to 1), and its stamp (`bob`) and clap (`pump`) now: see audio/chant. */
+const chantOn = uniform(0);
+const chantBob = uniform(0);
+const chantPump = uniform(0);
 const tintOrder = uniform(new THREE.Color());
 const tintChaos = uniform(new THREE.Color());
 
@@ -49,8 +56,10 @@ const isKind = (kind: any, k: number) => smoothstep(k - 0.5, k - 0.4, kind).mul(
  * for a head, and their teams' standards planted among them. Each spirit bobs on
  * its feet; as its end of the crowd heats up it starts to hop and throws its
  * arms up (each at its own threshold, so a near miss lifts only the keenest),
- * and the standards stream and flare. All the motion is in the vertex shader:
- * the CPU sets two numbers a frame.
+ * and the standards stream and flare. Through a tight finish they chant,
+ * joining one by one until both ends hop on the stamps and thrust their arms
+ * up on the claps as one (an end breaking off to cheer a run at its gate).
+ * All the motion is in the vertex shader: the CPU sets a few numbers a frame.
  */
 function makeCrowdMaterial(): THREE.MeshBasicNodeMaterial {
   const m = new THREE.MeshBasicNodeMaterial();
@@ -71,13 +80,17 @@ function makeCrowdMaterial(): THREE.MeshBasicNodeMaterial {
   // the spirit faces the middle of the pitch; its side axis is what its arms swing round
   const f = normalize(vec3(feet.x.negate(), 0, feet.z.negate()));
   const axis = vec3(f.z.negate(), 0, f.x);
-  // hop: a quick spring off the ground at each spirit's own beat (standards stay planted)
-  const hop = max(sin(beat), 0).pow(1.6).mul(smoothstep(0.3, 0.9, heat)).mul(0.34).mul(float(1).sub(standard));
-  // arms: hanging and swaying, then up over the head and pumping
+  // in the chant: each spirit joins at its own point as it spreads, and drops out as its end gets up to cheer
+  // (chantBreak in audio/chant is the same curve)
+  const joined = smoothstep(phase.mul(0.7), phase.mul(0.7).add(0.3), chantOn).mul(float(1).sub(smoothstep(0.45, 0.8, heat)));
+  // hop: a quick spring off the ground at each spirit's own beat, or with everyone on the chant's (standards stay planted)
+  const own = max(sin(beat), 0).pow(1.6).mul(smoothstep(0.3, 0.9, heat)).mul(0.34);
+  const hop = mix(own, chantBob.mul(phase.mul(0.08).add(0.14)), joined).mul(float(1).sub(standard));
+  // arms: hanging and swaying, then up over the head and pumping (on the claps, in the chant)
   const keen = smoothstep(phase.mul(0.35).add(0.18), phase.mul(0.35).add(0.45), heat);
   const rest = sin(time.mul(0.9).add(phase.mul(30))).mul(0.1).add(0.14);
   const up = sin(beat.add(1.3)).mul(0.32).add(2.7);
-  const angle = mix(rest, up, keen).mul(arm);
+  const angle = mix(mix(rest, up, keen), chantPump.mul(0.5).add(2.3), joined).mul(arm);
   const v = positionLocal.sub(pivot);
   const c = cos(angle);
   const swung = v.mul(c).add(cross(axis, v).mul(sin(angle))).add(axis.mul(dot(axis, v).mul(float(1).sub(c))));
@@ -106,7 +119,8 @@ function makeCrowdMaterial(): THREE.MeshBasicNodeMaterial {
   const sun = smoothstep(0.2, 0.17, length(vec3(cloth.x.sub(0.5), cloth.y.sub(0.56).mul(1.35), 0)));
   const field = mix(tint.mul(0.75), gold.mul(1.25), max(border, sun)).mul(wave.mul(0.14).add(0.9));
   const look = mix(spirit, mix(gold.mul(0.7), field, isCloth), standard);
-  m.colorNode = look.mul(heat.mul(0.9).add(0.72));
+  // (and a flare on every clap of the chant)
+  m.colorNode = look.mul(heat.mul(0.9).add(0.72).add(chantPump.mul(joined).mul(0.28)));
   return m;
 }
 
@@ -170,8 +184,10 @@ export class RushCrowd {
   /** Extra excitement from a moment of play (a steal, a catch), fading. */
   private readonly spike = { order: 0, chaos: 0 };
   private readonly seen = { steal: 0, catch: 0, fumble: 0, shrug: 0, save: 0, dodge: 0, miss: 0 };
+  private readonly motion = { bob: 0, pump: 0 };
 
   constructor(ground: Ground, mine: Side, colors: { ally: number; foe: number }) {
+    chantOn.value = 0;
     tintOrder.value.setHex(mine === 'order' ? colors.ally : colors.foe);
     tintChaos.value.setHex(mine === 'chaos' ? colors.ally : colors.foe);
     const spirit = spiritParts();
@@ -311,6 +327,14 @@ export class RushCrowd {
     }
     heatOrder.value = this.heat.order;
     heatChaos.value = this.heat.chaos;
+    // the chant spreads over a few seconds and stops dead for a goal, on the beat the sound keeps (the wall clock's)
+    const on = chanting(rush);
+    chantOn.value = on ? Math.min(1, chantOn.value + dt * CHANT_SPREAD) : rush.phase === 'goal' || rush.winner ? 0 : Math.max(0, chantOn.value - dt * 0.8);
+    if (chantOn.value > 0) {
+      chantMotion(performance.now() / 1000, this.motion);
+      chantBob.value = this.motion.bob;
+      chantPump.value = this.motion.pump;
+    }
   }
 
   /** How worked up each end is now (0 to 1). */

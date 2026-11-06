@@ -19,6 +19,7 @@ import type { Music, SongName } from './music';
 import { hypot } from '../core/math';
 import { DUEL } from '../sim/Duel';
 import { RUSH } from '../sim/Rush';
+import { chantAt, chantBreak, chanting } from './chant';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import { relicById } from '../sim/Relics';
 import { BOSS_CALL_LINE } from '../ui/bossNames';
@@ -824,6 +825,7 @@ export class GameAudio {
     let roared = false;
     this.humRelic(r);
     this.crowdBeds();
+    this.chantBeds(r);
     if (r.phase !== seen.phase) {
       if (r.phase === 'play' && seen.phase === 'kickoff') {
         this.engine.play('wave.horn', { gain: 0.6 }, 4);
@@ -1003,6 +1005,44 @@ export class GameAudio {
       end.murmur?.setRate(tone * (1 + 0.05 * heat));
       end.cheer?.setGain(0.5 * up * up * (3 - 2 * up), 0.3);
       end.cheer?.setRate(tone * (1 + 0.04 * heat));
+    }
+  }
+
+  /** The chant behind each gate, the gain last aimed at, and when both last fell quiet. */
+  private readonly chants = { order: null as LoopHandle | null, chaos: null as LoopHandle | null, gain: { order: -1, chaos: -1 }, quiet: -1 };
+
+  /**
+   * Through a tight finish both ends chant from behind their gates, on the
+   * wall clock's beat that the stands stamp and clap to, louder in overtime,
+   * an end breaking off to cheer as the play comes at its gate. Stopped once
+   * it has fallen quiet and started fresh on the beat when it comes back, so
+   * the sound never drifts out of step with the stands.
+   */
+  private chantBeds(r: NonNullable<CombatGame['rush']>): void {
+    const c = this.chants;
+    const on = chanting(r);
+    const now = this.engine.now;
+    if (!on && c.quiet >= 0 && now - c.quiet > 4) {
+      c.order?.stop(0.2);
+      c.chaos?.stop(0.2);
+      c.order = c.chaos = null;
+      return;
+    }
+    if (!on && !c.order && !c.chaos) return;
+    if (on) c.quiet = -1;
+    else if (c.quiet < 0) c.quiet = now;
+    for (const side of ['order', 'chaos'] as const) {
+      if (on && !c[side]?.alive) {
+        const at = { x: 0, y: 3, z: (side === 'order' ? 1 : -1) * (RUSH.pitchRadius + 4) };
+        c[side] = this.engine.loop('amb.chant', { bus: 'ambience', at, ref: 30, gain: 0, variant: side === 'order' ? 0 : 1, offset: chantAt(performance.now() / 1000) });
+        c.gain[side] = -1;
+      }
+      // (in steps, so the ramp isn't re-aimed every frame)
+      const gain = on ? Math.round((r.overtime ? 0.6 : 0.5) * (1 - chantBreak(this.game.crowdHeat(side))) * 20) / 20 : 0;
+      if (gain === c.gain[side]) continue;
+      // it spreads through the stands over a few seconds, and stops at once for a goal
+      c[side]?.setGain(gain, gain > c.gain[side] ? 0.9 : r.phase === 'goal' || r.winner ? 0.08 : 0.4);
+      c.gain[side] = gain;
     }
   }
 
