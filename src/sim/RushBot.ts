@@ -6,7 +6,7 @@ import { hypot } from '../core/math';
 import { reachOf, skillRole } from './Bot';
 import type { Nav } from './Nav';
 import { clampToPitch, FUMBLE_CC, inGate, Rush, RUSH } from './Rush';
-import type { Sim } from './Sim';
+import { MARK_MAX, type Sim } from './Sim';
 import { WORLD_SCALE, type Brain, type FlashShape, type Point, type Unit } from './Unit';
 
 const SLOTS = Array.from({ length: SLOT_COUNT }, (_, i) => i);
@@ -607,7 +607,8 @@ export class RushBot implements Brain {
       for (const s of ready) {
         const cast = c.resolve(s);
         if (!cast.hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) continue;
-        if (cast.skill.detonates && !enemyCarrier.marks.get(cast.skill.detonates)?.stacks) continue;
+        // a tackle that sets off a mark only knocks the relic loose at full stacks (fewer is damage, and spends the mark)
+        if (cast.skill.detonates && (enemyCarrier.marks.get(cast.skill.detonates)?.stacks ?? 0) < MARK_MAX) continue;
         if (reachOf(u, s) + enemyCarrier.radius < d) continue;
         // a keeper doesn't dash out of its gate after a carrier still far off
         const moves = cast.targeting.type === 'dash' || cast.targeting.type === 'leap' || cast.hits.some((h) => h.kind === 'movement');
@@ -618,7 +619,7 @@ export class RushBot implements Brain {
       // a tackle that waits on a mark (Zeus's Static Discharge on a Charge): put the mark on the carrier first
       for (const s of ready) {
         const mark = c.resolve(s).skill.detonates;
-        if (!mark || enemyCarrier.marks.get(mark)?.stacks || !c.resolve(s).hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) continue;
+        if (!mark || (enemyCarrier.marks.get(mark)?.stacks ?? 0) >= MARK_MAX || !c.resolve(s).hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) continue;
         for (const p of ready) {
           if (p === s || reachOf(u, p) + enemyCarrier.radius < d) continue;
           if (!c.resolve(p).hits.some((h) => h.kind === 'mark' && h.mark === mark)) continue;
@@ -667,9 +668,10 @@ export class RushBot implements Brain {
       const cast = c.resolve(s);
       if (skillRole(cast.skill) !== 'offense') return false;
       // a stun that would knock the relic loose is kept for whoever carries it: spent on anyone else, it is cooling when the carrier comes
-      if (foe !== enemyCarrier && cast.hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) return false;
+      const tackle = cast.hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc));
+      if (foe !== enemyCarrier && tackle) return false;
       if (posted && (cast.targeting.type === 'dash' || cast.targeting.type === 'leap' || cast.hits.some((h) => h.kind === 'movement')) && d > 5) return false;
-      if (cast.skill.detonates && !foe!.marks.get(cast.skill.detonates)?.stacks) return false;
+      if (cast.skill.detonates && (foe!.marks.get(cast.skill.detonates)?.stacks ?? 0) < (tackle ? MARK_MAX : 1)) return false;
       return reachOf(u, s) + foe!.radius >= d;
     });
     if (!offense.length) return;

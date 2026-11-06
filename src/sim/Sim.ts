@@ -39,7 +39,7 @@ export const PROJECTILE_HEIGHT = 1.5;
 /** How far a bouncing projectile looks for its next target, arena meters. */
 const BOUNCE_RANGE = 9;
 /** Most stacks a mark (Charge, Wrath Mark) can hold. */
-const MARK_MAX = 3;
+export const MARK_MAX = 3;
 /** Seconds a ground-targeted skill shows its circle before it lands. */
 export const GROUND_WARNING = 0.4;
 const LEAP_SPEED = 24;
@@ -430,7 +430,7 @@ export class Sim {
         if (movement?.kind === 'movement' && movement.style === 'blink') {
           const end = this.sweepEnd(u, dir, dist);
           const len = hypot(end.x - u.x, end.z - u.z);
-          for (const target of this.unitsInLine(u, u.x, u.z, dir, len, width / 2)) this.hit(u, cast, target);
+          for (const target of this.unitsInLine(u, u.x, u.z, dir, len, width / 2)) this.strikeWith(u, cast, target);
           this.flash(u, { type: 'line', x: u.x, z: u.z, yaw, length: len, width }, cast.skill.id);
           this.teleport(u, end.x, end.z);
           at = end;
@@ -617,8 +617,22 @@ export class Sim {
     if (selfish) this.applyOnce(u, cast, u);
   }
 
-  /** One target of a line or cone: a skill that sets off a mark only touches enemies carrying it (see detonate). */
+  /**
+   * One unit a cast reaches, whatever its shape (circle, line, cone, dash,
+   * skill shot): a priming skill leaves its waiting effects on an enemy god, a
+   * skill that sets off a mark only touches enemies carrying it (see detonate),
+   * and anything else hits.
+   */
   private strikeWith(owner: Unit, cast: ResolvedSkill, target: Unit): void {
+    const primes = cast.skill.primes;
+    if (primes) {
+      if (target.team !== owner.team && target.kind === 'god') {
+        target.marks.set(primes.mark, { stacks: 1, remaining: primes.duration });
+        this.primed.set(target, { owner, cast, mark: primes.mark });
+        this.revealed.set(target, Math.max(this.revealed.get(target) ?? 0, this.time + primes.duration));
+      }
+      return;
+    }
     const mark = cast.skill.detonates;
     if (!mark) this.hit(owner, cast, target);
     else if (target.team !== owner.team) this.detonate(owner, cast, target, mark);
@@ -626,25 +640,11 @@ export class Sim {
 
   /** Everything in a circle (the engine filters effects by team), then the caster's own buffs. */
   private area(owner: Unit, cast: ResolvedSkill, at: Point, r: number): void {
-    const mark = cast.skill.detonates;
-    const primes = cast.skill.primes;
     for (const t of [...this.units]) {
       if (!t.alive || t === owner) continue;
       if (hypot(t.x - at.x, t.z - at.z) > r + t.radius) continue;
       if (t.team === owner.team && !touchesAllies(cast)) continue;
-      if (primes) {
-        if (t.team !== owner.team && t.kind === 'god') {
-          t.marks.set(primes.mark, { stacks: 1, remaining: primes.duration });
-          this.primed.set(t, { owner, cast, mark: primes.mark });
-          this.revealed.set(t, Math.max(this.revealed.get(t) ?? 0, this.time + primes.duration));
-        }
-        continue;
-      }
-      if (mark) {
-        if (t.team !== owner.team) this.detonate(owner, cast, t, mark);
-        continue;
-      }
-      this.hit(owner, cast, t);
+      this.strikeWith(owner, cast, t);
     }
     this.applySelf(owner, cast);
   }
@@ -1105,7 +1105,7 @@ export class Sim {
         if (f.sweep.hit.has(t)) continue;
         if (hypot(t.x - nx, t.z - nz) > f.sweep.width / 2 + t.radius + u.radius) continue;
         f.sweep.hit.add(t);
-        this.hit(u, f.sweep.cast, t);
+        this.strikeWith(u, f.sweep.cast, t);
       }
     }
     if (f.remaining <= 0) {
@@ -1175,7 +1175,7 @@ export class Sim {
       this.emit(p.cast ? { type: 'impact', x: p.x, z: p.z, owner: p.owner, big: true, skill: p.cast.skill.id } : { type: 'impact', x: p.x, z: p.z, owner: p.owner, big: false });
       if (p.shot) this.landBasic(p.owner, t, p.shot);
       if (p.cast) {
-        this.hit(p.owner, p.cast, t);
+        this.strikeWith(p.owner, p.cast, t);
         const blink = p.cast.hits.find((e) => e.kind === 'movement' && e.style === 'blink');
         if (blink && p.owner.alive) {
           // reappear behind the target, facing it
