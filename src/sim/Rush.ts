@@ -101,6 +101,12 @@ export const RUSH = {
   assistWindow: 8,
   /** A call for the pass shows (and bots answer it) this long, and can't be repeated sooner than `gap`. */
   call: { time: 2.5, gap: 1.2 },
+  /**
+   * Pass assist for people: a throw landing within `reach` meters (or
+   * `share` of the pass's length, if more) of a teammate's run goes to them,
+   * leading it. The run counts from `lag` seconds back.
+   */
+  assist: { reach: 3, share: 0.22, lag: 0.3 },
 } as const;
 
 /** Crowd control that knocks the relic out of its carrier's hands. */
@@ -438,6 +444,45 @@ export class Rush {
       if (best) return { goal: false, catcher: best };
       if (p >= 1) return { goal: false, catcher: null };
     }
+  }
+
+  /**
+   * Pass assist for a person's throw (bots lead their own): aimed close to
+   * a teammate, or anywhere along the run they'll make while it flies, the
+   * throw goes to where they'll be when it comes down. Shots on goal and
+   * throws into open space stay where they were aimed. Returns the point to
+   * throw at.
+   */
+  assistAim(u: Unit, at: Point): Point {
+    if (this.shotOnTarget(u, at)) return at;
+    const to = this.throwTarget(u, at);
+    const speed = u.combatant.sport('throwSpeed');
+    const A = RUSH.assist;
+    let best: Point | null = null;
+    let bestOff = Infinity;
+    for (const t of this.squad) {
+      if (t === u || !t.alive || t.team !== u.team || t.forced) continue;
+      // where they'll be when it lands (twice: the flight's length depends on where that is)
+      let lead: Point = t;
+      for (let k = 0; k < 2; k++) {
+        const time = Rush.flightTime(hypot(lead.x - u.x, lead.z - u.z), speed);
+        lead = clampToPitch(t.x + t.vx * time, t.z + t.vz * time, 1.5);
+      }
+      const d = hypot(lead.x - u.x, lead.z - u.z);
+      if (d < RUSH.relic.minThrow || d > Rush.maxThrow(u)) continue;
+      // aimed anywhere along their run: a step behind them (a crosshair chasing a sprinter lags), at them, ahead, or right on the lead
+      const bx = t.x - t.vx * A.lag;
+      const bz = t.z - t.vz * A.lag;
+      const rx = lead.x - bx;
+      const rz = lead.z - bz;
+      const len2 = rx * rx + rz * rz;
+      const k = len2 > 1e-6 ? Math.max(0, Math.min(1, ((to.x - bx) * rx + (to.z - bz) * rz) / len2)) : 0;
+      const off = hypot(bx + rx * k - to.x, bz + rz * k - to.z);
+      if (off > Math.max(A.reach, d * A.share) || off >= bestOff) continue;
+      best = lead;
+      bestOff = off;
+    }
+    return best ?? at;
   }
 
   /** How long a throw of this length flies (`faster`: the thrower's Bullet Pass). */
