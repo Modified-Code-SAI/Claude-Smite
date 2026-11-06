@@ -28,7 +28,7 @@ export const CROWD = {
  * How worked up each end of the crowd is, 0 (slumped) to 1 (on its feet).
  * Rises fast and settles slowly, so a goal's roar outlasts the goal.
  */
-const HEAT = { idle: 0.1, overtime: 0.24, rise: 5, fall: 1.1, near: 18, beat: 0.4, save: 0.75 };
+const HEAT = { idle: 0.1, overtime: 0.24, rise: 5, fall: 1.1, near: 18, beat: 0.4, save: 0.75, dodge: 0.6 };
 
 const GOLD_TRIM = 0xffc23a;
 let crowdMaterial: THREE.MeshBasicNodeMaterial | null = null;
@@ -169,7 +169,7 @@ export class RushCrowd {
   private readonly heat = { order: HEAT.idle, chaos: HEAT.idle };
   /** Extra excitement from a moment of play (a steal, a catch), fading. */
   private readonly spike = { order: 0, chaos: 0 };
-  private readonly seen = { steal: 0, catch: 0, fumble: 0, shrug: 0, save: 0 };
+  private readonly seen = { steal: 0, catch: 0, fumble: 0, shrug: 0, save: 0, dodge: 0 };
 
   constructor(ground: Ground, mine: Side, colors: { ally: number; foe: number }) {
     tintOrder.value.setHex(mine === 'order' ? colors.ally : colors.foe);
@@ -275,17 +275,18 @@ export class RushCrowd {
     const relic = rush.relic;
     const seen = this.seen;
     const b = rush.beats;
-    if (b.steal !== seen.steal || b.catch !== seen.catch || b.fumble !== seen.fumble || b.shrug !== seen.shrug || b.save !== seen.save) {
+    if (b.steal !== seen.steal || b.catch !== seen.catch || b.fumble !== seen.fumble || b.shrug !== seen.shrug || b.save !== seen.save || b.dodge !== seen.dodge) {
       const beat = rush.lastBeat;
       // the end whose team just won (or kept) the relic gets up
       const team = !beat ? null : beat.kind === 'fumble' ? (beat.by?.team as Side | undefined) : (beat.unit.team as Side);
-      // (a save brings the keeper's end to its feet)
-      if (team) this.spike[team] = Math.max(this.spike[team], beat?.kind === 'save' ? HEAT.save : HEAT.beat);
+      // (a save brings the keeper's end to its feet, a juke the juker's)
+      if (team) this.spike[team] = Math.max(this.spike[team], beat?.kind === 'save' ? HEAT.save : beat?.kind === 'dodge' ? HEAT.dodge : HEAT.beat);
       seen.steal = b.steal;
       seen.catch = b.catch;
       seen.fumble = b.fumble;
       seen.shrug = b.shrug;
       seen.save = b.save;
+      seen.dodge = b.dodge;
     }
     const base = rush.overtime ? HEAT.overtime : HEAT.idle;
     for (const side of ['order', 'chaos'] as const) {

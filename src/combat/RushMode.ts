@@ -93,7 +93,7 @@ export class RushMode {
   private readonly view: RushView;
   private readonly hud: RushHud;
   /** The beats already shown, so each catch, fumble and goal flashes once. */
-  private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, juke: 0, goals: 0, phase: '' as string };
+  private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, juke: 0, dodge: 0, goals: 0, phase: '' as string };
   private readonly v = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
   private readonly toHead = new THREE.Vector3();
@@ -154,7 +154,7 @@ export class RushMode {
     this.view.camera = deps.camera;
     deps.vfx.add(this.view.group);
     this.hud = new RushHud(rush, player, this.gods, !!net);
-    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, shrug: rush.beats.shrug, save: rush.beats.save, juke: rush.beats.juke, goals: rush.goalCount, phase: rush.phase };
+    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, shrug: rush.beats.shrug, save: rush.beats.save, juke: rush.beats.juke, dodge: rush.beats.dodge, goals: rush.goalCount, phase: rush.phase };
   }
 
   /** Whether the local player has the relic (their skills and basic attack give way to throwing). */
@@ -293,9 +293,9 @@ export class RushMode {
     document.body.classList.toggle('rush-cine', on);
   }
 
-  /** Toasts wait while the HUD stands aside for a camera shot or the match card is up (see CombatHud.holdToasts). */
+  /** Toasts wait while the HUD stands aside for a camera shot, or the match card or a big call is up (see CombatHud.holdToasts). */
   get holdsToasts(): boolean {
-    return this.cine || this.hud.introShowing;
+    return this.cine || this.hud.introShowing || this.hud.bannerUp;
   }
 
   frame(dt: number, time: number): void {
@@ -343,6 +343,13 @@ export class RushMode {
       burst(GOLD, juker.x, this.deps.groundAt(juker.x, juker.z) + 0.25, juker.z, 0.3);
       if (juker === me) this.deps.shake?.(0.05);
     }
+    const dodge = r.lastBeat?.kind === 'dodge' ? r.lastBeat : null;
+    if (r.beats.dodge !== seen.dodge && dodge?.unit.alive) {
+      // a juke that beat the tackle: a flash of gold off the juker, felt by both of them
+      const u = dodge.unit;
+      burst(GOLD, u.x, this.deps.groundAt(u.x, u.z) + 1.2, u.z, 0.7);
+      if (u === me || dodge.by === me) this.deps.shake?.(0.1);
+    }
     if (r.goalCount !== seen.goals && r.lastGoal) {
       const g = r.lastGoal;
       const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
@@ -360,7 +367,7 @@ export class RushMode {
     const cheer = r.phase === 'goal' && r.lastGoal ? RUSH.celebrate - r.timer : -1;
     if (r.lastGoal && this.cheerAt >= 0 && this.cheerAt < RUSH.cheer.again && cheer >= RUSH.cheer.again) this.deps.swing?.(r.lastGoal.scorer, 'ult');
     this.cheerAt = cheer;
-    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, save: r.beats.save, juke: r.beats.juke, goals: r.goalCount, phase: r.phase };
+    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, save: r.beats.save, juke: r.beats.juke, dodge: r.beats.dodge, goals: r.goalCount, phase: r.phase };
   }
 
   /**

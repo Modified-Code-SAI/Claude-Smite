@@ -165,8 +165,12 @@ export class CombatHud {
   private objectiveLag = 1;
   private readonly floaters: Floater[] = [];
   /** Toasts showing, and seconds left on each (game time: see `toast`). */
-  private readonly toasts: { el: HTMLElement; text: string; left: number }[] = [];
-  /** While set (a mode's match card or camera shot is up), toasts wait out of sight with their time stopped. */
+  private readonly toasts: { el: HTMLElement; text: string; left: number; warn: boolean }[] = [];
+  /**
+   * While set (a mode's match card, camera shot or big banner is up), toasts
+   * wait out of sight with their time stopped; a warning (a key that did
+   * nothing) still shows at once, since it answers what the player just did.
+   */
   holdToasts = false;
   private toastsHeld = false;
   private readonly v = new THREE.Vector3();
@@ -275,19 +279,19 @@ export class CombatHud {
       old.left = 0;
       old.el.classList.add('out');
     }
-    this.toasts.push({ el: el('div', `ch-toast ch-toast-${kind}`, this.toastBox, text), text, left });
+    this.toasts.push({ el: el('div', `ch-toast ch-toast-${kind}`, this.toastBox, text), text, left, warn: kind === 'warn' });
   }
 
   private ageToasts(dt: number): void {
     if (this.holdToasts !== this.toastsHeld) {
       this.toastsHeld = this.holdToasts;
-      this.toastBox.style.visibility = this.holdToasts ? 'hidden' : '';
+      this.toastBox.classList.toggle('held', this.holdToasts);
       // the ones that waited come in now
-      if (!this.holdToasts) for (const t of this.toasts) if (t.left > 0) t.el.animate(TOAST_IN, { duration: 250, easing: 'ease-out' });
+      if (!this.holdToasts) for (const t of this.toasts) if (t.left > 0 && !t.warn) t.el.animate(TOAST_IN, { duration: 250, easing: 'ease-out' });
     }
-    if (this.holdToasts) return;
     for (let i = this.toasts.length - 1; i >= 0; i--) {
       const t = this.toasts[i]!;
+      if (this.holdToasts && !t.warn) continue;
       const was = t.left;
       t.left -= dt;
       if (was > 0 && t.left <= 0) t.el.classList.add('out');

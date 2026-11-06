@@ -97,8 +97,12 @@ export class Combatant {
   alive = true;
   inBase = true;
   respawnTimer = 0;
-  /** Takes no crowd control at all (the Jötunn: only its own weak points bring it down). */
+  /** Takes no crowd control at all (the Jötunn: only its own weak points bring it down; a Relic Rush juke, for a moment). */
   ccImmune = false;
+  /** Hard crowd control that ccImmune turned away: how many, and the latest (a Relic Rush juke reads it to call a tackle slipped). */
+  ccBlocked = 0;
+  blockedKind: CCKind | null = null;
+  blockedSource: string | undefined = undefined;
   loadout: Loadout;
   allocation: Allocation = {};
   /**
@@ -665,7 +669,15 @@ export class Combatant {
   }
 
   receiveCC(kind: CCKind, duration: number, magnitude = 0, source?: string): number {
-    if (!this.alive || this.ccImmune) return 0;
+    if (!this.alive) return 0;
+    if (this.ccImmune) {
+      if (ccClass(kind) !== 'soft') {
+        this.ccBlocked++;
+        this.blockedKind = kind;
+        this.blockedSource = source;
+      }
+      return 0;
+    }
     const applied = this.cc.apply(kind, duration, magnitude, this.stats.ccReduction, false, source);
     const k = this.hasKeystone('shieldOnHardCC');
     if (applied > 0 && k && ccClass(kind) !== 'soft' && this.hardCCShieldCooldown <= 0) {

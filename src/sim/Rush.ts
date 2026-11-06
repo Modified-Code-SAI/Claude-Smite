@@ -177,7 +177,7 @@ export interface RushNet {
   w: Side | null;
   g: number;
   lg: [Side, number, number, 'dunk' | 'shot', number] | null;
-  b: [number, number, number, number, number, number, number];
+  b: [number, number, number, number, number, number, number, number];
   lb: [RushBeat, number, number] | null;
   r: [RelicPhase, number, number, number, number, number, number, number, number, number, number, number, number, number, Side | null, number];
   l: [number, number, number, number, number, number][];
@@ -189,8 +189,8 @@ export interface RushNet {
   lj: number;
 }
 
-/** A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the relic through a hit. */
-export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug' | 'save';
+/** A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the relic through a hit, `dodge` a juke that slipped a tackle. */
+export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug' | 'save' | 'dodge';
 
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 
@@ -241,7 +241,7 @@ export class Rush {
   /** Counts every goal, so watchers can tell a new one from the last. */
   goalCount = 0;
   /** Bumped on each fumble, interception, catch, Captain's shrug, save (a shot caught on its way in) and juke, for sounds and banners. */
-  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0, juke: 0 };
+  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0, juke: 0, dodge: 0 };
   /** Who juked last (see `beats.juke`), for the streak and the whoosh. */
   lastJuke: Unit | null = null;
   /** The latest of those beats, with who did it. */
@@ -259,8 +259,13 @@ export class Rush {
   private shrugUntil = 0;
   /** Sim time each god's juke is ready again. */
   private readonly jukeReady = new Map<Unit, number>();
-  /** Jukes under way: the sidestep's own forced movement (not a hit, so no fumble) and when its guard ends. */
-  private readonly juking = new Map<Unit, { forced: NonNullable<Unit['forced']>; until: number }>();
+  /**
+   * Jukes under way: the sidestep's own forced movement (not a hit, so no
+   * fumble), when its guard ends, and the carrier's count of turned-away
+   * crowd control at the press (one that knocks the relic loose since then
+   * is a tackle slipped).
+   */
+  private readonly juking = new Map<Unit, { forced: NonNullable<Unit['forced']>; until: number; blocked: number; dodged: boolean }>();
 
   constructor(private readonly sim: Sim) {
     sim.listeners.push((e) => this.on(e));
@@ -396,7 +401,7 @@ export class Rush {
     const forced = { vx: (dx / d) * speed, vz: (dz / d) * speed, remaining: J.time, total: J.time, arc: 0, collide: true };
     u.forced = forced;
     u.combatant.ccImmune = true;
-    this.juking.set(u, { forced, until: this.sim.time + J.guard });
+    this.juking.set(u, { forced, until: this.sim.time + J.guard, blocked: u.combatant.ccBlocked, dodged: false });
     this.jukeReady.set(u, this.sim.time + J.cooldown);
     this.beats.juke++;
     this.lastJuke = u;
@@ -413,9 +418,15 @@ export class Rush {
     return this.juking.has(u);
   }
 
-  /** A juke's guard ends on time, or as soon as the juker no longer has the relic. */
+  /** A juke that turns away a tackle is called (the `dodge` beat); its guard ends on time, or as soon as the juker no longer has the relic. */
   private stepJukes(): void {
     for (const [u, j] of this.juking) {
+      const c = u.combatant;
+      if (!j.dodged && c.ccBlocked > j.blocked && c.blockedKind && FUMBLE_CC.has(c.blockedKind) && u.alive && this.relic.holder === u) {
+        j.dodged = true;
+        this.beats.dodge++;
+        this.lastBeat = { kind: 'dodge', unit: u, by: this.sourceOf(c.blockedSource) };
+      }
       if (this.sim.time < j.until && u.alive && this.relic.holder === u) continue;
       u.combatant.ccImmune = false;
       this.juking.delete(u);
@@ -717,9 +728,15 @@ export class Rush {
     const cc = u.combatant.cc.active.find((c) => FUMBLE_CC.has(c.kind));
     // the carrier's own juke is movement, not a hit
     if (!cc && (!u.forced || this.juking.get(u)?.forced === u.forced)) return undefined;
-    const uid = cc?.source ? Number(cc.source.split(':')[0]) : NaN;
+    const by = this.sourceOf(cc?.source);
+    return by && by.team !== u.team ? by : null;
+  }
+
+  /** The god behind a crowd-control source ("uid:skill"), or null. */
+  private sourceOf(source: string | undefined): Unit | null {
+    const uid = source ? Number(source.split(':')[0]) : NaN;
     const by = Number.isFinite(uid) ? this.sim.unitByCombatantUid(uid) : undefined;
-    return by && by.team !== u.team ? (by.owner ?? by) : null;
+    return by ? (by.owner ?? by) : null;
   }
 
   /** How long the hit on a carrier lasts: its crowd control, or the shove it's riding. */
@@ -843,7 +860,7 @@ export class Rush {
       w: this.winner,
       g: this.goalCount,
       lg: g ? [g.team, at(g.scorer), at(g.assist), g.kind, n(g.at)] : null,
-      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke],
+      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge],
       lb: b ? [b.kind, at(b.unit), at(b.by)] : null,
       r: [r.phase, at(r.holder), n(r.x), n(r.z), n(r.h), n(r.fx), n(r.fz), n(r.tx), n(r.tz), n(r.t), n(r.duration), n(r.arc), n(r.h0), at(r.thrower), r.team, n(r.since)],
       l: this.squad.map((u) => {
@@ -873,7 +890,7 @@ export class Rush {
     const lg = s.lg;
     const scorer = lg && god(lg[1]);
     this.lastGoal = lg && scorer ? { team: lg[0], scorer, assist: god(lg[2]), kind: lg[3], at: lg[4] } : null;
-    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke] = s.b;
+    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge] = s.b;
     this.lastJuke = god(s.lj);
     const lb = s.lb;
     const unit = lb && god(lb[1]);
