@@ -17,6 +17,7 @@ import { mergeStatic } from '../merge';
 import type { MapContent } from '../World';
 import { abyssKit, drownedKit, FLAME_Y, forgeKit, type Kit } from './kits';
 import { DEPTH_COLORS, depthLook, depthWeights, flameHot, gateOpen, underworldGlow } from './palettes';
+import { Spirits } from './spirits';
 import { showRunes } from './UnderworldTerrain';
 
 /** How tall the gate pylons stand, and the lintel across them. */
@@ -48,12 +49,15 @@ export class UnderworldMap implements MapContent {
   readonly chambers: THREE.Group[] = [];
   /** Each depth's dressing of each chamber: dressings[depth][chamber]. */
   readonly dressings: THREE.Group[][] = KITS.map(() => []);
+  /** The creatures gliding high over the shown chamber. */
+  private readonly spirits = new Spirits();
   private shown = -1;
   private palette: Palette = 'ember';
   private readonly mats: ReturnType<typeof underworldMaterials>;
 
   private constructor(mats: MaterialLibrary) {
     this.group.name = 'underworld';
+    this.group.add(this.spirits.mesh);
     this.mats = underworldMaterials(mats);
     const at = entranceSpot(CHAMBERS[0]!);
     this.spawn = { x: at.x, z: at.z, yaw: at.yaw };
@@ -90,6 +94,7 @@ export class UnderworldMap implements MapContent {
     flameHot.value.setHex(c.fire.high);
     for (const l of this.lakeLights) l.color.setHex(c.glow);
     depthLook.value.set(...depthWeights(p));
+    this.spirits.setDepth(p);
     for (const f of this.fires) {
       if (f.group.userData.gateFire) continue;
       f.low.setHex(c.fire.low);
@@ -107,6 +112,7 @@ export class UnderworldMap implements MapContent {
     this.chambers.forEach((g, k) => (g.visible = k === this.shown));
     this.dressings.forEach((list, d) => list.forEach((g, k) => (g.visible = k === this.shown && d === depth)));
     showRunes(this.shown);
+    this.spirits.showChamber(CHAMBERS[this.shown]!);
   }
 
   /** What every depth shares in a chamber: its gates, the fires at its brazier spots, and the pit. */
