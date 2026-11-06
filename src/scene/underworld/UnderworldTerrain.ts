@@ -3,7 +3,7 @@ import { fbm2, simplex2, smoothstep as sstep } from '../../core/random';
 import { hypot } from '../../core/math';
 import { CHAMBERS, chamberAt, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
 import {
-  abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionWorld, sin, smoothstep, texture, time, transformNormalToView, vec2, vec3,
+  abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionWorld, pow, sin, smoothstep, texture, time, transformNormalToView, vec2, vec3,
 } from '../../render/tsl';
 import { planar, triplanar, type TextureLibrary } from '../Materials';
 import type { Terrain, TerrainDef } from '../Terrain';
@@ -47,15 +47,28 @@ const hash1 = (x: any) => fract(sin(x.mul(12.9898)).mul(43758.5453));
  * Distance (m) from a floor point to the nearest stroke of one rune ring: two
  * thin guide rings with a script of glyphs between them, each glyph a stem and
  * two branches picked from a hash of its cell, every seventh cell a dot.
+ * Each depth writes it in its own hand: the forge's is cut clean (and filled
+ * with molten metal, see the material), in the Drowned Halls the lines
+ * waver like light through moving water, and in the Abyss the script is
+ * written in spirit light: its guide lines broken, its glyphs fading out and
+ * back one by one, each ring turning slowly its own way.
  */
 function ringDistance(xz: any, ring: any, seed: number): any {
+  const soul = depthLook.y;
+  const abyss = float(1).sub(depthLook.x).sub(soul);
   const p = xz.sub(ring.xy);
   const rho = length(p);
-  const y = rho.sub(ring.z);
-  const guides = min(abs(y.sub(BAND)), abs(y.add(BAND))).sub(0.012);
-  const u = atan(p.y, p.x).div(Math.PI * 2).add(0.5).mul(ring.w);
-  const k = floor(u).add(seed * 17);
-  const x = fract(u).sub(0.5).mul(rho.mul(Math.PI * 2).div(ring.w));
+  const a = atan(p.y, p.x);
+  const y = rho.sub(ring.z).add(sin(a.mul(ring.w.mul(0.5).floor()).add(time.mul(1.1)).add(seed * 2.1)).mul(0.045).mul(soul));
+  const u = a.div(Math.PI * 2).add(0.5).add(time.mul(seed % 2 ? -0.011 : 0.011).mul(abyss)).mul(ring.w);
+  // (broken in gaps of their own lengths, some halves of a cell whole)
+  const half = u.mul(2);
+  const gap = mix(0.45, 1.15, hash1(floor(half).mod(ring.w.mul(2)).add(seed * 31 + 0.5)));
+  const dashes = smoothstep(gap, gap.add(0.05), fract(half)).mul(abyss).mul(0.3);
+  const guides = min(abs(y.sub(BAND)), abs(y.add(BAND))).sub(0.012).add(dashes);
+  // (a cell's glyph stays the same all the way round, however far the ring has turned)
+  const k = floor(u).mod(ring.w).add(seed * 17);
+  const x = fract(u).sub(0.5).mul(rho.mul(Math.PI * 2).div(ring.w)).add(sin(y.mul(9).add(time.mul(2.1)).add(k)).mul(0.03).mul(soul));
   const q = vec2(x, y);
   const h1 = hash1(k);
   const h2 = hash1(k.add(0.37));
@@ -66,7 +79,9 @@ function ringDistance(xz: any, ring: any, seed: number): any {
   const b2 = segment(q, vec2(0, mix(0.42, 0.05, h3)), vec2(side.negate(), mix(0.1, -0.42, h1)));
   const glyph = min(stem, min(b1, b2));
   const dotGlyph = length(q).sub(0.09);
-  const mark = select(fract(k.mul(1 / 7)).lessThan(0.1), dotGlyph, glyph);
+  // (most of the script is there at any moment, a glyph here and there gone)
+  const fade = float(1).sub(smoothstep(-0.8, -0.1, sin(time.mul(0.55).add(h1.mul(37))))).mul(abyss).mul(0.22);
+  const mark = select(fract(k.mul(1 / 7)).lessThan(0.1), dotGlyph, glyph).add(fade);
   return min(guides, mark);
 }
 
@@ -131,7 +146,8 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const wornN = mx_noise_float(xz.mul(0.35));
   const worn = smoothstep(-0.7, -0.35, wornN);
   const runeCore = float(1).sub(smoothstep(0.035, runeAA.add(0.06), runeD)).mul(worn);
-  const runeHalo = exp(runeD.mul(-7)).mul(0.28);
+  // (the Abyss's spirit script glows wider and softer, like smoke round it)
+  const runeHalo = exp(runeD.mul(mix(float(-7), float(-3.6), float(1).sub(depthLook.x).sub(depthLook.y)))).mul(0.28);
   const groove = float(1).sub(smoothstep(0.06, 0.15, runeD));
   const scorch = m.b;
   const macro = m.a;
@@ -178,8 +194,10 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   col = col.mul(float(1).sub(scorch.mul(0.35)));
   // the runes are cut into the slabs: a dark groove around each glowing line
   const floorW = float(1).sub(rockW);
-  col = col.mul(float(1).sub(groove.mul(0.6).mul(floorW)));
-  rough = mix(rough, float(0.85), groove.mul(floorW));
+  // (the Abyss's script is light over the stone, not cut into it)
+  const cut = groove.mul(floorW).mul(float(1).sub(abyss.mul(0.8)));
+  col = col.mul(float(1).sub(cut.mul(0.6)));
+  rough = mix(rough, float(0.85), cut);
 
   // the glow: cracks low on the walls (dark crevices of the rock), the floor's
   // runes and the lava bowl, breathing slowly
@@ -200,8 +218,23 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   // in runs a few meters long, not one unbroken line round the walls
   const veins = crack.mul(zone).mul(smoothstep(-0.4, 0.05, wornN)).mul(mix(float(3.6), float(1.5), soul));
   // a slow wave of light runs round the rings, and they flare as the way down opens
-  const wave = sin(atan(xz.y.sub(runeRings[0].y), xz.x.sub(runeRings[0].x)).mul(3).sub(time.mul(1.4))).mul(0.25).add(0.85);
-  const runes = runeCore.mul(2.4).add(runeHalo).mul(floorW).mul(wave).mul(gateOpen.mul(0.7).add(1));
+  const runeA = atan(xz.y.sub(runeRings[0].y), xz.x.sub(runeRings[0].x));
+  const wave = sin(runeA.mul(3).sub(time.mul(1.4))).mul(0.25).add(0.85);
+  // in the forge the runes are channels of molten metal: a white-hot pour
+  // runs round them, cooling behind it, and in stretches a dark crust has formed
+  const pour = pow(fract(runeA.div(Math.PI * 2).sub(time.mul(0.06))), float(5));
+  const crust = float(1).sub(smoothstep(0.1, 0.45, wornN).mul(0.6));
+  // in the Drowned Halls they shimmer as if seen through the water over them,
+  // and every few seconds a ripple of their light laps out a little way from
+  // the ring (dying away well short of anything a fight could mistake for a
+  // shockwave)
+  const shimmer = sin(xz.x.mul(2.7).add(time.mul(1.9))).mul(sin(xz.y.mul(2.3).sub(time.mul(1.6)))).mul(0.3).add(1);
+  const spread = fract(time.mul(0.2));
+  const rippleR = runeRings[0].z.add(BAND).add(spread.mul(3.2));
+  const runeRipple = exp(abs(length(xz.sub(runeRings[0].xy)).sub(rippleR)).mul(-11)).mul(float(1).sub(spread).pow(2)).mul(0.26).mul(soul).mul(float(1).sub(ashW));
+  const flare = gateOpen.mul(0.7).add(1);
+  const runes = runeCore.mul(2.4).add(runeHalo).mul(depthTint(wave, wave.mul(crust).add(pour.mul(0.9)), wave.mul(shimmer))).add(runeRipple).mul(floorW).mul(flare);
+  const molten = runeCore.mul(floorW).mul(ember).mul(crust).mul(pour.mul(1.6).add(0.3)).mul(flare);
   const bowl = smoothstep(-0.15, -1.6, positionWorld.y).mul(2.2);
   // the Ashen Depths: lava seeping up through the joints between the slabs in
   // patches, and through the cracks in the crust along the walls
@@ -255,6 +288,6 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   mat.normalNode = transformNormalToView(nrm.normalize());
   mat.roughnessNode = rough;
   mat.metalnessNode = float(0);
-  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).add(seep).add(fissure).mul(breathe));
+  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).add(seep).add(fissure).mul(breathe)).add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)));
   return mat;
 }
