@@ -16,6 +16,12 @@ import './descent.css';
 
 const KEYS = 'ZXC';
 
+/** Each depth's place in the descent and a line about it, for the card shown as the team first lands in it. */
+const DEPTH_ORDINAL = ['The first depth', 'The second depth', 'The last depth'];
+const DEPTH_LINE = ['Where the forges of the dead never cool.', 'Where the river of souls lies cold and still.', 'Where the last light of the living goes out.'];
+/** Seconds a new depth's card stays up into the fight (the card for any chamber shows while the team walks in). */
+const DEPTH_CARD_HOLD = 1.8;
+
 /** How to fight a new kind of monster, shown under the status line for a while in the first chamber it rises in. */
 const HINT_TIME = 14;
 const HINTS: readonly (readonly [tag: string, hint: string])[] = [
@@ -44,6 +50,10 @@ export class DescentHud {
   private lastText = '';
   private shownCurses = '';
   private shownCard = -1;
+  /** Until when a new depth's card holds (run time). */
+  private cardHold = 0;
+  /** Whether a new depth's card is up (the mode's toasts wait for it, see CombatHud.holdToasts). */
+  depthCardUp = false;
   private shownOffer: unknown = null;
   private shownTally = '';
   private shownDraft: unknown = null;
@@ -202,18 +212,34 @@ export class DescentHud {
     this.souls();
     this.fade.classList.toggle('show', r.phase === 'descend');
 
-    // the chamber's name as the team walks in
-    const cardKey = r.phase === 'enter' ? r.chamber : 0;
+    // the chamber's name as the team walks in; the first chamber of a depth
+    // names the depth instead, in its own colors, and holds a little longer
+    const firstOfDepth = (r.chamber - 1) % DESCENT.bossEvery === 0 && plan.kind !== 'boss';
+    if (r.phase === 'enter') this.cardHold = firstOfDepth ? r.time + DEPTH_CARD_HOLD : 0;
+    const cardKey = r.phase === 'enter' || (r.phase === 'fight' && r.time < this.cardHold) ? r.chamber : 0;
     if (cardKey !== this.shownCard) {
       this.shownCard = cardKey;
       if (cardKey) {
-        this.card.querySelector('.descent-card-depth')!.textContent = plan.kind === 'boss' ? `${DEPTHS[r.depth]!.name} · its master` : DEPTHS[r.depth]!.name;
-        this.card.querySelector('.descent-card-name')!.textContent = CHAMBERS[plan.layout]!.name;
+        const depth = DEPTHS[r.depth]!;
+        const chamber = CHAMBERS[plan.layout]!.name;
         // the bottom of the run: its lord, by name
         const last = plan.kind === 'boss' && r.chamber === DESCENT.chambers;
-        this.card.querySelector('.descent-card-kind')!.innerHTML = last ? '<b>The Ossuary King</b> The lord of the Abyss. End this.' : `<b>${KIND_NAMES[plan.kind]}</b> ${KIND_TEXT[plan.kind]}`;
+        const kind = last ? '<b>The Ossuary King</b> The lord of the Abyss. End this.' : `<b>${KIND_NAMES[plan.kind]}</b> ${KIND_TEXT[plan.kind]}`;
+        this.card.dataset.depth = depth.palette;
+        this.card.classList.toggle('new-depth', firstOfDepth);
+        if (firstOfDepth) {
+          this.card.querySelector('.descent-card-depth')!.textContent = `${DEPTH_ORDINAL[r.depth] ?? ''} · ${chamber}`;
+          this.card.querySelector('.descent-card-name')!.textContent = depth.name;
+          // (a plain pack needs no telling; anything stranger still gets its line)
+          this.card.querySelector('.descent-card-kind')!.innerHTML = `<i>${DEPTH_LINE[r.depth] ?? ''}</i>${plan.kind === 'pack' ? '' : `<span>${kind}</span>`}`;
+        } else {
+          this.card.querySelector('.descent-card-depth')!.textContent = plan.kind === 'boss' ? `${depth.name} · its master` : depth.name;
+          this.card.querySelector('.descent-card-name')!.textContent = chamber;
+          this.card.querySelector('.descent-card-kind')!.innerHTML = kind;
+        }
       }
       this.card.classList.toggle('show', !!cardKey);
+      this.depthCardUp = !!cardKey && firstOfDepth;
       this.card.dataset.kind = plan.kind;
     }
     this.bossIntro();

@@ -138,6 +138,11 @@ export class DescentMode {
     else this.run.step(dt);
   }
 
+  /** Toasts wait while a new depth's name is up, so the opening tip doesn't print over it (see CombatHud.holdToasts). */
+  get holdsToasts(): boolean {
+    return this.hud.depthCardUp;
+  }
+
   onEvent(e: SimEvent): void {
     this.hud.onEvent(e);
     this.view.onEvent(e);

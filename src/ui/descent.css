@@ -28,12 +28,29 @@ body.descent-boss-up .descent .mh-banner { top: max(34%, 246px); }
 .descent-card[data-kind='boss'] .descent-card-name { color: #ff9a76; }
 .descent-card-kind { font: 15px system-ui, sans-serif; color: #f2e6cc; margin-top: 4px; padding: 10px 48px 0; border-top: 1px solid; border-image: linear-gradient(90deg, transparent, rgba(231, 194, 122, 0.85), transparent) 1; }
 .descent-card-kind b { font-family: 'Cinzel', Georgia, serif; color: #ffe08a; margin-right: 8px; letter-spacing: 0.06em; }
+.descent-card-kind i { display: block; font: italic 17px 'Cinzel', Georgia, serif; letter-spacing: 0.04em; color: #f4e7cf; }
+.descent-card-kind i + span { display: block; margin-top: 6px; }
+/* each depth's card in its own colors: embers, drowned light, spirit fire */
+.descent-card[data-depth='ember'] .descent-card-depth { color: #ffb27a; }
+.descent-card[data-depth='soul'] .descent-card-depth { color: #a8d8ff; }
+.descent-card[data-depth='soul'] .descent-card-kind { border-image: linear-gradient(90deg, transparent, rgba(120, 190, 255, 0.85), transparent) 1; }
+.descent-card[data-depth='spirit'] .descent-card-depth { color: #a8f5c0; }
+.descent-card[data-depth='spirit'] .descent-card-kind { border-image: linear-gradient(90deg, transparent, rgba(110, 240, 150, 0.85), transparent) 1; }
+/* arriving in a new depth: its name, larger, in its own light */
+.descent-card.new-depth .descent-card-name { font-size: clamp(38px, 6vw, 80px); letter-spacing: 0.13em; white-space: nowrap; }
+.descent-card.new-depth.show { animation: descent-depth-in 1.8s ease-out; }
+@keyframes descent-depth-in { from { opacity: 0; letter-spacing: 0.55em; filter: blur(6px); } 60% { filter: blur(0); } to { opacity: 1; } }
+.descent-card.new-depth[data-depth='ember'] .descent-card-name { color: #ffd6a8; text-shadow: 0 0 28px rgba(255, 110, 30, 0.75), 0 4px 22px rgba(0, 0, 0, 0.95); }
+.descent-card.new-depth[data-depth='soul'] .descent-card-name { color: #dff1ff; text-shadow: 0 0 28px rgba(60, 150, 255, 0.8), 0 4px 22px rgba(0, 0, 0, 0.95); }
+.descent-card.new-depth[data-depth='spirit'] .descent-card-name { color: #e0ffe8; text-shadow: 0 0 28px rgba(60, 255, 130, 0.7), 0 4px 22px rgba(0, 0, 0, 0.95); }
 .descent-cards { top: 118px; }
 /* a short screen: the chamber's card sits mid-screen and smaller, clear of the bars at the top */
 @media (max-height: 480px) {
   .descent-card { top: 52%; gap: 3px; }
   .descent-card-name { font-size: clamp(24px, 5vw, 40px); }
   .descent-card-kind { font-size: 12px; padding: 6px 24px 0; }
+  .descent-card.new-depth .descent-card-name { font-size: clamp(26px, 5.4vw, 46px); }
+  .descent-card-kind i { font-size: 13px; }
 }
 .descent-reward em { font-style: normal; font: 600 12px system-ui, sans-serif; color: #9fd4ff; }
 .descent-reward.voted { border-color: #9fd4ff; box-shadow: 0 0 16px rgba(110, 180, 255, 0.55); }
