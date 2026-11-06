@@ -675,6 +675,13 @@ export class Combatant {
     return applied;
   }
 
+  /** Dies outright, with no hit taken (a mode's rules: a fallen boss's retinue crumbling); `by` gets the takedown. */
+  slay(by?: Combatant): void {
+    if (!this.alive) return;
+    this.die();
+    by?.onTakedown();
+  }
+
   /** Called on the killer (and by the simulation for assists). */
   onTakedown(): void {
     const refund = this.hasKeystone('ultimateRefundOnTakedown');
