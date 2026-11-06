@@ -16,6 +16,7 @@ import { jotunnBots, WardenCalls } from '../sim/JotunnBots';
 import type { Sim } from '../sim/Sim';
 import type { Point, SimEvent, Unit } from '../sim/Unit';
 import { JotunnHud } from '../ui/JotunnHud';
+import { JotunnGuide } from '../ui/JotunnGuide';
 import { JotunnMarks } from '../ui/JotunnMarks';
 import { CINE, CINE_CLEARANCE, JotunnCine, type CineSight } from './jotunnCine';
 import { JotunnDeathCam } from './jotunnDeathCam';
@@ -100,6 +101,8 @@ export class JotunnMode {
   private readonly marks: JotunnMarks | null;
   /** The giant's moments on camera, where the game lends the camera. */
   private readonly cine: JotunnCine | null;
+  /** The rules card for a player's first rounds on each side. */
+  private readonly guide = new JotunnGuide();
   /** The fallen god's camera, watching the giant while the god waits to return. */
   private readonly deathCam: JotunnDeathCam | null;
   /** The giant's winter: snow, and the colder light it brings. */
@@ -212,6 +215,7 @@ export class JotunnMode {
     const me = this.deps.net?.me ?? '';
     if (this.host) for (const x of mode.players) if (x.id && x.id !== me) this.host.assign(x.id, x === p ? g : x.god);
     this.handicap();
+    this.guide.start(mine ? 'giant' : 'god');
     this.deps.control(mine ? g : this.deps.player, mine);
     if (mine) {
       this.deps.ctrl.spawn(g.x, g.z, g.body.yaw);
@@ -328,6 +332,7 @@ export class JotunnMode {
     this.weather.frame(dt, this.mode);
     this.view.update(dt, time);
     this.hud.frame(dt, this.cine?.kind ?? null);
+    this.guide.frame(this.mode.phase, this.mode.timer);
     this.marks?.frame(dt, this.piloting, !!this.cine?.kind, this.piloting ? this.mode.giant : this.deps.player);
   }
 
