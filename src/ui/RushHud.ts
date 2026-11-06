@@ -1,12 +1,12 @@
 import type { Side } from '../game/combatant';
-import { SLOT_COUNT, SLOT_KEYS } from '../game/loadout';
-import { FUMBLE_CC, RUSH, type Rush } from '../sim/Rush';
+import { RUSH, type Rush } from '../sim/Rush';
 import type { Point, Unit } from '../sim/Unit';
 import type { RushCall, RushCatch } from '../combat/RushMode';
 import { addResult } from './records';
 import { awardLine } from './ascension';
 import { RushRadar } from './RushRadar';
 import { rushAwards, type RushAwardKey } from './rushAwards';
+import { keyFor, pressing, Pressing, tackleHint, tackleSlots } from './rushPrompts';
 import './clash.css';
 import './rush.css';
 
@@ -74,9 +74,11 @@ export class RushHud {
   private saveSeen = 0;
   private dodgeSeen = 0;
   private lastPoint = '';
-  /** Under the crosshair while carrying: Space to juke, and how soon it's ready. */
+  /** Under the crosshair while carrying: the juke's key, and how soon it's ready. */
   private readonly juke: HTMLElement;
   private readonly jukeFill: HTMLElement;
+  /** The juke's key, as bound when the chip comes up. */
+  private readonly jukeKey: HTMLElement;
   private lastJuke = '';
   private lastJukeFill = -1;
   private readonly arrow: HTMLElement;
@@ -146,6 +148,7 @@ export class RushHud {
     this.arrow = this.root.querySelector('.rush-pointer')!;
     this.juke = this.root.querySelector('.rush-juke')!;
     this.jukeFill = this.juke.querySelector('s')!;
+    this.jukeKey = this.juke.querySelector('kbd')!;
     this.catchEl = this.root.querySelector('.rush-catch')!;
     this.catchLabel = this.catchEl.querySelector('b')!;
     this.catchPop = this.catchEl.querySelector('span')!;
@@ -269,29 +272,15 @@ export class RushHud {
   private tackles: number[] = [];
   private tacklesKey = '';
 
-  /** What to do about an enemy carrier: the tackle to use now, how long until one is back, or (with none on the bar) to get in their way. */
-  private tackleText(): string {
+  /** What to do about an enemy carrier (see tackleHint). */
+  private tackleText(carrier: Unit): string {
     const c = this.me.combatant;
     const key = `${c.loadout.join('|')}:${c.level}:${c.unspentPoints}`;
     if (key !== this.tacklesKey) {
       this.tacklesKey = key;
-      this.tackles = [];
-      for (let slot = 0; slot < SLOT_COUNT; slot++) {
-        if (c.skillRankInSlot(slot) > 0 && c.resolve(slot).hits.some((e) => e.kind === 'cc' && FUMBLE_CC.has(e.cc))) this.tackles.push(slot);
-      }
+      this.tackles = tackleSlots(c);
     }
-    if (!this.tackles.length) return 'get in their way (none of your skills can knock it loose)';
-    let soonest = -1;
-    let mana = -1;
-    for (const slot of this.tackles) {
-      const why = c.canCast(slot);
-      if (why === null) return `knock it loose with ${c.skillInSlot(slot)!.name} (${SLOT_KEYS[slot]})`;
-      if (why === 'mana' && mana < 0) mana = slot;
-      const cd = c.cooldownOf(slot);
-      if (cd > 0 && (soonest < 0 || cd < c.cooldownOf(soonest))) soonest = slot;
-    }
-    if (soonest >= 0) return `stay on them: ${c.skillInSlot(soonest)!.name} is back in ${Math.ceil(c.cooldownOf(soonest))}`;
-    return mana >= 0 ? `stay on them (not enough mana for ${c.skillInSlot(mana)!.name})` : 'stay on them';
+    return tackleHint(c, carrier, this.tackles);
   }
 
   /** The line under the score: where the relic is and what this player should do about it (`read`: what their throw at `aim` would do). */
@@ -305,17 +294,22 @@ export class RushHud {
     if (r.phase === 'kickoff') return { text: r.overtime ? 'Golden relic: the next goal wins' : 'Kickoff: the Sun Relic waits on the pedestal', tone: r.overtime ? 'contested' : '' };
     const h = relic.holder;
     if (h === me) {
-      if (read?.goal) return { text: 'On target! Left click to shoot it through their gate', tone: 'contested' };
+      const key = keyFor('attack');
+      const shoot = Pressing(key);
+      if (read?.goal) return { text: shoot ? `On target! ${shoot} to shoot it through their gate` : 'On target!', tone: 'contested' };
       const by = read?.catcher;
-      if (by && by.team === me.team) return { text: `Left click to pass to ${by.name}`, tone: 'order' };
+      if (by && by.team === me.team) return { text: shoot ? `${shoot} to pass to ${by.name}` : `Pass to ${by.name}`, tone: 'order' };
       if (by) return { text: r.shotOnTarget(me, aim ?? me.aim) ? `${by.name} would save that shot` : `${by.name} would cut that pass off`, tone: 'chaos' };
-      return { text: 'You have the relic! Run it through their gate, or left click to pass where you aim', tone: 'order' };
+      return { text: `You have the relic! Run it through their gate, or ${key ? `${pressing(key)} to pass` : 'pass'} where you aim`, tone: 'order' };
     }
-    if (h && h.team === me.team) return { text: `${h.name} has the relic: get open, and press F to call for the pass`, tone: 'order' };
-    if (h) return { text: `${h.name} has the relic: ${this.tackleText()}`, tone: 'chaos' };
+    if (h && h.team === me.team) {
+      const call = pressing(keyFor('callPass'));
+      return { text: `${h.name} has the relic: ${call ? `get open, and ${call} to call for the pass` : 'get open for the pass'}`, tone: 'order' };
+    }
+    if (h) return { text: `${h.name} has the relic: ${this.tackleText(h)}`, tone: 'chaos' };
     if (relic.phase === 'center') return { text: 'Grab the Sun Relic from the pedestal', tone: 'contested' };
     if (relic.phase === 'flying' && relic.thrower) {
-      return relic.thrower.team === me.team ? { text: `${this.who(relic.thrower)} passes!`, tone: 'order' } : { text: 'Enemy pass in the air: cut it off', tone: 'chaos' };
+      return relic.thrower.team === me.team ? { text: relic.thrower === me ? 'You pass!' : `${relic.thrower.name} passes!`, tone: 'order' } : { text: 'Enemy pass in the air: cut it off', tone: 'chaos' };
     }
     return { text: 'The relic is loose: grab it!', tone: 'contested' };
   }
@@ -330,6 +324,7 @@ export class RushHud {
       const was = this.lastJuke;
       this.lastJuke = state;
       this.juke.className = `rush-juke${state ? ` show ${state}` : ''}`;
+      if (state && !was) this.jukeKey.textContent = keyFor('jump') || 'Unbound';
       if (state === 'ready' && was === 'cooling') this.juke.animate(JUKE_POP, { duration: 260, easing: 'cubic-bezier(.2,1.6,.4,1)' });
     }
     if (!carrying) return;
