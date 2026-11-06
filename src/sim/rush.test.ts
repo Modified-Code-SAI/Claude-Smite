@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anubis, GODS, loki, odin, thanatos, thor, zeus } from '../game/gods';
+import { anubis, GODS, kukulkan, loki, odin, thanatos, thor, zeus } from '../game/gods';
 import { normalizeLoadout, skillById, ULTIMATE_SLOT, validateLoadout } from '../game/loadout';
 import type { GodDef } from '../game/types';
 import { XP_TABLE } from '../game/progression';
@@ -207,8 +207,8 @@ describe('Relic Rush', () => {
     }
     expect(count(odin, odin.defaultLoadout)).toBe(0);
     expect(count(loki, loki.defaultLoadout)).toBe(0);
-    // the first six bring exactly one each, so no bot team fields a stack of stuns
-    for (const g of [zeus, thor, odin, loki, anubis, thanatos]) expect(count(g, rushBar(g)), g.id).toBe(1);
+    // most bring exactly one, so no bot team fields a stack of stuns (Cthulhu, the slowest, keeps his two)
+    for (const g of [zeus, thor, odin, loki, anubis, thanatos, kukulkan]) expect(count(g, rushBar(g)), g.id).toBe(1);
   });
 
   it('a bot keeps its stun for whoever carries the relic', () => {
@@ -345,6 +345,36 @@ describe('Relic Rush', () => {
       got = Math.max(got, Math.hypot(carrier.x + 0.15, carrier.z + 15.2));
     }
     expect(got).toBeGreaterThan(2);
+  });
+
+  it('a carrier bot just in front of a gate pillar works its way into the mouth instead of turning on the spot', () => {
+    const { sim, rush } = match();
+    const coach = new RushCoach(sim, rush);
+    const carrier = god(sim, zeus, 'chaos', 0);
+    const keeper = god(sim, zeus, 'order', 0);
+    const a = god(sim, zeus, 'order', 1);
+    const b = god(sim, zeus, 'order', 2);
+    carrier.brain = new RushBot(sim, carrier, rush, coach, null);
+    rush.begin([carrier, keeper, a, b]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(carrier, 0, -1.6);
+    run(sim, rush, 0.4, () => rush.holder === carrier);
+    expect(rush.holder).toBe(carrier);
+    expect(rush.juke(carrier, { x: 1, z: 0 })).toBe(true);
+    run(sim, rush, 0.3);
+    // as a bot match left them: wide of the order gate's mouth, 3 m out (where stepping round the pillar and heading
+    // for the mouth met), a defender at its back and one at its side, the keeper home
+    sim.teleport(carrier, -5.74, 21.3);
+    let far = 0;
+    for (let i = 0; i < 120 && rush.holder === carrier; i++) {
+      sim.teleport(keeper, -2.57, 21.96);
+      sim.teleport(a, carrier.x - 0.23, carrier.z - 1.25);
+      sim.teleport(b, carrier.x - 1.31, carrier.z - 0.26);
+      run(sim, rush, 1 / 60);
+      far = Math.max(far, Math.hypot(carrier.x + 5.74, carrier.z - 21.3));
+    }
+    // it used to turn about every step and stay put
+    expect(rush.holder !== carrier || far > 1.5).toBe(true);
   });
 
   it('a juke sidesteps the carrier, beats a stun in its guard, keeps the relic, and waits out its cooldown', () => {

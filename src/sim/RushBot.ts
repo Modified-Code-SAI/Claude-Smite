@@ -124,6 +124,8 @@ export class RushBot implements Brain {
   private route: { goal: Point; next: Point; at: number } | null = null;
   /** Which way (+1 or -1) the carrier breaks past a defender dead ahead, kept until one shows a clear side. */
   private veer = 1;
+  /** Carrying: steering out from beside a gate pillar to the front of its mouth (see mouth). */
+  private besidePillar = false;
   /** Scratch for elbowRoom. */
   private readonly room = { x: 0, z: 0 };
 
@@ -443,10 +445,10 @@ export class RushBot implements Brain {
     // from behind the gate (beyond it, seen from the temple), come back through it
     const behind = (u.z - gate.z) * out > RUSH.gateDepth;
     const x = Math.max(-3, Math.min(3, u.x * 0.5));
-    if (Math.abs(u.x) > RUSH.gateHalfWidth + 0.5 && Math.abs(u.z - gate.z) < 3) {
-      // beside a pillar: step in front of the mouth first
-      return { x: 0, z: gate.z - out * 3.5 * (behind ? -1 : 1) };
-    }
+    // beside a pillar: step in front of the mouth first, and keep at it until in line with the mouth (at the region's
+    // edge the two aims point opposite ways, and a carrier on it, pushed back and forth by defenders, turned about every step)
+    this.besidePillar = Math.abs(u.x) > RUSH.gateHalfWidth + 0.5 && Math.abs(u.z - gate.z) < (this.besidePillar ? 5 : 3);
+    if (this.besidePillar) return { x: 0, z: gate.z - out * 3.5 * (behind ? -1 : 1) };
     return { x, z: gate.z + out * (behind ? -0.2 : 0.4) };
   }
 

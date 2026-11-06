@@ -133,20 +133,22 @@ export function tackles(skill: SkillDef): boolean {
 }
 
 /**
- * The skills a bot brings to Relic Rush: its god's own bar, with one tackle
- * among its regular skills. A bar with none leaves a god unable to win the
- * relic back (in bot matches those gods won about a third of the time), so
- * Odin and Loki swap one in; Anubis's own bar has two, and bots who keep their
- * stuns for the carrier made his team win 62%, so his bots bring one.
- * Thanatos's bar wins 37%: his bots trade Pitiless Edge for Poppy Haze, whose
- * slow lets them catch a carrier (Final Rest instead put a carrier to sleep
- * so often that his team won 60%).
+ * The skills a bot brings to Relic Rush: its god's own bar, unless that bar
+ * wins or loses too often in bot matches. Each god needs a tackle among its
+ * regular skills (a bar with none won about a third of the time).
  */
 const RUSH_BARS: Readonly<Record<string, readonly string[]>> = {
+  // no tackle of their own: Odin swaps in Gungnir Sweep, Loki Decoy
   odin: ['odin.gungnir-sweep', 'odin.ravens', 'odin.lunge', 'odin.ring-of-spears'],
   loki: ['loki.decoy', 'loki.vanish', 'loki.backstab', 'loki.assassinate'],
+  // two stuns, kept for the carrier, won 62%: one is enough
   anubis: ['anubis.mummify', 'anubis.locust-swarm', 'anubis.sand-step', 'anubis.sandstorm'],
+  // 37% on his own bar: Poppy Haze's slow catches carriers (Final Rest put them to sleep so often his team won 60%)
   thanatos: ['thanatos.claim', 'thanatos.wingbeat', 'thanatos.poppy-haze', 'thanatos.kiss-of-death'],
+  // 35% on his own bar, the slowest god on the pitch: Green Ooze slows the carrier he chases
+  cthulhu: ['cthulhu.green-ooze', 'cthulhu.reaching-feelers', 'cthulhu.wrong-angles', 'cthulhu.stars-are-right'],
+  // 57-59% once his bots held Static Discharge for a full Charge; Aegis of Clouds in place of Storm Step: 46-50%
+  zeus: ['zeus.arc-bolt', 'zeus.static-discharge', 'zeus.aegis-of-clouds', 'zeus.skyfall-storm'],
 };
 
 export function rushBar(god: GodDef): readonly string[] {
