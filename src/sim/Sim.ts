@@ -100,9 +100,10 @@ export class Sim {
   knockback = 3.5;
   /**
    * Step the units in turn-about order, forward one frame and backward the
-   * next (Relic Rush). Each unit thinks and moves in its turn, so one stepped
-   * later sees where the others went this frame; with a fixed order the team
-   * stepped second won about 54% of bot matches.
+   * next (every mode sets it but Training and Underworld Descent). Each unit
+   * thinks and moves in its turn, so one stepped later sees where the others
+   * went this frame; with a fixed order the team stepped second won about 54%
+   * of Relic Rush bot matches, and the duelist stepped first 54% of duels.
    */
   alternateOrder = false;
   private backward = false;

@@ -8,6 +8,11 @@ import { Nav } from './Nav';
 import { body, dummyUnit, godUnit, structureUnit, summonUnit } from './factory';
 import { GROUND_WARNING, RECALL_TIME, Sim, type SimTerrain } from './Sim';
 import { WORLD_SCALE, type SimEvent, type Unit } from './Unit';
+import { Clash } from './Clash';
+import { Duel } from './Duel';
+import { conquestBases, Match } from './Match';
+import { Rush } from './Rush';
+import { Siege } from './Siege';
 
 const flat: SimTerrain = { groundAt: () => 0, resolve: (x, z) => ({ x, z }) };
 
@@ -476,5 +481,38 @@ describe('match flow', () => {
     run(sim, 3);
     expect(player.combatant.health).toBe(player.combatant.stats.maxHealth);
     expect(Math.hypot(bot.x, bot.z + 10)).toBeLessThan(3.5);
+  });
+});
+
+describe('turn-about order', () => {
+  it('steps the units forward one frame and backward the next, so no side always moves first', () => {
+    const sim = setup();
+    const a = god(sim, zeus, 'order', 0, 0);
+    const b = god(sim, thor, 'chaos', 5, 0);
+    const firsts: string[] = [];
+    let seen = false;
+    for (const u of [a, b]) {
+      u.brain = {
+        update: () => {
+          if (!seen) firsts.push(u.name);
+          seen = true;
+        },
+      };
+    }
+    sim.alternateOrder = true;
+    for (let i = 0; i < 4; i++) {
+      seen = false;
+      sim.step(1 / 60);
+    }
+    expect(firsts).toEqual([b.name, a.name, b.name, a.name]);
+  });
+
+  it('every mode with sides turns it on', () => {
+    const makers: ((s: Sim) => unknown)[] = [(s) => new Match(s, zeus), (s) => new Clash(s), (s) => new Duel(s), (s) => new Siege(s, zeus), (s) => new Rush(s)];
+    for (const make of makers) {
+      const sim = new Sim(flat, conquestBases(), () => 0.5);
+      make(sim);
+      expect(sim.alternateOrder).toBe(true);
+    }
   });
 });
