@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { abs, attribute, float, mix, mx_noise_float, mx_worley_noise_float, normalView, normalWorld, positionGeometry, positionView, pow, saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
+import { abs, attribute, float, materialSheen, mix, mx_noise_float, mx_worley_noise_float, normalView, normalWorld, positionGeometry, positionView, pow, saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
+import type { Palette } from '../map/UnderworldLayout';
 import { spriteQuads } from '../render/shared';
 import type { CampKind } from '../map/ConquestLayout';
 import { skinRigid } from '../scene/merge';
@@ -60,6 +61,36 @@ export interface MonsterView {
 let shared: ReturnType<typeof buildShared> | null = null;
 const glowCache = new Map<number, THREE.Material>();
 
+/**
+ * The Underworld Descent's depth on the beasts that live there (ember, soul,
+ * spirit weights; all 0 on the battlefields, which keep the mossy jungle
+ * look): scorched with cinders in the Ashen Depths, wet and pale with algae
+ * in the Drowned Halls, faded to grey ghosts lit green in the Abyss. Uniforms,
+ * so going down a depth builds no shader.
+ */
+const depthOn = uniform(new THREE.Vector3());
+/** The amber glows (Thornback eyes, the Alpha's crest), which take each depth's light. */
+const amberGlows: { value: THREE.Color }[] = [];
+/** The amber glows' color at each depth: forge fire, the Drowned Halls' cold soul light, the Abyss's green. */
+const DEPTH_EYES: Record<Palette, number> = { ember: 0xff8a2a, soul: 0x8fd8ff, spirit: 0x7affb0 };
+
+/** Dresses the monsters for a Descent depth, or back in their jungle look (null). */
+export function setMonsterDepth(p: Palette | null): void {
+  depthOn.value.set(p === 'ember' ? 1 : 0, p === 'soul' ? 1 : 0, p === 'spirit' ? 1 : 0);
+  for (const c of amberGlows) c.value.setHex(p ? DEPTH_EYES[p] : AMBER);
+}
+
+/** The depth the monsters are dressed for (its weights) and the color their amber glows took (for tests). */
+export function monsterDepth(): { weights: [number, number, number]; glows: number[] } {
+  return { weights: depthOn.value.toArray() as [number, number, number], glows: amberGlows.map((c) => c.value.getHex()) };
+}
+
+/** The jungle look, or each depth's own in its place. */
+function depthed(jungle: any, ember: any, drowned: any, ghost: any): any {
+  const [e, d, g] = [depthOn.x, depthOn.y, depthOn.z];
+  return mix(jungle, ember.mul(e).add(drowned.mul(d)).add(ghost.mul(g)), e.add(d).add(g));
+}
+
 function n(s: number, p = positionGeometry) {
   return mx_noise_float(p.mul(s)).mul(0.5).add(0.5);
 }
@@ -69,26 +100,75 @@ function buildShared() {
   const fur = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.92, sheen: 0.6, sheenRoughness: 0.6, sheenColor: new THREE.Color(0x8fa060) });
   const streak = mx_noise_float(vec3(positionGeometry.x.mul(18), positionGeometry.y.mul(5), positionGeometry.z.mul(18))).mul(0.5).add(0.5);
   const top = smoothstep(-0.2, 0.8, normalWorld.y);
-  fur.colorNode = mix(vec3(0.09, 0.06, 0.035), mix(vec3(0.24, 0.16, 0.08), vec3(0.3, 0.34, 0.12), n(4).mul(top)), streak.mul(0.6).add(top.mul(0.4)));
+  const patchy = n(4).mul(top);
+  const coat = streak.mul(0.6).add(top.mul(0.4));
+  const furFor = (under: any, back: any, tips: any) => mix(under, mix(back, tips, patchy), coat);
+  const crust = smoothstep(0.3, 0.14, mx_worley_noise_float(positionGeometry.mul(6))).mul(top);
+  // an Abyss beast's outline lit green, the way a ghost shows against the dark
+  const rim = pow(float(1).sub(saturate(normalView.dot(positionView.normalize().negate()))), 2.5);
+  fur.colorNode = depthed(
+    furFor(vec3(0.09, 0.06, 0.035), vec3(0.24, 0.16, 0.08), vec3(0.3, 0.34, 0.12)),
+    // singed to char, rust where it caught
+    furFor(vec3(0.02, 0.014, 0.01), vec3(0.06, 0.035, 0.022), vec3(0.2, 0.075, 0.03)),
+    // matted wet slate, weed growing down the back and pale crusts of shell along it
+    mix(furFor(vec3(0.025, 0.04, 0.045), vec3(0.07, 0.11, 0.12), vec3(0.12, 0.24, 0.18)), vec3(0.42, 0.44, 0.38), crust.mul(0.85)),
+    // faded to ash grey, as if half gone already
+    furFor(vec3(0.07, 0.065, 0.085), vec3(0.21, 0.2, 0.25), vec3(0.34, 0.38, 0.38)),
+  );
+  // soaked fur shines; the moss sheen goes with the moss
+  fur.roughnessNode = depthed(float(0.92), float(0.9), float(0.42), float(0.85));
+  fur.sheenNode = depthed(materialSheen, vec3(0.25, 0.12, 0.06), vec3(0.18, 0.3, 0.32), vec3(0.3, 0.42, 0.38));
+  // cinders still glowing in the singed streaks, breathing; the Abyss's lit round their edges
+  const cinders = smoothstep(0.62, 0.8, streak).mul(top.mul(0.8).add(0.2)).mul(sin(time.mul(2.2).add(positionGeometry.x.mul(9))).mul(0.3).add(0.7));
+  const ghostLight = vec3(0.25, 1, 0.6).mul(rim.mul(0.9).add(patchy.mul(0.15)).mul(depthOn.z));
+  fur.emissiveNode = vec3(1, 0.32, 0.06).mul(cinders.mul(2.4).mul(depthOn.x)).add(ghostLight);
   // bare hide on the snout and legs
   const hide = new THREE.MeshStandardNodeMaterial({ roughness: 0.75 });
-  hide.colorNode = mix(vec3(0.2, 0.12, 0.08), vec3(0.34, 0.22, 0.15), n(14));
-  // bone that heats up to amber toward its tip (cone uv.y is 1 at the tip)
+  const n14 = n(14);
+  hide.colorNode = depthed(
+    mix(vec3(0.2, 0.12, 0.08), vec3(0.34, 0.22, 0.15), n14),
+    mix(vec3(0.07, 0.04, 0.03), vec3(0.16, 0.08, 0.05), n14),
+    mix(vec3(0.22, 0.25, 0.24), vec3(0.36, 0.4, 0.37), n14),
+    mix(vec3(0.16, 0.14, 0.18), vec3(0.3, 0.28, 0.33), n14),
+  );
+  hide.roughnessNode = depthed(float(0.75), float(0.8), float(0.4), float(0.7));
+  // the forge's hide cracked through to the fire under it
+  const veins = smoothstep(0.035, 0.0, abs(n14.sub(0.5)));
+  hide.emissiveNode = vec3(1, 0.35, 0.06).mul(veins.mul(2.4).mul(depthOn.x)).add(vec3(0.25, 1, 0.6).mul(rim.mul(0.9).mul(depthOn.z)));
+  // bone that heats up toward its tip (cone uv.y is 1 at the tip): amber, forge-hot, cold soul light, green
   const bone = new THREE.MeshStandardNodeMaterial({ roughness: 0.45 });
   const tip = smoothstep(0.45, 1, uv().y);
-  bone.colorNode = mix(vec3(0.82, 0.76, 0.6), vec3(1, 0.62, 0.22), tip);
-  bone.emissiveNode = vec3(1, 0.45, 0.1).mul(tip.mul(tip).mul(2.2));
+  bone.colorNode = mix(
+    depthed(vec3(0.82, 0.76, 0.6), vec3(0.5, 0.42, 0.34), vec3(0.68, 0.74, 0.7), vec3(0.86, 0.86, 0.8)),
+    depthed(vec3(1, 0.62, 0.22), vec3(1, 0.5, 0.15), vec3(0.6, 0.85, 1), vec3(0.5, 1, 0.7)),
+    tip,
+  );
+  bone.emissiveNode = depthed(vec3(2.2, 0.99, 0.22), vec3(3.2, 1.2, 0.2), vec3(0.63, 1.26, 1.8), vec3(0.66, 2.2, 1.2)).mul(tip.mul(tip));
   const hoof = new THREE.MeshStandardNodeMaterial({ color: 0x1b1410, roughness: 0.5 });
   // the Gilded Thornback's coat: the same plain material as the hooves, so no new shader
   const gold = new THREE.MeshStandardNodeMaterial({ color: 0xe0a93a, metalness: 1, roughness: 0.3 });
   // weathered stone with moss on every upward face
   const stone = new THREE.MeshStandardNodeMaterial({ roughness: 0.88 });
   // object space, so the stone's pattern stays on the Warden as it walks and swings
-  const grain = n(3.5).mul(0.6).add(n(14).mul(0.4));
+  const big = n(3.5);
+  const grain = big.mul(0.6).add(n(14).mul(0.4));
   const moss = smoothstep(0.2, 0.7, normalWorld.y.add(n(2.2).sub(0.5).mul(0.7)));
-  const rockCol = mix(vec3(0.16, 0.16, 0.19), vec3(0.38, 0.35, 0.32), grain);
-  stone.colorNode = mix(rockCol, mix(vec3(0.17, 0.3, 0.07), vec3(0.32, 0.46, 0.12), n(9)), moss.mul(0.92));
-  stone.roughnessNode = float(0.95).sub(moss.mul(0.1));
+  const n9 = n(9);
+  const stoneFor = (dark: any, light: any, coat0: any, coat1: any) => mix(mix(dark, light, grain), mix(coat0, coat1, n9), moss.mul(0.92));
+  stone.colorNode = depthed(
+    stoneFor(vec3(0.16, 0.16, 0.19), vec3(0.38, 0.35, 0.32), vec3(0.17, 0.3, 0.07), vec3(0.32, 0.46, 0.12)),
+    // basalt under a drift of ash
+    stoneFor(vec3(0.08, 0.065, 0.065), vec3(0.24, 0.18, 0.15), vec3(0.28, 0.27, 0.25), vec3(0.42, 0.4, 0.37)),
+    // wet limestone grown over with slime
+    stoneFor(vec3(0.12, 0.15, 0.16), vec3(0.3, 0.33, 0.33), vec3(0.08, 0.2, 0.15), vec3(0.18, 0.34, 0.24)),
+    // dark glassy rock under grave dust
+    stoneFor(vec3(0.05, 0.05, 0.07), vec3(0.17, 0.16, 0.2), vec3(0.26, 0.28, 0.27), vec3(0.36, 0.38, 0.36)),
+  );
+  stone.roughnessNode = depthed(float(0.95), float(0.92), float(0.55), float(0.6)).sub(moss.mul(0.1));
+  // a crack running through the stone, lava in the forge and green soul fire in the Abyss
+  const crack = smoothstep(0.03, 0.0, abs(big.sub(0.5))).mul(smoothstep(0.45, 0.62, n(1.2))).mul(float(1).sub(moss));
+  const stoneRim = pow(float(1).sub(saturate(normalView.dot(positionView.normalize().negate()))), 2.5);
+  stone.emissiveNode = vec3(1, 0.35, 0.06).mul(crack.mul(2.6).mul(depthOn.x)).add(vec3(0.3, 1, 0.55).mul(crack.mul(1.3).add(stoneRim.mul(0.6)).mul(depthOn.z)));
   return { fur, hide, bone, hoof, stone, gold };
 }
 
@@ -103,7 +183,9 @@ function glow(hex: number, strength = 4): THREE.Material {
   if (!m) {
     const g = new THREE.MeshBasicNodeMaterial();
     // uniforms rather than constants, so every glow colour shares one shader
-    g.colorNode = uniform(new THREE.Color(hex)).mul(uniform(strength).mul(n(30).mul(0.4).add(0.8)));
+    const color = uniform(new THREE.Color(hex));
+    if (hex === AMBER) amberGlows.push(color);
+    g.colorNode = color.mul(uniform(strength).mul(n(30).mul(0.4).add(0.8)));
     glowCache.set(key, (m = g));
   }
   return m;
