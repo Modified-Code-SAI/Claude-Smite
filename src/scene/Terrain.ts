@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
   dot, float, max, mix, normalWorld, positionWorld, sin, smoothstep, texture, transformNormalToView, vec2, vec3,
 } from '../render/tsl';
+import { frosted } from './frost';
 import { planar, triplanar, type TextureLibrary } from './Materials';
 import { slice } from '../core/slices';
 
@@ -191,8 +192,9 @@ export class Terrain {
       rough: mix(rock.roughness, float(0.9), ledge),
       ao: rock.ao.mul(rockFine.ao),
     }, rockW);
-    // Damp patches: darker and slightly glossier.
-    mat.colorNode = L.col.mul(float(1).sub(damp.mul(0.25)));
+    // Damp patches: darker and slightly glossier. The Jötunn's frost settles in
+    // drifts that follow the big variation (about 0.3 to 0.7), broken up by the grass's grain (0.1 to 0.24).
+    mat.colorNode = frosted(L.col.mul(float(1).sub(damp.mul(0.25))), macro.sub(0.3).mul(1.9).add(gA.color.g.sub(0.1).mul(1.7)).clamp(0, 1), n.y);
     mat.normalNode = transformNormalToView(L.nrm.normalize());
     mat.roughnessNode = L.rough.sub(damp.mul(0.12));
     mat.aoNode = L.ao;

@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 import {
   attribute, cameraPosition, dFdx, dFdy, dot, float, floor, frontFacing, hash, length, log2, max, mix,
-  normalViewGeometry, normalize, positionWorld, pow, screenCoordinate, sin, smoothstep, step, texture,
+  normalViewGeometry, normalWorld, normalize, positionWorld, pow, screenCoordinate, sin, smoothstep, step, texture,
   time, uniform, uv, vec3,
 } from '../render/tsl';
 import { rng } from '../core/random';
 import type { TextureLibrary } from './Materials';
+import { frosted } from './frost';
 import { hypot } from '../core/math';
 import { placedGeometry, placeInstances } from '../render/shared';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -503,7 +504,8 @@ export class Foliage {
     const shade = attribute('shade', 'float');
     // deep, cool greens with dark crown interiors, as in the reference jungle
     const leafColor = tex.rgb.mul(tint).mul(0.88);
-    mat.colorNode = mix(barkColor, leafColor, leaf);
+    // (the Jötunn's frost settles on the crowns' tops, tree by tree)
+    mat.colorNode = frosted(mix(barkColor, leafColor, leaf), hash(seed.add(5)), normalWorld.y, 0.7);
     mat.aoNode = shade.mul(shade);
     // Leaf normals come from the cluster shape and must not flip on back faces;
     // on bark, the front faces are the only ones seen, and keep their normals.
