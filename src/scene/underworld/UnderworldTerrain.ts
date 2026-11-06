@@ -193,10 +193,12 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const grain = smoothstep(0.22, 0.08, lum(raw));
   const low = smoothstep(5.5, 0.4, positionWorld.y);
   const zone = grain.mul(rockW).mul(low);
-  const crack = smoothstep(crackW, 0.0, crackN);
-  col = col.mul(float(1).sub(smoothstep(crackW.mul(4), crackW, crackN).mul(zone).mul(0.55)));
+  // (in the Drowned Halls they are wider, softer seams of seeping light)
+  const veinW = crackW.mul(mix(float(1), float(1.9), soul));
+  const crack = smoothstep(veinW, 0.0, crackN);
+  col = col.mul(float(1).sub(smoothstep(veinW.mul(4), veinW, crackN).mul(zone).mul(0.55)));
   // in runs a few meters long, not one unbroken line round the walls
-  const veins = crack.mul(zone).mul(smoothstep(-0.4, 0.05, wornN)).mul(3.6);
+  const veins = crack.mul(zone).mul(smoothstep(-0.4, 0.05, wornN)).mul(mix(float(3.6), float(1.5), soul));
   // a slow wave of light runs round the rings, and they flare as the way down opens
   const wave = sin(atan(xz.y.sub(runeRings[0].y), xz.x.sub(runeRings[0].x)).mul(3).sub(time.mul(1.4))).mul(0.25).add(0.85);
   const runes = runeCore.mul(2.4).add(runeHalo).mul(floorW).mul(wave).mul(gateOpen.mul(0.7).add(1));
