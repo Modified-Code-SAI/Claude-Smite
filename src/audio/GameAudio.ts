@@ -809,7 +809,7 @@ export class GameAudio {
   /** Last seen Relic Rush state, so each beat is called once. */
   /** Gods whose current call for the pass has been heard. */
   private readonly rushCalls = new Set<Unit>();
-  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, save: 0, juke: 0, dodge: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
+  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, save: 0, juke: 0, dodge: 0, miss: 0, relic: '', flying: false, overtime: false, minute: false, winner: '', tick: 0 };
 
   /** Relic Rush: the horn at each kickoff, goals, steals and fumbles, the golden relic and the result. */
   private watchRush(): void {
@@ -931,6 +931,18 @@ export class GameAudio {
     const flying = relic.phase === 'flying' && !!relic.thrower;
     if (flying && !seen.flying) this.engine.play('relic.throw', { at, ref: 10 }, 3);
     seen.flying = flying;
+    // a throw (or a relic knocked flying) coming down loose: a thud on the stones and a ring off the relic
+    if (seen.relic === 'flying' && relic.phase === 'loose') this.engine.play('relic.land', { at, ref: 10 }, 2);
+    seen.relic = relic.phase;
+    if (r.beats.miss !== seen.miss) {
+      seen.miss = r.beats.miss;
+      // a near miss: the ground gasps, and the herald groans with you if it was yours
+      const b = r.lastBeat;
+      if (b?.kind === 'miss') {
+        this.engine.play('crowd.ooh', { gain: b.unit.team === mine ? 0.7 : 0.55, vary: 0.06, rate: 0.95 }, 3);
+        if (b.unit === this.me) this.herald.say('So close!', 'neutral', 1);
+      }
+    }
     const minute = !r.overtime && r.phase === 'play' && r.clock <= 60;
     if (minute && !seen.minute) this.herald.say('One minute remains!', 'neutral', 2);
     seen.minute = seen.minute || minute;

@@ -12,6 +12,12 @@ type Ground = (x: number, z: number) => number;
 
 /** How far to the screen's right of the local carrier's head the relic is held (m). */
 const MINE_SIDE = 0.8;
+/**
+ * A thrown relic coming down loose: how far it dips below its hover (m), how
+ * fast it springs back (rad/s), how quickly that dies away, and the seconds
+ * before it is back to its plain bob.
+ */
+const LAND = { depth: 0.7, rate: 9, damp: 4.2, time: 1.2 } as const;
 
 const ALLY = { main: 0x4fb2ff, core: 0xe6f4ff };
 const FOE = { main: 0xff3524, core: 0xffe0c8 };
@@ -260,6 +266,9 @@ export class RushView {
   private readonly drawn = new THREE.Vector3();
   private readonly goal = new THREE.Vector3();
   private placed = false;
+  /** The relic's phase last frame, and seconds since a throw last came down loose (for the bounce; -1 none). */
+  private wasPhase = '';
+  private landedFor = -1;
   private light: THREE.PointLight | null = null;
   private readonly trail = new Trail();
   /** A carrier's juke: a gold streak through the sidestep, at chest height (same material as the relic's). */
@@ -398,8 +407,20 @@ export class RushView {
     if (!this.placed || r.phase === 'center' || r.phase === 'gone') this.drawn.set(x, y, z);
     else this.drawn.lerp(this.goal.set(x, y, z), Math.min(1, dt * (r.phase === 'held' ? 22 : 40)));
     this.placed = shown;
-    const bob = r.phase === 'loose' || r.phase === 'center' ? Math.sin(t * 2.2) * 0.12 : 0;
-    this.relic.position.set(this.drawn.x, this.drawn.y + bob, this.drawn.z);
+    // a throw that comes down loose carries on into the ground and bounces back up to hover, then eases into its bob
+    if (this.wasPhase === 'flying' && r.phase === 'loose') this.landedFor = 0;
+    else if (r.phase !== 'loose') this.landedFor = -1;
+    this.wasPhase = r.phase;
+    let bounce = 0;
+    let settle = 1;
+    if (this.landedFor >= 0) {
+      const s = (this.landedFor += dt);
+      bounce = s < LAND.time ? -LAND.depth * Math.sin(s * LAND.rate) * Math.exp(-s * LAND.damp) : 0;
+      const k = Math.min(1, s / LAND.time);
+      settle = k * k * (3 - 2 * k);
+    }
+    const bob = r.phase === 'loose' || r.phase === 'center' ? Math.sin(t * 2.2) * 0.12 * settle : 0;
+    this.relic.position.set(this.drawn.x, this.drawn.y + bob + bounce, this.drawn.z);
     // a thrown or knocked-loose relic streaks through the air
     this.trail.frame(r.phase === 'flying' ? this.relic.position : null, this.camera, dt);
     // a juke streaks through the sidestep
