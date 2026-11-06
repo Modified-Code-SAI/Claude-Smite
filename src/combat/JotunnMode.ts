@@ -9,6 +9,7 @@ import type { PlayerController } from '../player/PlayerController';
 import type { CameraShot } from '../player/ThirdPersonCamera';
 import type { CollisionWorld } from '../scene/Collision';
 import type { Fire } from '../scene/Effects';
+import type { Environment } from '../scene/Environment';
 import { JOTUNN, Jotunn, type JotunnBrains, type JotunnPlayer } from '../sim/Jotunn';
 import { jotunnBots } from '../sim/JotunnBots';
 import type { Sim } from '../sim/Sim';
@@ -16,6 +17,7 @@ import type { Point, SimEvent, Unit } from '../sim/Unit';
 import { JotunnHud } from '../ui/JotunnHud';
 import { CINE, CINE_CLEARANCE, JotunnCine, type CineSight } from './jotunnCine';
 import { JotunnView } from './JotunnView';
+import { JotunnWeather } from './jotunnWeather';
 import { paletteFor } from './palette';
 
 /** Who plays the giant alone: everyone in turn (a bot first, then you), only you, or only the bots. Online, everyone takes a turn. */
@@ -56,6 +58,8 @@ export interface JotunnDeps {
   collision?: CollisionWorld;
   /** Toward the sun, which a shot of the giant never looks into. */
   sun?: { x: number; z: number };
+  /** The map's light and haze, which the giant's winter cools (see JotunnWeather). */
+  environment?: Environment;
 }
 
 /** Radians a second the giant's body turns toward the camera when a player drives it. */
@@ -84,6 +88,8 @@ export class JotunnMode {
   private readonly hud: JotunnHud;
   /** The giant's moments on camera, where the game lends the camera. */
   private readonly cine: JotunnCine | null;
+  /** The giant's winter: snow, and the colder light it brings. */
+  readonly weather: JotunnWeather;
   /** The local player drives the giant this round. */
   piloting = false;
   private readonly brains: JotunnBrains | null;
@@ -154,6 +160,8 @@ export class JotunnMode {
       footfall: (at, k) => deps.cue?.('step', at, k),
     });
     deps.vfx.add(this.view.group);
+    this.weather = new JotunnWeather(deps.environment);
+    deps.vfx.add(this.weather.group);
     this.hud = new JotunnHud(mode, player);
     const set = deps.cameraShot;
     const view = this.view;
@@ -292,6 +300,7 @@ export class JotunnMode {
 
   frame(dt: number, time: number): void {
     this.cine?.frame(dt);
+    this.weather.frame(dt, this.mode);
     this.view.update(dt, time);
     this.hud.frame(dt, this.cine?.kind ?? null);
   }
@@ -358,6 +367,11 @@ export class JotunnMode {
 
   prime(): () => void {
     const g = this.mode.giant;
-    return this.view.prime(new THREE.Vector3(g.x, this.deps.groundAt(g.x, g.z), g.z));
+    const snow = this.weather.prime();
+    const view = this.view.prime(new THREE.Vector3(g.x, this.deps.groundAt(g.x, g.z), g.z));
+    return () => {
+      view();
+      snow();
+    };
   }
 }

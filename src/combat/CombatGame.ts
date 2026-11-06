@@ -511,6 +511,7 @@ export class CombatGame implements Updatable {
       cameraShot: this.deps.cameraShot,
       collision: world.collision,
       sun: world.environment.sunDirection,
+      environment: world.environment,
     });
     this.jotunn = this.jotunnMode.mode;
     this.netHost = this.jotunnMode.host;
