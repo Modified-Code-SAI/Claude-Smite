@@ -18,7 +18,7 @@ import { angleBetween, MELEE_ARC, Sim, type BaseZone, type SimTerrain } from '..
 import { isStructure, Unit, WORLD_SCALE, type Body, type Point, type SimEvent } from '../sim/Unit';
 import { CombatHud } from '../ui/CombatHud';
 import { LoadoutMenu } from '../ui/LoadoutMenu';
-import { BuildBook, fittingBuild, spendAlong } from '../game/builds';
+import { BuildBook, fittingBuild, spendAlong, startingPointsLine } from '../game/builds';
 import { MatchHud } from '../ui/MatchHud';
 import { GroundDecal, type DecalShape } from './GroundDecal';
 import { paletteFor } from './palette';
@@ -451,7 +451,7 @@ export class CombatGame implements Updatable {
     this.deps.world.vfx.add(this.plazaRing.mesh);
     this.relicView = new RelicView(this.groundAt);
     this.deps.world.vfx.add(this.relicView.group);
-    this.hud.toast('Hold the temple plaza. Press K to spend your skill points.');
+    this.startToast('Hold the temple plaza.');
   }
 
   /** Relic Rush: three gods a side carry the Sun Relic through the enemy's gate, solo with bots or online. */
@@ -512,19 +512,38 @@ export class CombatGame implements Updatable {
       collision: world.collision,
       sun: world.environment.sunDirection,
       environment: world.environment,
-      startPoints: (u) => {
-        const c = u.combatant;
-        const points = c.unspentPoints;
-        if (points <= 0 || this.builds.active(c.god)) return null;
-        const b = fittingBuild(c.god, c.loadout);
-        if (!spendAlong(c, b)) return null;
-        this.menu.refresh();
-        return { tree: b.name, points: points - c.unspentPoints };
-      },
+      startPoints: (u) => this.startingPoints(u),
     });
     this.jotunn = this.jotunnMode.mode;
     this.netHost = this.jotunnMode.host;
     this.netGuest = this.jotunnMode.guest;
+  }
+
+  /**
+   * A match that starts high (Temple Clash, Duel, each Jötunn round): spends
+   * the god's free points up the ready-made tree that fits its bar, when the
+   * player follows no build; bots spend theirs the moment they get them.
+   * Says which tree, or null when nothing was spent.
+   */
+  private startingPoints(u: Unit): { tree: string; points: number } | null {
+    const c = u.combatant;
+    const points = c.unspentPoints;
+    if (points <= 0 || this.builds.active(c.god)) return null;
+    const b = fittingBuild(c.god, c.loadout);
+    if (!spendAlong(c, b)) return null;
+    this.menu.refresh();
+    return { tree: b.name, points: points - c.unspentPoints };
+  }
+
+  /** Tells the player where their starting points went (see startingPoints); `lead` says what the match is about. */
+  private startToast(lead: string): void {
+    const spent = this.startingPoints(this.player);
+    if (!spent) {
+      this.hud.toast(`${lead} Press K to spend your skill points.`);
+      return;
+    }
+    this.hud.toast(lead);
+    this.hud.toast(startingPointsLine(spent));
   }
 
   /** Jötunn: the local player takes another unit (the giant for their round, then their god again). */
@@ -559,7 +578,7 @@ export class CombatGame implements Updatable {
     this.ringShown = DUEL.ringStart;
     this.plazaRing.place({ type: 'ring', radius: DUEL.ringStart, width: 1.4 }, 0, 0, 0, 0.12);
     this.deps.world.vfx.add(this.plazaRing.mesh);
-    this.hud.toast(`Duel ${rival.name}: first to ${DUEL.rounds} rounds. Press K to spend your skill points.`);
+    this.startToast(`Duel ${rival.name}: first to ${DUEL.rounds} rounds.`);
   }
 
   /**

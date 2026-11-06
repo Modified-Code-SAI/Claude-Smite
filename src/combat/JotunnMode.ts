@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { Input } from '../core/Input';
+import { startingPointsLine } from '../game/builds';
 import { GODS, godById } from '../game/gods';
 import { NetGuest, NetHost } from '../net/NetGame';
 import { jotunnRoster } from '../net/jotunnRoster';
@@ -208,7 +209,7 @@ export class JotunnMode {
       this.deps.toast(`${p.name} is the Jötunn. Keep it from the braziers: break both knees to bring it down, then strike its crown. After a slam, break the planted wrist.`);
       // (a guest's points are the host's to spend, as their menu's are)
       const spent = this.guest ? null : this.deps.startPoints?.(this.deps.player);
-      if (spent) this.deps.toast(`Your ${spent.points} skill point${spent.points === 1 ? '' : 's'} went into ${spent.tree}. Press K to spend them your own way.`);
+      if (spent) this.deps.toast(startingPointsLine(spent));
     }
   }
 
