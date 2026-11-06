@@ -201,7 +201,9 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const hex = hexCell(mix(vec2(xz.x.mul(0.62).add(wy.mul(0.45)), xz.y.mul(0.62).sub(wy.mul(0.38))).div(FACET), xz.add(bend).div(COLUMN), ember));
   // (meters a pixel spans here, so thin joints fade rather than shimmer far off)
   const px = abs(dFdx(xz.x)).add(abs(dFdy(xz.x))).add(abs(dFdx(xz.y))).add(abs(dFdy(xz.y))).mul(0.5).max(0.002);
-  const seam = (d: any, w: number) => smoothstep(px.add(w), max(px.negate().add(w), 0), d).mul(min(float(w).div(px.add(w)), 1));
+  // (and up the walls: a pixel's height in meters there)
+  const pxUp = abs(dFdx(wy)).add(abs(dFdy(wy))).mul(0.5).max(0.002);
+  const seam = (d: any, w: number, aa: any = px) => smoothstep(aa.add(w), max(aa.negate().add(w), 0), d).mul(min(float(w).div(aa.add(w)), 1));
 
   // each depth lays its own floor. The Abyss: great slabs of black glass. The
   // Ashen Depths: the tops of the basalt columns the chamber was cut down
@@ -316,7 +318,8 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   // the rock's own grain shoves the line about, so it zigzags along the crevices like a split in stone
   const jag = fine.color.sub(0.3).mul(0.55).add(rock.color.sub(0.3).mul(0.25));
   const crackN = abs(mx_noise_float(positionWorld.mul(vec3(0.32, 0.5, 0.32)).add(jag)));
-  const crackW = mix(float(0.012), float(0.045), smoothstep(-0.4, 0.6, mx_noise_float(positionWorld.mul(0.11).add(7))));
+  const veinN = mx_noise_float(positionWorld.mul(0.11).add(7));
+  const crackW = mix(float(0.012), float(0.045), smoothstep(-0.4, 0.6, veinN));
   const grain = smoothstep(0.22, 0.08, lum(raw));
   const low = smoothstep(5.5, 0.4, positionWorld.y);
   const zone = grain.mul(rockW).mul(low);
@@ -325,7 +328,25 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const crack = smoothstep(veinW, 0.0, crackN);
   col = col.mul(float(1).sub(smoothstep(veinW.mul(4), veinW, crackN).mul(zone).mul(0.55)));
   // in runs a few meters long, not one unbroken line round the walls
-  const veins = crack.mul(zone).mul(smoothstep(-0.4, 0.05, wornN)).mul(mix(float(3.6), float(1.5), soul));
+  const cracks = crack.mul(zone).mul(smoothstep(-0.4, 0.05, wornN));
+  // each depth's light gets out of its stone its own way. In the forge it is
+  // lava in the cracks, slow pulses of it sliding down them. In the Drowned
+  // Halls it seeps out along the joints between the beds in long runs, the
+  // cracks only faint. In the Abyss it is spirit light in the seams between
+  // the facets of glass, each facet's rim brightening and dimming on its own
+  // slow beat
+  const slide = sin(wy.mul(2.2).add(time.mul(1.5)).add(xz.x.add(xz.y).mul(0.9))).mul(0.3).add(0.9);
+  // (each bed's seam and each facet's rim alight in runs of its own)
+  const onWall = rockW.mul(low).mul(sheer);
+  // (broken up by the stone's own grain, as if seeping through where it is porous)
+  const bedSeam = seam(min(bed, float(1).sub(bed)).div(0.9), 0.035, pxUp).mul(smoothstep(-0.15, 0.35, wornN.add(sin(floor(bedV).mul(2.3)).mul(0.45)))).mul(onWall).mul(smoothstep(0.13, 0.21, lum(fine.color)));
+  const facetSeam = seam(hex.edge.mul(FACET), 0.03, px.add(pxUp)).mul(smoothstep(-0.2, 0.3, wornN.add(fract(hex.h.mul(5.7)).sub(0.5).mul(0.7)))).mul(onWall);
+  const facetBeat = sin(time.mul(0.8).add(hex.h.mul(40))).mul(0.4).add(0.6);
+  const veins = depthTint(
+    cracks.mul(3.2).add(facetSeam.mul(facetBeat).mul(2.6)),
+    cracks.mul(slide).mul(3.6),
+    cracks.mul(1.0).add(bedSeam.mul(4)),
+  );
   // a slow wave of light runs round the rings, and they flare as the way down opens
   const runeA = atan(xz.y.sub(runeRings[0].y), xz.x.sub(runeRings[0].x));
   const wave = sin(runeA.mul(3).sub(time.mul(1.4))).mul(0.25).add(0.85);
