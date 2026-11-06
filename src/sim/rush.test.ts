@@ -250,6 +250,66 @@ describe('Relic Rush', () => {
     expect(seen.goal + seen.none).toBeGreaterThan(0);
   });
 
+  it('a shot caught on its way in is a save (and travels to guests); a pass cut off in the open is a steal', () => {
+    const gz = RUSH.gates.chaos.z;
+    const setup = (keeperAt: readonly [number, number], aim: { x: number; z: number }) => {
+      const { sim, rush } = match();
+      const a = god(sim, loki, 'order', 0);
+      const mate = god(sim, thor, 'order', 1);
+      const k = god(sim, anubis, 'chaos', 0);
+      rush.begin([a, mate, k]);
+      run(sim, rush, RUSH.countdown + 0.1);
+      sim.teleport(a, 0, gz + 12);
+      sim.teleport(mate, -12, gz + 16);
+      sim.teleport(k, keeperAt[0], keeperAt[1]);
+      Object.assign(rush.relic, { phase: 'loose', x: a.x, z: a.z });
+      run(sim, rush, 0.4);
+      expect(rush.holder).toBe(a);
+      expect(rush.throwRelic(a, aim)).toBe(true);
+      run(sim, rush, 3, () => rush.relic.phase !== 'flying');
+      return { rush, a, k };
+    };
+    // the keeper on their line takes a shot that was going in
+    const shot = { x: 0, z: gz - 2 };
+    {
+      const { rush, a, k } = setup([0.4, gz + 1.5], shot);
+      expect(rush.holder).toBe(k);
+      expect(rush.score.order).toBe(0);
+      expect(rush.beats.save).toBe(1);
+      expect(rush.beats.steal).toBe(0);
+      expect(rush.lastBeat).toMatchObject({ kind: 'save', unit: k, by: a });
+      // it counts with the keeper's steals
+      expect(rush.lines.get(k)?.steals).toBe(1);
+      const guest = match();
+      const gods = [god(guest.sim, loki, 'order', 0), god(guest.sim, thor, 'order', 1), god(guest.sim, anubis, 'chaos', 0)];
+      guest.rush.join(gods);
+      guest.rush.applyNet(JSON.parse(JSON.stringify(rush.netState())));
+      expect(guest.rush.beats.save).toBe(1);
+      expect(guest.rush.lastBeat?.kind).toBe('save');
+    }
+    // the same enemy cutting off a pass out on the field: a steal
+    {
+      const { rush, k } = setup([-9.4, gz + 15.1], { x: -12, z: gz + 16 });
+      expect(rush.holder).toBe(k);
+      expect(rush.beats.steal).toBe(1);
+      expect(rush.beats.save).toBe(0);
+    }
+  });
+
+  it('match point: a side one goal from the win, both at four apiece, and never in golden-relic overtime', () => {
+    const { sim, rush } = match();
+    const a = god(sim, loki, 'order', 0);
+    const b = god(sim, anubis, 'chaos', 0);
+    rush.begin([a, b]);
+    expect(rush.matchPoint).toBeNull();
+    rush.score.order = RUSH.goals - 1;
+    expect(rush.matchPoint).toBe('order');
+    rush.score.chaos = RUSH.goals - 1;
+    expect(rush.matchPoint).toBe('both');
+    rush.overtime = true;
+    expect(rush.matchPoint).toBeNull();
+  });
+
   it('the pass assist leads a running teammate aimed at, and leaves shots and throws into open space alone', () => {
     let led = 0;
     for (const [mx, mz, dx, dz] of [[6, -10, 1, 0], [-4, -7, 0.6, -0.8], [8, -4, -1, 0], [0, -14, 0, 1]] as const) {

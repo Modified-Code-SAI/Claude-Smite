@@ -170,7 +170,7 @@ export interface RushNet {
   w: Side | null;
   g: number;
   lg: [Side, number, number, 'dunk' | 'shot', number] | null;
-  b: [number, number, number, number, number];
+  b: [number, number, number, number, number, number];
   lb: [RushBeat, number, number] | null;
   r: [RelicPhase, number, number, number, number, number, number, number, number, number, number, number, number, number, Side | null, number];
   l: [number, number, number, number, number, number][];
@@ -180,7 +180,7 @@ export interface RushNet {
 }
 
 /** A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the relic through a hit. */
-export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug';
+export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug' | 'save';
 
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 
@@ -230,8 +230,8 @@ export class Rush {
   lastGoal: RushGoal | null = null;
   /** Counts every goal, so watchers can tell a new one from the last. */
   goalCount = 0;
-  /** Bumped on each fumble, interception, catch and Captain's shrug, for sounds and banners. */
-  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0 };
+  /** Bumped on each fumble, interception, catch, Captain's shrug and save (a shot caught on its way in), for sounds and banners. */
+  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0 };
   /** The latest of those beats, with who did it. */
   lastBeat: { kind: RushBeat; unit: Unit; by: Unit | null } | null = null;
   private readonly squad: Unit[] = [];
@@ -591,6 +591,28 @@ export class Rush {
     return true;
   }
 
+  /** The team one goal from the win ('both' at four apiece), or null. Never in golden-relic overtime, where any goal wins. */
+  get matchPoint(): Side | 'both' | null {
+    if (this.winner || this.overtime) return null;
+    const order = this.score.order >= RUSH.goals - 1;
+    const chaos = this.score.chaos >= RUSH.goals - 1;
+    return order && chaos ? 'both' : order ? 'order' : chaos ? 'chaos' : null;
+  }
+
+  /** Whether the relic in flight would still go in low through `side`'s gate (score against it) if nobody caught it. */
+  private goingIn(side: Side): boolean {
+    const r = this.relic;
+    const p0 = r.duration > 0 ? Math.min(1, r.t / r.duration) : 1;
+    const left = hypot(r.tx - r.fx, r.tz - r.fz) * (1 - p0);
+    const steps = Math.max(4, Math.ceil(left / 0.25));
+    for (let i = 0; i <= steps; i++) {
+      const p = p0 + ((1 - p0) * i) / steps;
+      if (Rush.flightHeight(r, p) > RUSH.relic.shotHeight) continue;
+      if (inGate(side, r.fx + (r.tx - r.fx) * p, r.fz + (r.tz - r.fz) * p, RUSH.shotHalfWidth)) return true;
+    }
+    return false;
+  }
+
   private take(u: Unit): void {
     const r = this.relic;
     const team = u.team as Side;
@@ -598,8 +620,10 @@ export class Rush {
     const line = this.lines.get(u);
     if (r.team && r.team !== team) {
       line && line.steals++;
-      this.beats.steal++;
-      this.lastBeat = { kind: 'steal', unit: u, by: null };
+      // a shot that was going in, caught: a save (counted with the steals)
+      const save = r.phase === 'flying' && !!thrower && this.goingIn(team);
+      this.beats[save ? 'save' : 'steal']++;
+      this.lastBeat = { kind: save ? 'save' : 'steal', unit: u, by: save ? thrower : null };
       this.lastPass = null;
     } else if (thrower && thrower !== u && thrower.team === team && r.phase === 'flying') {
       const tl = this.lines.get(thrower);
@@ -755,7 +779,7 @@ export class Rush {
       w: this.winner,
       g: this.goalCount,
       lg: g ? [g.team, at(g.scorer), at(g.assist), g.kind, n(g.at)] : null,
-      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug],
+      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save],
       lb: b ? [b.kind, at(b.unit), at(b.by)] : null,
       r: [r.phase, at(r.holder), n(r.x), n(r.z), n(r.h), n(r.fx), n(r.fz), n(r.tx), n(r.tz), n(r.t), n(r.duration), n(r.arc), n(r.h0), at(r.thrower), r.team, n(r.since)],
       l: this.squad.map((u) => {
@@ -783,7 +807,7 @@ export class Rush {
     const lg = s.lg;
     const scorer = lg && god(lg[1]);
     this.lastGoal = lg && scorer ? { team: lg[0], scorer, assist: god(lg[2]), kind: lg[3], at: lg[4] } : null;
-    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug] = s.b;
+    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save] = s.b;
     const lb = s.lb;
     const unit = lb && god(lb[1]);
     this.lastBeat = lb && unit ? { kind: lb[0], unit, by: god(lb[2]) } : null;
