@@ -26,8 +26,9 @@ const AWARD_ICON: Record<RushAwardKey, string> = {
 const RUSH_CUT = { in: 0.3, out: 0.55 };
 /** Seconds the match card takes to fade once play starts. */
 const RUSH_INTRO_FADE = 0.7;
-/** Seconds a save's banner shows. */
+/** Seconds a save's banner shows, and a "Juked!" one (quicker: the play carries straight on). */
 const SAVE_SHOW = 1.5;
+const DODGE_SHOW = 1.1;
 /**
  * Pops played through the Web Animations API: restarting a CSS animation
  * means reading layout between dropping and re-adding its class, and that
@@ -65,10 +66,10 @@ export class RushHud {
   private goalShow = 0;
   private rushShow = 0;
   private wasKickoff = true;
-  /** A save's banner: seconds left, and who made it. */
-  private saveShow = 0;
+  /** A save's or a dodge's banner: which, seconds left, who made it and whose tackle it beat. */
+  private moment: { kind: 'save' | 'dodge'; unit: Unit; by: Unit | null; left: number } | null = null;
   private saveSeen = 0;
-  private saver: Unit | null = null;
+  private dodgeSeen = 0;
   private lastPoint = '';
   /** Under the crosshair while carrying: Space to juke, and how soon it's ready. */
   private readonly juke: HTMLElement;
@@ -92,6 +93,11 @@ export class RushHud {
   get introShowing(): boolean {
     return this.introLeft > 0;
   }
+  private bigUp = false;
+  /** Whether a big call (a goal, a save, a juke, the kickoff count) has the middle of the screen. */
+  get bannerUp(): boolean {
+    return this.bigUp;
+  }
   private lastIntro = '';
   private readonly introCount: HTMLElement;
   private lastCount = '';
@@ -108,6 +114,7 @@ export class RushHud {
     this.foe = this.mine === 'order' ? 'chaos' : 'order';
     // (a guest joining mid-match doesn't see an old save's banner)
     this.saveSeen = rush.beats.save;
+    this.dodgeSeen = rush.beats.dodge;
     this.root.className = 'clash duel rush';
     this.root.innerHTML = `
       <div class="rush-cut"></div>
@@ -314,9 +321,13 @@ export class RushHud {
       const sub = g.assist ? `${how} · assist ${this.who(g.assist)}` : how;
       return { html: `${ours ? 'Goal!' : 'They score'}<small>${esc(sub)}</small>`, side: ours ? 'ally' : 'foe' };
     }
-    if (this.saveShow > 0 && this.saver && r.phase === 'play') {
-      const u = this.saver;
-      return { html: `Saved!<small>${esc(this.who(u))} ${u === this.me ? 'keep' : 'keeps'} it out</small>`, side: u.team === this.mine ? 'ally' : 'foe' };
+    const m = this.moment;
+    if (m && r.phase === 'play') {
+      const u = m.unit;
+      const side = u.team === this.mine ? 'ally' : 'foe';
+      if (m.kind === 'save') return { html: `Saved!<small>${esc(this.who(u))} ${u === this.me ? 'keep' : 'keeps'} it out</small>`, side };
+      const past = m.by ? ` ${m.by === this.me ? 'your' : `${esc(this.who(m.by))}'s`} tackle` : ' the tackle';
+      return { html: `Juked!<small>${esc(this.who(u))} ${u === this.me ? 'slip' : 'slips'}${past}</small>`, side };
     }
     if (this.rushShow > 0) return { html: r.overtime ? 'Golden relic!' : 'Rush!', side: '' };
     return { html: '', side: '' };
@@ -334,12 +345,13 @@ export class RushHud {
     if (this.wasKickoff && r.phase === 'play') this.rushShow = this.introLeft > 0 ? 0 : 0.9;
     this.wasKickoff = r.phase === 'kickoff';
     this.rushShow = Math.max(0, this.rushShow - dt);
-    if (r.beats.save !== this.saveSeen) {
+    if (r.beats.save !== this.saveSeen || r.beats.dodge !== this.dodgeSeen) {
       this.saveSeen = r.beats.save;
+      this.dodgeSeen = r.beats.dodge;
       const b = r.lastBeat;
-      if (b?.kind === 'save') [this.saveShow, this.saver] = [SAVE_SHOW, b.unit];
+      if (b?.kind === 'save' || b?.kind === 'dodge') this.moment = { kind: b.kind, unit: b.unit, by: b.by ?? null, left: b.kind === 'save' ? SAVE_SHOW : DODGE_SHOW };
     }
-    this.saveShow = Math.max(0, this.saveShow - dt);
+    if (this.moment && (this.moment.left -= dt) <= 0) this.moment = null;
     // one goal from the win: that side's last empty pip pulses gold
     const point = r.matchPoint ?? '';
     if (point !== this.lastPoint) {
@@ -381,6 +393,7 @@ export class RushHud {
     const bk = `${b.html}|${b.side}`;
     if (bk !== this.lastBig) {
       this.lastBig = bk;
+      this.bigUp = b.html !== '';
       this.big.innerHTML = b.html;
       this.big.classList.toggle('show', b.html !== '');
       this.big.dataset.side = b.side;

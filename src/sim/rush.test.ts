@@ -128,6 +128,9 @@ describe('Relic Rush', () => {
     expect(a.x - x0).toBeCloseTo(RUSH.juke.distance, 0);
     expect(rush.holder).toBe(a);
     expect(rush.lines.get(t)!.tackles).toBe(0);
+    // the slam it beat is called as a dodge, Thor's tackle juked
+    expect(rush.beats.dodge).toBe(1);
+    expect(rush.lastBeat).toEqual({ kind: 'dodge', unit: a, by: t });
     // the guard ends on time
     run(sim, rush, RUSH.juke.guard);
     expect(rush.isJuking(a)).toBe(false);
@@ -143,6 +146,8 @@ describe('Relic Rush', () => {
     expect(guest.rush.jukeLeft(gods[0]!)).toBeCloseTo(rush.jukeLeft(a), 1);
     expect(guest.rush.lastJuke).toBe(gods[0]);
     expect(guest.rush.beats.juke).toBe(rush.beats.juke);
+    expect(guest.rush.beats.dodge).toBe(1);
+    expect(guest.rush.lastBeat).toEqual({ kind: 'dodge', unit: gods[0], by: gods[1] });
     // without a juke, the same slam knocks it loose
     const left = rush.jukeLeft(a);
     run(sim, rush, left + 0.1);
@@ -153,6 +158,8 @@ describe('Relic Rush', () => {
     expect(sim.cast(t, slot)).toBeNull();
     run(sim, rush, 0.05);
     expect(rush.holder).toBeNull();
+    // (and no dodge is called for it)
+    expect(rush.beats.dodge).toBe(1);
   });
 
   it('a daze is short, drops the relic, and stands the god up at their gate', () => {
