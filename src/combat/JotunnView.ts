@@ -871,9 +871,13 @@ export class JotunnView {
     for (let d = 3; d < length; d += 4.5) this.prints.blow(x + fx * d, z + fz * d, Math.max(2, width * 0.75));
   }
 
-  private shatter(_part: GiantPart, at: THREE.Vector3): void {
+  private shatter(part: GiantPart, at: THREE.Vector3): void {
     this.host.burst(at, 1.6);
     this.mist.ring(at, 12, 7, { life: 0.9, size0: 0.8, size1: 2.6, alpha: 0.6, color: 0xbfefff });
+    // a flash of cold blue fire where the ice bursts, then a cloud of ice dust hanging a moment (the rune and crown bigger)
+    const big = part === 'rune' || part === 'crown' ? 1.3 : 1;
+    this.host.billow?.('blast', at, 4 * big, { duration: 0.9, tint: 0x9fc8de, bright: 1.2, opacity: 0.7, flame: [0x1e8cff, 0xd4f6ff], rise: 0.4 });
+    this.host.billow?.('smoke', cloudAt.copy(at), 5.5 * big, { duration: 1.8, delay: 0.06, tint: 0xd8eef8, bright: 1.3, opacity: 0.55, rise: 0.3 });
     this.host.shake(0.3, at);
   }
 
@@ -900,8 +904,8 @@ export class JotunnView {
     this.prints.blow(at.x, at.z, 3 + 2.5 * k);
     this.snow.ring(at, Math.round(30 * k), 14, { life: 2, size0: 2, size1: 6, alpha: 0.6, color: 0xe2edf3 });
     // the ground round it goes up in powder, thin enough that the gods rushing its crown as it kneels still see it
-    this.powder(at, 10 + 6 * k, { duration: 2.2, opacity: 0.7 });
-    this.host.billow?.('smoke', cloudAt.copy(at).setY(at.y + 3), 6 + 3 * k, { duration: 2.4, delay: 0.15, tint: POWDER, bright: 1.3, opacity: 0.45, rise: 0.6 });
+    this.powder(at, 9 + 4 * k, { duration: 1.8, opacity: 0.45 });
+    this.host.billow?.('smoke', cloudAt.copy(at).setY(at.y + 3), 5 + 3 * k, { duration: 2, delay: 0.15, tint: POWDER, bright: 1.15, opacity: 0.3, rise: 0.6 });
     this.host.shake(0.9 * k, at);
   }
 
@@ -909,7 +913,7 @@ export class JotunnView {
   private powder(at: THREE.Vector3, size: number, o: BillowOptions = {}): void {
     // the dust sheet is half as tall as wide: sat on the ground, not sunk in it
     // (bright as snow in sun, and thin enough that the ground's warnings show through)
-    this.host.billow?.('dust', cloudAt.set(at.x, at.y + size * 0.13, at.z), size, { duration: 1.8, tint: POWDER, bright: 1.35, opacity: 0.8, ...o });
+    this.host.billow?.('dust', cloudAt.set(at.x, at.y + size * 0.13, at.z), size, { duration: 1.8, tint: POWDER, bright: 1.15, opacity: 0.8, ...o });
   }
 
   // ------------------------------------------------------------------ frame

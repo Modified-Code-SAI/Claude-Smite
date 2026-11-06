@@ -896,7 +896,9 @@ export class GiantModel {
     // states: kneel and death settle fast and heavily, the rest ease
     const kneelGoal = s.kneel || s.dead ? 1 : 0;
     const was = this.kneel;
-    this.kneel = kneelGoal > this.kneel ? Math.min(1, this.kneel + dt / 0.55) : Math.max(0, this.kneel - dt / 1.1);
+    // (held where it is once there: easing away from 1 and back would land the fall again every other frame)
+    if (kneelGoal > this.kneel) this.kneel = Math.min(1, this.kneel + dt / 0.55);
+    else if (kneelGoal < this.kneel) this.kneel = Math.max(0, this.kneel - dt / 1.1);
     if (was < 1 && this.kneel >= 1) this.onFall?.(this.root.position.clone(), s.dead ? 0.8 : 1);
     if (!this.wasKneeling && s.kneel) for (const a of this.actions) a.fading = true;
     this.wasKneeling = s.kneel;
