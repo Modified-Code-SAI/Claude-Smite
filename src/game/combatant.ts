@@ -25,6 +25,8 @@ interface TimedMod {
   stat: StatKey;
   amount: number;
   remaining: number;
+  /** Names a stacking buff (a passive's), so later stacks find it. */
+  key?: string;
 }
 
 interface Shield {
@@ -363,6 +365,24 @@ export class Combatant {
     const m = this.mods.find((x) => x.stat === stat && x.amount === amount);
     if (m) m.remaining = duration;
     else this.addTimedMod(stat, amount, duration);
+  }
+
+  /**
+   * One more stack of a named stacking buff, up to `max` stacks, restarting its
+   * timer (Amaterasu's Unbroken Dawn). Returns the stacks it now has.
+   */
+  stackTimedMod(key: string, stat: StatKey, perStack: number, max: number, duration: number): number {
+    if (!this.alive) return 0;
+    let m = this.mods.find((x) => x.key === key);
+    if (m) {
+      m.amount = Math.min(max * perStack, m.amount + perStack);
+      m.remaining = duration;
+    } else {
+      m = { stat, amount: perStack, remaining: duration, key };
+      this.mods.push(m);
+    }
+    this.invalidate();
+    return Math.round(m.amount / perStack);
   }
 
   addShield(amount: number, duration: number): void {

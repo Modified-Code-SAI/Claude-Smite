@@ -7,6 +7,20 @@ import type { RelicId } from '../sim/Relics';
  * radial glow in the god's spell color. Ultimates get a gold frame.
  * Everything is inline SVG, so there are no image assets to license.
  */
+/** A ring of tapered rays around (cx, cy) from radius r1 out to r2, as one path. */
+function rays(cx: number, cy: number, r1: number, r2: number, n: number, w: number, from = 0, to = Math.PI * 2): string {
+  let d = '';
+  const span = to - from;
+  const full = Math.abs(span - Math.PI * 2) < 1e-6;
+  for (let i = 0; i < n; i++) {
+    const a = from + (span * (i + (full ? 0 : 0.5))) / n;
+    const c = Math.cos(a), s = Math.sin(a);
+    const p = (r: number, o: number) => `${(cx + c * r - s * o).toFixed(1)} ${(cy - s * r - c * o).toFixed(1)}`;
+    d += `M${p(r1, -w)} L${p(r2, 0)} L${p(r1, w)} Z `;
+  }
+  return `<path d="${d.trim()}"/>`;
+}
+
 const GLYPHS = {
   // a comet: orb with a streak
   projectile: '<circle cx="40" cy="24" r="9"/><path d="M33 31 L12 52 M37 35 L20 54 M29 27 L10 46" stroke-width="4" stroke-linecap="round" fill="none"/>',
@@ -68,6 +82,17 @@ const GLYPHS = {
   blink: '<circle cx="12" cy="40" r="5" opacity="0.4"/><circle cx="24" cy="34" r="6" opacity="0.7"/><path d="M34 46 L56 12" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M50 8 L60 6 L58 16 Z"/>',
   // a canopic jar
   jar: '<path d="M22 22 H42 Q50 32 46 50 Q44 56 32 56 Q20 56 18 50 Q14 32 22 22 Z"/><path d="M24 20 Q24 8 32 8 Q40 8 40 20 Z"/><path d="M22 34 H42" stroke="#07060a" stroke-width="3"/>',
+  // Amaterasu: arrows of light, the mirror, the sacred rope, the sun itself
+  sunarrow: `<path d="M8 56 L48 16" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M42 12 L58 6 L52 22 Z"/><path d="M8 56 L6 45 M8 56 L19 58 M14 50 L12 40 M14 50 L24 52" stroke-width="3" stroke-linecap="round" fill="none"/>${rays(55, 9, 5, 10, 6, 1.6)}`,
+  volley: '<path d="M16 4 V38 M32 8 V44 M48 4 V38" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M10 36 L16 50 L22 36 Z M26 42 L32 56 L38 42 Z M42 36 L48 50 L54 36 Z"/><path d="M12 8 L16 4 L20 8 M28 12 L32 8 L36 12 M44 8 L48 4 L52 8" stroke-width="2.5" fill="none"/>',
+  mirror: `<circle cx="32" cy="28" r="15" stroke-width="4" fill="none"/><circle cx="32" cy="28" r="9"/>${rays(32, 28, 18, 25, 10, 2.4)}<path d="M32 44 V56 M24 57 H40" stroke-width="4" stroke-linecap="round" fill="none"/>`,
+  rope: '<path d="M6 20 Q32 34 58 20" stroke-width="8" stroke-linecap="round" fill="none"/><path d="M12 22 L18 28 M22 26 L28 31 M33 31 L39 27 M43 27 L49 23" stroke="#07060a" stroke-width="2" fill="none"/><path d="M20 30 L15 40 L22 42 L17 54 M44 30 L39 40 L46 42 L41 54" stroke-width="3" fill="none" stroke-linejoin="round"/>',
+  quiver: '<path d="M21 26 H43 L39 60 H25 Z"/><path d="M26 26 L22 12 M32 26 V10 M38 26 L42 12" stroke-width="3" stroke-linecap="round" fill="none"/><path d="M22 14 C17 9 20 4 22 2 C24 6 27 9 22 14 Z M32 12 C27 7 30 2 32 0 C34 4 37 7 32 12 Z M42 14 C37 9 40 4 42 2 C44 6 47 9 42 14 Z"/>',
+  sunward: `<path d="M32 6 L52 14 V30 C52 44 42 52 32 58 C22 52 12 44 12 30 V14 Z" stroke-width="4" fill="none"/><circle cx="32" cy="31" r="7"/>${rays(32, 31, 10, 15, 8, 2)}`,
+  halo: `<circle cx="32" cy="30" r="12" stroke-width="4" fill="none"/>${rays(32, 30, 16, 28, 12, 3)}<circle cx="32" cy="30" r="5"/><path d="M22 60 Q32 46 42 60" stroke-width="4" fill="none" stroke-linecap="round"/>`,
+  eclipse: `${rays(32, 32, 16, 29, 16, 2.6)}<circle cx="32" cy="32" r="15"/><circle cx="35" cy="30" r="13" fill="#07060a" stroke="none"/>`,
+  greatarrow: '<path d="M6 58 L48 16" stroke-width="7" stroke-linecap="round" fill="none"/><path d="M40 8 L60 4 L56 24 Z"/><path d="M4 44 L22 38 M20 60 L26 42 M2 54 L16 48" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8"/>',
+  risingsun: `<path d="M12 46 A20 20 0 0 1 52 46 Z"/>${rays(32, 46, 24, 36, 9, 2.6, 0.15, Math.PI - 0.15)}<path d="M4 52 H60 M14 59 H50" stroke-width="4" stroke-linecap="round"/>`,
   // talent glyphs for stat nodes
   sword: '<path d="M44 6 H58 V20 L26 46 L18 38 Z"/><path d="M12 36 L28 52" stroke-width="5" stroke-linecap="round"/><path d="M18 46 L8 56" stroke-width="6" stroke-linecap="round"/>',
   star: '<path d="M32 4 L38 24 H58 L42 36 L48 56 L32 44 L16 56 L22 36 L6 24 H26 Z"/>',
@@ -86,6 +111,16 @@ const GLYPHS = {
 
 /** Themed glyphs by skill name, first match wins; the rest fall back to their targeting shape. */
 const BY_NAME: readonly [RegExp, Glyph][] = [
+  [/Sunpiercer/, 'sunarrow'],
+  [/Rain of Dawn/, 'volley'],
+  [/Yata Mirror/, 'mirror'],
+  [/Sacred Rope/, 'rope'],
+  [/Sunfire Quiver/, 'quiver'],
+  [/Sun Ward/, 'sunward'],
+  [/Halo Burst/, 'halo'],
+  [/Eclipse/, 'eclipse'],
+  [/Sunfall/, 'greatarrow'],
+  [/Rising Sun/, 'risingsun'],
   [/Worldbreaker|Rift/, 'rift'],
   [/Anvil/, 'anvil'],
   [/Mjolnir|Slam/, 'slam'],
@@ -462,7 +497,11 @@ const BUFF_BADGES: Partial<Record<StatKey, string>> = {
   bonusAttackSpeed: '<path d="M-4 4 L4 -4 M1 -4 H4 V-1" fill="none" stroke-width="1.8"/>',
   damageBonus: '<path d="M0 -5 L5 1 H2 V5 H-2 V1 H-5 Z"/>',
   damageReduction: '<path d="M0 -5 L5 -3 V0 C5 3 3 5 0 6 C-3 5 -5 3 -5 0 V-3 Z"/>',
+  ccReduction: '<circle r="4.5" fill="none" stroke-width="1.6"/><path d="M-2.5 0 L-0.5 2 L3 -2.5" fill="none" stroke-width="1.8"/>',
 };
+
+/** An added stealth: an eye with a slash through it. */
+const STEALTH_BADGE = '<path d="M-5 0 Q0 -4 5 0 Q0 4 -5 0 Z" fill="none" stroke-width="1.5"/><circle r="1.4"/><path d="M-5 4 L5 -4" stroke-width="1.6"/>';
 
 /** The badge for a talent's change to a skill: the effect it adds, or the number it tunes. */
 function talentBadge(node: TreeNode): string | null {
@@ -477,6 +516,7 @@ function talentBadge(node: TreeNode): string | null {
       if (x.kind === 'debuff') return '<path d="M0 5 L5 -1 H2 V-5 H-2 V-1 H-5 Z"/>';
       if (x.kind === 'mark') return '<path d="M-5 0 h3 M-1.5 0 h3 M2 0 h3" stroke-width="2.5"/>';
       if (x.kind === 'buff' && BUFF_BADGES[x.stat]) return BUFF_BADGES[x.stat]!;
+      if (x.kind === 'stealth') return STEALTH_BADGE;
     }
   }
   const mod = node.effects.find((e) => e.type === 'skill');

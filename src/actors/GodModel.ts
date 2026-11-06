@@ -61,7 +61,23 @@ const CAST_ACCENTS: Record<string, { bone: string; axis: [number, number, number
     { bone: 'DEF-head', axis: [1, 0, 0], angle: 0.2 },
     { bone: 'DEF-upper_arm.R', axis: [1, 0, 0], angle: -0.8 },
   ],
+  // Amaterasu draws the bow: shoulders turned, bow arm out at the target, string hand at her cheek
+  amaterasu: [
+    { bone: 'DEF-spine003', axis: [0, 1, 0], angle: -0.55 },
+    { bone: 'DEF-head', axis: [0, 1, 0], angle: 0.45 },
+    { bone: 'DEF-upper_arm.L', axis: [1, 0, 0], angle: -1.5 },
+    // (the bow hangs along the arm at rest: the wrist turns it upright)
+    { bone: 'DEF-hand.L', axis: [1, 0, 0], angle: 1.5 },
+    // (string arm: elbow high and out to the side, the hand folded back to her jaw)
+    { bone: 'DEF-upper_arm.R', axis: [0, 0, 1], angle: -2.1 },
+    { bone: 'DEF-upper_arm.R', axis: [0, 1, 0], angle: 0.45 },
+    { bone: 'DEF-forearm.R', axis: [0, 1, 0], angle: 2.5 },
+    { bone: 'DEF-forearm.R', axis: [1, 0, 0], angle: 1.5 },
+  ],
 };
+
+/** Archers: every shot, basic or skill, is a draw of the bow (their accent), with no clip swinging the arms. */
+const BOW = new Set(['amaterasu']);
 
 /**
  * Per-god stance layered on the shared idle clip, faded out as the god starts
@@ -215,6 +231,8 @@ export class GodModel {
   /** Upper-body overlays: a weapon strike for basic attacks, the god's spell motion for skills. */
   private readonly overlays: Record<'basic' | 'skill', { tracks: { bone: THREE.Bone; interp: THREE.Interpolant }[]; duration: number }>;
   private castKind: CastKind = 'skill';
+  /** An archer: every shot draws the bow (see BOW). */
+  private bow = false;
   private castTime = 1e9;
   private prevCast = 0;
   private phase = 0;
@@ -341,15 +359,16 @@ export class GodModel {
     this.death.play();
     this.death.setEffectiveWeight(0);
 
-    // hammer and daggers swing; everyone else casts from the free hand
+    // hammer and daggers swing; archers hold still and draw (their accent does it); everyone else casts from the free hand
     const swing = this.id === 'thor' || this.id === 'loki';
+    this.bow = BOW.has(this.id) && variant !== 'melee';
     const overlay = (n: string) => {
       const c = clip(n);
       return { tracks: this.upperTracks(c), duration: c.duration };
     };
     this.overlays = {
-      basic: overlay(variant === 'melee' ? 'Punch_Cross' : swing ? 'Sword_Attack' : 'Punch_Jab'),
-      skill: overlay(variant === 'melee' ? 'Punch_Cross' : swing ? 'Sword_Attack' : 'Spell_Simple_Shoot'),
+      basic: overlay(variant === 'melee' ? 'Punch_Cross' : swing ? 'Sword_Attack' : this.bow ? 'Idle_Loop' : 'Punch_Jab'),
+      skill: overlay(variant === 'melee' ? 'Punch_Cross' : swing ? 'Sword_Attack' : this.bow ? 'Idle_Loop' : 'Spell_Simple_Shoot'),
     };
 
     for (const n of ['Hit_Chest', 'Hit_Head']) {
@@ -636,8 +655,9 @@ export class GodModel {
         c.bone.quaternion.slerp(this.tmpQ, cw);
       }
       // skills and ultimates: ease into the god's accent over the first 40% of the clip and hold it
-      if (feel.accent > 0) {
-        const k = cw * feel.accent * THREE.MathUtils.smoothstep(ct, 0, o.duration * 0.4);
+      // (an archer draws for every shot, basics too, in a fixed quick draw)
+      if (feel.accent > 0 || this.bow) {
+        const k = cw * (feel.accent || 1) * THREE.MathUtils.smoothstep(ct, 0, this.bow ? 0.22 * feel.rate : o.duration * 0.4);
         const accents = this.castKind === 'ult' ? [...this.accents, ...this.ultAccents] : this.accents;
         if (accents.length) this.root.updateMatrixWorld(true);
         for (const a of accents) this.rotateModel(a.bone, a.axis, a.angle * k);

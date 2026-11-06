@@ -8,7 +8,7 @@
 
 import { ahr, bell, buf, fill, glide, Osc, perc, type Rand } from './dsp';
 import {
-  buzz, chime, choir, clang, debris, filter, fire, layer, puff, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
+  buzz, chime, choir, clang, debris, filter, fire, impact, layer, puff, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
 } from './gestures';
 import { JOTUNN_SKILL_SOUNDS } from './jotunnSounds';
 import type { Recipe } from './sounds';
@@ -351,6 +351,51 @@ export const SKILL_SOUNDS: Record<string, SkillSound> = {
   'anubis.judgment': {
     cast: (r) => layer([gong(r, 3, 65.4), 1], [choir(r, 3, 196, { env: (t) => ahr(t, 0.8, 1, 1.2) }), 0.7], [choir(r, 3, 293.7, { vowelName: 'oh', env: (t) => ahr(t, 1, 0.8, 1.2) }), 0.4], [shimmer(r, 2.4, 587.3, { rise: 1.5, peak: 0.6 }), 0.5]),
   },
+  // ===== Amaterasu: bowstrings, temple bells, taiko and the hiss of sunlight
+  'amaterasu.sunpiercer': {
+    cast: (r) => layer([bowShot(r, 1.1), 1], [shimmer(r, 0.7, 880, { rise: 1.6, peak: 0.25 }), 0.6], [whoosh(r, 0.5, 3200, 900, { q: 1.4, peak: 0.15 }), 0.7, 0.04]),
+    impact: (r) => layer([thump(r, 0.25, 190, 70, { click: 0.8, noise: 0.5 }), 1], [fire(r, 0.5, { gain: 0.5 }), 0.6], [chime(r, 0.6, 1318.5), 0.25]),
+    impactDelay: 0.12,
+  },
+  'amaterasu.arrow-rain': {
+    cast: (r) => layer([bowShot(r, 1), 1], [whoosh(r, 0.9, 600, 4200, { q: 0.9, peak: 0.8 }), 0.6, 0.05], [suzu(r, 1, 1760), 0.35, 0.1]),
+    impact: (r) => layer([whoosh(r, 0.5, 4800, 900, { q: 1.2, peak: 0.6 }), 0.7], [thump(r, 0.2, 200, 80, { click: 0.7, noise: 0.6 }), 0.8, 0.4], [thump(r, 0.2, 180, 75, { click: 0.7, noise: 0.6 }), 0.6, 0.48], [thump(r, 0.2, 210, 85, { click: 0.7, noise: 0.6 }), 0.6, 0.55]),
+    impactDelay: 0.35,
+  },
+  'amaterasu.yata-mirror': {
+    cast: (r) => layer([templeBell(r, 1.4, 659.3), 0.8], [shimmer(r, 0.9, 1318.5, { rise: 1.2, peak: 0.08 }), 0.8], [whoosh(r, 0.35, 900, 5200, { q: 0.8, peak: 0.2 }), 0.7], [fire(r, 0.6, { gain: 0.4 }), 0.5, 0.05]),
+  },
+  'amaterasu.sacred-rope': {
+    cast: (r) => layer([bowShot(r, 0.8), 0.8], [cloth(r, 0.4), 0.8], [suzu(r, 0.7, 2093), 0.3]),
+    travel: (r) => layer([filter(whoosh(r, 0.8, 1100, 1100, { q: 1.4, peak: 0.5, grit: 1 }), 'bandpass', 1300, 0.8), 1], [suzu(r, 0.8, 2349.3), 0.15]),
+    impact: (r) => layer([thump(r, 0.3, 160, 60, { click: 0.6, noise: 0.5 }), 1], [cloth(r, 0.5), 0.8], [taiko(r, 0.6, 1), 0.5], [suzu(r, 0.8, 1760), 0.35, 0.05]),
+  },
+  'amaterasu.crane-step': {
+    cast: (r) => layer([whoosh(r, 0.6, 500, 2600, { q: 0.8, peak: 0.4, gain: 1.2 }), 1], [cloth(r, 0.5), 0.6], [chime(r, 0.7, 1568), 0.25, 0.1]),
+    impact: (r) => layer([thump(r, 0.25, 150, 60, { click: 0.4, noise: 0.5 }), 0.8], [shimmer(r, 0.9, 784, { rise: 1.5, peak: 0.2 }), 0.6], [suzu(r, 0.9, 1975.5), 0.35]),
+  },
+  'amaterasu.sunfire-quiver': {
+    cast: (r) => layer([fire(r, 1.1, { gain: 0.8, roar: 1.2 }), 1], [whoosh(r, 0.5, 300, 2400, { q: 0.7, peak: 0.3 }), 0.6], [twang(r, 0.5, 220, 0.6), 0.5, 0.15], [chime(r, 1, 880), 0.3, 0.2]),
+  },
+  'amaterasu.sun-ward': {
+    cast: (r) => layer([templeBell(r, 1.8, 523.3), 0.7], [choir(r, 1.4, 523.3, { vowelName: 'ah', env: (t) => ahr(t, 0.25, 0.5, 0.65) }), 0.45], [shimmer(r, 1.4, 1046.5, { rise: 1.25, peak: 0.4 }), 0.6]),
+  },
+  'amaterasu.halo-burst': {
+    cast: (r) => layer([taiko(r, 0.9, 1.2), 1], [fire(r, 0.8, { gain: 0.7, roar: 1.4 }), 0.8], [whoosh(r, 0.6, 2200, 300, { q: 0.6, peak: 0.15, gain: 1.2 }), 0.8], [templeBell(r, 1.6, 392), 0.5, 0.05], [shimmer(r, 1.2, 784, { rise: 1.4, peak: 0.1 }), 0.4]),
+  },
+  'amaterasu.eclipse': {
+    cast: (r) => layer([gong(r, 3, 55), 1], [choir(r, 2.8, 110, { vowelName: 'oo', env: (t) => ahr(t, 0.6, 1, 1.2) }), 0.6], [whoosh(r, 2.4, 3000, 200, { q: 0.5, peak: 0.4 }), 0.6], [taiko(r, 1.2, 1.5), 0.8, 0.5]),
+    zone: (r) => layer([fire(r, 3, { gain: 0.5, roar: 2.5 }), 0.8], [vowel(r, 3, (t) => 82.4 * (1 + Math.sin(t * 1.2) * 0.02), VOWELS.oo, { voices: 3, breath: 0.4, env: () => 1, gain: 0.3 }), 0.7]),
+    tick: (r) => layer([fire(r, 0.35, { gain: 0.6 }), 1], [thump(r, 0.25, 120, 50, { noise: 0.4 }), 0.5]),
+  },
+  'amaterasu.sunfall': {
+    cast: (r) => layer([creak(r, 0.7), 0.8], [bowShot(r, 1.6, 0.7), 1, 0.55], [fire(r, 1.4, { gain: 0.9, roar: 2 }), 0.8, 0.55], [choir(r, 1.6, 329.6, { env: (t) => ahr(t, 0.05, 0.5, 1) }), 0.5, 0.55], [taiko(r, 1.4, 1.6), 0.7, 0.55]),
+    travel: (r) => layer([fire(r, 1, { gain: 0.8, roar: 2.5 }), 1], [filter(whoosh(r, 1, 1400, 1400, { q: 0.8, peak: 0.5, grit: 1.5 }), 'lowpass', 3000), 0.8]),
+    impact: (r) => layer([impact(r, 1.4, { tone: 140, snap: 0.8, crunch: 0.4, room: 0.6 }), 1], [fire(r, 1, { gain: 0.8, roar: 2 }), 0.7], [templeBell(r, 2, 293.7), 0.4]),
+  },
+  'amaterasu.rising-sun': {
+    cast: (r) => layer([taiko(r, 1.4, 1.4), 0.9], [taiko(r, 1.2, 1.1), 0.7, 0.35], [choir(r, 3, 261.6, { env: (t) => ahr(t, 0.6, 1, 1.2) }), 0.7, 0.3], [choir(r, 3, 392, { vowelName: 'oh', env: (t) => ahr(t, 0.8, 0.8, 1.2) }), 0.45, 0.4], [shimmer(r, 2.6, 1046.5, { rise: 1.5, peak: 0.6 }), 0.5, 0.4], [suzu(r, 1.6, 1760), 0.4, 0.6]),
+  },
   // ===== the Jötunn: ice, stone and a bellowing voice (jotunnSounds.ts)
   ...JOTUNN_SKILL_SOUNDS,
 };
@@ -408,6 +453,42 @@ function crackleHiss(r: Rand, len: number): Float32Array {
 }
 
 /** Generic fallbacks for a skill missing from the table (new skills added later). */
+/** A loosed bow: the string's thrum, the limbs' snap and the arrow's hiss leaving. */
+function bowShot(r: Rand, len: number, pitch = 1): Float32Array {
+  return layer(
+    [twang(r, Math.min(len, 0.6), 98 * pitch, 0.9), 1],
+    [thump(r, 0.12, 900 * pitch, 300, { click: 1, noise: 0.3, gain: 0.5 }), 0.7],
+    [whoosh(r, Math.min(len, 0.5), 2600, 5200, { q: 1.6, peak: 0.25 }), 0.6, 0.02],
+  );
+}
+
+/** A bronze temple bell: a soft strike and a long, beating hum. */
+function templeBell(r: Rand, len: number, f: number): Float32Array {
+  return layer([clang(r, len, f, { decay: len * 0.9, bright: 0.3, gain: 0.7 }), 1], [chime(r, len, f * 2.01, { gain: 0.5 }), 0.4], [thump(r, 0.2, f * 0.9, f * 0.5, { click: 0.15 }), 0.3]);
+}
+
+/** A small cluster of shrine bells shaken once. */
+function suzu(r: Rand, len: number, f: number): Float32Array {
+  const out = buf(len);
+  for (let i = 0; i < 5; i++) chime(r, len, f * (1 + (r() - 0.5) * 0.06) * (i % 2 ? 1.5 : 1), { gain: 0.35, at: i * 0.035 + r() * 0.02, out });
+  return out;
+}
+
+/** A taiko drum: a deep, round head hit with a slap of skin. */
+function taiko(r: Rand, len: number, weight = 1): Float32Array {
+  return layer([thump(r, len, 130, 52, { click: 0.4, noise: 0.25, drive: 1.5, gain: weight }), 1], [thump(r, 0.08, 600, 220, { click: 0.8, noise: 0.4, gain: 0.4 * weight }), 0.6]);
+}
+
+/** A great bow drawn to its limit: a rising creak of wood and string. */
+function creak(r: Rand, len: number): Float32Array {
+  const out = buf(len);
+  fill(out, (t) => {
+    const f = glide(70, 140, t, len);
+    return (Math.sin(t * f * Math.PI * 2) > 0.6 ? 1 : 0) * (r() * 0.6 + 0.4) * ahr(t, 0.1, len - 0.2, 0.1) * 0.25;
+  });
+  return filter(out, 'bandpass', 900, 1.5);
+}
+
 export function fallbackSkill(element: string | undefined, targeting: string): SkillSound {
   const cast: Recipe['make'] =
     element === 'lightning' ? (r) => bolt(r) : element === 'sand' ? (r) => sand(r, 0.6) : element === 'smoke' ? (r) => smoke(r) : element === 'runes' ? (r) => runes(r, 1, 220) : (r) => whoosh(r, 0.4, 400, 2000);

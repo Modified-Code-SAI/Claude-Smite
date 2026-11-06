@@ -211,15 +211,17 @@ def _pleat(a):
     return np.sign(x) * np.abs(x) ** 0.45
 
 
-def add_skirt(god, name, material, top, length, flare=0.08, pleats=20, depth=0.008, clearance=0.025, rows=8, seg=48):
-    """A pleated cloth skirt wrapped around the hips, flaring toward the hem."""
+def add_skirt(god, name, material, top, length, flare=0.08, pleats=20, depth=0.008, clearance=0.025, rows=8, seg=48, seam=0.0):
+    """A pleated cloth skirt wrapped around the hips, flaring toward the hem.
+
+    `seam` turns where the cloth's uv seam (and its patterned border) falls: 0 at the front, pi at the back."""
     seg = max(seg, pleats * 8)  # enough columns that each pleat has a crisp fold and a shadowed valley
     from ..geo import lathe
     b = god.body
     P = b.verts[b.used]
     keep = god.F.arms()[b.used] < 0.05
     P = P[keep]
-    ang = np.arange(seg) / seg * 2 * np.pi
+    ang = np.arange(seg) / seg * 2 * np.pi + seam
     dirs = np.stack([np.sin(ang), np.zeros(seg), np.cos(ang)], axis=1)
     rad = np.zeros((rows, seg))
     ys = top - np.linspace(0, 1, rows) ** 1.1 * length
