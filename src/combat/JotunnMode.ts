@@ -60,6 +60,12 @@ export interface JotunnDeps {
   sun?: { x: number; z: number };
   /** The map's light and haze, which the giant's winter cools (see JotunnWeather). */
   environment?: Environment;
+  /**
+   * A round starts at a high level: spends the god's free points along a
+   * ready-made build when the player follows none, and names it (null when
+   * nothing was spent). Bots spend theirs as they come.
+   */
+  startPoints?: (u: Unit) => { tree: string; points: number } | null;
 }
 
 /** Radians a second the giant's body turns toward the camera when a player drives it. */
@@ -200,6 +206,9 @@ export class JotunnMode {
       this.deps.toast('You are the Jötunn. Smash three of the four braziers on the temple. Stand in an ice shrine to claim a new ultimate. Your knees, back rune, wrists and crown are where the gods break you.');
     } else {
       this.deps.toast(`${p.name} is the Jötunn. Keep it from the braziers: break both knees to bring it down, then strike its crown. After a slam, break the planted wrist.`);
+      // (a guest's points are the host's to spend, as their menu's are)
+      const spent = this.guest ? null : this.deps.startPoints?.(this.deps.player);
+      if (spent) this.deps.toast(`Your ${spent.points} skill point${spent.points === 1 ? '' : 's'} went into ${spent.tree}. Press K to spend them your own way.`);
     }
   }
 
