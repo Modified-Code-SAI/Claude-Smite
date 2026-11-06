@@ -5,7 +5,7 @@ import {
   addUnderworldColliders, CHAMBERS, entranceSpot, GATE, type ChamberDef, type Palette,
 } from '../../map/UnderworldLayout';
 import {
-  abs, atan, cos, dot, exp, float, length, mix, mx_fractal_noise_float, mx_noise_float, mx_worley_noise_float, normalWorld, positionWorld, sin, smoothstep, time,
+  abs, atan, cameraPosition, cos, dot, exp, float, fract, length, mix, mx_fractal_noise_float, mx_noise_float, mx_worley_noise_float, normalWorld, positionWorld, pow, sin, smoothstep, time,
   transformNormalToView, uv, vec2, vec3, vec4,
 } from '../../render/tsl';
 import type { QualitySettings } from '../../render/Quality';
@@ -441,17 +441,34 @@ function underworldMaterials(lib: MaterialLibrary) {
     waterfall.name = 'waterfall';
   }
 
-  // a pool's still black water: a mirror for the lights, ripples spreading from where the water falls in
-  const pool = new THREE.MeshStandardNodeMaterial({ roughness: 0.04, metalness: 0 });
+  // a pool's black water: rings spreading out from where the water falls in
+  // over a churn of foam, a sheen of the depth's light off its surface, and
+  // a rim that thins into the wet stone around it rather than a cut edge
+  const pool = new THREE.MeshStandardNodeMaterial({ roughness: 0.04, metalness: 0, transparent: true, depthWrite: false });
   {
     const u = uv();
-    const r = length(u.sub(vec2(0.5, 0.5)));
-    const rings = sin(r.mul(48).sub(time.mul(4.5))).mul(smoothstep(0.5, 0.05, r));
+    // 0 where the water lands, 1 at the rim
+    const r = length(u.sub(vec2(0.5, 0.5))).mul(2);
     const n = mx_noise_float(vec3(positionWorld.xz.mul(1.3), time.mul(0.4)));
+    // three rings out at a time, wobbling a little, fading as they spread
+    const phase = r.mul(3).sub(time.mul(1.1)).add(n.mul(0.12));
+    const crest = pow(float(1).sub(abs(fract(phase).mul(2).sub(1))), float(6));
+    const spread = smoothstep(1, 0.35, r).mul(smoothstep(0.12, 0.3, r));
+    const rings = sin(phase.mul(Math.PI * 2)).mul(spread);
+    const dir = u.sub(vec2(0.5, 0.5)).div(r.max(0.001).mul(0.5));
     pool.colorNode = vec3(0.006, 0.012, 0.018);
-    pool.normalNode = transformNormalToView(vec3(rings.mul(0.06).add(n.mul(0.04)), 1, n.mul(0.04)).normalize());
-    // foam where the fall lands
-    pool.emissiveNode = underworldGlow.mul(0.15).add(vec3(0.5, 0.6, 0.7)).mul(smoothstep(0.16, 0.0, r).mul(n.mul(0.5).add(0.5)).mul(0.6));
+    pool.normalNode = transformNormalToView(vec3(dir.x.mul(rings).mul(0.09).add(n.mul(0.04)), 1, dir.y.mul(rings).mul(0.09).add(n.mul(0.04))).normalize());
+    // the foam churned up where the fall lands, torn about by the water
+    const churn = mx_noise_float(vec3(positionWorld.xz.mul(3.2), time.mul(1.7))).mul(0.5).add(0.5);
+    const foam = smoothstep(0.34, 0.0, r).mul(smoothstep(0.38, 0.8, churn.add(smoothstep(0.16, 0, r).mul(0.35))));
+    // the far-off light caught on the water, strongest at a glancing angle, and on each ring's crest
+    const view = cameraPosition.sub(positionWorld).normalize();
+    const sheen = pow(float(1).sub(view.y.clamp(0, 1)), float(4));
+    pool.emissiveNode = underworldGlow
+      .mul(sheen.mul(0.35).add(crest.mul(spread).mul(0.18)))
+      .add(vec3(0.55, 0.66, 0.78).mul(foam.mul(0.65)).add(underworldGlow.mul(foam.mul(0.2))));
+    // the rim fades into the stone, leaving it dark and wet
+    pool.opacityNode = smoothstep(1, 0.72, r).mul(0.85).add(smoothstep(0.72, 0.5, r).mul(0.15));
     pool.name = 'pool';
   }
 
