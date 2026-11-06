@@ -77,7 +77,7 @@ export type GiantLineKind = 'brazier' | 'kneel' | 'shrine' | 'stand' | 'win';
 /** Anything a voice may say: a god's moment or the giant's. */
 export type VoiceKind = LineKind | GiantLineKind;
 
-export const GIANT_KINDS = ['start', 'kill', 'streak', 'brazier', 'kneel', 'shrine', 'stand', 'win', 'death'] as const satisfies readonly VoiceKind[];
+export const GIANT_KINDS = ['start', 'kill', 'streak', 'brazier', 'kneel', 'shrine', 'stand', 'win', 'death', 'select'] as const satisfies readonly VoiceKind[];
 
 /**
  * The Jötunn: old as the ice, slow, and contemptuous of the little gods
@@ -94,6 +94,8 @@ export const GIANT_LINES: Record<(typeof GIANT_KINDS)[number], readonly string[]
   stand: ['Enough! Now face the true winter!', 'I will not fall to insects!'],
   win: ['The long winter begins.', 'Your temple is mine to freeze.'],
   death: ['The winter... ends...', 'Even the mountain... falls.'],
+  // on the title screen, when the player picks the giant (last, so the others keep their recordings)
+  select: ['I am the winter that walks.', 'Bring me their fires.', 'Wake me, and the cold wakes with me.'],
 };
 
 /** Everyone with lines, by god id: the gods, and the Jötunn. */

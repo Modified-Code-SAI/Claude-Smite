@@ -198,7 +198,7 @@ export interface GraphicsInfo {
   advice: GpuAdvice | null;
 }
 
-/** `picked` hears each god the player clicks (it says its line). */
+/** `picked` hears each god the player clicks (it says its line), and 'jotunn' when they pick the giant's mode or to play it. */
 export function showStartMenu(gods: readonly GodDef[], graphics: Promise<GraphicsInfo>, picked?: (god: string) => void): Promise<StartChoice> {
   const prev = load();
   let mode = savedMode();
@@ -277,6 +277,8 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
     b.addEventListener('click', () => {
       role = parseGiantRole(b.dataset.role);
       render();
+      // the giant answers whoever means to play it
+      if (role !== 'god') picked?.('jotunn');
     }),
   );
   root.querySelectorAll<HTMLButtonElement>('[data-rival]').forEach((b) =>
@@ -306,9 +308,11 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
   root.querySelectorAll<HTMLButtonElement>('.sm-mode').forEach((b) =>
     b.addEventListener('click', () => {
       if (b.parentElement!.classList.contains('held')) return;
+      const was = mode;
       mode = b.dataset.mode as GameMode;
       render();
       lobby.gameChanged();
+      if (mode === 'jotunn' && was !== 'jotunn') picked?.('jotunn');
     }),
   );
   const play = root.querySelector<HTMLButtonElement>('.sm-play')!;
