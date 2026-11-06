@@ -1,5 +1,6 @@
-/* The Jötunn rules card for a player's first rounds on each side (JotunnGuide.ts) */
-.jg-card { position: fixed; left: 18px; top: max(17%, 120px); z-index: 6; display: flex; gap: 12px; align-items: center; width: min(410px, calc(100vw - 36px)); padding: 12px 16px 12px 10px; background: linear-gradient(100deg, rgba(6, 14, 24, 0.9), rgba(6, 14, 24, 0.74)); border: 1px solid rgba(143, 228, 255, 0.3); border-left: 3px solid #8fe4ff; border-radius: 6px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); color: #eaf6ff; font-family: 'Cinzel', Georgia, serif; pointer-events: none; opacity: 0; transform: translateX(-16px); transition: opacity 0.45s, transform 0.45s; }
+/* The Jötunn rules card for a player's first rounds on each side (JotunnGuide.ts): at the left, halfway
+   down, clear of "Click to play" and the lines under it at the top, and of the bars at the bottom */
+.jg-card { position: fixed; left: 18px; top: 50%; z-index: 6; display: flex; gap: 12px; align-items: center; width: min(410px, calc(100vw - 36px)); padding: 12px 16px 12px 10px; background: linear-gradient(100deg, rgba(6, 14, 24, 0.9), rgba(6, 14, 24, 0.74)); border: 1px solid rgba(143, 228, 255, 0.3); border-left: 3px solid #8fe4ff; border-radius: 6px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); color: #eaf6ff; font-family: 'Cinzel', Georgia, serif; pointer-events: none; opacity: 0; transform: translateX(-16px); transition: opacity 0.45s, transform 0.45s; }
 .jg-card:empty { display: none; }
 .jg-card.show { opacity: 1; transform: none; }
 /* the round's opening shot keeps the screen clear; the card comes in as it ends */
@@ -23,4 +24,5 @@ body.jotunn-cine .jg-card { opacity: 0; transform: translateX(-16px); }
 .jg-text li i.fire { background: #ff9a4a; color: #2a0f00; }
 .jg-text li i.shrine { background: #bfefff; }
 .jg-foot { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(143, 228, 255, 0.18); font-family: Georgia, serif; font-size: 11.5px; line-height: 1.3; color: #a9bccb; }
+@media (max-height: 640px) { .jg-card { top: max(17%, 96px); } }
 @media (max-width: 700px) { .jg-giant { width: 64px; height: 80px; } .jg-text li { font-size: 12px; } }
