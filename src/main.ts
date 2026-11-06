@@ -40,7 +40,9 @@ import { installUiSounds, mountAudioPanel } from './ui/AudioPanel';
 import { slice } from './core/slices';
 import { applyPageSettings } from './settings/apply';
 import { actionForCode, keyGate, onSettings, settings } from './settings/store';
-import { mountSettings, setGraphicsHooks, typing } from './ui/SettingsMenu';
+import { closeSettings, mountSettings, openSettings, setGraphicsHooks, settingsOpen, typing } from './ui/SettingsMenu';
+import { escapeKey, mountPadCursor, padCursor } from './ui/PadCursor';
+import { pad } from './core/Gamepad';
 import { mountSubtitles } from './ui/Subtitles';
 
 async function main(): Promise<void> {
@@ -65,6 +67,7 @@ async function main(): Promise<void> {
   mountAudioPanel(audio);
   mountSettings(audio);
   mountSubtitles();
+  mountPadCursor();
   installUiSounds(audio);
   const baked = bakeAll(audio);
   (window as unknown as { __audio: unknown }).__audio = { audio, music, herald, baked };
@@ -320,7 +323,10 @@ async function main(): Promise<void> {
   const loop = new Loop();
   loop.addFixed(player);
   // Conquest plays a full match against bots; the arena is the training ground
-  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, seed: choice.seed, shake: (a) => follow.addShake(a * settings().shake), cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
+  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, seed: choice.seed, shake: (a) => {
+    follow.addShake(a * settings().shake);
+    pad.rumble(a * 1.6);
+  }, cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
   void baked;
   // `?stage`: the trailer's film set (tools/trailer)
@@ -366,7 +372,15 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (!e.repeat && !keyGate.blocked && !typing(e) && actionForCode(e.code) === 'menu') hud.toggleHelp();
   });
-  document.addEventListener('pointerlockchange', () => hud.setLocked(input.locked));
+  document.addEventListener('pointerlockchange', () => hud.setLocked(input.engaged));
+  pad.onChange(() => hud.setLocked(input.engaged));
+  // a controller runs the menus with its cursor, and plays when none is up
+  padCursor.wanted = () => settingsOpen() || hud.helpOpen || combat.menuUp;
+  padCursor.back = () => {
+    if (settingsOpen()) closeSettings();
+    else if (hud.helpOpen) hud.toggleHelp(false);
+    else escapeKey();
+  };
 
   /** When the next frame is due under Settings > Graphics > Frame rate cap. */
   let nextFrame = 0;
@@ -379,6 +393,11 @@ async function main(): Promise<void> {
       nextFrame = Math.max(nextFrame + interval, now - interval);
     }
     perf.begin(now);
+    input.beginFrame();
+    // the controller's interface buttons (the keyboard's go through keydown)
+    if (input.padActionPressed('menu')) hud.toggleHelp();
+    if (input.padActionPressed('settings')) openSettings();
+    if (input.padActionPressed('mute')) audio.setSettings({ muted: !audio.settings.muted });
     player.look();
     const wheel = input.consumeWheel();
     if (wheel) follow.zoom(wheel);

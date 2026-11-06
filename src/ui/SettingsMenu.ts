@@ -4,6 +4,9 @@ import { ACTION_GROUPS, ACTIONS, actionDef, bindingLabel, defaultBindings, keyLa
 import { DEFAULTS, FRAME_CAPS, keyGate, LIMITS, onSettings, setSettings, settings, type Settings } from '../settings/store';
 import { TEAM_COLOR_SETS } from '../settings/teamColors';
 import { onKeyLabels } from '../settings/controls';
+import { defaultPadBindings, padLabel, rebindPad, STICK_ACTIONS } from '../settings/padBindings';
+import { pad } from '../core/Gamepad';
+import { padCursor } from './PadCursor';
 import { compatibilityMode, setCompatibilityMode } from './Fatal';
 import './settings.css';
 
@@ -26,7 +29,7 @@ const ICONS: Record<SettingsTab, string> = {
 };
 const TABS: { id: SettingsTab; name: string; text: string }[] = [
   { id: 'gameplay', name: 'Gameplay', text: 'Camera, casting and combat feedback' },
-  { id: 'controls', name: 'Controls', text: 'Mouse and every key, rebindable' },
+  { id: 'controls', name: 'Controls', text: 'Mouse, keys and controller, all rebindable' },
   { id: 'audio', name: 'Audio', text: 'Volume for each part of the mix' },
   { id: 'graphics', name: 'Graphics', text: 'Quality, resolution and frame rate' },
   { id: 'access', name: 'Accessibility', text: 'Team colors, interface size, subtitles, motion' },
@@ -43,6 +46,9 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 type SliderKey = keyof typeof LIMITS;
 const SLIDERS: Record<SliderKey, { step: number; format: (v: number) => string }> = {
   sensitivity: { step: 0.05, format: (v) => `${v.toFixed(2)}×` },
+  padSensitivity: { step: 0.05, format: (v) => `${v.toFixed(2)}×` },
+  padDeadzone: { step: 0.01, format: pct },
+  vibration: { step: 0.05, format: (v) => (v <= 0 ? 'Off' : pct(v)) },
   fov: { step: 1, format: (v) => `${Math.round(v)}°` },
   shake: { step: 0.05, format: (v) => (v <= 0 ? 'Off' : pct(v)) },
   resolution: { step: 0.05, format: pct },
@@ -66,7 +72,9 @@ let root: HTMLDivElement | null = null;
 let content: HTMLDivElement;
 let toast: HTMLDivElement;
 let tab: SettingsTab = 'gameplay';
-let listening: { action: Action; slot: 0 | 1; el: HTMLElement } | null = null;
+/** A binding cell waiting for its input: a key or mouse button (slot 0 or 1), or a controller button. */
+let listening: { action: Action; slot: 0 | 1 | 'pad'; el: HTMLElement } | null = null;
+let padTimer: ReturnType<typeof setTimeout> | 0 = 0;
 let toastTimer: ReturnType<typeof setTimeout> | 0 = 0;
 const openListeners: ((open: boolean) => void)[] = [];
 
@@ -195,7 +203,8 @@ export function mountSettings(audio: AudioEngine): void {
       if (!listening) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      bindTo(`Mouse${e.button}`);
+      if (listening.slot === 'pad') stopListening();
+      else bindTo(`Mouse${e.button}`);
     },
     true,
   );
@@ -212,6 +221,23 @@ export function mountSettings(audio: AudioEngine): void {
   onKeyLabels(() => {
     if (settingsOpen() && tab === 'controls') render();
   });
+  // a controller plugged in or out: the controller section says so
+  let padName = pad.name;
+  pad.onChange(() => {
+    if (pad.name === padName) return;
+    padName = pad.name;
+    if (settingsOpen() && tab === 'controls' && !listening) render();
+  });
+  // LB and RB change tabs
+  padCursor.tabs = (dir) => {
+    if (!settingsOpen()) return false;
+    const i = TABS.findIndex((t) => t.id === tab);
+    tab = TABS[(i + dir + TABS.length) % TABS.length]!.id;
+    stopListening();
+    render();
+    root!.querySelector<HTMLElement>(`.st-tab[data-tab="${tab}"]`)?.focus({ preventScroll: true });
+    return true;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -272,7 +298,39 @@ function controlsTab(): string {
     heading('Keys'),
     `<div class="st-binds"><div class="st-bind st-bind-head"><span>Action</span><span>Primary</span><span>Secondary</span></div>${groups}</div>`,
     `<div class="st-row st-row-end"><div class="st-label"><span>Esc always frees the mouse and closes menus, so it can't be bound. A key taken from another action swaps with it.</span></div><div class="st-ctl"><button class="st-btn" data-act="reset-keys">Reset all keys</button></div></div>`,
+    ...controllerSection(),
   ].join('');
+}
+
+function padCell(a: Action): string {
+  const code = settings().padBindings[a];
+  const label = padLabel(code, pad.family);
+  return `<button class="st-key st-padkey${code ? '' : ' empty'}" data-padbind="${a}" title="Click, then press a controller button"><span>${label || '—'}</span>${code ? `<i data-padclear="${a}" title="Unbind">&times;</i>` : ''}</button>`;
+}
+
+function controllerSection(): string[] {
+  const status = pad.connected
+    ? `<b>${pad.name.replace(/[<&>]/g, '')}</b><span>Connected. The game shows its buttons whenever you play with it, and its cursor runs the menus.</span>`
+    : `<b>No controller found</b><span>Plug one in or pair it, then press any button on it. Xbox, PlayStation and Switch Pro controllers name their own buttons.</span>`;
+  const groups = ACTION_GROUPS.map((g) => {
+    const rows = ACTIONS.filter((a) => a.group === g && !STICK_ACTIONS.includes(a.id))
+      .map((a) => `<div class="st-bind st-bind-pad" data-action="${a.id}"><div class="st-label"><b>${a.name}</b>${a.group === 'Mode picks' && a.id === 'pick1' ? '<span>Only while a pick is offered, so they can share the D-pad with the ping, recall and trees</span>' : ''}</div>${padCell(a.id)}</div>`)
+      .join('');
+    const sticks = g === 'Movement' ? `<div class="st-bind st-bind-pad"><div class="st-label"><b>Move</b></div><span class="st-fixed">Left stick</span></div><div class="st-bind st-bind-pad"><div class="st-label"><b>Aim and look</b></div><span class="st-fixed">Right stick</span></div>` : '';
+    return `<h4 class="st-bind-group">${g}</h4>${sticks}${rows}`;
+  }).join('');
+  return [
+    heading('Controller'),
+    `<div class="st-row st-pad-status${pad.connected ? ' on' : ''}" data-row="pad"><svg viewBox="0 0 24 24" class="st-pad-icon"><path d="M7.5 7h9a4.5 4.5 0 0 1 4.4 3.6l.9 4.6a2.6 2.6 0 0 1-4.6 2.1L15.6 15H8.4l-1.6 2.3a2.6 2.6 0 0 1-4.6-2.1l.9-4.6A4.5 4.5 0 0 1 7.5 7z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="10.6" r=".6"/><circle cx="17.3" cy="12.4" r=".6"/></svg><div class="st-label">${status}</div></div>`,
+    slider('padSensitivity', 'Look speed', 'How fast the right stick turns the camera. Holding it hard over speeds the turn up for a quick about-face.'),
+    toggle('padInvertY', 'Invert vertical look', 'Pushing the right stick up looks down.'),
+    slider('padDeadzone', 'Stick dead zone', 'How far a stick moves before it counts. Raise it if your god drifts or the camera creeps with the sticks at rest.'),
+    slider('vibration', 'Vibration', 'Rumble when you are hit and from big blasts near you.'),
+    toggle('aimSlowdown', 'Aim slowdown', 'The camera turns a little slower while the crosshair is on an enemy in reach, so the stick can hold a target.'),
+    heading('Controller buttons'),
+    `<div class="st-binds st-binds-pad"><div class="st-bind st-bind-pad st-bind-head"><span>Action</span><span>Button</span></div>${groups}</div>`,
+    `<div class="st-row st-row-end"><div class="st-label"><span>A button taken from another action swaps with it. In menus the left stick moves the cursor, ${padLabel('Pad0', pad.family)} selects, ${padLabel('Pad1', pad.family)} goes back and ${padLabel('Pad4', pad.family)} / ${padLabel('Pad5', pad.family)} change tabs.</span></div><div class="st-ctl"><button class="st-btn" data-act="reset-pad">Reset controller buttons</button></div></div>`,
+  ];
 }
 
 function audioTab(): string {
@@ -397,6 +455,8 @@ function onInput(i: HTMLInputElement): void {
   if (i.dataset.set) {
     const k = i.dataset.set as keyof Settings;
     setSettings({ [k]: i.type === 'checkbox' ? i.checked : Number(i.value) } as Partial<Settings>);
+    // feel the strength just picked
+    if (k === 'vibration') pad.rumble(0.7, 200);
   } else if (i.dataset.audio && engine) {
     const k = i.dataset.audio as keyof AudioSettings;
     engine.setSettings({ [k]: i.type === 'checkbox' ? i.checked : Number(i.value) });
@@ -411,6 +471,18 @@ function onClick(e: MouseEvent): void {
     const { bindings } = rebind(settings().bindings, clear.dataset.clear as Action, Number(clear.dataset.slot) as 0 | 1, null);
     setSettings({ bindings });
     render();
+    return;
+  }
+  const padClear = t.closest<HTMLElement>('[data-padclear]');
+  if (padClear) {
+    e.stopPropagation();
+    setSettings({ padBindings: rebindPad(settings().padBindings, padClear.dataset.padclear as Action, null).bindings });
+    render();
+    return;
+  }
+  const padKey = t.closest<HTMLElement>('[data-padbind]');
+  if (padKey) {
+    startListening(padKey.dataset.padbind as Action, 'pad', padKey);
     return;
   }
   const key = t.closest<HTMLElement>('[data-bind]');
@@ -437,6 +509,10 @@ function onClick(e: MouseEvent): void {
     setSettings({ bindings: defaultBindings() });
     say('Every key is back to its default.');
     render();
+  } else if (act === 'reset-pad') {
+    setSettings({ padBindings: defaultPadBindings() });
+    say('Every controller button is back to its default.');
+    render();
   } else if (act === 'tips') {
     try {
       localStorage.removeItem('ascendant.coachSeen');
@@ -449,10 +525,18 @@ function onClick(e: MouseEvent): void {
   }
 }
 
-function startListening(action: Action, slot: 0 | 1, el: HTMLElement): void {
+function startListening(action: Action, slot: 0 | 1 | 'pad', el: HTMLElement): void {
   stopListening();
   listening = { action, slot, el };
   el.classList.add('listening');
+  if (slot === 'pad') {
+    el.querySelector('span')!.textContent = 'Press a button…';
+    say(`Press a controller button for ${actionDef(action).name}. A click or Esc cancels.`, 0);
+    // (the press that chose this cell is already in; the next one binds)
+    pad.listen = (code) => bindPad(code);
+    padTimer = setTimeout(() => stopListening(), 8000);
+    return;
+  }
   el.querySelector('span')!.textContent = 'Press a key…';
   say(`Press a key or mouse button for ${actionDef(action).name}. Esc cancels.`, 0);
 }
@@ -461,15 +545,36 @@ function stopListening(): void {
   if (!listening) return;
   const { el, action, slot } = listening;
   listening = null;
+  pad.listen = null;
+  if (padTimer) clearTimeout(padTimer);
+  padTimer = 0;
   el.classList.remove('listening');
-  const code = settings().bindings[action][slot];
-  el.querySelector('span')!.textContent = code ? keyLabel(code) : '—';
+  const label = slot === 'pad' ? padLabel(settings().padBindings[action], pad.family) : keyLabel(settings().bindings[action][slot]);
+  el.querySelector('span')!.textContent = label || '—';
   say('');
+}
+
+function bindPad(code: string): void {
+  if (!listening || listening.slot !== 'pad') return;
+  const { action } = listening;
+  if (padTimer) clearTimeout(padTimer);
+  padTimer = 0;
+  listening = null;
+  const { bindings, movedFrom } = rebindPad(settings().padBindings, action, code);
+  setSettings({ padBindings: bindings });
+  render();
+  const name = actionDef(action).name;
+  const label = padLabel(code, pad.family);
+  if (movedFrom) {
+    const now = padLabel(bindings[movedFrom], pad.family);
+    say(`${label} moved from ${actionDef(movedFrom).name} to ${name}. ${actionDef(movedFrom).name} is now ${now ? `on ${now}` : 'unbound'}.`, 6);
+  } else say(`${name}: ${label}.`, 2.5);
 }
 
 function bindTo(code: string): void {
   if (!listening || RESERVED.has(code)) return;
   const { action, slot } = listening;
+  if (slot === 'pad') return;
   const before = settings().bindings;
   const { bindings, movedFrom } = rebind(before, action, slot, code);
   listening = null;
@@ -500,14 +605,17 @@ function say(text: string, seconds = 4): void {
 function resetTab(): void {
   const keys: Record<SettingsTab, (keyof typeof DEFAULTS)[]> = {
     gameplay: ['fov', 'quickCast', 'damageNumbers'],
-    controls: ['sensitivity', 'invertY'],
+    controls: ['sensitivity', 'invertY', 'padSensitivity', 'padInvertY', 'padDeadzone', 'vibration', 'aimSlowdown'],
     audio: ['muteInBackground'],
     graphics: ['autoResolution', 'resolution', 'frameCap', 'brightness', 'showFps'],
     access: ['teamColors', 'uiScale', 'shake', 'reduceFlashes', 'subtitles', 'subtitleSize', 'subtitleBackground', 'speakerNames'],
   };
   const patch: Partial<Settings> = {};
   for (const k of keys[tab]) (patch as Record<string, unknown>)[k] = DEFAULTS[k];
-  if (tab === 'controls') patch.bindings = defaultBindings();
+  if (tab === 'controls') {
+    patch.bindings = defaultBindings();
+    patch.padBindings = defaultPadBindings();
+  }
   setSettings(patch);
   if (tab === 'audio') engine?.setSettings({ ...AUDIO_DEFAULTS });
   render();
