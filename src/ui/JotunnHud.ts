@@ -1,3 +1,4 @@
+import type { CineKind } from '../combat/jotunnCine';
 import { JOTUNN, PART_IDS, PARTS, type Jotunn, type PartId } from '../sim/Jotunn';
 import type { SimEvent, Unit } from '../sim/Unit';
 import { awardLine } from './ascension';
@@ -31,6 +32,9 @@ export class JotunnHud {
   private readonly end: HTMLElement;
   private readonly banner: HTMLElement;
   private bannerTime = 0;
+  /** The giant's name card, while its waking shot runs. */
+  private readonly card: HTMLElement;
+  private readonly dipEl: HTMLElement;
   /** Takedowns this round: kept per round, so a streak never carries over to the next giant. */
   private tally: KillTally;
   private tallyRound = 0;
@@ -53,9 +57,11 @@ export class JotunnHud {
       </div>
       <div class="clash-state"></div>
       <div class="duel-big jt-big"></div>
+      <div class="jt-card"><small></small><b></b><span></span></div>
       <div class="mh-banner"></div>
       <div class="jt-wins"></div>
-      <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><button class="clash-again">Play again</button></div>`;
+      <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><button class="clash-again">Play again</button></div>
+      <div class="jt-dip"></div>`;
     document.body.appendChild(this.root);
     const q = (s: string) => this.root.querySelector<HTMLElement>(s)!;
     this.round = q('.jt-round');
@@ -71,6 +77,8 @@ export class JotunnHud {
     this.wins = q('.jt-wins');
     this.end = q('.clash-end');
     this.banner = q('.mh-banner');
+    this.card = q('.jt-card');
+    this.dipEl = q('.jt-dip');
     this.tally = this.newTally();
     this.parts.innerHTML = PART_IDS.map((id) => `<i class="jt-part ${PART_GROUP[id]}" data-id="${id}" title="${PARTS[id].name}"><b>${PART_GLYPH[id]}</b></i>`).join('');
     this.braziers.innerHTML = JOTUNN.braziers.map(() => '<i class="jt-brazier"></i>').join('');
@@ -124,10 +132,34 @@ export class JotunnHud {
     apply(value);
   }
 
-  frame(dt: number): void {
+  /** A dip to dark lasting `seconds`, darkest halfway (it hides a shot's cut back to play). */
+  dip(seconds: number): void {
+    const d = this.dipEl;
+    d.classList.remove('on');
+    void d.offsetWidth;
+    d.style.animationDuration = `${seconds}s`;
+    d.classList.add('on');
+  }
+
+  /** `cine`: the shot of the giant on screen, if any (see JotunnCine): the play readout steps aside for it. */
+  frame(dt: number, cine: CineKind | null = null): void {
     const m = this.mode;
     const g = m.giant;
     const mine = this.giantIsMe;
+    this.set('cine', cine ?? '', (v) => {
+      this.root.dataset.cine = v;
+      document.body.classList.toggle('jotunn-cine', !!v);
+    });
+    // the waking: who the giant is this round
+    const card = cine === 'wake' ? `${m.round}|${mine}|${m.giantPlayer.name}` : '';
+    this.set('card', card, () => {
+      this.card.classList.toggle('show', !!card);
+      if (!card) return;
+      const last = m.round === m.rounds && m.rounds > 1;
+      this.card.querySelector('small')!.textContent = last ? 'Final round' : `Round ${m.round} of ${m.rounds}`;
+      this.card.querySelector('b')!.textContent = mine ? 'You' : m.giantPlayer.name;
+      this.card.querySelector('span')!.textContent = mine ? 'are the Jötunn' : 'is the Jötunn';
+    });
     if (this.bannerTime > 0) {
       this.bannerTime -= dt;
       // the round's end takes the screen

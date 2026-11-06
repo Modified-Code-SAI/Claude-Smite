@@ -1209,7 +1209,8 @@ export class GameAudio {
       for (const [id, p] of j.parts) seen.parts.set(id, p.alive);
       const last = j.round === j.rounds && j.rounds > 1 ? 'Final round. ' : '';
       this.herald.say(giantMe ? `${last}You are the Jötunn. Smash the braziers!` : `${last}${who} is the Jötunn. Guard the braziers!`, 'epic', 4);
-      this.at('jotunn.roar', g, { gain: 1.2, ref: 45 }, 6, 0, true);
+      // (it swells into the roar the giant throws back its head for, on camera)
+      this.at('jotunn.roar', g, { gain: 1.2, ref: 45, delay: 0.3 }, 6, 0, true);
     }
     if (j.phase !== seen.phase) {
       if (j.phase === 'fight' && seen.phase === 'countdown') this.engine.play('jotunn.horn', { gain: 0.8 }, 5);
@@ -1218,6 +1219,8 @@ export class GameAudio {
         const won = giantMe === giantWon;
         const line = giantWon ? (giantMe ? 'The braziers are smashed! The round is yours.' : 'The braziers are smashed. The round is lost.') : giantMe ? 'You have fallen. The round is lost.' : 'The Jötunn has fallen! The round is yours.';
         this.herald.say(line, won ? 'good' : 'bad', 5);
+        // the giant's win: it roars over the smashed temple
+        if (giantWon) this.at('jotunn.roar', g, { gain: 1.2, ref: 45, delay: 0.35 }, 6, 0, true);
       }
       if (j.phase === 'done' && !seen.done) {
         seen.done = true;

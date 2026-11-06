@@ -50,3 +50,16 @@ body:has(.jotunn) .hud-panel { top: auto; bottom: 12px; right: 12px; }
 body:has(.jotunn) .ch-ob[data-tag='jotunn'], body:has(.jotunn) .ch-ob-weakpoint:not(.ch-ob-target) { display: none; }
 /* the giant has no skill trees to grow */
 body:has(.jotunn.as-giant) .ch-points { visibility: hidden; }
+/* the giant's moments on camera (JotunnCine): the play readout goes with the cut, the rules' toast stays; the card sits in the sky over the giant's head */
+body.jotunn-cine .combat-hud > :not(.ch-toasts), body.jotunn-cine .hud-hint, body.jotunn-cine .coach, body.jotunn-cine .hud-crosshair, body.jotunn-cine .jotunn .jt-top, body.jotunn-cine .jotunn .jt-wins, body.jotunn-cine .jotunn .mh-banner { opacity: 0; }
+.jotunn[data-cine='wake'] .jt-big, .jotunn[data-cine='wake'] .clash-state { opacity: 0; }
+.jt-card { position: absolute; top: 17%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; pointer-events: none; text-align: center; transition: opacity 0.5s; text-shadow: 0 4px 22px rgba(0, 0, 0, 0.95), 0 0 2px #000; }
+.jt-card.show { opacity: 1; animation: jt-card-in 1.3s ease-out; }
+@keyframes jt-card-in { from { opacity: 0; letter-spacing: 0.4em; } to { opacity: 1; } }
+.jt-card small { font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: #cfeeff; opacity: 0.85; }
+.jt-card b { font-size: clamp(36px, 6.4vw, 72px); font-weight: 400; letter-spacing: 0.12em; color: #e8f9ff; text-shadow: 0 0 28px rgba(79, 207, 255, 0.75), 0 4px 22px rgba(0, 0, 0, 0.95); }
+.jt-card span { font: 15px system-ui, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: var(--frost); padding: 9px 46px 0; border-top: 1px solid; border-image: linear-gradient(90deg, transparent, rgba(143, 228, 255, 0.85), transparent) 1; }
+/* the dip to dark that hides a shot's cut back to play */
+.jt-dip { position: fixed; inset: 0; z-index: 40; background: #03070c; opacity: 0; pointer-events: none; }
+.jt-dip.on { animation: jt-dip 0.36s ease-in-out; }
+@keyframes jt-dip { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }

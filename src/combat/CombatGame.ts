@@ -508,6 +508,9 @@ export class CombatGame implements Updatable {
       giantPower: d === 'easy' ? 0.85 : d === 'hard' ? 1.2 : undefined,
       net,
       cue: (name, at, k) => this.onCue?.(name, at, k),
+      cameraShot: this.deps.cameraShot,
+      collision: world.collision,
+      sun: world.environment.sunDirection,
     });
     this.jotunn = this.jotunnMode.mode;
     this.netHost = this.jotunnMode.host;
