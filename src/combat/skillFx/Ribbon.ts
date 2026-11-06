@@ -93,6 +93,8 @@ export interface RibbonOpts {
   spin?: number;
   /** Stays drawn on once swept (an aura), fading only at the end of its life. */
   hold?: boolean;
+  /** Seconds before it starts (a second cut, a second wingbeat); its life counts from then. */
+  delay?: number;
 }
 
 /**
@@ -118,7 +120,7 @@ export class Ribbon implements Live {
 
   start(o: RibbonOpts): this {
     this.o = o;
-    this.age = 0;
+    this.age = -(o.delay ?? 0);
     const v = this.values;
     v.main.setHex(o.main);
     v.hot.setHex(o.hot);
@@ -137,7 +139,7 @@ export class Ribbon implements Live {
     v.lift = o.lift ?? 0;
     v.seed = Math.random() * 50;
     v.head = o.sweep > 0 ? 0 : 1;
-    v.fade = 1;
+    v.fade = this.age < 0 ? 0 : 1;
     this.group.position.set(o.x, o.y, o.z);
     return this;
   }
@@ -156,6 +158,7 @@ export class Ribbon implements Live {
     const o = this.o;
     const k = (this.age += dt);
     const v = this.values;
+    if (k < 0) return true;
     const tail = v.tail;
     // the head runs past the end so the tail can sweep off it (unless it holds)
     v.head = o.sweep > 0 ? Math.min(o.hold ? 1 : 1 + tail, k / o.sweep) : 1;
