@@ -22,6 +22,12 @@ export class RushRadar {
   private readonly base = document.createElement('canvas');
   /** On-screen size in CSS pixels, and pixels per meter. */
   private size = 0;
+  /**
+   * The canvas's CSS width as last laid out. A resize observer keeps it, so
+   * no frame forces a layout to read it, and redraws the markings (tens of ms
+   * the first time: not in a frame of play).
+   */
+  private css = 0;
   private scale = 1;
   private wait = 0;
   /** -1 flips the map for the side defending -z, so the enemy gate is always at the top. */
@@ -35,6 +41,11 @@ export class RushRadar {
     this.el.className = 'rush-radar';
     this.g = this.el.getContext('2d')!;
     this.flip = (me.team as Side) === 'order' ? 1 : -1;
+    // (the first size arrives while the loading screen is still up, so the markings are drawn then)
+    new ResizeObserver(([e]) => {
+      this.css = e?.contentRect.width ?? 0;
+      this.layout();
+    }).observe(this.el);
   }
 
   /** Map coordinates (CSS pixels) of a point on the pitch. */
@@ -44,7 +55,7 @@ export class RushRadar {
   }
 
   private layout(): boolean {
-    const css = this.el.clientWidth;
+    const css = this.css;
     if (!css) return false;
     if (css === this.size && this.el.width === Math.round(css * devicePixelRatio)) return true;
     this.size = css;

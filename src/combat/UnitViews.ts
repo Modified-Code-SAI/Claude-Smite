@@ -238,10 +238,12 @@ export class UnitViews {
   /**
    * Builds the training dummies' views now, so the loading screen draws their
    * batches: three keys a batch's shaders to the batch itself, so drawing
-   * any other copy would not spare these a build mid-match.
+   * any other copy would not spare these a build mid-match. The gods
+   * already in the match are built now too, rather than all in the first
+   * frame after the loading screen (a few ms each).
    */
   prime(units: readonly Unit[]): void {
-    for (const u of units) if (u.kind === 'dummy' && !this.views.has(u)) this.create(u);
+    for (const u of units) if ((u.kind === 'dummy' || u.kind === 'god') && !this.views.has(u)) this.create(u);
   }
 
   /**
