@@ -8,6 +8,7 @@ import { AudioEngine } from '../audio/AudioEngine';
 import { bakeAll, jobs } from '../audio/bank';
 import { Music, type SongName } from '../audio/music';
 import { Orchestra } from '../audio/orchestra';
+import { loadLayers } from '../audio/layers';
 import { GODS } from '../game/gods';
 import { mountAudioPanel } from '../ui/AudioPanel';
 import './soundboard.css';
@@ -58,7 +59,7 @@ root.innerHTML = `
 document.body.appendChild(root);
 
 const status = root.querySelector('.sb-status')!;
-void bakeAll(engine).then(() => (status.textContent = 'Ready.'));
+void Promise.all([bakeAll(engine), loadLayers(engine, `${import.meta.env.BASE_URL}sfx/`)]).then(() => (status.textContent = 'Ready.'));
 
 let fight = 0;
 setInterval(() => music.setIntensity(fight, 0.1), 100);

@@ -92,6 +92,7 @@ export class AudioEngine {
   private musicDuck!: GainNode;
   private muffle = 0;
   private readonly raw = new Map<string, { data: Float32Array[]; loop: boolean }>();
+  private readonly layers = new Map<string, (data: Float32Array[], loop: boolean) => Float32Array[]>();
   private readonly buffers = new Map<string, AudioBuffer[]>();
   private readonly clipLoads = new Map<string, Promise<boolean>>();
   private readonly voices: Voice[] = [];
@@ -317,7 +318,27 @@ export class AudioEngine {
 
   /** Store rendered sample data under a name. */
   register(name: string, data: Float32Array[], loop = false): void {
+    const mix = this.layers.get(name);
+    if (mix) {
+      this.layers.delete(name);
+      data = mix(data, loop);
+    }
     this.raw.set(name, { data, loop });
+    if (this.ctx) this.toBuffers(name, data);
+  }
+
+  /**
+   * A recording to mix under a synthesized sound (layers.ts): applied once,
+   * now if the sound is already rendered, otherwise as it arrives.
+   */
+  layer(name: string, mix: (data: Float32Array[], loop: boolean) => Float32Array[]): void {
+    const raw = this.raw.get(name);
+    if (!raw) {
+      this.layers.set(name, mix);
+      return;
+    }
+    const data = mix(raw.data, raw.loop);
+    this.raw.set(name, { data, loop: raw.loop });
     if (this.ctx) this.toBuffers(name, data);
   }
 
