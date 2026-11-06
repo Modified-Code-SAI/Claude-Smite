@@ -40,6 +40,8 @@ export class UnderworldMap implements MapContent {
   readonly lights: THREE.PointLight[] = [];
   /** Lights that beat like a heart, each with its full strength. */
   private readonly beats: { light: THREE.PointLight; full: number }[] = [];
+  /** Parts that turn slowly about an axis of their own, each with the dressing it shows with. */
+  private readonly spins: { part: THREE.Object3D; rest: THREE.Quaternion; axis: THREE.Vector3; speed: number; dressing: THREE.Object3D }[] = [];
   readonly spawn: { x: number; z: number; yaw: number };
   readonly groundColor = new THREE.Color(0.05, 0.045, 0.055);
   /** Each chamber's shell, in CHAMBERS order. */
@@ -197,7 +199,11 @@ export class UnderworldMap implements MapContent {
       return l;
     };
     const beat = (l: THREE.PointLight) => void this.beats.push({ light: l, full: l.intensity });
-    KITS[depth]!({ c, index, random, mats: this.mats, group: g, add, light, beat });
+    const spin = (part: THREE.Object3D, axis: THREE.Vector3, speed: number) => {
+      keep.push(part);
+      this.spins.push({ part, rest: part.quaternion.clone(), axis: axis.clone().normalize(), speed, dressing: g });
+    };
+    KITS[depth]!({ c, index, random, mats: this.mats, group: g, add, light, beat, spin });
     mergeStatic(g, keep);
     g.position.set(c.x, 0, c.z);
     this.group.add(g);
@@ -230,8 +236,17 @@ export class UnderworldMap implements MapContent {
       const pulse = Math.exp(-(((p - 0.06) / 0.05) ** 2)) + 0.55 * Math.exp(-(((p - 0.24) / 0.06) ** 2));
       for (const b of this.beats) b.light.intensity = b.full * (0.7 + 0.6 * pulse);
     }
+    // (the map is static content: its matrices are only updated by hand)
+    for (const s of this.spins) {
+      if (!s.dressing.visible) continue;
+      s.part.quaternion.copy(s.rest).multiply(turn.setFromAxisAngle(s.axis, s.speed * time));
+      s.part.updateMatrix();
+      s.part.updateMatrixWorld(true);
+    }
   }
 }
+
+const turn = new THREE.Quaternion();
 
 /** The depths in order, and the kit each dresses its chambers with. */
 const PALETTES: readonly Palette[] = ['ember', 'soul', 'spirit'];
