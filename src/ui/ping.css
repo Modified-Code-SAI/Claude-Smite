@@ -47,7 +47,8 @@
 .ping-mark.edge .pm-arrow { display: block; }
 .ping-mark.edge .pm-text { display: none !important; }
 .ping-mark.edge .pm-disc { transform: scale(0.82); }
-@keyframes pm-pop { 0% { transform: scale(0.1); } 100% { transform: none; } }
+/* (the `scale` property, not transform, so an edge marker's smaller size holds through the pop instead of snapping in after it) */
+@keyframes pm-pop { 0% { scale: 0.1; } 100% { scale: 1; } }
 @keyframes pm-ripple { 0% { transform: scale(1); opacity: 0.9; } 100% { transform: scale(2.1); opacity: 0; } }
 
 /* -- the team's call feed */
