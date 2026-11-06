@@ -24,6 +24,10 @@ Why not Blender's own smoke: in the Ubuntu 4.0 package Mantaflow aborts on its
 first step under Python 3.12 and Cycles crashes on any OpenVDB volume. So
 `gas.py` is a small stable-fluids solver (BFECC advection, vorticity
 confinement, an exact DST pressure solve, burning fuel, and expansion where it
-burns so a blast bursts outward), and each frame reaches Cycles as a
+burns so a blast bursts outward). The blast uses its second burn model
+(`reaction`, `flame_rate`, `glow`): thick fuel is short of air and burns from
+its edges inward, and the flame is what burns now plus the glow of gas still
+hot from it, so the fireball has hot rolls and darker folds rather than one
+flat color, and each frame reaches Cycles as a
 slice-atlas image read by a box's volume shader. That build also has no
 denoiser, so the packer blurs each frame very slightly.

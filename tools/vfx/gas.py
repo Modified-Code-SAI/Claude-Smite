@@ -25,6 +25,8 @@ class Gas:
         self.heat = z()
         self.fuel = z()
         self.flame = z()
+        # fuel burnt per second in each cell (the flame_rate model's flame and expansion)
+        self.burning = z()
         self.idx = np.indices(self.shape, dtype=np.float32)
         # eigenvalues of the 7-point Laplacian under a type-I sine transform (p = 0 on the box)
         lam = np.zeros(self.shape, np.float64)
@@ -85,12 +87,12 @@ class Gas:
         self.floor()
         # burning gas expands: the pressure solve keeps that much divergence where the flame is
         expand = p.get('expand', 0.0)
-        self.project(self.flame * expand if expand else None)
+        self.project((self.burning if 'flame_rate' in p else self.flame) * expand if expand else None)
         self.floor()
         coords = self.backtrace(dt)
         fwd = self.idx + self.u * (dt / h)
         self.density = self.advect(self.density, coords, fwd, sharp=True)
-        self.heat = self.advect(self.heat, coords)
+        self.heat = self.advect(self.heat, coords, fwd, sharp=p.get('sharp_heat', False))
         if self.fuel.any():
             self.fuel = self.advect(self.fuel, coords, fwd, sharp=True)
         self.burn(dt, p)
@@ -99,14 +101,24 @@ class Gas:
         self.heat *= np.float32(np.exp(-dt * p.get('cool', 1.5)))
 
     def burn(self, dt, p):
-        if not self.fuel.any():
+        if not self.fuel.any() and 'flame_rate' not in p:
             self.flame[:] = 0
             return
         rate = p.get('burn', 1.5)
+        reaction = p.get('reaction', 0.0)
+        if reaction:
+            # thick fuel is short of air: it burns from its edges inward, so the flame is a shell around the core
+            rate = rate * (1 - reaction * np.clip(self.fuel / p.get('fuel_ref', 1.0), 0, 1))
         burnt = self.fuel * (1 - np.exp(-dt * rate))
         self.fuel -= burnt
         self.heat += burnt * p.get('flame_heat', 4.0)
         self.density += burnt * p.get('flame_smoke', 0.3)
+        if 'flame_rate' in p:
+            # the flame is where fuel is burning now, plus the glow of gas still hot from it
+            self.burning = (burnt / dt).astype(np.float32)
+            glow = np.maximum(self.heat - p.get('ignite', 0.5), 0) * p.get('glow', 0.0)
+            self.flame = np.clip(self.burning * p['flame_rate'] + glow, 0, 4).astype(np.float32)
+            return
         # the flame is the fuel that is burning: bright where it is thick
         self.flame = np.clip(self.fuel * p.get('flame_gain', 1.4), 0, 4).astype(np.float32)
 

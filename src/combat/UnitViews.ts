@@ -14,6 +14,15 @@ import type { Billows } from '../scene/Billows';
 import { TEAM_STYLE } from '../scene/structures/common';
 
 const _cloudAt = new THREE.Vector3();
+/**
+ * A structure's blast in its team's fire. Order's is lighter than its brazier
+ * blue: tone mapping pushes a bright pure blue toward violet, so a blast in
+ * 0x1446ff read as purple paint.
+ */
+const BLAST_FLAME: Record<'order' | 'chaos', [number, number]> = {
+  order: [0x1e8cff, 0xd4f6ff],
+  chaos: [TEAM_STYLE.chaos.fire.low, TEAM_STYLE.chaos.fire.high],
+};
 
 /** Which pool of spare models a summon's look draws from. */
 const summonKey = (look: SummonLook): string => `${look.god}|${look.variant}`;
@@ -310,8 +319,7 @@ export class UnitViews {
     const b = this.billows;
     if (!b) return;
     const p = v.root.getWorldPosition(_cloudAt);
-    const fire = TEAM_STYLE[u.side === 'chaos' ? 'chaos' : 'order'].fire;
-    const flame: [number, number] = [fire.low, fire.high];
+    const flame = BLAST_FLAME[u.side === 'chaos' ? 'chaos' : 'order'];
     if (u.kind === 'phoenix') {
       b.spawn('blast', p.x, p.y + 6.2, p.z, rising ? 7 : 9.5, { duration: 1.6, tint: 0x5a4c44, flame, rise: 0.6 });
       if (!rising) {
