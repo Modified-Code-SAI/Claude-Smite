@@ -20,8 +20,31 @@ const SLOTS = Array.from({ length: SLOT_COUNT }, (_, i) => i);
  */
 export type RushRole = 'carry' | 'escort' | 'lead' | 'chase' | 'support' | 'guard' | 'press' | 'cut' | 'goalie';
 
+/**
+ * Elbow room: gods don't block each other, so without it a defender pressing
+ * the carrier stood inside their body about half the time someone carried.
+ * Bots step apart from any god within `room` meters (center to center; two
+ * god radii are 1.2), and a presser within `close` meters of the carrier goes
+ * at them and stops `gap` meters short of touching. A carrier steers around
+ * defenders ahead, but one within `near` meters counts only `nearWeight` as
+ * much: dodging hard around a marker at arm's length boxed carriers in,
+ * dancing in front of them for seconds.
+ */
+const MARK = { room: 1.3, gap: 0.15, close: 4, near: 2.2, nearWeight: 0.7 } as const;
+
+/** A defender less than this far (meters) to either side of the carrier's line counts as dead ahead. */
+const DEAD_AHEAD = 0.6;
+
+/** How far ahead (meters) a carrier feels for scenery in the way it means to break. */
+const PROBE = 0.6;
+
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 const dist = (a: Point, b: Point) => hypot(a.x - b.x, a.z - b.z);
+/** (x, z) as a unit direction, or null if it has no length to speak of. */
+const unit = (x: number, z: number): Point | null => {
+  const d = hypot(x, z);
+  return d > 1e-3 ? { x: x / d, z: z / d } : null;
+};
 
 /** Shares the roles out for both teams once per step. */
 export class RushCoach {
@@ -57,12 +80,12 @@ export class RushCoach {
         set(escort, 'escort');
         for (const g of rest) if (g !== escort) set(g, 'lead');
       } else if (holder) {
-        // one presses the carrier; whoever is nearest our gate keeps it; the last cuts the way in
+        // one presses the carrier; whoever is nearest our gate keeps it (from the moment they take the relic, so a quick break finds someone home); the last cuts the way in
         const press = nearest(gods, holder)!;
         set(press, 'press');
         const rest = gods.filter((g) => g !== press);
         const threat = dist(holder, gate);
-        const keeper = threat < 24 ? nearest(rest, gate) : null;
+        const keeper = nearest(rest, gate);
         set(keeper, 'goalie');
         for (const g of rest) if (g !== keeper) set(g, threat < 12 ? 'press' : 'cut');
       } else {
@@ -99,6 +122,10 @@ export class RushBot implements Brain {
   /** Which flank this bot runs when leading the attack. */
   private readonly side: number;
   private route: { goal: Point; next: Point; at: number } | null = null;
+  /** Which way (+1 or -1) the carrier breaks past a defender dead ahead, kept until one shows a clear side. */
+  private veer = 1;
+  /** Scratch for elbowRoom. */
+  private readonly room = { x: 0, z: 0 };
 
   constructor(
     private readonly sim: Sim,
@@ -148,7 +175,8 @@ export class RushBot implements Brain {
       return;
     }
     const goal = this.goalFor(role);
-    this.walkTo(goal, role === 'goalie' || role === 'guard' ? 1.2 : 0.4);
+    // (a presser's spot is the carrier, nobody else's)
+    this.walkTo(goal, this.stopFor(role), { shared: role !== 'press' });
     this.fight(dt, role);
     this.maybeCall(dt);
   }
@@ -210,10 +238,12 @@ export class RushBot implements Brain {
       }
       case 'press':
         if (!holder) return t;
-        return { x: holder.x + holder.vx * 0.3, z: holder.z + holder.vz * 0.3 };
+        // from afar, lead their run; close by, go at them (and stop at arm's length, see stopFor)
+        return dist(u, holder) > MARK.close ? { x: holder.x + holder.vx * 0.3, z: holder.z + holder.vz * 0.3 } : { x: holder.x, z: holder.z };
       case 'cut': {
         if (!holder) return t;
-        return { x: holder.x + (ownGate.x - holder.x) * 0.45, z: holder.z + (ownGate.z - holder.z) * 0.45 };
+        // well back on the way in: the carrier has to get past them, not just round them
+        return { x: holder.x + (ownGate.x - holder.x) * 0.6, z: holder.z + (ownGate.z - holder.z) * 0.6 };
       }
       case 'goalie': {
         // in the gate's mouth, a step toward the plaza, shading toward the threat
@@ -225,6 +255,14 @@ export class RushBot implements Brain {
       default:
         return t;
     }
+  }
+
+  /** How near its spot a bot in this role stops. */
+  private stopFor(role: RushRole): number {
+    if (role === 'goalie' || role === 'guard') return 1.2;
+    const h = this.rush.holder;
+    if (role === 'press' && h && dist(this.u, h) <= MARK.close) return h.radius + this.u.radius + MARK.gap;
+    return 0.4;
   }
 
   /** How many enemies stand within 5 m of a point. */
@@ -286,16 +324,49 @@ export class RushBot implements Brain {
       if (ed > 8 || ed < 1e-3) continue;
       const ahead = (ex * dx + ez * dz) / ed;
       if (ahead < -0.3) continue;
-      // push sideways, away from the defender's side of the line
-      const side = ex * dz - ez * dx > 0 ? -1 : 1;
-      const w = ((8 - ed) / 8) * (0.6 + ahead);
+      // push sideways, away from the defender's side of the line (this once pushed toward it); one dead ahead is passed the way the carrier was already breaking (choosing afresh each step, it jittered left and right in place)
+      const across = ex * dz - ez * dx;
+      const side = Math.abs(across) < DEAD_AHEAD ? this.veer : across > 0 ? 1 : -1;
+      if (ed < 4 && Math.abs(across) >= DEAD_AHEAD) this.veer = side;
+      const w = ((8 - ed) / 8) * (0.6 + ahead) * (ed < MARK.near ? MARK.nearWeight : 1);
       ax += -dz * side * w * 1.6 - (ex / ed) * w * 0.5;
       az += dx * side * w * 1.6 - (ez / ed) * w * 0.5;
     }
     // close to the gate, go straight in
     const k = toGate < 5 ? 0.2 : 1;
-    const step = clampToPitch(u.x + (dx + ax * k) * 3, u.z + (dz + az * k) * 3, 1.5);
-    this.walkTo(step, 0.1, true);
+    let sx = dx + ax * k;
+    let sz = dz + az * k;
+    if (hypot(sx, sz) < 0.4) {
+      // hemmed in, defenders on both shoulders cancel out: break the way it was breaking (toward the middle near the pitch's edge), as standing still only invites the tackle
+      if (hypot(u.x, u.z) > RUSH.pitchRadius - 4) this.veer = -dz * -u.x + dx * -u.z >= 0 ? 1 : -1;
+      sx = dx * 0.5 - dz * this.veer;
+      sz = dz * 0.5 + dx * this.veer;
+    }
+    if (this.blocked(sx, sz)) {
+      // breaking into a column or pillar: break the other way past them, or failing that run straight on
+      const lat = sx * -dz + sz * dx;
+      const mx = sx + 2 * lat * dz;
+      const mz = sz - 2 * lat * dx;
+      if (!this.blocked(mx, mz)) {
+        [sx, sz] = [mx, mz];
+        this.veer = -this.veer;
+      } else [sx, sz] = [dx, dz];
+    }
+    const step = clampToPitch(u.x + sx * 3, u.z + sz * 3, 1.5);
+    // (straight at the step, not through the pathfinder: the steering and the scenery probe above see to what's in the way, and the grid's tie-breaks
+    // round pillars favor one way of the world, which gave Order's carriers, running at the other gate, an edge: Order won 60% of bot matches)
+    this.walkTo(step, 0.1, { face: true, direct: true });
+  }
+
+  /** Whether scenery stops most of a short step this way (a column or pillar right there). */
+  private blocked(x: number, z: number): boolean {
+    const { u, sim } = this;
+    const d = hypot(x, z);
+    if (d < 1e-3) return false;
+    const nx = u.x + (x / d) * PROBE;
+    const nz = u.z + (z / d) * PROBE;
+    const r = sim.solid(nx, nz, u.radius, u.body.y + u.stepOver, u, sim.terrain, u);
+    return hypot(r.x - u.x, r.z - u.z) < PROBE * 0.5;
   }
 
   /**
@@ -622,11 +693,22 @@ export class RushBot implements Brain {
   // -------------------------------------------------------------------------
   // Walking
 
-  private walkTo(goal: Point, stopAt: number, face = false): void {
+  /**
+   * Walks toward `goal` until within `stopAt`, by the pathfinder unless
+   * `direct`, turning to face the way it walks if `face`. A `shared` spot (a
+   * role's, which a teammate may hold already) also counts as reached when a
+   * teammate stands on it.
+   */
+  private walkTo(goal: Point, stopAt: number, { face = false, shared = false, direct = false } = {}): void {
     const { u } = this;
-    if (dist(goal, u) <= stopAt) return;
+    const room = this.elbowRoom();
+    if (dist(goal, u) <= stopAt || (shared && this.taken(goal, stopAt))) {
+      // there already, but standing in someone: step out of them
+      if (room.x !== 0 || room.z !== 0) u.move = unit(room.x, room.z);
+      return;
+    }
     let p = goal;
-    if (this.nav) {
+    if (this.nav && !direct) {
       const r = this.route;
       if (!r || dist(r.goal, goal) > 1.5 || this.sim.time - r.at > 0.4) this.route = { goal: { ...goal }, next: this.nav.next(u, goal), at: this.sim.time };
       p = this.route!.next;
@@ -635,8 +717,37 @@ export class RushBot implements Brain {
     const dz = p.z - u.z;
     const d = hypot(dx, dz);
     if (d < 0.05) return;
-    u.move = { x: dx / d, z: dz / d };
+    u.move = unit(dx / d + room.x, dz / d + room.z);
     if (face || !this.facingTarget()) u.body.yaw = Math.atan2(-dx, -dz);
+  }
+
+  /** A teammate already stands on the spot and this bot is as near it as elbow room lets it get (two cutters, say): stop here. */
+  private taken(goal: Point, stopAt: number): boolean {
+    const { u } = this;
+    const mine = dist(u, goal);
+    if (mine > MARK.room + stopAt + 0.3) return false;
+    for (const g of this.allies()) if (dist(g, goal) <= stopAt + 0.3 && dist(g, goal) < mine) return true;
+    return false;
+  }
+
+  /** Away from every god standing closer than MARK.room, harder the closer they are (zero with room to spare). */
+  private elbowRoom(): Point {
+    const { u } = this;
+    const out = this.room;
+    out.x = out.z = 0;
+    for (const g of this.sim.units) {
+      if (g === u || g.kind !== 'god' || !g.alive) continue;
+      const ex = u.x - g.x;
+      const ez = u.z - g.z;
+      const d = hypot(ex, ez);
+      if (d >= MARK.room) continue;
+      const w = (MARK.room - d) / MARK.room;
+      // dead on top of each other: part one each way
+      const [nx, nz] = d > 1e-3 ? [ex / d, ez / d] : [u.combatant.uid > g.combatant.uid ? 1 : -1, 0];
+      out.x += nx * w * 2;
+      out.z += nz * w * 2;
+    }
+    return out;
   }
 
   /** While swinging at someone the bot keeps facing them. */
