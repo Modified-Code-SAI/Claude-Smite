@@ -4,9 +4,10 @@ import { SLOT_COUNT, SLOT_KEYS } from '../game/loadout';
 import { keyLabel, type Action } from '../settings/bindings';
 import { padLabel } from '../settings/padBindings';
 import { codesFor, padCodeFor } from '../settings/store';
-import { FUMBLE_CC } from '../sim/Rush';
+import { Arena } from '../scene/ArenaLayout';
+import { FUMBLE_CC, RUSH } from '../sim/Rush';
 import { MARK_MAX } from '../sim/Sim';
-import type { Unit } from '../sim/Unit';
+import type { Point, Unit } from '../sim/Unit';
 
 /** The key or controller button bound to an action now ('Left click', 'F', 'RT'), '' when it has none. */
 export function keyFor(a: Action): string {
@@ -67,4 +68,15 @@ export function tackleHint(c: Combatant, carrier: Unit, slots: readonly number[]
   }
   if (soonest >= 0) return `stay on them, ${c.skillInSlot(soonest)!.name} is back in ${Math.ceil(c.cooldownOf(soonest))}`;
   return mana >= 0 ? `stay on them (not enough mana for ${c.skillInSlot(mana)!.name})` : 'stay on them';
+}
+
+/** What a throw would hit at `p` on the temple plaza, for the carrier's line: 'the pillar', 'a column', 'a brazier', 'the pedestal'. */
+export function stoneName(p: Point): string {
+  const r = Math.hypot(p.x, p.z);
+  if (r < 2) return 'the pedestal';
+  const gate = RUSH.gates.order.z;
+  if (Math.abs(Math.abs(p.z) - gate) < 1.8 && Math.abs(Math.abs(p.x) - 5.4) < 1.8) return 'the gate pillar';
+  if (Math.abs(r - 9.5) < 1.4) return 'a brazier';
+  if (Math.abs(r - Arena.plaza.columnRing) < 1.6 || (r < Arena.plaza.baseRadius + 1 && r > Arena.plaza.columnRing)) return 'a column';
+  return 'the stones';
 }

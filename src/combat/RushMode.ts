@@ -108,7 +108,7 @@ export class RushMode {
   private readonly view: RushView;
   private readonly hud: RushHud;
   /** The beats already shown, so each catch, fumble and goal flashes once. */
-  private readonly seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, juke: 0, dodge: 0, goals: 0, phase: '' as string, relic: '' as string };
+  private readonly seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, juke: 0, dodge: 0, post: 0, goals: 0, phase: '' as string, relic: '' as string };
   private readonly v = new THREE.Vector3();
   /** Who the relic in flight is about to reach (Rush.incoming), reused each frame. */
   private readonly incoming: { unit: Unit | null; eta: number; x: number; z: number; h: number } = { unit: null, eta: 0, x: 0, z: 0, h: 0 };
@@ -467,6 +467,12 @@ export class RushMode {
       burst(GOLD, u.x, this.deps.groundAt(u.x, u.z) + 1.2, u.z, 0.7);
       if (u === me || dodge.by === me) this.deps.shake?.(0.1);
     }
+    if (r.beats.post !== seen.post) {
+      // off the stone: a spray of gold where it hit, felt by whoever threw it
+      const p = r.relic;
+      burst(GOLD, p.x, this.deps.groundAt(p.x, p.z) + p.h, p.z, 0.55);
+      if (r.lastBeat?.kind === 'post' && r.lastBeat.unit === me) this.deps.shake?.(0.08);
+    }
     if (r.goalCount !== seen.goals && r.lastGoal) {
       const g = r.lastGoal;
       const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
@@ -506,6 +512,7 @@ export class RushMode {
     s.save = b.save;
     s.juke = b.juke;
     s.dodge = b.dodge;
+    s.post = b.post;
     s.goals = r.goalCount;
     s.phase = r.phase;
     s.relic = r.relic.phase;

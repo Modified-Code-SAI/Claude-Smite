@@ -263,10 +263,10 @@ export class RushView {
   private readonly edge: GroundDecal;
   private readonly preview: GroundDecal;
   private previewAt = '';
-  /** What the preview shows (its colors are only set when that changes): a pass, a shot on target, or a throw an enemy would cut off (see `read`). */
+  /** What the preview shows (its colors are only set when that changes): a pass, a shot on target, or a throw an enemy would cut off or stone would stop (see `read`). */
   private previewTone: 'pass' | 'shot' | 'cut' = 'pass';
   /** What the local carrier's throw would do (see Rush.passRead), or null when they aren't carrying. */
-  read: { goal: boolean; catcher: Unit | null } | null = null;
+  read: ReturnType<Rush['passRead']> | null = null;
   /** Where the local carrier's throw would go: their aim, or a teammate's run the pass assist leads (see Rush.assistAim). */
   aim: Point | null = null;
   private readonly head = new THREE.Vector3();
@@ -492,6 +492,7 @@ export class RushView {
     this.locator.set(at, r.phase === 'held' ? 1.2 : 1.6, team ? 1 : 0, t, tone.main, tone.core, { lift, width });
 
     // the local carrier sees where a throw would land and who would catch it: blue when it would go in as a shot, red when an enemy would cut it off
+    // or it would hit stone on the way
     const carrying = r.phase === 'held' && r.holder === me && rush.phase === 'play';
     const aim = (this.aim = carrying ? rush.assistAim(me, me.aim) : null);
     const read = (this.read = aim ? rush.passRead(me, aim) : null);
@@ -509,7 +510,7 @@ export class RushView {
     this.preview.mesh.visible = carrying;
     const by = read?.catcher ?? null;
     if (carrying) {
-      const tone = shot ? 'shot' : by && by.team !== me.team ? 'cut' : 'pass';
+      const tone = shot ? 'shot' : (by && by.team !== me.team) || read?.stone ? 'cut' : 'pass';
       if (tone !== this.previewTone) {
         this.previewTone = tone;
         const c = tone === 'shot' ? ALLY : tone === 'cut' ? FOE : GOLD;

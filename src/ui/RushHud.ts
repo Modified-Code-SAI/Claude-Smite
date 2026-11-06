@@ -6,7 +6,7 @@ import { addResult } from './records';
 import { awardLine } from './ascension';
 import { RushRadar } from './RushRadar';
 import { rushAwards, type RushAwardKey } from './rushAwards';
-import { keyFor, pressing, Pressing, tackleHint, tackleSlots } from './rushPrompts';
+import { keyFor, pressing, Pressing, stoneName, tackleHint, tackleSlots } from './rushPrompts';
 import './clash.css';
 import './rush.css';
 
@@ -300,6 +300,7 @@ export class RushHud {
       const by = read?.catcher;
       if (by && by.team === me.team) return { text: shoot ? `${shoot} to pass to ${by.name}` : `Pass to ${by.name}`, tone: 'order' };
       if (by) return { text: r.shotOnTarget(me, aim ?? me.aim) ? `${by.name} would save that shot` : `${by.name} would cut that pass off`, tone: 'chaos' };
+      if (read?.stone) return { text: `That throw would bounce off ${stoneName(read.stone)}`, tone: 'chaos' };
       return { text: `You have the relic! Run it through their gate, or ${key ? `${pressing(key)} to pass` : 'pass'} where you aim`, tone: 'order' };
     }
     if (h && h.team === me.team) {

@@ -6,6 +6,11 @@ import { hypot } from '../core/math';
 const CELL = 2;
 /** Clearance a cell needs to count as walkable (a god's radius plus a little). */
 const CLEARANCE = 0.75;
+/** A god's own size, for checking a cell center can be walked to straight from a point in a closed cell (and the step between checks). */
+const BODY = 0.55;
+const STEP = 0.4;
+/** A walk counts as reaching a point once within this of it (a god reaching for the relic there, say). */
+const NEAR = 1.2;
 
 /**
  * A walkability grid over the map, sampled from the terrain's own collision
@@ -15,6 +20,7 @@ const CLEARANCE = 0.75;
  */
 export class Nav {
   private open: Uint8Array | null = null;
+  private readonly probe = { x: 0, z: 0 };
   private readonly size: number;
   private readonly origin: number;
 
@@ -42,8 +48,8 @@ export class Nav {
   path(from: Point, to: Point): Point[] {
     const grid = this.grid();
     if (this.clear(from, to)) return [from, to];
-    const s = this.nearestOpen(this.cellOf(from));
-    const g = this.nearestOpen(this.cellOf(to));
+    const s = this.nearestOpen(this.cellOf(from), from);
+    const g = this.nearestOpen(this.cellOf(to), to);
     if (s < 0 || g < 0) return [from, to];
     const cells = this.astar(grid, s, g);
     if (!cells) return [from, to];
@@ -111,14 +117,57 @@ export class Nav {
     return { x: this.origin + (i + 0.5) * CELL, z: this.origin + (j + 0.5) * CELL };
   }
 
-  /** The closest open cell to `c` (itself if open), searching a few rings out. */
-  private nearestOpen(c: number): number {
+  /**
+   * The open cell to start or end a path at for `p`, in cell `c`: `c` itself
+   * if open, else the nearest open cell from which `p` can be walked to
+   * straight. (The first open cell found used to do, and beside a wall of
+   * stone, a fallen column's drums say, it could be the one on the far side:
+   * a bot sent for a relic lying by the wall walked to the wrong side of it
+   * and stood there.) With none, the first open cell a few rings out.
+   */
+  private nearestOpen(c: number, p: Point): number {
     const grid = this.grid();
     if (c < 0) return -1;
     if (grid[c]) return c;
     const n = this.size;
     const ci = c % n;
     const cj = (c - ci) / n;
+    for (let r = 1; r <= 2; r++) {
+      let best = -1;
+      let bestD = Infinity;
+      for (let dj = -r; dj <= r; dj++) {
+        for (let di = -r; di <= r; di++) {
+          if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+          const i = ci + di;
+          const j = cj + dj;
+          if (i < 0 || j < 0 || i >= n || j >= n || !grid[j * n + i]) continue;
+          const at = this.center(j * n + i);
+          const d = hypot(at.x - p.x, at.z - p.z);
+          if (d < bestD && this.reaches(at, p)) [best, bestD] = [j * n + i, d];
+        }
+      }
+      if (best >= 0) return best;
+    }
+    return this.firstOpen(ci, cj);
+  }
+
+  /** Whether a god walks straight from `a` to within reach of `b` without stone in the way. */
+  private reaches(a: Point, b: Point): boolean {
+    const d = hypot(b.x - a.x, b.z - a.z);
+    const steps = Math.ceil(Math.max(0, d - NEAR) / STEP);
+    for (let k = 1; k <= steps; k++) {
+      const t = (k * STEP) / d;
+      const x = a.x + (b.x - a.x) * t;
+      const z = a.z + (b.z - a.z) * t;
+      const r = this.terrain.resolve(x, z, BODY, this.terrain.groundAt(x, z), undefined, this.probe);
+      if (hypot(r.x - x, r.z - z) > 0.05) return false;
+    }
+    return true;
+  }
+
+  private firstOpen(ci: number, cj: number): number {
+    const grid = this.grid();
+    const n = this.size;
     for (let r = 1; r <= 4; r++) {
       for (let dj = -r; dj <= r; dj++) {
         for (let di = -r; di <= r; di++) {

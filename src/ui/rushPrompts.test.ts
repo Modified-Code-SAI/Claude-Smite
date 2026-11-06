@@ -7,7 +7,7 @@ import { godUnit } from '../sim/factory';
 import { RUSH, rushBar } from '../sim/Rush';
 import { rebind } from '../settings/bindings';
 import { resetForTest, setSettings, settings } from '../settings/store';
-import { keyFor, pressing, Pressing, tackleHint, tackleSlots } from './rushPrompts';
+import { keyFor, pressing, Pressing, stoneName, tackleHint, tackleSlots } from './rushPrompts';
 
 function player(def: GodDef, bar: readonly string[]): Combatant {
   const c = new Combatant(def, 'order', bar);
@@ -83,5 +83,15 @@ describe('Relic Rush prompts name the keys the player has bound', () => {
     expect(keyFor('callPass')).toBe('Q');
     expect(keyFor('jump')).toBe('V');
     resetForTest();
+  });
+
+  it('names the stone a throw would bounce off', () => {
+    expect(stoneName({ x: 0.9, z: 0.6 })).toBe('the pedestal');
+    expect(stoneName({ x: -4.3, z: 23.6 })).toBe('the gate pillar');
+    expect(stoneName({ x: 6.2, z: -23.1 })).toBe('the gate pillar');
+    expect(stoneName({ x: 6.1, z: 6.3 })).toBe('a brazier');
+    expect(stoneName({ x: -13.2, z: 3 })).toBe('a column');
+    expect(stoneName({ x: -16.6, z: -3.3 })).toBe('a column');
+    expect(stoneName({ x: 7.6, z: 28 })).toBe('the stones');
   });
 });
