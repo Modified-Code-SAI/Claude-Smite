@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { clusterGeometry, crystalGeometry, GIANT_ACTS, GiantModel, type GiantAct, type GiantPart, type GiantPartState, type GiantState } from '../actors/GiantModel';
+import { clusterGeometry, crystalGeometry, GIANT_ACTS, GiantModel, MOTIONS, type GiantAct, type GiantPart, type GiantPartState, type GiantState } from '../actors/GiantModel';
 import { attribute, color, float, hash, instanceIndex, mix, mx_noise_float, normalView, positionGeometry, positionView, pow, saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
 import { placedGeometry, placeInstances, spriteQuads } from '../render/shared';
 import type { Fire } from '../scene/Effects';
@@ -471,6 +471,8 @@ export class JotunnView {
   private windup: { act: GiantAct; flash: Flash } | null = null;
   private landed: { act: GiantAct; flash: Flash } | null = null;
   private breath = 0;
+  /** Seconds until a roar for the camera lands (see roar), or below 0. */
+  private cheer = -1;
   private storm: { x: number; z: number; r: number; left: number } | null = null;
   private readonly state: GiantState = { speed: 0, localDir: new THREE.Vector2(), windup: null, kneel: false, plant: null, silenced: false, staggered: null, dead: false };
 
@@ -590,6 +592,14 @@ export class JotunnView {
       this.windup = null;
     }
     s.windup = warn ? { act: GIANT_ACTS[warn.act!]!, left: Math.max(0, warn.life - warn.age), at: this.aimOf(warn, u) } : null;
+    // a roar for the camera, wound up and landed like the real one
+    if (this.cheer >= 0) {
+      if (warn || !u.alive) this.cheer = -1;
+      else {
+        s.windup = { act: 'roar', left: this.cheer, at: new THREE.Vector3(u.x, this.host.ground(u.x, u.z), u.z) };
+        this.cheer = this.cheer > 0 ? Math.max(0, this.cheer - dt) : -1;
+      }
+    }
 
     // states the weak points show
     const part = (id: PartId) => this.parts.get(id);
@@ -625,6 +635,15 @@ export class JotunnView {
     if (sh.type === 'circle' && Math.hypot(sh.x - u.x, sh.z - u.z) < 0.1) out.set(u.x, 0, u.z);
     out.y = this.host.ground(out.x, out.z);
     return out;
+  }
+
+  /**
+   * The giant throws back its head and roars, with the frost the roar
+   * throws out, for a shot of it (a round's start, its win): the pose and
+   * effects only, nothing in the sim.
+   */
+  roar(): void {
+    this.cheer = MOTIONS.roar.windup;
   }
 
   placePart(id: PartId, root: THREE.Object3D): void {

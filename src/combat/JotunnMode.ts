@@ -6,12 +6,15 @@ import { jotunnRoster } from '../net/jotunnRoster';
 import type { Roster } from '../net/Replica';
 import type { NetSession } from '../net/Session';
 import type { PlayerController } from '../player/PlayerController';
+import type { CameraShot } from '../player/ThirdPersonCamera';
+import type { CollisionWorld } from '../scene/Collision';
 import type { Fire } from '../scene/Effects';
-import { Jotunn, type JotunnBrains, type JotunnPlayer } from '../sim/Jotunn';
+import { JOTUNN, Jotunn, type JotunnBrains, type JotunnPlayer } from '../sim/Jotunn';
 import { jotunnBots } from '../sim/JotunnBots';
 import type { Sim } from '../sim/Sim';
 import type { Point, SimEvent, Unit } from '../sim/Unit';
 import { JotunnHud } from '../ui/JotunnHud';
+import { CINE, CINE_CLEARANCE, JotunnCine, type CineSight } from './jotunnCine';
 import { JotunnView } from './JotunnView';
 import { paletteFor } from './palette';
 
@@ -47,6 +50,12 @@ export interface JotunnDeps {
   net?: NetSession;
   /** A moment of the giant's that has its own sound ('step': a footfall, k how hard). */
   cue?: (name: 'step', at: THREE.Vector3, k: number) => void;
+  /** Lays a shot of the giant over the follow camera (see JotunnCine); null hands it back. */
+  cameraShot?: (shot: CameraShot | null) => void;
+  /** The map's columns and walls, which a shot's camera keeps clear of. */
+  collision?: CollisionWorld;
+  /** Toward the sun, which a shot of the giant never looks into. */
+  sun?: { x: number; z: number };
 }
 
 /** Radians a second the giant's body turns toward the camera when a player drives it. */
@@ -73,6 +82,8 @@ export class JotunnMode {
   host: NetHost | null = null;
   guest: NetGuest | null = null;
   private readonly hud: JotunnHud;
+  /** The giant's moments on camera, where the game lends the camera. */
+  private readonly cine: JotunnCine | null;
   /** The local player drives the giant this round. */
   piloting = false;
   private readonly brains: JotunnBrains | null;
@@ -144,6 +155,19 @@ export class JotunnMode {
     });
     deps.vfx.add(this.view.group);
     this.hud = new JotunnHud(mode, player);
+    const set = deps.cameraShot;
+    const view = this.view;
+    this.cine = set
+      ? new JotunnCine(mode, {
+          height: view.model.height,
+          ground: deps.groundAt,
+          room: (x, z, y, sights) => this.room(x, z, y, sights),
+          sun: deps.sun,
+          set,
+          roar: () => view.roar(),
+          dip: (s) => this.hud.dip(s),
+        })
+      : null;
     // (a guest's rounds start with the host's state: see Jotunn.applyNet)
     if (!guest) {
       mode.begin();
@@ -231,10 +255,16 @@ export class JotunnMode {
     return { move: { x: -sin * f + cos * r, z: -cos * f - sin * r }, yaw: ctrl.yaw };
   }
 
-  /** The body comes round to the heading slowly (a wound-up blow holds it) and walks where it was asked, while the round is on. */
+  /**
+   * The body comes round to the heading slowly (a wound-up blow holds it, and
+   * so do its shots: its waking and its win) and walks where it was asked,
+   * while the round is on.
+   */
   private steer(yaw: number, move: Point | null, dt: number): void {
-    const g = this.mode.giant;
-    if (g.windup <= 0 && g.alive) {
+    const m = this.mode;
+    const g = m.giant;
+    const still = m.phase === 'over' || (m.phase === 'countdown' && JOTUNN.countdown - m.timer < CINE.wake);
+    if (g.windup <= 0 && g.alive && !still) {
       let d = yaw - g.body.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       const turn = TURN * dt;
@@ -261,8 +291,69 @@ export class JotunnMode {
   }
 
   frame(dt: number, time: number): void {
+    this.cine?.frame(dt);
     this.view.update(dt, time);
-    this.hud.frame(dt);
+    this.hud.frame(dt, this.cine?.kind ?? null);
+  }
+
+  /** Clear floor for a shot's camera at (x, z), `y` up, that looks at each of `sights` (see CineHost.room). */
+  private room(x: number, z: number, y: number, sights: readonly CineSight[]): number {
+    const here = this.deps.groundAt(x, z);
+    if (y < here + 1) return 0;
+    // open ground before the lens: no bank rising across the bottom of the frame
+    const t = sights[0]!;
+    const d = Math.hypot(t.x - x, t.z - z);
+    for (const m of [2, 4, 6, 8]) if (m < d && this.deps.groundAt(x + ((t.x - x) * m) / d, z + ((t.z - z) * m) / d) > here + 1.2) return 0;
+    const c = this.deps.collision;
+    if (!c) return 99;
+    // nor a rock or a wall standing just before it
+    const ux = (t.x - x) / d;
+    const uz = (t.z - z) / d;
+    for (const k of c.colliders) {
+      if (k.top < here + 1.2) continue;
+      const along = (k.x - x) * ux + (k.z - z) * uz;
+      const r = k.kind === 'circle' ? k.r : Math.hypot(k.hx, k.hz);
+      if (along > -r && along < 9 + r && Math.abs((k.z - z) * ux - (k.x - x) * uz) < r + 2.5) return 0;
+    }
+    // nothing taller than the camera within reach of it
+    const p = c.resolve(x, z, CINE_CLEARANCE, y - 0.55);
+    const pushed = Math.hypot(p.x - x, p.z - z);
+    if (pushed > 0.01) return CINE_CLEARANCE - pushed;
+    // (a bank may hide its feet, but not its body)
+    for (const t of sights) if (!this.inSight(c, x, y, z, t)) return 0;
+    return 99;
+  }
+
+  /**
+   * Nothing between a camera at (x, y, z) and a point `t` on the giant: no
+   * column or wall within a meter of the line (boxes taken as their round
+   * bounds), no ice shrine's crystal, and (unless its `ground` is below 0)
+   * no rise in the ground to within `ground` meters of the line. It stops 8 m short of the giant: a column at its feet hides a
+   * sliver of it, one near the camera half the screen, and its body is no
+   * collider. A few hundred sums, not the camera's fine ray march, since a
+   * shot tries several spots in the frame it starts.
+   */
+  private inSight(c: CollisionWorld, x: number, y: number, z: number, t: CineSight): boolean {
+    const dx = t.x - x;
+    const dy = t.y - y;
+    const dz = t.z - z;
+    const len2 = dx * dx + dz * dz;
+    if (len2 < 1) return true;
+    const end = Math.max(0, 1 - 8 / Math.sqrt(len2));
+    for (const k of c.colliders) {
+      const s = THREE.MathUtils.clamp(((k.x - x) * dx + (k.z - z) * dz) / len2, 0, end);
+      if (y + dy * s > k.top) continue;
+      const r = (k.kind === 'circle' ? k.r : Math.hypot(k.hx, k.hz)) + 1;
+      if (Math.hypot(x + dx * s - k.x, z + dz * s - k.z) < r) return false;
+    }
+    for (const sh of this.mode.shrines) {
+      const s = THREE.MathUtils.clamp(((sh.def.x - x) * dx + (sh.def.z - z) * dz) / len2, 0, end);
+      if (Math.hypot(x + dx * s - sh.def.x, z + dz * s - sh.def.z) < 3) return false;
+    }
+    // the ground a meter at a time, so a narrow bank isn't stepped over
+    const step = 1 / Math.sqrt(len2);
+    if (t.ground >= 0) for (let s = step; s < end; s += step) if (y + dy * s < this.deps.groundAt(x + dx * s, z + dz * s) + t.ground) return false;
+    return true;
   }
 
   prime(): () => void {
