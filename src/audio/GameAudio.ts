@@ -23,7 +23,7 @@ import { RUSH } from '../sim/Rush';
 import { chantAt, chantBreak, chanting } from './chant';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import type { Palette } from '../map/UnderworldLayout';
-import { DEPTH_BEDS, DEPTH_GROUND, DEPTH_SONG, UNDERWORLD_LIFE, type Stir } from './underworldAmbience';
+import { DEPTH_BEDS, DEPTH_GROUND, DEPTH_ROOM, DEPTH_SONG, UNDERWORLD_LIFE, type Stir } from './underworldAmbience';
 import { relicById } from '../sim/Relics';
 import { BOSS_CALL_LINE } from '../ui/bossNames';
 import { isGiant, JOTUNN, lastStand, type PartId } from '../sim/Jotunn';
@@ -112,6 +112,8 @@ export class GameAudio {
     game.sim.listeners.push((e) => this.onEvent(e));
     window.addEventListener('keydown', (e) => this.onKey(e));
     engine.onUnlock(() => this.startAmbience());
+    // each depth of the Descent is a space of its own: set them all up now, not as the team goes down
+    if (game.descent) engine.prepareRooms(Object.values(DEPTH_ROOM));
     this.music.play(this.conquest ? 'dawn' : game.descent ? DEPTH_SONG[DEPTHS[game.descent.depth]!.palette] : game.jotunn ? 'frost' : 'battle');
     // the giant's footfalls come from its model, so each lands with the foot; souls reaching you rise in pitch along a run
     // pings are the team's voice: flat, heard anywhere on the map, your own softer
@@ -1258,6 +1260,8 @@ export class GameAudio {
   /** Fades the shown depth's beds in and the others out. */
   private depthBeds(depth: Palette): void {
     const turned = depth !== this.bedsDepth;
+    // and the room they sound in, crossfading as the team falls into the next
+    if (turned) this.engine.setRoom(DEPTH_ROOM[depth], this.bedsDepth === null ? 0 : 2.5);
     this.bedsDepth = depth;
     for (const b of this.beds) {
       if (!b.loop?.alive) b.loop = this.engine.loop(b.name, { bus: 'ambience', gain: b.depth === depth ? b.gain : 0, pan: b.pan, rate: b.rate });
