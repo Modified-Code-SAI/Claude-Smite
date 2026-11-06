@@ -1,7 +1,9 @@
 import { JOTUNN, PART_IDS, PARTS, type Jotunn, type PartId } from '../sim/Jotunn';
-import type { Unit } from '../sim/Unit';
+import type { SimEvent, Unit } from '../sim/Unit';
 import { awardLine } from './ascension';
+import { KillTally } from './killTally';
 import { addResult } from './records';
+import './match.css';
 import './jotunn.css';
 
 const PART_GLYPH: Record<PartId, string> = { kneeL: 'L', kneeR: 'R', rune: 'ᛟ', wristL: 'L', wristR: 'R', crown: '♛' };
@@ -27,6 +29,11 @@ export class JotunnHud {
   private readonly big: HTMLElement;
   private readonly wins: HTMLElement;
   private readonly end: HTMLElement;
+  private readonly banner: HTMLElement;
+  private bannerTime = 0;
+  /** Takedowns this round: kept per round, so a streak never carries over to the next giant. */
+  private tally: KillTally;
+  private tallyRound = 0;
   private lag01 = 1;
   private readonly last: Record<string, string> = {};
   private shownEnd = false;
@@ -46,6 +53,7 @@ export class JotunnHud {
       </div>
       <div class="clash-state"></div>
       <div class="duel-big jt-big"></div>
+      <div class="mh-banner"></div>
       <div class="jt-wins"></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><button class="clash-again">Play again</button></div>`;
     document.body.appendChild(this.root);
@@ -62,6 +70,8 @@ export class JotunnHud {
     this.big = q('.jt-big');
     this.wins = q('.jt-wins');
     this.end = q('.clash-end');
+    this.banner = q('.mh-banner');
+    this.tally = this.newTally();
     this.parts.innerHTML = PART_IDS.map((id) => `<i class="jt-part ${PART_GROUP[id]}" data-id="${id}" title="${PARTS[id].name}"><b>${PART_GLYPH[id]}</b></i>`).join('');
     this.braziers.innerHTML = JOTUNN.braziers.map(() => '<i class="jt-brazier"></i>').join('');
     this.shrines.innerHTML = mode.shrines.map((s) => `<span class="jt-shrine" data-id="${s.def.id}" title="${s.def.name}: ${SHRINE_ULT[s.def.id] ?? ''}"><i></i><em></em></span>`).join('');
@@ -71,6 +81,41 @@ export class JotunnHud {
   /** Whether the local player is the giant this round. */
   private get giantIsMe(): boolean {
     return this.mode.giantPlayer.god === this.me;
+  }
+
+  /** Counted for whatever the local player plays: the giant on their turn, their god otherwise. */
+  private newTally(): KillTally {
+    this.tallyRound = this.mode.round;
+    return new KillTally(() => (this.giantIsMe ? this.mode.giant : this.me));
+  }
+
+  /**
+   * Takedown banners: the gods the player crushes as the giant (a stomp that
+   * catches two is a double kill), their kills and streaks as a god, and
+   * first blood. The player's own fall has the death screen, and the giant's
+   * is the round's end.
+   */
+  onEvent(e: SimEvent): void {
+    const m = this.mode;
+    if (e.type !== 'death' || e.unit.kind !== 'god' || e.unit === m.giant || m.phase !== 'fight') return;
+    if (this.tallyRound !== m.round) this.tally = this.newTally();
+    const killer = e.killer ? (e.killer.owner ?? e.killer) : null;
+    const b = this.tally.onGodDeath(e.unit, killer, m.timer);
+    // your own fall has its own screen (slain, returning in a few seconds)
+    if (!b || e.unit === this.me) return;
+    this.banner.className = 'mh-banner';
+    void this.banner.offsetWidth;
+    this.banner.className = `mh-banner show mh-${b.side}`;
+    // a giant doesn't slay, it crushes
+    const giant = this.giantIsMe && b.side === 'epic';
+    this.banner.textContent = giant && b.title === 'Enemy Slain' ? `${e.unit.name} crushed` : b.title;
+    if (b.sub) {
+      const sub = document.createElement('small');
+      sub.className = 'mh-banner-sub';
+      sub.textContent = b.sub;
+      this.banner.appendChild(sub);
+    }
+    this.bannerTime = 3;
   }
 
   private set(key: string, value: string, apply: (v: string) => void): void {
@@ -83,6 +128,14 @@ export class JotunnHud {
     const m = this.mode;
     const g = m.giant;
     const mine = this.giantIsMe;
+    if (this.bannerTime > 0) {
+      this.bannerTime -= dt;
+      // the round's end takes the screen
+      if (this.bannerTime <= 0 || m.phase !== 'fight') {
+        this.bannerTime = 0;
+        this.banner.classList.remove('show');
+      }
+    }
     this.set('round', `${m.round}/${m.rounds}`, () => (this.round.textContent = `ROUND ${m.round} / ${m.rounds}`));
     this.set('who', `${mine}:${m.giantPlayer.name}`, () => (this.who.textContent = mine ? 'You are the Jötunn' : `${m.giantPlayer.name} is the Jötunn`));
     this.root.classList.toggle('as-giant', mine);

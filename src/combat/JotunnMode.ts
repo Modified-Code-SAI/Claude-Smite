@@ -257,6 +257,7 @@ export class JotunnMode {
 
   onEvent(e: SimEvent): void {
     this.view.onEvent(e);
+    this.hud.onEvent(e);
   }
 
   frame(dt: number, time: number): void {

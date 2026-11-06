@@ -108,6 +108,21 @@ export const PARTS: Record<PartId, PartDef> = {
 
 export const PART_IDS = Object.keys(PARTS) as PartId[];
 
+/** How much of a blow on `u` the giant's Might takes: the part's multiplier for a weak point, 1 for anything else. */
+export function partMult(u: Unit): number {
+  return u.kind === 'weakpoint' ? (PARTS[u.tag as PartId]?.mult ?? 1) : 1;
+}
+
+/**
+ * How heavy a blow on a weak point feels (hit-stop, camera kick): the Might it
+ * takes, as a share of 1,500 health, about a god's. Even a basic attack on the
+ * crown lands heavy, and a skill on a knee; a basic on a knee doesn't. 0 for
+ * anything else.
+ */
+export function weakHeft(u: Unit, amount: number): number {
+  return u.kind === 'weakpoint' ? (amount * partMult(u)) / 1500 : 0;
+}
+
 export interface ShrineDef {
   id: string;
   name: string;

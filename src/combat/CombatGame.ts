@@ -50,7 +50,7 @@ import { descentRoster, type DescentSlot } from '../net/descentRoster';
 import type { Descent } from '../sim/Descent';
 import { DescentMode } from './DescentMode';
 import type { DescentCue } from './DescentView';
-import { JOTUNN, type Jotunn } from '../sim/Jotunn';
+import { JOTUNN, weakHeft, type Jotunn } from '../sim/Jotunn';
 import { BotComms } from '../sim/BotComms';
 import { PingMode, type PingSound } from './PingMode';
 import { GIANT_CAMERA, JotunnMode, type JotunnRole } from './JotunnMode';
@@ -1003,13 +1003,14 @@ export class CombatGame implements Updatable {
         else if (e.source === me && e.amount > 0 && e.target.team !== me.team) {
           // your blows catch for a few frames, longer for crits and big chunks, and the camera kicks on the heavy ones
           const chunk = e.amount / Math.max(1, e.target.combatant.stats.maxHealth);
-          const heavy = e.crit || chunk >= 0.08;
+          const heavy = e.crit || chunk >= 0.08 || weakHeft(e.target, e.amount) >= 0.08;
+          // a weak point that breaks under your blow lands like a kill
           const stop = !e.target.alive ? 0.12 : heavy ? 0.075 : e.ability ? 0 : 0.04;
-          if (stop > 0 && (e.target.kind === 'god' || e.target.kind === 'monster' || !e.ability)) {
+          if (stop > 0 && (e.target.kind === 'god' || e.target.kind === 'monster' || e.target.kind === 'weakpoint' || !e.ability)) {
             this.views.hitStop(me, stop);
             this.views.hitStop(e.target, stop);
           }
-          if (heavy && e.target.alive) shake(Math.min(0.2, 0.08 + chunk * 0.6));
+          if (heavy && e.target.alive) shake(Math.min(0.2, 0.08 + Math.max(chunk, weakHeft(e.target, e.amount)) * 0.6));
         }
         break;
       case 'impact':
