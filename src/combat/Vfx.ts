@@ -14,6 +14,10 @@ import { hypot } from '../core/math';
 
 type Ground = (x: number, z: number) => number;
 
+/** Bolt ends handed to an ArcView, which only reads them during the call, so one pair serves every arc. */
+const ARC_FROM = new THREE.Vector3();
+const ARC_TO = new THREE.Vector3();
+
 /**
  * A soft round sprite. Additive sprites are hot cores; alpha-blended ones are
  * colored glows that stay saturated even over sunlit marble (additive light
@@ -158,7 +162,7 @@ class ProjectileView {
     if (tail.distanceToSquared(at) > 0.01) a.bolt(at, tail, w, 0.35, 0.9, 3);
     for (let i = 0; i < 2; i++) {
       const r = this.size * (1.1 + Math.random());
-      const to = at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2 * r, (Math.random() - 0.5) * r, (Math.random() - 0.5) * 2 * r));
+      const to = ARC_TO.set((Math.random() - 0.5) * 2 * r, (Math.random() - 0.5) * r, (Math.random() - 0.5) * 2 * r).add(at);
       a.bolt(at, to, w * 0.6, 0.4, 0.6, 2);
     }
   }
@@ -449,8 +453,8 @@ class ZoneView {
       const r = Math.sqrt(Math.random()) * radius * 0.85;
       const sx = x + Math.sin(ang) * r;
       const sz = z + Math.cos(ang) * r;
-      const top = new THREE.Vector3(sx + (Math.random() - 0.5) * 4, ground(sx, sz) + 16, sz + (Math.random() - 0.5) * 4);
-      this.arc.strike(top, new THREE.Vector3(sx, ground(sx, sz) + 0.1, sz), 0.4, 2, 0.12);
+      const top = ARC_FROM.set(sx + (Math.random() - 0.5) * 4, ground(sx, sz) + 16, sz + (Math.random() - 0.5) * 4);
+      this.arc.strike(top, ARC_TO.set(sx, ground(sx, sz) + 0.1, sz), 0.4, 2, 0.12);
     } else if (p.element !== 'lightning') this.arc.clear();
     this.decal.setColors(p.vfx, p.core);
     // clouds carry smoke and sand areas, so their ground glow steps back
@@ -577,15 +581,14 @@ class FlashView {
     const a = this.arc;
     a.clear();
     const s = f.shape;
-    const g = (x: number, z: number) => this.ground(x, z);
-    const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const g = this.ground;
     switch (s.type) {
       case 'circle': {
         const fromCaster = hypot(f.owner.x - s.x, f.owner.z - s.z) < 1;
         if (!fromCaster || s.radius < 6) {
           // a bolt from the sky into the center
-          const top = v(s.x + (Math.random() - 0.5) * 3, g(s.x, s.z) + 18, s.z + (Math.random() - 0.5) * 3);
-          a.strike(top, v(s.x, g(s.x, s.z) + 0.1, s.z), Math.min(0.5, 0.18 + s.radius * 0.05), 3, 0.12);
+          const top = ARC_FROM.set(s.x + (Math.random() - 0.5) * 3, g(s.x, s.z) + 18, s.z + (Math.random() - 0.5) * 3);
+          a.strike(top, ARC_TO.set(s.x, g(s.x, s.z) + 0.1, s.z), Math.min(0.5, 0.18 + s.radius * 0.05), 3, 0.12);
         }
         // arcs racing over the ground out to the wave front
         const n = s.radius > 8 ? 7 : 4;
@@ -594,7 +597,7 @@ class FlashView {
           const ang = (i / n) * Math.PI * 2 + Math.random() * 0.8;
           const x = s.x + Math.sin(ang) * reach;
           const z = s.z + Math.cos(ang) * reach;
-          a.bolt(v(s.x, g(s.x, s.z) + 0.4, s.z), v(x, g(x, z) + 0.15, z), 0.12, 0.25, 0.7, 3);
+          a.bolt(ARC_FROM.set(s.x, g(s.x, s.z) + 0.4, s.z), ARC_TO.set(x, g(x, z) + 0.15, z), 0.12, 0.25, 0.7, 3);
         }
         break;
       }
@@ -602,7 +605,7 @@ class FlashView {
         const len = s.length * Math.max(0.15, wave);
         const ex = s.x - Math.sin(s.yaw) * len;
         const ez = s.z - Math.cos(s.yaw) * len;
-        a.strike(v(s.x, g(s.x, s.z) + 1.3, s.z), v(ex, g(ex, ez) + 1.0, ez), Math.min(0.45, s.width * 0.18), 4, 0.08);
+        a.strike(ARC_FROM.set(s.x, g(s.x, s.z) + 1.3, s.z), ARC_TO.set(ex, g(ex, ez) + 1.0, ez), Math.min(0.45, s.width * 0.18), 4, 0.08);
         break;
       }
       case 'cone': {
@@ -612,7 +615,7 @@ class FlashView {
           const r = s.range * Math.max(0.3, wave);
           const x = s.x - Math.sin(ang) * r;
           const z = s.z - Math.cos(ang) * r;
-          a.bolt(v(s.x, g(s.x, s.z) + 1.2, s.z), v(x, g(x, z) + 0.3, z), 0.16, 0.22, 0.8, 4);
+          a.bolt(ARC_FROM.set(s.x, g(s.x, s.z) + 1.2, s.z), ARC_TO.set(x, g(x, z) + 0.3, z), 0.16, 0.22, 0.8, 4);
         }
         break;
       }
@@ -728,8 +731,8 @@ export class CombatVfx {
       v.at = t;
       v.arc.clear();
       const top = MUZZLE_HEIGHT[s.kind] ?? 4;
-      const a = new THREE.Vector3(s.x, s.body.y + top, s.z);
-      const b = new THREE.Vector3(target.x, target.body.y + 1.3, target.z);
+      const a = ARC_FROM.set(s.x, s.body.y + top, s.z);
+      const b = ARC_TO.set(target.x, target.body.y + 1.3, target.z);
       v.arc.bolt(a, b, target === this.player ? 0.16 : 0.08, 0.03, target === this.player ? 0.7 : 0.4, 4);
     }
     for (const [s, v] of this.tethers) {
