@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { SLOT_COUNT, SLOT_KEYS, ULTIMATE_SLOT } from '../game/loadout';
 import { MAX_LEVEL } from '../game/progression';
 import type { CCKind } from '../game/types';
+import { partMult } from '../sim/Jotunn';
 import { RECALL_TIME } from '../sim/Sim';
 import { isStructure, type SimEvent, type Unit } from '../sim/Unit';
 import { hex, TEAM_COLORS } from '../combat/palette';
@@ -280,8 +281,10 @@ export class CombatHud {
         }
         if (mine && !onMe) this.markHit(e.crit ? 'crit' : 'hit');
         if (!mine && !onMe) break;
-        const cls = onMe ? 'taken' : e.crit ? 'crit' : e.ability ? 'ability' : 'basic';
-        this.floater(e.target, `${Math.round(e.amount)}${e.crit ? '!' : ''}`, `ch-num ch-num-${cls}`);
+        // on a weak point, what the giant's Might lost: the crown's and the wrists' blows count more, and show gold
+        const mult = partMult(e.target);
+        const cls = onMe ? 'taken' : e.crit || mult > 1 ? 'crit' : e.ability ? 'ability' : 'basic';
+        this.floater(e.target, `${Math.round(e.amount * mult)}${e.crit ? '!' : ''}`, `ch-num ch-num-${cls}`);
         break;
       }
       case 'heal':

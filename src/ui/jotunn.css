@@ -36,6 +36,8 @@
 .jotunn .clash-state[data-state=''] { box-shadow: 0 0 0 1px rgba(143, 228, 255, 0.4); color: #dff6ff; }
 .jt-big { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); display: none; font-size: clamp(40px, 7vw, 90px); letter-spacing: 0.14em; color: #dff6ff; text-shadow: 0 0 30px rgba(79, 207, 255, 0.7), 0 4px 18px rgba(0, 0, 0, 0.9); }
 .jt-big.show { display: block; animation: clash-in 0.35s ease-out; }
+/* takedown banners sit below the state line */
+.jotunn .mh-banner { top: max(22%, 176px); }
 .jt-wins { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; font: 12px system-ui, sans-serif; color: #f2e6cc; background: rgba(8, 6, 5, 0.6); border-radius: 5px; }
 .jt-wins span { display: flex; justify-content: space-between; gap: 14px; }
 .jt-wins span.me { color: #ffe08a; font-weight: 600; }

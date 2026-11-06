@@ -5,7 +5,7 @@ import { basicAttackRaw, computeDamage } from '../game/combat';
 import { ULTIMATE_SLOT } from '../game/loadout';
 import { XP_TABLE } from '../game/progression';
 import { godUnit } from './factory';
-import { Jotunn, JOTUNN, PARTS, SHRINES } from './Jotunn';
+import { Jotunn, JOTUNN, PARTS, partMult, SHRINES, weakHeft } from './Jotunn';
 import { escape, jotunnBots } from './JotunnBots';
 import { Sim, type SimTerrain } from './Sim';
 import type { Flash, Unit } from './Unit';
@@ -163,6 +163,20 @@ describe('Jötunn', () => {
     expect(part('kneeL').alive && part('kneeR').alive).toBe(true);
     expect(part('crown').targetable).toBe(false);
     expect(g.combatant.stats.bonusMoveSpeed).toBeCloseTo(0);
+  });
+
+  it('weighs a blow on a weak point by the Might it takes, the crown\'s the heaviest', () => {
+    const { part, g } = setup();
+    expect(partMult(part('crown'))).toBe(PARTS.crown.mult);
+    expect(partMult(part('kneeL'))).toBe(1);
+    expect(partMult(g)).toBe(1);
+    expect(weakHeft(part('crown'), 300)).toBeGreaterThan(weakHeft(part('kneeL'), 300));
+    // a basic attack on the crown (about 60 through its ice) lands heavy, with hit-stop and a camera kick;
+    // the same on a knee doesn't, though a skill there does
+    expect(weakHeft(part('crown'), 60)).toBeGreaterThanOrEqual(0.08);
+    expect(weakHeft(part('kneeL'), 60)).toBeLessThan(0.08);
+    expect(weakHeft(part('kneeL'), 200)).toBeGreaterThanOrEqual(0.08);
+    expect(weakHeft(g, 300)).toBe(0);
   });
 
   it('a broken knee grows back if the other holds', () => {
