@@ -28,6 +28,8 @@ import { isGiant, JOTUNN, lastStand, type PartId } from '../sim/Jotunn';
 const PHASES: SongName[] = ['dawn', 'battle', 'siege'];
 /** Seconds between the Jötunn's words over the gods it crushes. */
 const GIANT_GLOAT_GAP = 14;
+/** Seconds between the herald's calls that the giant is at a brazier. */
+const ATTACK_CALL_GAP = 25;
 
 
 type Surface = 'stone' | 'grass' | 'dirt' | 'coins' | 'ash';
@@ -1262,7 +1264,7 @@ export class GameAudio {
   // -------------------------------------------------------------------------
 
   /** Last seen Jötunn state, so each beat is called once. */
-  private jotunnSeen = { round: 0, phase: '', tick: 0, kneeling: false, claims: 0, fury: false, stand: false, song: 'frost' as SongName, braziers: [] as boolean[], parts: new Map<PartId, boolean>(), flashes: new Set<number>(), done: false };
+  private jotunnSeen = { round: 0, phase: '', tick: 0, kneeling: false, claims: 0, fury: false, stand: false, song: 'frost' as SongName, braziers: [] as boolean[], brazierHp: [] as number[], attackCall: -99, parts: new Map<PartId, boolean>(), flashes: new Set<number>(), done: false };
 
   /** The Jötunn: the giant's bellow and the round's call, the horn, smashed braziers, the kneel, shrines, regrowth and the result. */
   private watchJotunn(): void {
@@ -1278,6 +1280,8 @@ export class GameAudio {
       seen.stand = false;
       seen.claims = j.claims;
       seen.braziers = j.braziers.map((b) => b.alive);
+      seen.brazierHp = j.braziers.map((b) => b.combatant.health);
+      seen.attackCall = -99;
       for (const [id, p] of j.parts) seen.parts.set(id, p.alive);
       const last = j.round === j.rounds && j.rounds > 1 ? 'Final round. ' : '';
       this.herald.say(giantMe ? `${last}You are the Jötunn. Smash the braziers!` : `${last}${who} is the Jötunn. Guard the braziers!`, 'epic', 4);
@@ -1340,7 +1344,14 @@ export class GameAudio {
         if (need > 0) this.giantSays('brazier', 0.5);
         if (need > 0) this.herald.say(giantMe ? `A brazier is smashed! ${need} more.` : `A brazier is smashed! ${need === 1 ? 'Only one more and the temple falls.' : 'Hold the rest!'}`, giantMe ? 'good' : 'bad', 3);
       }
+      // the giant's first blows on a brazier call the gods to it (not again for a while: the marks show the rest)
+      const hp = b.combatant.health;
+      if (!giantMe && b.alive && hp < (seen.brazierHp[i] ?? hp) && this.time - seen.attackCall > ATTACK_CALL_GAP) {
+        seen.attackCall = this.time;
+        this.herald.say('A brazier is under attack! Defend it!', 'bad', 2);
+      }
       seen.braziers[i] = b.alive;
+      seen.brazierHp[i] = hp;
     });
     for (const [id, p] of j.parts) {
       const was = seen.parts.get(id);
