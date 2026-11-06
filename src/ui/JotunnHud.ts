@@ -28,6 +28,14 @@ const QUIET_AFTER = 6;
  * while they can be struck, dark once broken), the four braziers, the three
  * shrines, the round and everyone's wins, and the result.
  */
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
+
+/** The round's aim in a line, for whichever side the player is on: under the waking card's name, and the countdown's state line. */
+export function objective(giant: boolean): string {
+  const n = (k: number) => WORDS[k] ?? String(k);
+  return giant ? `Smash ${n(JOTUNN.braziersToWin)} of the ${n(JOTUNN.braziers.length)} braziers` : 'Guard the braziers: break its knees, then strike its crown';
+}
+
 export class JotunnHud {
   private readonly root = document.createElement('div');
   private readonly round: HTMLElement;
@@ -75,7 +83,7 @@ export class JotunnHud {
       </div>
       <div class="clash-state"></div>
       <div class="duel-big jt-big"></div>
-      <div class="jt-card"><small></small><b></b><span></span></div>
+      <div class="jt-card"><small></small><b></b><span></span><em></em></div>
       <div class="mh-banner"></div>
       <div class="jt-wins"></div>
       <div class="clash-end"><div class="clash-end-title"></div><div class="clash-end-score"></div><button class="clash-again">Play again</button></div>
@@ -179,6 +187,7 @@ export class JotunnHud {
       this.card.querySelector('small')!.textContent = last ? 'Final round' : `Round ${m.round} of ${m.rounds}`;
       this.card.querySelector('b')!.textContent = mine ? 'You' : m.giantPlayer.name;
       this.card.querySelector('span')!.textContent = mine ? 'are the Jötunn' : 'is the Jötunn';
+      this.card.querySelector('em')!.textContent = objective(mine);
     });
     if (this.bannerTime > 0) {
       this.bannerTime -= dt;
@@ -242,7 +251,7 @@ export class JotunnHud {
     if (m.phase === 'countdown') {
       this.idleLine = '';
       big = String(Math.max(1, Math.ceil(m.timer)));
-      text = mine ? 'Smash three of the four braziers' : 'Guard the braziers: break its knees, then strike its crown';
+      text = objective(mine);
     } else if (m.phase === 'fight') {
       if (m.kneeling > 0) {
         text = mine ? `On your knees: your crown is open (${Math.ceil(m.kneeling)} s)` : `It kneels: strike the crown! (${Math.ceil(m.kneeling)} s)`;
