@@ -36,6 +36,8 @@ export interface KitBuild {
   light(color: number, intensity: number, distance: number, x: number, y: number, z: number): THREE.PointLight;
   /** Makes a light beat like a heart: a strong pulse and a softer one, then a rest. */
   beat(light: THREE.PointLight): void;
+  /** Turns a part (left out of the dressing's bake) about an axis of its own, `speed` radians a second. */
+  spin(part: THREE.Object3D, axis: THREE.Vector3, speed: number): void;
 }
 
 /** A chamber's dressing for one depth: its columns, the vessels of its fires, and what lines its walls. */
@@ -45,7 +47,7 @@ export type Kit = (k: KitBuild) => void;
 export const FLAME_Y = 1.5;
 
 /** The floor plans with a landmark of their own, by their place in CHAMBERS (the Burning Pit is known by its pit). */
-const PLAN = { hall: 0, nave: 1 } as const;
+const PLAN = { hall: 0, nave: 1, crossroads: 2 } as const;
 
 /** A spot at the foot of the wall: where it is, the way out into the rock, and its angle round the chamber. */
 interface WallSpot {
@@ -162,6 +164,7 @@ export const forgeKit: Kit = (k) => {
   if (c.pit) chainedHeart(k);
   if (nave) forgeArches(k);
   if (index === PLAN.hall) hangingAnvil(k);
+  if (index === PLAN.crossroads) burningCrown(k);
   const smithies = c.boss ? 2 : 3;
   for (let s = 0, tries = 0; s < smithies && tries < 40; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
@@ -583,7 +586,7 @@ const HUNG_BASKET = merge([
 // The Ashen Depths' landmark: the Hall of Ash's titan's anvil
 
 /** How high the titan's anvil hangs over the hall (its foot). */
-const ANVIL_Y = 6.4;
+const ANVIL_Y = 7.0;
 
 /**
  * A titan's anvil hung over the middle of the hall: a great chain up into
@@ -630,6 +633,75 @@ const TITAN_ANVIL = merge([
 const MOLTEN_DRIP = lathe([[0, 0.05], [0.12, 0], [0.1, -0.35], [0.16, -0.7], [0.2, -0.85], [0.15, -1.0], [0, -1.04]], 12);
 /** The anvil's face, still glowing. */
 const TITAN_ANVIL_FACE = chippedBlock(4.5, 0.08, 1.95, 9725, 0.02).translate(-0.05, 3.22, 0);
+
+// ---------------------------------------------------------------------------
+// The Ashen Depths' landmark: the Crossroads' burning crown
+
+/** How high the burning crown hangs (the foot of its band), and its radius. */
+const CROWN = { y: 6.7, r: 3.0 } as const;
+
+/**
+ * A colossal iron crown hung over the crossing, slung on chains to the four
+ * piers and held up into the dark, glowing stones set round its band and a
+ * fire burning in a cup on each of its eight great points.
+ */
+function burningCrown(k: KitBuild): void {
+  const { c, mats, add } = k;
+  const { y, r } = CROWN;
+  add(CROWN_IRON, mats.iron, 0, y, 0);
+  add(CROWN_STONES, mats.slag, 0, y, 0, false);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const top = y + CROWN_POINT + 0.28;
+    add(COALS.clone().scale(0.5, 0.5, 0.5), mats.coals, Math.cos(a) * r, top - 0.05, Math.sin(a) * r, false);
+    add(FLAME_BED, mats.flameBed, Math.cos(a) * r, top - 0.04, Math.sin(a) * r, false).scale.setScalar(0.5);
+  }
+  // chains slung out to the piers, and four up from the band to a ring, and one from there into the dark
+  for (const [x, z, pr] of c.pillars) {
+    const d = Math.hypot(x, z);
+    const from = new THREE.Vector3((x / d) * (r + 0.1), y + 0.4, (z / d) * (r + 0.1));
+    add(slackChain(from, new THREE.Vector3(x - (x / d) * (pr + 0.5), 8.7, z - (z / d) * (pr + 0.5)), 0.4, 1.6), mats.iron, 0, 0, 0, false);
+  }
+  const ring = new THREE.Vector3(0, y + 8, 0);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 8;
+    add(slackChain(new THREE.Vector3(Math.cos(a) * (r - 0.1), y + 1.0, Math.sin(a) * (r - 0.1)), ring, 0.03, 1.1), mats.iron, 0, 0, 0, false);
+  }
+  chain(k, chainLink().scale(1.6, 1.6, 1.6), 0, 0, ring.y, 26);
+  k.light(0xff8a3a, 44, 17, 0, y + 1.6, 0);
+}
+
+/** How tall the crown's great points rise over its band. */
+const CROWN_POINT = 2.4;
+
+/** The crown's iron: a thick band with a rim top and bottom, eight great points each with a cup, eight lesser between. */
+const CROWN_IRON = (() => {
+  const { r } = CROWN;
+  const parts: THREE.BufferGeometry[] = [
+    lathe([[r - 0.16, 0], [r + 0.1, 0], [r + 0.14, 0.12], [r + 0.14, 1.0], [r + 0.1, 1.12], [r - 0.16, 1.12], [r - 0.16, 0]], 48),
+    new THREE.TorusGeometry(r + 0.16, 0.09, 6, 48).rotateX(Math.PI / 2).translate(0, 0.08, 0),
+    new THREE.TorusGeometry(r + 0.16, 0.09, 6, 48).rotateX(Math.PI / 2).translate(0, 1.06, 0),
+  ];
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const great = i % 2 === 0;
+    const h = great ? CROWN_POINT : 1.1;
+    const point = new THREE.ConeGeometry(great ? 0.42 : 0.3, h, 5).translate(0, 1.1 + h / 2, 0);
+    // leaning out a little, as a crown's points do
+    point.applyMatrix4(new THREE.Matrix4().makeRotationZ(-0.12).setPosition(r, 0, 0));
+    point.rotateY(-a);
+    parts.push(point);
+    if (great) parts.push(lathe([[0, 0], [0.1, 0], [0.32, 0.18], [0.36, 0.3], [0.3, 0.28], [0, 0.14]], 10).translate(r + 0.29, 1.1 + h - 0.06, 0).rotateY(-a));
+  }
+  return merge(parts);
+})();
+/** Glowing stones set round the band, between the great points. */
+const CROWN_STONES = merge(
+  Array.from({ length: 8 }, (_, i) => {
+    const a = ((i + 0.5) / 8) * Math.PI * 2;
+    return boulder(0.26, 9960 + i, 2).scale(1, 1.3, 0.55).translate(CROWN.r + 0.15, 0.56, 0).rotateY(-a);
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // The Treasure Wyrm's arena: its hoard
@@ -879,6 +951,7 @@ export const drownedKit: Kit = (k) => {
     hangingAnchor(k);
     drownedTomb(k, used);
   }
+  if (index === PLAN.crossroads) armillary(k);
   place(c.boss ? 3 : 2, 0.5, (s) => mourner(k, s));
   place(c.boss ? 1 : 3, 0.45, (s) => sarcophagus(k, s));
   const rocks = Array.from({ length: 5 }, (_, i) => boulder(1, 6200 + i * 19, 3));
@@ -1238,7 +1311,7 @@ function stream(h: number): THREE.BufferGeometry {
 // The Drowned Halls' landmark: the Hall of Ash's anchor and drowned king
 
 /** How high the anchor's crown hangs over the hall. */
-const ANCHOR_Y = 6.0;
+const ANCHOR_Y = 6.8;
 
 /**
  * A ship's anchor out of some drowned sea, colossal and green with age, hung
@@ -1345,6 +1418,70 @@ const EFFIGY = (() => {
 const EFFIGY_SWORD = merge([SWORD_BLADE, SWORD_HILT]).scale(1.25, 1.25, 1.25).applyMatrix4(
   new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)),
 ).translate(1.3 * 1.95, 1.3 * 0.47, 0);
+
+// ---------------------------------------------------------------------------
+// The Drowned Halls' landmark: the Crossroads' armillary
+
+/** How high the armillary's middle hangs. */
+const ARMILLARY_Y = 9.2;
+
+/**
+ * A great armillary sphere of old bronze hung over the crossing: a meridian
+ * and a horizon ring holding a tilted axle, a cage of rings turning slowly
+ * about it and the band of the heavens turning the other way, a ball of soul
+ * light at its heart.
+ */
+function armillary(k: KitBuild): void {
+  const { mats, add } = k;
+  const y = ARMILLARY_Y;
+  add(ARMILLARY_FRAME, mats.bronze, 0, y, 0);
+  add(ORB, mats.coals, 0, y, 0, false).scale.setScalar(2.6);
+  chain(k, chainLink().scale(1.5, 1.5, 1.5), 0, 0, y + 3.62, 26);
+  // the cage turns about the axle, the band of the heavens about its own tilt
+  const cage = new THREE.Mesh(ARMILLARY_CAGE, mats.verdigris);
+  cage.position.set(0, y, 0);
+  cage.rotation.z = AXLE_TILT;
+  const band = new THREE.Mesh(ARMILLARY_BAND, mats.bronze);
+  band.position.set(0, y, 0);
+  band.rotation.set(0.42, 0, -0.2);
+  for (const m of [cage, band]) {
+    m.castShadow = true;
+    m.receiveShadow = true;
+    k.group.add(m);
+  }
+  const up = new THREE.Vector3(0, 1, 0);
+  k.spin(cage, up, 0.16);
+  k.spin(band, up, -0.1);
+  k.light(0x6ab8ff, 36, 16, 0, y - 1.2, 0);
+}
+
+/** How far the armillary's axle leans from upright. */
+const AXLE_TILT = 0.41;
+
+/** The fixed frame: the meridian (upright), the horizon ring, the axle through them and the knobs at its ends. */
+const ARMILLARY_FRAME = (() => {
+  const axle = new THREE.Matrix4().makeRotationZ(AXLE_TILT);
+  return merge([
+    new THREE.TorusGeometry(3.5, 0.13, 8, 64),
+    new THREE.TorusGeometry(3.5, 0.11, 8, 64).rotateX(Math.PI / 2),
+    new THREE.CylinderGeometry(0.07, 0.07, 7.4, 8).applyMatrix4(axle),
+    ...[-1, 1].map((end) => new THREE.SphereGeometry(0.2, 12, 8).translate(0, end * 3.7, 0).applyMatrix4(axle)),
+    ...[0, 1, 2, 3].map((i) => new THREE.SphereGeometry(0.16, 10, 6).translate(3.5, 0, 0).rotateY((i / 4) * Math.PI * 2 + Math.PI / 4)),
+    new THREE.TorusGeometry(0.3, 0.08, 6, 14).rotateY(Math.PI / 2).translate(0, 3.66, 0),
+  ]);
+})();
+/** The turning cage: two rings crossing at the poles on y and one round its equator. */
+const ARMILLARY_CAGE = merge([
+  new THREE.TorusGeometry(2.95, 0.09, 6, 56),
+  new THREE.TorusGeometry(2.95, 0.09, 6, 56).rotateY(Math.PI / 2),
+  new THREE.TorusGeometry(2.95, 0.08, 6, 56).rotateX(Math.PI / 2),
+  ...[-1, 1].map((end) => new THREE.TorusGeometry(0.5, 0.06, 6, 20).rotateX(Math.PI / 2).translate(0, end * 2.55, 0)),
+]);
+/** The band of the heavens: a broad ring studded round its face. */
+const ARMILLARY_BAND = merge([
+  lathe([[2.3, -0.28], [2.46, -0.28], [2.5, -0.2], [2.5, 0.2], [2.46, 0.28], [2.3, 0.28], [2.3, -0.28]], 56),
+  ...Array.from({ length: 12 }, (_, i) => new THREE.SphereGeometry(0.09, 8, 6).scale(1, 1, 0.5).translate(0, 0, 2.52).rotateY((i / 12) * Math.PI * 2)),
+]);
 
 // ---------------------------------------------------------------------------
 // The Molten Colossus's arena: its foundry
@@ -1549,6 +1686,7 @@ export const abyssKit: Kit = (k) => {
   if (c.pit) reachingHand(k);
   if (index === PLAN.nave) leviathan(k);
   if (index === PLAN.hall) boneChandelier(k);
+  if (index === PLAN.crossroads) coiledSerpent(k);
   for (let n = 0, tries = 0; n < (c.boss ? 2 : 3) && tries < 60; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
     if (!spot || near(spot.a, 0.42)) continue;
@@ -1907,7 +2045,7 @@ function leviathan(k: KitBuild): void {
 // The Abyss's landmark: the Hall of Ash's bone chandelier
 
 /** How high the bone chandelier's lowest ring hangs. */
-const CHANDELIER = 6.9;
+const CHANDELIER = 7.6;
 
 /**
  * A great chandelier of bones hung over the middle of the hall on chains
@@ -1971,6 +2109,87 @@ function boneChandelier(k: KitBuild): void {
   chain(k, chainLink(), 0, 0, crown.y, 24);
   k.light(0x5aff8a, 44, 17, 0, y + 0.6, 0);
 }
+
+// ---------------------------------------------------------------------------
+// The Abyss's landmark: the Crossroads' coiled serpent
+
+/**
+ * The skeleton of a great serpent coiled down out of the dark over the
+ * crossing, its ribs curling in round the coil, its neck reaching out and
+ * down toward the way in, its jaws agape on the spirit fire in its throat.
+ */
+function coiledSerpent(k: KitBuild): void {
+  const { mats, add } = k;
+  const bones: THREE.BufferGeometry[] = [];
+  // the coil round the middle, from high in the dark down, then the neck out toward the way in
+  const pts: THREE.Vector3[] = [];
+  const turns = 2.25;
+  const R = 2.7;
+  const top = 19.5;
+  const low = 9.0;
+  for (let i = 0; i <= 54; i++) {
+    const t = i / 54;
+    const a = Math.PI / 2 + t * turns * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * R, top - (top - low) * t, Math.sin(a) * R));
+  }
+  const end = pts[pts.length - 1]!;
+  pts.push(new THREE.Vector3(end.x * 0.6, low - 0.6, end.z * 0.6 + 1.6), new THREE.Vector3(0.2, 7.8, 3.7), new THREE.Vector3(0, 7.1, 4.6));
+  const spineCurve = new THREE.CatmullRomCurve3(pts);
+  const n = Math.round(spineCurve.getLength() / 0.46);
+  const up = new THREE.Vector3(0, 1, 0);
+  const q = new THREE.Quaternion();
+  const basis = new THREE.Matrix4();
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    const p = spineCurve.getPointAt(u);
+    const t = spineCurve.getTangentAt(u);
+    // thin at the tail up in the dark, thickest round the coil, the neck a little slimmer
+    const s = 0.38 * (0.3 + 0.7 * smoothstep(0, 0.4, u)) * (1 - 0.22 * smoothstep(0.82, 1, u));
+    q.setFromUnitVectors(up, t);
+    bones.push(VERTEBRA.clone().scale(s, 0.46, s).applyQuaternion(q).translate(p.x, p.y, p.z));
+    if (u < 0.08 || u > 0.86) continue;
+    // a pair of ribs curling in toward the coil's middle
+    const inward = new THREE.Vector3(-p.x, 0, -p.z).normalize();
+    inward.addScaledVector(t, -inward.dot(t)).normalize();
+    const side = new THREE.Vector3().crossVectors(t, inward).normalize();
+    for (const dir of [-1, 1]) {
+      const y = side.clone().multiplyScalar(dir);
+      basis.makeBasis(inward, y, new THREE.Vector3().crossVectors(inward, y)).setPosition(p);
+      bones.push(curvedBone(s * 3.6, s * 0.17, 1.9, 0.3, 6).applyMatrix4(basis));
+    }
+  }
+  add(merge(bones), mats.bone, 0, 0, 0);
+  // the skull at the end of the neck, looking along it
+  const head = spineCurve.getPointAt(1);
+  const look = spineCurve.getTangentAt(1);
+  const place = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), look)).setPosition(head);
+  add(SERPENT_SKULL.clone().applyMatrix4(place), mats.bone, 0, 0, 0);
+  add(SERPENT_EYES.clone().applyMatrix4(place), mats.coals, 0, 0, 0, false);
+  const throat = new THREE.Vector3(0, -0.15, 0.7).applyMatrix4(place);
+  add(EYE, mats.coals, throat.x, throat.y, throat.z, false).scale.setScalar(0.42);
+  k.light(0x5aff8a, 26, 15, throat.x, throat.y - 1.4, throat.z + 1.8);
+  k.light(0x5aff8a, 20, 14, 0, low + 1.5, 0);
+}
+
+/** One of the serpent's vertebrae: a waisted drum on y, 1 m tall and 1 m round. */
+const VERTEBRA = lathe([[0, 0], [0.92, 0], [1, 0.14], [0.76, 0.5], [1, 0.86], [0.92, 0.96], [0, 0.96]], 10).translate(0, -0.48, 0);
+
+/** A serpent's skull looking down +z from its hinge at the origin: a long cranium, the snout, the brow, fangs, and the lower jaw dropped open. */
+const SERPENT_SKULL = (() => {
+  const jaw = new THREE.Matrix4().makeRotationX(0.75);
+  const fang = (x: number, z: number, len: number) => new THREE.ConeGeometry(0.07, len, 6).rotateX(Math.PI).translate(x, -len / 2 - 0.12, z);
+  return merge([
+    new THREE.SphereGeometry(0.62, 16, 12).scale(0.85, 0.55, 1.15).translate(0, 0.1, 0.35),
+    new THREE.SphereGeometry(0.42, 14, 10).scale(0.8, 0.42, 1.6).translate(0, 0.0, 1.15),
+    ...[-1, 1].map((side) => new THREE.SphereGeometry(0.16, 10, 8).scale(1.3, 0.6, 1.6).translate(side * 0.34, 0.3, 0.75)),
+    ...[-1, 1].map((side) => fang(side * 0.22, 1.6, 0.42)),
+    ...[-1, 1].map((side) => fang(side * 0.3, 1.25, 0.2)),
+    // the lower jaw, hinged at the back and dropped
+    new THREE.SphereGeometry(0.38, 12, 8).scale(0.9, 0.22, 2.4).translate(0, -0.18, 0.85).applyMatrix4(jaw),
+    ...[-1, 1].map((side) => new THREE.ConeGeometry(0.05, 0.26, 5).translate(side * 0.2, 0.0, 1.55).applyMatrix4(jaw)),
+  ]);
+})();
+const SERPENT_EYES = merge([-1, 1].map((side) => new THREE.SphereGeometry(0.11, 8, 6).translate(side * 0.34, 0.22, 0.82)));
 
 // ---------------------------------------------------------------------------
 // The Ossuary King's arena: its court
