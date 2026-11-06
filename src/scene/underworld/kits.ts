@@ -40,11 +40,19 @@ export interface KitBuild {
   spin(part: THREE.Object3D, axis: THREE.Vector3, speed: number): void;
 }
 
-/** A chamber's dressing for one depth: its columns, the vessels of its fires, and what lines its walls. */
+/** A chamber's dressing for one depth: its columns, the vessels of its fires, what lines its walls, and the dress of its gates. */
 export type Kit = (k: KitBuild) => void;
 
 /** Height of the flame over each brazier spot, the same in every depth (the fires belong to the chamber, not its dressing). */
 export const FLAME_Y = 1.5;
+
+/**
+ * How tall each gate's obsidian pylons stand and how high the underside of
+ * the lintel across them is: the chamber builds them (and the flames on the
+ * way on's pylons, just over their caps), and each depth dresses them.
+ */
+export const PYLON_H = 7.2;
+export const LINTEL_Y = 6.4;
 
 /** The floor plans with a landmark of their own, by their place in CHAMBERS (the Burning Pit is known by its pit). */
 const PLAN = { hall: 0, nave: 1, crossroads: 2, sanctums: 4 } as const;
@@ -99,6 +107,24 @@ function setPiece(): { g: THREE.Group; part: (geo: THREE.BufferGeometry, mat: TH
     return m;
   };
   return { g, part };
+}
+
+type Part = ReturnType<typeof setPiece>['part'];
+
+/**
+ * Dresses a chamber's gates, each built in its own frame (its middle at the
+ * floor, x across with the pylons at +-GATE.pylon, +z out into the chamber):
+ * the way back in, and the way on unless the chamber dresses that itself.
+ */
+function dressGates(k: KitBuild, dress: (part: Part) => void, exit = true): void {
+  for (const side of [-1, 1]) {
+    if (side < 0 && !exit) continue;
+    const { g, part } = setPiece();
+    dress(part);
+    g.position.set(0, 0, side * (k.c.extent + 0.6));
+    g.rotation.y = side < 0 ? 0 : Math.PI;
+    k.group.add(g);
+  }
 }
 
 /** Stands a set piece at a wall spot, `back` into the rock, facing the chamber's middle. */
@@ -172,6 +198,7 @@ export const forgeKit: Kit = (k) => {
   if (nave) forgeArches(k);
   if (index === PLAN.hall) hangingAnvil(k);
   if (index === PLAN.crossroads) burningCrown(k);
+  dressGates(k, (part) => forgeGate(k, part));
   const smithies = c.boss ? 2 : 3;
   for (let s = 0, tries = 0; s < smithies && tries < 40; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
@@ -988,6 +1015,7 @@ export const drownedKit: Kit = (k) => {
     drownedTomb(k, used);
   }
   if (index === PLAN.crossroads) armillary(k);
+  dressGates(k, (part) => drownedGate(k, part));
   place(c.boss ? 3 : 2, 0.5, (s) => mourner(k, s));
   place(c.boss ? 1 : 3, 0.45, (s) => sarcophagus(k, s));
   const rocks = Array.from({ length: 5 }, (_, i) => boulder(1, 6200 + i * 19, 3));
@@ -1758,9 +1786,12 @@ export const abyssKit: Kit = (k) => {
   if (index === PLAN.nave) leviathan(k);
   if (index === PLAN.hall) boneChandelier(k);
   if (index === PLAN.crossroads) coiledSerpent(k);
+  // (the Ossuary King's way on runs through its skull's mouth)
+  dressGates(k, (part) => abyssGate(k, part), !c.boss);
   for (let n = 0, tries = 0; n < (c.boss ? 2 : 3) && tries < 60; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
-    if (!spot || near(spot.a, 0.42)) continue;
+    // (the panels stand clear of the ribs rising either side of the gates)
+    if (!spot || near(spot.a, 0.42) || (Math.abs(spot.x) < RIB_ROOT + 3.4 && Math.abs(spot.z) > c.extent - 7)) continue;
     ossuary(k, spot);
     used.push(spot.a);
     n++;
@@ -2490,3 +2521,243 @@ function skullPyramid(k: KitBuild, s: WallSpot): void {
   part(SOCKETS.clone().scale(top, top, top), mats.coals, 0, y, 0, false);
   standAt(k, g, s, 0.4);
 }
+
+// ---------------------------------------------------------------------------
+// The gates: every chamber's are the same obsidian pylons and lintel, and
+// each depth dresses them in its own style (see dressGates for their frame)
+
+/** Where the lintel's top is, and how far its face stands out from the pylons' middle. */
+const LINTEL_TOP = LINTEL_Y + 1.1;
+const LINTEL_FACE = 1.1;
+
+/**
+ * The Ashen Depths' gates: the pylons bound in iron, a portcullis raised into
+ * the lintel with its spiked foot hanging over the way, a great chain slung
+ * across in front, and over it all a stepped crown of basalt with a
+ * furnace's mouth glowing in it behind bars and iron spikes along its top.
+ */
+function forgeGate(k: KitBuild, part: Part): void {
+  const { mats } = k;
+  const seed = 9100 + k.index * 7;
+  for (const sx of [-1, 1]) {
+    for (const y of [1.2, 4.1, 6.2]) part(PYLON_COLLAR, mats.iron, sx * GATE.pylon, y, 0);
+  }
+  part(PORTCULLIS, mats.iron, 0, 0, 0);
+  part(GATE_CHAIN, mats.iron, 0, 0, 0, false);
+  part(chippedBlock(5.4, 0.75, 1.9, seed, 0.04), mats.forgeStone, 0, LINTEL_TOP + 0.37, -0.1);
+  part(chippedBlock(3.3, 0.85, 1.7, seed + 1, 0.04), mats.forgeStone, 0, LINTEL_TOP + 1.17, -0.2);
+  part(band2(5.5, 0.16, 2.0, 0.06), mats.iron, 0, LINTEL_TOP + 0.7, -0.1);
+  part(FURNACE_MOUTH, mats.furnace, 0, LINTEL_TOP + 1.17, 0.67, false);
+  part(FURNACE_GRILLE, mats.iron, 0, LINTEL_TOP + 1.17, 0.7);
+  part(CROWN_SPIKES, mats.iron, 0, 0, 0);
+}
+
+/** A rectangular iron collar `w` wide and `d` deep: four flat bars. */
+function band2(w: number, h: number, d: number, t: number): THREE.BufferGeometry {
+  return merge([
+    new THREE.BoxGeometry(w, h, t).translate(0, 0, d / 2 - t / 2),
+    new THREE.BoxGeometry(w, h, t).translate(0, 0, -d / 2 + t / 2),
+    new THREE.BoxGeometry(t, h, d - 2 * t).translate(w / 2 - t / 2, 0, 0),
+    new THREE.BoxGeometry(t, h, d - 2 * t).translate(-w / 2 + t / 2, 0, 0),
+  ]);
+}
+
+/** An iron collar round a pylon, clear of its chipped faces. */
+const PYLON_COLLAR = band2(1.9, 0.32, 2.8, 0.08);
+
+/** The portcullis drawn up into the lintel: its bars, two rails across them, and the spikes along its foot. */
+const PORTCULLIS = (() => {
+  const foot = 5.75;
+  const top = LINTEL_Y + 0.4;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i <= 10; i++) {
+    const x = -2.5 + i * 0.5;
+    parts.push(new THREE.BoxGeometry(0.1, top - foot, 0.1).translate(x, (foot + top) / 2, 0));
+    parts.push(new THREE.ConeGeometry(0.075, 0.34, 6).rotateX(Math.PI).translate(x, foot - 0.17, 0));
+  }
+  for (const y of [5.95, 6.28]) parts.push(new THREE.BoxGeometry(5.3, 0.1, 0.13).translate(0, y, 0));
+  return merge(parts);
+})();
+
+/** A great chain slung between the pylons' faces under the lintel, hung from a ring on each. */
+const GATE_CHAIN = (() => {
+  const z = 1.45;
+  const parts = [slackChain(new THREE.Vector3(-3.05, 7.0, z), new THREE.Vector3(3.05, 7.0, z), 0.75, 1.5)];
+  for (const sx of [-1, 1]) parts.push(new THREE.TorusGeometry(0.17, 0.05, 6, 12).translate(sx * 3.05, 7.12, z - 0.08));
+  return merge(parts);
+})();
+
+/** The fire seen through the slot in the crown (the furnace material wants its own uv). */
+const FURNACE_MOUTH = new THREE.PlaneGeometry(1.8, 0.5);
+
+/** The slot's iron frame and the bars across it. */
+const FURNACE_GRILLE = merge([
+  new THREE.BoxGeometry(2.0, 0.09, 0.1).translate(0, 0.3, 0),
+  new THREE.BoxGeometry(2.0, 0.09, 0.1).translate(0, -0.3, 0),
+  new THREE.BoxGeometry(0.09, 0.69, 0.1).translate(-0.96, 0, 0),
+  new THREE.BoxGeometry(0.09, 0.69, 0.1).translate(0.96, 0, 0),
+  ...[-0.6, -0.2, 0.2, 0.6].map((x) => new THREE.BoxGeometry(0.06, 0.52, 0.06).translate(x, 0, 0.02)),
+]);
+
+/** Iron spikes along the crown's top, and a taller one on each end of its lower step. */
+const CROWN_SPIKES = merge([
+  ...[-1.3, -0.65, 0, 0.65, 1.3].map((x) => new THREE.ConeGeometry(0.1, x === 0 ? 0.85 : 0.6, 6).translate(x, LINTEL_TOP + 1.6 + (x === 0 ? 0.42 : 0.3), -0.2)),
+  ...[-1, 1].map((sx) => new THREE.ConeGeometry(0.13, 0.95, 6).translate(sx * 2.35, LINTEL_TOP + 0.75 + 0.47, -0.1)),
+]);
+
+/**
+ * The Drowned Halls' gates: the pylons and lintel cased in pale limestone on
+ * moulded plinths, a round arch over the lintel with a fan of green bronze
+ * like a shell's ribs in it, and water pouring from a bronze spout high on
+ * each pylon into a basin at its foot.
+ */
+function drownedGate(k: KitBuild, part: Part): void {
+  const { mats } = k;
+  const seed = 9200 + k.index * 7;
+  for (const sx of [-1, 1]) {
+    const x = sx * GATE.pylon;
+    // (a little wider than the pylons all round, so their chips stay inside)
+    part(chippedBlock(1.96, PYLON_H, 2.86, seed + sx, 0.025), mats.tideStone, x, PYLON_H / 2, 0);
+    part(chippedBlock(2.3, 0.55, 3.2, seed + 2 + sx, 0.025), mats.tideStone, x, 0.27, 0);
+    part(chippedBlock(2.36, 0.62, 3.26, seed + 4 + sx, 0.025), mats.tideStone, x, PYLON_H + 0.25, 0);
+    part(GATE_SPOUT, mats.verdigris, x, SPOUT_Y, 1.43);
+    part(BASIN, mats.tideStone, x, 0, 1.43);
+    part(BASIN_WATER, mats.pool, x, BASIN_LIP - 0.07, 1.43, false);
+    part(stream(SPOUT_Y - BASIN_LIP - 0.05), mats.waterfall, x, BASIN_LIP - 0.05, 1.43 + SPOUT_REACH, false);
+  }
+  part(chippedBlock(GATE.pylon * 2 + 2.4, 1.24, 2.36, seed + 7, 0.025), mats.tideStone, 0, LINTEL_Y + 0.55, 0);
+  part(ARCH, mats.tideStone, 0, 0, 0);
+  part(ARCH_KEY, mats.tideStone, 0, 0, 0);
+  part(SHELL_BACK, mats.tideStone, 0, ARCH_MID, -0.25, false);
+  part(SHELL_RIBS, mats.verdigris, 0, 0, 0);
+}
+
+/** How high each spout is, how far its mouth reaches out from the pylon's face, and the height of its basin's lip. */
+const SPOUT_Y = 5.3;
+const SPOUT_REACH = 0.42;
+const BASIN_LIP = 0.9;
+
+/** A bronze pipe out of the stone, ending in a mouth turned down. */
+const GATE_SPOUT = merge([
+  new THREE.CylinderGeometry(0.12, 0.16, SPOUT_REACH, 10).rotateX(Math.PI / 2).translate(0, 0, SPOUT_REACH / 2),
+  new THREE.TorusGeometry(0.17, 0.05, 6, 12).translate(0, 0, 0.04),
+  new THREE.CylinderGeometry(0.2, 0.12, 0.22, 12).translate(0, -0.08, SPOUT_REACH),
+]);
+
+/** A round stone basin half sunk in the pylon's plinth, and the water in it. */
+const BASIN = lathe([[0, 0], [0.62, 0], [0.66, 0.5], [0.8, BASIN_LIP - 0.08], [0.84, BASIN_LIP], [0.74, BASIN_LIP], [0.7, BASIN_LIP - 0.1], [0, BASIN_LIP - 0.1]], 24);
+const BASIN_WATER = new THREE.CircleGeometry(0.71, 24).rotateX(-Math.PI / 2);
+
+/** The arch's middle (under the lintel's top, so it rises flatter than a half circle), its stones' inner and outer radii, and how many there are. */
+const ARCH_MID = 6.6;
+const ARCH_IN = 2.45;
+const ARCH_OUT = 3.15;
+const ARCH_STONES = 9;
+/** Where the arch springs from the lintel's top, as an angle round its middle. */
+const ARCH_FROM = Math.asin((LINTEL_TOP + 0.06 - ARCH_MID) / ((ARCH_IN + ARCH_OUT) / 2));
+
+/** The arch's stones, from one side of the lintel round to the other, the middle one left for the keystone. */
+const ARCH = (() => {
+  const parts: THREE.BufferGeometry[] = [];
+  const span = (Math.PI - 2 * ARCH_FROM) / ARCH_STONES;
+  const mid = (ARCH_IN + ARCH_OUT) / 2;
+  for (let i = 0; i < ARCH_STONES; i++) {
+    if (i === (ARCH_STONES - 1) / 2) continue;
+    const a = ARCH_FROM + (i + 0.5) * span;
+    parts.push(chippedBlock(span * mid - 0.05, ARCH_OUT - ARCH_IN, 1.5, 9300 + i, 0.025).rotateZ(a - Math.PI / 2).translate(Math.cos(a) * mid, ARCH_MID + Math.sin(a) * mid, 0));
+  }
+  return merge(parts);
+})();
+
+/** The keystone, longer than the rest and standing proud of them. */
+const ARCH_KEY = (() => {
+  const span = (Math.PI - 2 * ARCH_FROM) / ARCH_STONES;
+  const mid = (ARCH_IN + ARCH_OUT) / 2;
+  return chippedBlock(span * mid * 1.15, ARCH_OUT - ARCH_IN + 0.35, 1.8, 9310, 0.025).translate(0, ARCH_MID + mid + 0.15, 0.1);
+})();
+
+/** The stone filling the arch behind the fan. */
+const SHELL_BACK = new THREE.CircleGeometry(ARCH_IN + 0.05, 32, 0, Math.PI);
+
+/** The fan's bronze ribs, spreading from under the lintel's top up to the arch. */
+const SHELL_RIBS = merge(
+  Array.from({ length: 9 }, (_, i) => {
+    const a = ARCH_FROM + 0.12 + (i / 8) * (Math.PI - 2 * ARCH_FROM - 0.24);
+    const from = 0.45;
+    const to = ARCH_IN - 0.04;
+    return new THREE.BoxGeometry(0.15, to - from, 0.14, 1, 1, 1)
+      .translate(0, (from + to) / 2, 0)
+      .rotateZ(a - Math.PI / 2)
+      .translate(0, ARCH_MID, -0.15);
+  }),
+);
+
+/**
+ * The Abyss's gates: two great ribs rising either side of the pylons and
+ * curling in over the flames toward each other, a skull keystone on the
+ * lintel with the spirit fire in its eyes, and a row of skulls set along
+ * the lintel's face.
+ */
+function abyssGate(k: KitBuild, part: Part): void {
+  const { mats } = k;
+  for (const sx of [-1, 1]) part(sx < 0 ? GATE_RIB : GATE_RIB_RIGHT, mats.bone, sx * RIB_ROOT, 0, 0.2);
+  part(KEY_SKULL, mats.bone, 0, LINTEL_TOP + 0.82, 0.3);
+  part(KEY_EYES, mats.coals, 0, LINTEL_TOP + 0.82, 0.3, false);
+  part(FRIEZE, mats.bone, 0, 0, 0);
+  part(FRIEZE_SOCKETS, mats.obsidian, 0, 0, 0, false);
+}
+
+/**
+ * Bends a part built up the y axis (0 to `length`) toward +x, turning through
+ * `curl` radians, more and more of it toward its tip (`power` over 1): a
+ * rib that rises nearly straight and then curls over.
+ */
+function curlOver(geo: THREE.BufferGeometry, length: number, curl: number, power: number): THREE.BufferGeometry {
+  const steps = 96;
+  const sx = [0];
+  const sy = [0];
+  for (let i = 0; i < steps; i++) {
+    const th = curl * ((i + 0.5) / steps) ** power;
+    sx.push(sx[i]! + (Math.sin(th) * length) / steps);
+    sy.push(sy[i]! + (Math.cos(th) * length) / steps);
+  }
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const t = Math.min(1, Math.max(0, pos.getY(i) / length));
+    const j = Math.min(steps - 1, Math.floor(t * steps));
+    const f = t * steps - j;
+    const th = curl * t ** power;
+    const px = sx[j]! + (sx[j + 1]! - sx[j]!) * f;
+    const py = sy[j]! + (sy[j + 1]! - sy[j]!) * f;
+    pos.setXY(i, px + x * Math.cos(th), py - x * Math.sin(th));
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** How far out from the gate's middle the ribs rise. */
+const RIB_ROOT = 5.5;
+
+/** The left gate rib, its root a little out from the pylon, curling in toward +x (the right one is it turned about). */
+const GATE_RIB = (() => {
+  const length = 12.8;
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= 28; i++) {
+    const t = i / 28;
+    pts.push([0.5 * (1 - 0.8 * t) * (1 + 0.1 * Math.sin(t * Math.PI * 5)), t * length]);
+  }
+  pts.push([0, length]);
+  // leaning out a touch at its root
+  return curlOver(lathe(pts, 10), length, 2.1, 3.5).rotateZ(0.03);
+})();
+const GATE_RIB_RIGHT = GATE_RIB.clone().rotateY(Math.PI);
+
+/** The keystone skull and the fire in its eyes. */
+const KEY_SKULL = skull(0.75);
+const KEY_EYES = SOCKETS.clone().scale(0.75, 0.75, 0.75);
+
+/** Skulls set in a row along the lintel's face between the pylons, and their dark sockets. */
+const FRIEZE_AT = [-2.1, -1.4, -0.7, 0, 0.7, 1.4, 2.1].map((x, i) => ({ x, r: 0.2 + (i % 2) * 0.015, turn: (i - 3) * 0.06 }));
+const FRIEZE = merge(FRIEZE_AT.map(({ x, r, turn }) => skull(r).rotateY(turn).translate(x, LINTEL_Y + 0.55, LINTEL_FACE)));
+const FRIEZE_SOCKETS = merge(FRIEZE_AT.map(({ x, r, turn }) => SOCKETS.clone().scale(r, r, r).rotateY(turn).translate(x, LINTEL_Y + 0.55, LINTEL_FACE)));
