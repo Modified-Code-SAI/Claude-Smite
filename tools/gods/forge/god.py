@@ -155,12 +155,17 @@ class God:
         v = verts * self.body.scale + self.body.offset
         tris = np.concatenate([faces[:, [0, 1, 2]], faces[:, [0, 2, 3]]]) if faces.shape[1] == 4 else faces
         m = Mesh(v, tris)
-        # red channel: 1 at the pupil, falling off toward the white (for the iris shader)
+        # red: 1 at the pupil, falling off toward the white; green and blue: how far up
+        # and across the eyeball (0.5 at the middle), for the lid shadow and the iris
+        # fibers; alpha 1 marks a real eyeball (painted creature eyes leave it 0)
         col = np.zeros((len(v), 4))
         for side in (v[:, 0] > 0, v[:, 0] <= 0):
             c = v[side].mean(axis=0)
             d = normalize(v[side] - c)
             col[side, 0] = np.clip(d[:, 2], 0, 1)
+            col[side, 1] = d[:, 1] * 0.5 + 0.5
+            col[side, 2] = d[:, 0] * 0.5 + 0.5
+            col[side, 3] = 1
         m.col = col
         self.add('eyes', material, m, 'DEF-head')
 
