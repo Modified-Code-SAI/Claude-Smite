@@ -1,7 +1,10 @@
 /**
  * What the gods say: original lines, spoken with Kokoro TTS (an Apache-2.0
  * open model) by tools/voices/speak.py into public/voices/<god>/<kind>-<n>.mp3.
- * Edit a line here, then run the script again for that god.
+ * The heated lines (start, kill, streak, ult, death, respawn, taunt) are then
+ * spoken again with feeling by tools/voices/shout.py (Chatterbox, MIT), which
+ * clones each god's Kokoro voice. Edit a line here, then run both scripts
+ * again for that god (shout.py takes god/kind-n to redo a single line).
  */
 
 export type LineKind = 'select' | 'start' | 'kill' | 'streak' | 'ult' | 'death' | 'respawn' | 'taunt' | 'omw';
