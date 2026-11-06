@@ -81,6 +81,9 @@ export interface CombatantNet {
   allocation: Allocation;
 }
 
+/** Scratch for Combatant.update's cooldown pass. */
+const COOLDOWN_IDS: string[] = [];
+
 export class Combatant {
   readonly god: GodDef;
   readonly team: Team;
@@ -161,9 +164,11 @@ export class Combatant {
   }
 
   gainXp(amount: number): void {
+    const level = this.level;
     const before = this.stats;
     this.xp += amount;
-    this.growResources(before);
+    // stats only move with the level (modes that trickle XP every step would otherwise rebuild them every step)
+    if (this.level !== level) this.growResources(before);
   }
 
   gainFavor(amount: number): void {
@@ -745,19 +750,29 @@ export class Combatant {
 
   update(dt: number): void {
     // Cooldowns keep running while dead so a respawn doesn't extend them.
-    for (const id of [...this.cooldowns.keys()]) this.tickCooldown(id, dt);
+    // (a copy of the ids: a skill's next charge goes back in the map, and must not tick twice; one list shared by all, as this runs for every unit every step)
+    if (this.cooldowns.size > 0) {
+      const ids = COOLDOWN_IDS;
+      ids.length = 0;
+      for (const id of this.cooldowns.keys()) ids.push(id);
+      for (const id of ids) this.tickCooldown(id, dt);
+    }
     if (!this.alive) {
       this.respawnTimer -= dt;
       if (this.respawnTimer <= 0) this.respawn();
       return;
     }
-    const before = this.mods.length;
-    for (const m of this.mods) m.remaining -= dt;
-    this.mods = this.mods.filter((m) => m.remaining > 0);
-    if (this.mods.length !== before) this.invalidate();
+    // (new lists only when something actually ran out)
+    let expired = false;
+    for (const m of this.mods) if ((m.remaining -= dt) <= 0) expired = true;
+    if (expired) {
+      this.mods = this.mods.filter((m) => m.remaining > 0);
+      this.invalidate();
+    }
 
-    for (const s of this.shields) s.remaining -= dt;
-    this.shields = this.shields.filter((s) => s.remaining > 0 && s.amount > 0);
+    expired = false;
+    for (const s of this.shields) if ((s.remaining -= dt) <= 0 || s.amount <= 0) expired = true;
+    if (expired) this.shields = this.shields.filter((s) => s.remaining > 0 && s.amount > 0);
 
     if (this.stacks.count > 0) {
       this.stacks.remaining -= dt;

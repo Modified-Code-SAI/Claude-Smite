@@ -153,9 +153,14 @@ export class CCState {
   }
 
   update(dt: number): void {
-    for (const c of this.active) c.remaining -= dt;
-    this.active = this.active.filter((c) => c.remaining > 0);
-    this.drStacks = this.drStacks.map((t) => t - dt).filter((t) => t > 0);
+    // (runs for every unit every step: new lists only when something actually wore off)
+    let expired = false;
+    for (const c of this.active) if ((c.remaining -= dt) <= 0) expired = true;
+    if (expired) this.active = this.active.filter((c) => c.remaining > 0);
+    const dr = this.drStacks;
+    let left = 0;
+    for (let i = 0; i < dr.length; i++) if ((dr[i]! -= dt) > 0) dr[left++] = dr[i]!;
+    dr.length = left;
   }
 
   has(kind: CCKind): boolean {
@@ -163,7 +168,9 @@ export class CCState {
   }
 
   totalSlow(): number {
-    return this.active.filter((c) => c.kind === 'slow').reduce((sum, c) => sum + c.magnitude, 0);
+    let sum = 0;
+    for (const c of this.active) if (c.kind === 'slow') sum += c.magnitude;
+    return sum;
   }
 
   locks(): CCLocks {

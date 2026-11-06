@@ -82,11 +82,14 @@ export class Temple implements MapContent {
     floor.position.y = p.topY + 0.004;
     this.add(floor, false);
 
+    // (read once: the ground is sampled for every vertex of every ground marking, and the getter boxed a number each time)
+    const { stepCount, stepDepth, stepHeight } = p;
+    const base = p.baseRadius;
     this.collision.addSurface((x, z) => {
       const r = hypot(x, z);
-      if (r > p.baseRadius) return null;
-      const step = Math.min(p.stepCount, Math.floor((p.baseRadius - r) / p.stepDepth) + 1);
-      return step * p.stepHeight;
+      if (r > base) return null;
+      const step = Math.min(stepCount, Math.floor((base - r) / stepDepth) + 1);
+      return step * stepHeight;
     });
     return [steps, floor];
   }
