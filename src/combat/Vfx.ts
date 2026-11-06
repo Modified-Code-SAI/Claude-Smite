@@ -513,9 +513,11 @@ export class RelicView {
     const { x, z } = this.at;
     const y = this.ground(x, z);
     // decals are conformed to the ground only when they change, not every frame
-    const key = `${x},${z},${radius}`;
-    if (key !== this.placed) {
-      this.placed = key;
+    const was = this.placed;
+    if (x !== was.x || z !== was.z || radius !== was.radius) {
+      was.x = x;
+      was.z = z;
+      was.radius = radius;
       this.ring.place({ type: 'ring', radius, width: 0.6 }, x, z, 0, 0.1);
       this.filled = -1;
     }
@@ -539,7 +541,7 @@ export class RelicView {
   }
 
   private at = { x: 0, z: 0 };
-  private placed = '';
+  private readonly placed = { x: NaN, z: NaN, radius: NaN };
   private filled = -1;
 }
 

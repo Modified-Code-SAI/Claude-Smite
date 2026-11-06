@@ -104,7 +104,11 @@ export class GroundDecal {
   readonly mesh: THREE.Mesh;
   readonly values = decalUniforms();
   private local: Float32Array = new Float32Array(0);
-  private shapeKey = '';
+  /** The shape the local vertices were laid out for, and its grid (which edge, along and the triangles depend on). */
+  private shape: { type: DecalShape['type'] | ''; a: number; b: number } = { type: '', a: NaN, b: NaN };
+  private grid = '';
+  /** Where it was last conformed, and the ground height under its center then. */
+  private placed = { x: NaN, z: NaN, yaw: NaN, lift: NaN, ground: NaN };
   private readonly geometry = new THREE.BufferGeometry();
 
   constructor(private readonly groundAt: (x: number, z: number) => number) {
@@ -127,18 +131,32 @@ export class GroundDecal {
     this.values.core.setHex(core);
   }
 
-  /** Place the shape at (x, z) facing `yaw` and conform it to the ground. */
+  /**
+   * Place the shape at (x, z) facing `yaw` and conform it to the ground.
+   * Called every frame with the same arguments it does nothing: the mesh is
+   * only conformed and uploaded again when the shape, the spot or the
+   * ground under it changes.
+   */
   place(shape: DecalShape, x: number, z: number, yaw: number, lift = 0.07): void {
-    this.ensureShape(shape);
+    const resized = this.ensureShape(shape);
+    const ground = this.groundAt(x, z);
+    const at = this.placed;
+    if (!resized && x === at.x && z === at.z && yaw === at.yaw && lift === at.lift && ground === at.ground) return;
+    at.x = x;
+    at.z = z;
+    at.yaw = yaw;
+    at.lift = lift;
+    at.ground = ground;
     this.values.center.set(x, z);
     const pos = this.geometry.getAttribute('position') as THREE.BufferAttribute;
     const arr = pos.array as Float32Array;
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
-    const n = this.local.length / 2;
+    const local = this.local;
+    const n = local.length / 2;
     for (let i = 0; i < n; i++) {
-      const lx = this.local[i * 2]!;
-      const lz = this.local[i * 2 + 1]!;
+      const lx = local[i * 2]!;
+      const lz = local[i * 2 + 1]!;
       const wx = x + lx * cos + lz * sin;
       const wz = z - lx * sin + lz * cos;
       arr[i * 3] = wx;
@@ -148,16 +166,38 @@ export class GroundDecal {
     pos.needsUpdate = true;
   }
 
-  private ensureShape(shape: DecalShape): void {
-    const key = JSON.stringify(shape);
-    if (key === this.shapeKey) return;
-    this.shapeKey = key;
-    const { local, edge, along, index } = build(shape);
-    this.local = local;
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array((local.length / 2) * 3), 3));
+  /**
+   * Lays the shape out in local space; true when that changed. A new size on
+   * the same grid (a telegraph or a pooled flash of a similar size) only
+   * moves the vertices; a different grid gets new attributes.
+   */
+  private ensureShape(shape: DecalShape): boolean {
+    const a = shape.type === 'circle' || shape.type === 'ring' ? shape.radius : shape.type === 'rect' ? shape.length : shape.range;
+    const b = shape.type === 'circle' ? 0 : shape.type === 'cone' ? shape.angle : shape.width;
+    const was = this.shape;
+    if (shape.type === was.type && a === was.a && b === was.b) return false;
+    was.type = shape.type;
+    was.a = a;
+    was.b = b;
+    const { cols, rows } = gridOf(shape);
+    const grid = `${shape.type}:${cols}:${rows}`;
+    if (grid === this.grid) {
+      layOut(shape, cols, rows, this.local, null, null);
+      return true;
+    }
+    this.grid = grid;
+    const n = (cols + 1) * (rows + 1);
+    const edge = new Float32Array(n);
+    const along = new Float32Array(n);
+    this.local = new Float32Array(n * 2);
+    layOut(shape, cols, rows, this.local, edge, along);
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     this.geometry.setAttribute('edge', new THREE.BufferAttribute(edge, 1));
     this.geometry.setAttribute('along', new THREE.BufferAttribute(along, 1));
-    this.geometry.setIndex(index);
+    this.geometry.setIndex(new THREE.BufferAttribute(gridIndex(cols, rows, n), 1));
+    // (a new grid always needs conforming, even on the same spot)
+    this.placed.x = NaN;
+    return true;
   }
 
   dispose(): void {
@@ -165,69 +205,93 @@ export class GroundDecal {
   }
 }
 
-/** Local XZ vertices, an edge factor (0 center, 1 outline) and triangles. */
-function build(shape: DecalShape): { local: Float32Array; edge: Float32Array; along: Float32Array; index: number[] } {
-  const pts: number[] = [];
-  const edge: number[] = [];
-  const along: number[] = [];
-  const index: number[] = [];
-  // every shape's rows run from its origin (v = 0) to its far end (v = 1)
-  const grid = (cols: number, rows: number, at: (u: number, v: number) => [number, number, number]) => {
-    for (let r = 0; r <= rows; r++) {
-      for (let c = 0; c <= cols; c++) {
-        const [x, z, e] = at(c / cols, r / rows);
-        pts.push(x, z);
-        edge.push(e);
-        along.push(r / rows);
-      }
-    }
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const a = r * (cols + 1) + c;
-        const b = a + cols + 1;
-        index.push(a, b, a + 1, a + 1, b, b + 1);
-      }
-    }
-  };
+/** How many columns (around or across) and rows (out from the origin) a shape's grid has. */
+function gridOf(shape: DecalShape): { cols: number; rows: number } {
   switch (shape.type) {
-    case 'circle': {
-      const rings = Math.max(4, Math.ceil(shape.radius / 0.8));
-      grid(Math.max(32, Math.ceil(shape.radius * 10)), rings, (u, v) => {
-        const a = u * Math.PI * 2;
-        return [Math.sin(a) * v * shape.radius, Math.cos(a) * v * shape.radius, v];
-      });
-      break;
-    }
-    case 'ring': {
-      const inner = Math.max(0, shape.radius - shape.width);
-      grid(Math.max(48, Math.ceil(shape.radius * 6)), 2, (u, v) => {
-        const a = u * Math.PI * 2;
-        const r = inner + (shape.radius - inner) * v;
-        return [Math.sin(a) * r, Math.cos(a) * r, 0.84 + v * 0.16];
-      });
-      break;
-    }
-    case 'rect': {
-      const rows = Math.max(4, Math.ceil(shape.length / 0.8));
-      grid(4, rows, (u, v) => {
-        const across = (u - 0.5) * 2;
-        const x = (across * shape.width) / 2;
-        const z = -v * shape.length;
-        // outline on both sides and the far end; the near end stays open
-        return [x, z, Math.max(Math.abs(across), v)];
-      });
-      break;
-    }
-    case 'cone': {
-      const half = (shape.angle * Math.PI) / 360;
-      const rings = Math.max(4, Math.ceil(shape.range / 0.8));
-      grid(Math.max(12, Math.ceil(shape.angle / 4)), rings, (u, v) => {
-        const a = (u - 0.5) * 2 * half;
-        const r = v * shape.range;
-        return [-Math.sin(a) * r, -Math.cos(a) * r, Math.max(v, Math.abs(u - 0.5) * 2)];
-      });
-      break;
+    case 'circle':
+      return { cols: Math.max(32, Math.ceil(shape.radius * 10)), rows: Math.max(4, Math.ceil(shape.radius / 0.8)) };
+    case 'ring':
+      return { cols: Math.max(48, Math.ceil(shape.radius * 6)), rows: 2 };
+    case 'rect':
+      return { cols: 4, rows: Math.max(4, Math.ceil(shape.length / 0.8)) };
+    case 'cone':
+      return { cols: Math.max(12, Math.ceil(shape.angle / 4)), rows: Math.max(4, Math.ceil(shape.range / 0.8)) };
+  }
+}
+
+/**
+ * Local XZ vertices of the grid, and (when given) each one's edge factor (0
+ * center, 1 outline) and how far along it is. Every shape's rows run from its
+ * origin (v = 0) to its far end (v = 1); edge and along depend on the grid
+ * alone, so a resize on the same grid leaves them be.
+ */
+function layOut(shape: DecalShape, cols: number, rows: number, local: Float32Array, edge: Float32Array | null, along: Float32Array | null): void {
+  let i = 0;
+  for (let r = 0; r <= rows; r++) {
+    const v = r / rows;
+    for (let c = 0; c <= cols; c++, i++) {
+      const u = c / cols;
+      let x = 0;
+      let z = 0;
+      let e = 0;
+      switch (shape.type) {
+        case 'circle': {
+          const ang = u * Math.PI * 2;
+          x = Math.sin(ang) * v * shape.radius;
+          z = Math.cos(ang) * v * shape.radius;
+          e = v;
+          break;
+        }
+        case 'ring': {
+          const ang = u * Math.PI * 2;
+          const inner = Math.max(0, shape.radius - shape.width);
+          const rad = inner + (shape.radius - inner) * v;
+          x = Math.sin(ang) * rad;
+          z = Math.cos(ang) * rad;
+          e = 0.84 + v * 0.16;
+          break;
+        }
+        case 'rect': {
+          const across = (u - 0.5) * 2;
+          x = (across * shape.width) / 2;
+          z = -v * shape.length;
+          // outline on both sides and the far end; the near end stays open
+          e = Math.max(Math.abs(across), v);
+          break;
+        }
+        case 'cone': {
+          const half = (shape.angle * Math.PI) / 360;
+          const ang = (u - 0.5) * 2 * half;
+          const rad = v * shape.range;
+          x = -Math.sin(ang) * rad;
+          z = -Math.cos(ang) * rad;
+          e = Math.max(v, Math.abs(u - 0.5) * 2);
+          break;
+        }
+      }
+      local[i * 2] = x;
+      local[i * 2 + 1] = z;
+      if (edge) edge[i] = e;
+      if (along) along[i] = v;
     }
   }
-  return { local: new Float32Array(pts), edge: new Float32Array(edge), along: new Float32Array(along), index };
+}
+
+/** Two triangles per grid cell. */
+function gridIndex(cols: number, rows: number, verts: number): Uint16Array | Uint32Array {
+  const index = verts > 65535 ? new Uint32Array(cols * rows * 6) : new Uint16Array(cols * rows * 6);
+  let k = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const a = r * (cols + 1) + c;
+      const b = a + cols + 1;
+      index[k++] = a;
+      index[k++] = b;
+      index[k++] = a + 1;
+      index[k++] = a + 1;
+      index[k++] = b;
+      index[k++] = b + 1;
+    }
+  }
+  return index;
 }
