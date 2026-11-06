@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anubis, GODS, kukulkan, loki, odin, thanatos, thor, zeus } from '../game/gods';
+import { anubis, cthulhu, GODS, kukulkan, loki, odin, thanatos, thor, zeus } from '../game/gods';
 import { normalizeLoadout, skillById, ULTIMATE_SLOT, validateLoadout } from '../game/loadout';
 import type { GodDef } from '../game/types';
 import { XP_TABLE } from '../game/progression';
@@ -375,6 +375,42 @@ describe('Relic Rush', () => {
     }
     // it used to turn about every step and stay put
     expect(rush.holder !== carrier || far > 1.5).toBe(true);
+  });
+
+  it("a carrier bot pressed against a gate pillar's face slides along it toward the mouth instead of turning about", () => {
+    const { sim, rush } = match(rushTestField());
+    const coach = new RushCoach(sim, rush);
+    const carrier = god(sim, cthulhu, 'chaos', 0);
+    const keeper = god(sim, kukulkan, 'order', 0);
+    const press = god(sim, kukulkan, 'order', 1);
+    const back = god(sim, kukulkan, 'order', 2);
+    carrier.brain = new RushBot(sim, carrier, rush, coach, null);
+    rush.begin([carrier, keeper, press, back]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(carrier, 0, -1.6);
+    run(sim, rush, 0.4, () => rush.holder === carrier);
+    expect(rush.holder).toBe(carrier);
+    expect(rush.juke(carrier, { x: 1, z: 0 })).toBe(true);
+    run(sim, rush, 0.3);
+    // as a bot match left them: up against the front of the order gate's east pillar, the keeper home, a defender
+    // in front and to the side and one further back (their push sent the carrier into the pillar, and backing off the face it turned about every step)
+    sim.teleport(carrier, 5.61, 22.65);
+    let turns = 0;
+    let last: { x: number; z: number } | null = null;
+    for (let i = 0; i < 40 && rush.holder === carrier; i++) {
+      sim.teleport(keeper, 2.18, 21.67);
+      sim.teleport(press, carrier.x + 0.62, carrier.z - 1.19);
+      sim.teleport(back, 3.31, 17.02);
+      run(sim, rush, 1 / 60);
+      const m = carrier.move;
+      if (!m) continue;
+      const l = Math.hypot(m.x, m.z) || 1;
+      if (last && (last.x * m.x + last.z * m.z) / l < -0.5) turns++;
+      last = { x: m.x / l, z: m.z / l };
+    }
+    expect(turns).toBeLessThanOrEqual(2);
+    // and gaining ground on the mouth along the face, it carries it in
+    expect(rush.score.chaos).toBe(1);
   });
 
   it('a juke sidesteps the carrier, beats a stun in its guard, keeps the relic, and waits out its cooldown', () => {
