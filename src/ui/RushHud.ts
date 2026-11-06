@@ -26,6 +26,8 @@ const AWARD_ICON: Record<RushAwardKey, string> = {
 const RUSH_CUT = { in: 0.3, out: 0.55 };
 /** Seconds the match card takes to fade once play starts. */
 const RUSH_INTRO_FADE = 0.7;
+/** Seconds a save's banner shows. */
+const SAVE_SHOW = 1.5;
 /**
  * Pops played through the Web Animations API: restarting a CSS animation
  * means reading layout between dropping and re-adding its class, and that
@@ -62,6 +64,11 @@ export class RushHud {
   private goalShow = 0;
   private rushShow = 0;
   private wasKickoff = true;
+  /** A save's banner: seconds left, and who made it. */
+  private saveShow = 0;
+  private saveSeen = 0;
+  private saver: Unit | null = null;
+  private lastPoint = '';
   private readonly arrow: HTMLElement;
   private arrowTone = '';
   /** The dip to dark that hides the kickoff reset after a goal, and how far it has faded back out. */
@@ -89,6 +96,8 @@ export class RushHud {
   ) {
     this.mine = me.team as Side;
     this.foe = this.mine === 'order' ? 'chaos' : 'order';
+    // (a guest joining mid-match doesn't see an old save's banner)
+    this.saveSeen = rush.beats.save;
     this.root.className = 'clash duel rush';
     this.root.innerHTML = `
       <div class="rush-cut"></div>
@@ -272,6 +281,10 @@ export class RushHud {
       const sub = g.assist ? `${how} · assist ${this.who(g.assist)}` : how;
       return { html: `${ours ? 'Goal!' : 'They score'}<small>${esc(sub)}</small>`, side: ours ? 'ally' : 'foe' };
     }
+    if (this.saveShow > 0 && this.saver && r.phase === 'play') {
+      const u = this.saver;
+      return { html: `Saved!<small>${esc(this.who(u))} ${u === this.me ? 'keep' : 'keeps'} it out</small>`, side: u.team === this.mine ? 'ally' : 'foe' };
+    }
     if (this.rushShow > 0) return { html: r.overtime ? 'Golden relic!' : 'Rush!', side: '' };
     return { html: '', side: '' };
   }
@@ -288,6 +301,18 @@ export class RushHud {
     if (this.wasKickoff && r.phase === 'play') this.rushShow = this.introLeft > 0 ? 0 : 0.9;
     this.wasKickoff = r.phase === 'kickoff';
     this.rushShow = Math.max(0, this.rushShow - dt);
+    if (r.beats.save !== this.saveSeen) {
+      this.saveSeen = r.beats.save;
+      const b = r.lastBeat;
+      if (b?.kind === 'save') [this.saveShow, this.saver] = [SAVE_SHOW, b.unit];
+    }
+    this.saveShow = Math.max(0, this.saveShow - dt);
+    // one goal from the win: that side's last empty pip pulses gold
+    const point = r.matchPoint ?? '';
+    if (point !== this.lastPoint) {
+      this.lastPoint = point;
+      for (const side of ['order', 'chaos'] as const) this.pips[side].parentElement!.classList.toggle('point', point === side || point === 'both');
+    }
     this.dip(dt);
     this.introFrame(dt);
     this.time += dt;
