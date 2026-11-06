@@ -33,6 +33,15 @@ export class Stage {
     this.combat.bot = null;
   }
 
+  /** `clear`, and ends every skill in flight or on the ground and every effect still playing, for a clean shot. */
+  fresh(): void {
+    this.clear();
+    const sim = this.combat.sim;
+    sim.projectiles.length = 0;
+    sim.zones.length = 0;
+    (this.combat as unknown as { vfx: { reset(): void } }).vfx.reset();
+  }
+
   /** Puts the player's own god out of the way, far outside the shot. */
   park(x: number, z: number): void {
     this.hidePlayer();
