@@ -16,7 +16,7 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const args = process.argv.slice(2);
 const splash = args.includes('--splash');
 const [base = 'http://localhost:4173', list] = args.filter((a) => !a.startsWith('--'));
-const gods = (list ?? (splash ? 'zeus,thor,odin,loki,anubis,jotunn' : 'zeus,thor,odin,loki,anubis')).split(',');
+const gods = (list ?? (splash ? 'zeus,thor,odin,loki,anubis,amaterasu,thanatos,jotunn' : 'zeus,thor,odin,loki,anubis,amaterasu,thanatos')).split(',');
 const out = new URL(splash ? '../../public/splash/' : '../../public/portraits/', import.meta.url);
 const size = splash ? { width: 720, height: 1080 } : { width: 480, height: 600 };
 mkdirSync(out, { recursive: true });

@@ -25,6 +25,7 @@ const PALETTES: Record<string, GodPalette> = {
   anubis: { cloth: 0x18130e, trim: 0xe0b04a, glow: 0xffa040, vfx: 0xff7a1a, core: 0xffe3a6, element: 'sand' },
   // bright noon sunlight: a clean yellow-gold, whiter at the core than Odin's amber
   amaterasu: { cloth: 0xf2ede4, trim: 0xffc94a, glow: 0xffe07a, vfx: 0xffd23a, core: 0xfffbe8 },
+  thanatos: { cloth: 0x1c1826, trim: 0xa8b0bc, glow: 0x74c4ff, vfx: 0x5a9cff, core: 0xe4f4ff },
   // the frost giant of the Jötunn mode
   jotunn: { cloth: 0x4e3c30, trim: 0x9a7444, glow: 0x66e0ff, vfx: 0x4fcfff, core: 0xeafcff, element: 'frost' },
 };

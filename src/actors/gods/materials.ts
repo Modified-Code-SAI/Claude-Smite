@@ -66,6 +66,13 @@ const PALETTES: Record<string, GodPalette> = {
     cloth2: 0xf2ede4, leather: 0x1e1412, hair: 0x0a080c, hairTip: 0x1e1a24, fur: 0x2a2224, glow: 0xffd27a,
     eye: 0xffb648, gem: 0xff8a2a,
   },
+  // the bringer of peaceful death: pale skin, black-violet chiton, dark iron, tarnished silver,
+  // soul-blue fire, black wings frosted grey at the tips, poppy-red petals
+  thanatos: {
+    skin: 0xcdb9b0, skinDeep: 0x5e4450, gold: 0xa8b0bc, steel: 0x6a707c, cloth: 0x1c1826, clothDeep: 0x07060c,
+    cloth2: 0x2e2846, leather: 0x1e1a1e, hair: 0x0e0c12, hairTip: 0x2a2632, fur: 0x15131b, glow: 0x74c4ff,
+    eye: 0xbfe8ff, gem: 0xc81e2a, furTip: 0x6a6680,
+  },
   // the frost giant: glacier-blue skin, old bronze, black iron, dark bear fur frosted at the tips
   jotunn: {
     skin: 0x6c90c2, skinDeep: 0x16295a, gold: 0x9a7444, steel: 0x4e5560, cloth: 0x4a3a2e, clothDeep: 0x1e1610,

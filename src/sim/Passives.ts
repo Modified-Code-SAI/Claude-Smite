@@ -27,6 +27,12 @@ const DAWN_KEY = 'unbroken-dawn';
 const DAWN_STACK = 0.06;
 const DAWN_MAX = 5;
 const DAWN_DURATION = 3;
+/** Thanatos: every hit leaves Drowse (the mark Final Rest spends); each stack slows and softens the target. */
+export const DROWSE = 'drowse';
+const DROWSE_MAX = 3;
+const DROWSE_DURATION = 5;
+const DROWSE_SLOW = 0.06;
+const DROWSE_BONUS = 0.04;
 
 /**
  * The gods' passives. Damage passives plug into the combatant's
@@ -56,6 +62,8 @@ export class Passives {
         const v = unitOf(t);
         return v && v.kind === 'god' && hypot(v.x - u.x, v.z - u.z) <= RAVEN_RANGE ? 1 + ODIN_BONUS : 1;
       };
+    } else if (id === 'thanatos') {
+      u.combatant.damageAmp = (t) => 1 + (unitOf(t)?.marks.get(DROWSE)?.stacks ?? 0) * DROWSE_BONUS;
     } else if (id === 'loki') {
       u.combatant.damageAmp = (t) => {
         const v = unitOf(t);
@@ -96,8 +104,19 @@ export class Passives {
       this.thorCount.set(src, n % THOR_EVERY);
       if (n >= THOR_EVERY) this.shockwave(src, e.target);
     }
+    if (src && god === 'thanatos' && e.target.alive) this.drowse(src, e.target);
     if (src && god === 'amaterasu' && !e.ability) src.combatant.stackTimedMod(DAWN_KEY, 'bonusAttackSpeed', DAWN_STACK, DAWN_MAX, DAWN_DURATION);
     this.anubisWard(e.target);
+  }
+
+  /** Thanatos's Drowse: a stack per hit, up to 3, each slowing a little more (one slow, refreshed and deepened). */
+  private drowse(thanatos: Unit, target: Unit): void {
+    if (target.team === thanatos.team) return;
+    const m = target.marks.get(DROWSE) ?? { stacks: 0, remaining: 0 };
+    m.stacks = Math.min(DROWSE_MAX, m.stacks + 1);
+    m.remaining = DROWSE_DURATION;
+    target.marks.set(DROWSE, m);
+    target.combatant.receiveCC('slow', DROWSE_DURATION, m.stacks * DROWSE_SLOW, DROWSE);
   }
 
   /** Thor's shockwave: hits enemies just behind the target, along the line of the blow. */

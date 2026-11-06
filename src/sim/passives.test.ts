@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amaterasu, anubis, loki, odin, thor, zeus } from '../game/gods';
+import { amaterasu, anubis, loki, odin, thanatos, thor, zeus } from '../game/gods';
 import type { GodDef } from '../game/types';
 import { godUnit } from './factory';
 import { conquestBases } from './Match';
@@ -101,5 +101,31 @@ describe('god passives', () => {
     expect(a.combatant.stats.bonusAttackSpeed).toBeCloseTo(base + 0.3, 5);
     for (let i = 0; i < 4 * 60; i++) sim.step(1 / 60);
     expect(a.combatant.stats.bonusAttackSpeed).toBeCloseTo(base, 5);
+  });
+
+  it('Thanatos: each hit leaves Drowse, up to 3 stacks, slowing the target more and making his hits land harder', () => {
+    const sim = setup();
+    const a = place(sim, thanatos, 'order', 0, 0);
+    const t = place(sim, thor, 'chaos', 0, -2);
+    t.brain = null;
+    const speed = t.combatant.moveSpeed;
+    basicAt(sim, a, t);
+    expect(t.marks.get('drowse')?.stacks).toBe(1);
+    expect(t.combatant.moveSpeed).toBeLessThan(speed);
+    t.combatant.health = t.combatant.stats.maxHealth; // (at full health, regen can't hide any of the hit)
+    const second = basicAt(sim, a, t); // into 1 stack: +4%
+    basicAt(sim, a, t);
+    const slowed = t.combatant.moveSpeed;
+    t.combatant.health = t.combatant.stats.maxHealth;
+    // full stacks stay at 3, and a hit into them lands harder than one into a single stack
+    const fourth = basicAt(sim, a, t);
+    expect(t.marks.get('drowse')?.stacks).toBe(3);
+    expect(fourth / second).toBeGreaterThan(1.06);
+    expect(fourth / second).toBeLessThan(1.12);
+    expect(slowed).toBeLessThan(speed * 0.9);
+    // it all wears off
+    for (let i = 0; i < 6 * 60; i++) sim.step(1 / 60);
+    expect(t.marks.get('drowse')?.stacks ?? 0).toBe(0);
+    expect(t.combatant.moveSpeed).toBeCloseTo(speed, 5);
   });
 });

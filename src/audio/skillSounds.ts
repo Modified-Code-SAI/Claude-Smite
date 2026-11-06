@@ -396,6 +396,52 @@ export const SKILL_SOUNDS: Record<string, SkillSound> = {
   'amaterasu.rising-sun': {
     cast: (r) => layer([taiko(r, 1.4, 1.4), 0.9], [taiko(r, 1.2, 1.1), 0.7, 0.35], [choir(r, 3, 261.6, { env: (t) => ahr(t, 0.6, 1, 1.2) }), 0.7, 0.3], [choir(r, 3, 392, { vowelName: 'oh', env: (t) => ahr(t, 0.8, 0.8, 1.2) }), 0.45, 0.4], [shimmer(r, 2.6, 1046.5, { rise: 1.5, peak: 0.6 }), 0.5, 0.4], [suzu(r, 1.6, 1760), 0.4, 0.6]),
   },
+  // ===== Thanatos: beating wings, cold fire, dark iron, a slow heart and Sleep's low lullaby
+  'thanatos.pitiless-edge': {
+    cast: (r) => layer([swing(r, 0.28, 500, 3000, 1.5), 1], [metal(r, 1800, 0.35), 0.25, 0.04], [swing(r, 0.3, 600, 3400, 1.4), 0.9, 0.3], [metal(r, 2100, 0.35), 0.22, 0.34]),
+    impact: (r) => layer([thump(r, 0.22, 170, 60, { click: 0.9, noise: 0.4 }), 1], [metal(r, 1500, 0.3), 0.2]),
+  },
+  'thanatos.snuff-out': {
+    cast: (r) => layer([thump(r, 0.3, 120, 45, { click: 0.5, drive: 1.5 }), 0.8], [coldFire(r, 0.9), 1], [whoosh(r, 0.6, 2400, 300, { q: 0.7, peak: 0.2, gain: 1.2 }), 0.7, 0.05], [puff(r, 0.5, { tone: 600 }), 0.6, 0.35]),
+  },
+  'thanatos.wingbeat': {
+    cast: (r) => layer([wingFlap(r, 0.6, 1.3), 1], [whoosh(r, 0.6, 300, 1800, { q: 0.8, peak: 0.35, gain: 1.3 }), 0.8, 0.05]),
+    impact: (r) => layer([thump(r, 0.25, 150, 55, { click: 0.6, noise: 0.6 }), 0.9], [wingFlap(r, 0.35, 0.7), 0.5]),
+  },
+  'thanatos.claim': {
+    cast: (r) => layer([cloth(r, 0.45), 0.9], [whoosh(r, 0.4, 700, 2600, { q: 1.2, peak: 0.25 }), 0.7], [lullaby(r, 0.7, 196), 0.25]),
+    travel: (r) => layer([filter(whoosh(r, 0.8, 900, 900, { q: 1.2, peak: 0.5, grit: 1.2 }), 'bandpass', 1100, 0.9), 1], [lullaby(r, 0.8, 174.6), 0.2]),
+    impact: (r) => layer([thump(r, 0.3, 140, 50, { click: 0.6, noise: 0.5 }), 1], [cloth(r, 0.5), 0.8], [whoosh(r, 0.4, 2400, 500, { q: 0.9, peak: 0.6 }), 0.7, 0.05]),
+  },
+  'thanatos.veil-of-night': {
+    cast: (r) => layer([wingFlap(r, 0.5, 0.8), 0.8], [whoosh(r, 1.2, 1600, 200, { q: 0.5, peak: 0.15 }), 0.8], [lullaby(r, 1.2, 130.8), 0.45, 0.1], [shimmer(r, 1, 523.3, { rise: 0.5, peak: 0.1 }), 0.3]),
+  },
+  'thanatos.poppy-haze': {
+    cast: (r) => layer([puff(r, 0.8, { tone: 1400 }), 0.8], [whoosh(r, 1, 300, 1400, { q: 0.5, peak: 0.6 }), 0.7], [lullaby(r, 1.6, 220), 0.5, 0.2]),
+    zone: (r) => layer([filter(puff(r, 2.5, { tone: 900 }), 'lowpass', 1800), 0.6], [lullaby(r, 2.5, 196), 0.5], [shimmer(r, 2.5, 392, { rise: 1, peak: 0.5, voices: 3 }), 0.25]),
+    tick: (r) => layer([puff(r, 0.3, { tone: 1200 }), 0.6], [thump(r, 0.2, 110, 50, { noise: 0.3 }), 0.4]),
+  },
+  'thanatos.iron-heart': {
+    cast: (r) => layer([clang(r, 1.4, 196, { decay: 1.2, bright: 0.25, gain: 0.8 }), 0.8], [heartbeat(r, 1.4), 1, 0.15], [darkHit(r, 1), 0.4]),
+  },
+  'thanatos.final-rest': {
+    cast: (r) => layer([swing(r, 0.6, 250, 1600, 1.6), 1], [lullaby(r, 1.2, 146.8), 0.5], [metal(r, 1250, 0.6), 0.3, 0.3]),
+    impact: (r) => layer([impact(r, 0.9, { tone: 120, snap: 0.6, crunch: 0.2, room: 0.5 }), 1], [heartbeat(r, 1, 0.5), 0.6, 0.1], [choir(r, 1.4, 110, { vowelName: 'oo', env: (t) => ahr(t, 0.1, 0.4, 0.9) }), 0.4]),
+    impactDelay: 0.15,
+  },
+  'thanatos.long-sleep': {
+    cast: (r) => layer([wingFlap(r, 1, 1.6), 0.9], [lullaby(r, 3, 130.8), 0.8, 0.2], [lullaby(r, 3, 196), 0.5, 0.4], [whoosh(r, 2.2, 2600, 150, { q: 0.4, peak: 0.5 }), 0.5]),
+    impact: (r) => layer([gong(r, 2.4, 55), 0.7], [heartbeat(r, 2, 0.4), 0.8], [choir(r, 2.6, 98, { vowelName: 'oo', env: (t) => ahr(t, 0.4, 1, 1.2) }), 0.6]),
+    impactDelay: 0.6,
+  },
+  'thanatos.kiss-of-death': {
+    cast: (r) => layer([wingFlap(r, 0.7, 1.8), 1], [whoosh(r, 0.9, 200, 2800, { q: 0.7, peak: 0.4, gain: 1.6 }), 0.9, 0.05], [choir(r, 1.2, 82.4, { vowelName: 'oo', env: (t) => ahr(t, 0.1, 0.4, 0.7) }), 0.5]),
+    impact: (r) => layer([impact(r, 1.3, { tone: 110, snap: 1, crunch: 0.4, room: 0.6 }), 1], [metal(r, 900, 0.8), 0.3], [heartbeat(r, 1.2, 0.3), 0.6, 0.15]),
+  },
+  'thanatos.carried-home': {
+    cast: (r) => layer([wingFlap(r, 0.8, 1.6), 1], [wingFlap(r, 0.8, 1.4), 0.8, 0.45], [choir(r, 2.6, 196, { vowelName: 'ah', env: (t) => ahr(t, 0.6, 1, 1) }), 0.5, 0.2], [shimmer(r, 2.2, 392, { rise: 1.3, peak: 0.5 }), 0.4, 0.3]),
+    impact: (r) => layer([thump(r, 0.5, 120, 45, { click: 0.4, noise: 0.6, drive: 1.5 }), 0.9], [choir(r, 1.8, 261.6, { vowelName: 'oh', env: (t) => ahr(t, 0.1, 0.6, 1) }), 0.5], [shimmer(r, 1.4, 784, { rise: 1.4, peak: 0.2 }), 0.4]),
+  },
   // ===== the Jötunn: ice, stone and a bellowing voice (jotunnSounds.ts)
   ...JOTUNN_SKILL_SOUNDS,
 };
@@ -487,6 +533,42 @@ function creak(r: Rand, len: number): Float32Array {
     return (Math.sin(t * f * Math.PI * 2) > 0.6 ? 1 : 0) * (r() * 0.6 + 0.4) * ahr(t, 0.1, len - 0.2, 0.1) * 0.25;
   });
   return filter(out, 'bandpass', 900, 1.5);
+}
+
+/** One great beat of feathered wings: a low push of air with the rustle of the vanes. */
+function wingFlap(r: Rand, len: number, weight = 1): Float32Array {
+  return layer(
+    [thump(r, Math.min(len, 0.5), 90, 40, { click: 0.1, noise: 1, gain: 0.6 * weight }), 1],
+    [whoosh(r, len, 250, 900, { q: 0.5, peak: 0.3, gain: weight, grit: 1.4 }), 1],
+    [filter(puff(r, len * 0.8, { tone: 3200 }), 'highpass', 1800), 0.4 * weight, 0.05],
+  );
+}
+
+/** Soul fire burning cold: a thin, airy flame with a glassy ring in it. */
+function coldFire(r: Rand, len: number): Float32Array {
+  return layer([filter(fire(r, len, { gain: 0.8, roar: 0.6 }), 'highpass', 900), 1], [shimmer(r, len, 1174.7, { rise: 0.7, peak: 0.2, voices: 3 }), 0.4]);
+}
+
+/** A slow, heavy heart: lub-dub, lub-dub. */
+function heartbeat(r: Rand, len: number, slow = 0.8): Float32Array {
+  const out = buf(len);
+  const period = 0.6 / slow;
+  for (let at = 0.02; at < len - 0.2; at += period) {
+    for (const [d, g] of [[0, 1], [0.16, 0.7]] as const) {
+      const h = thump(r, 0.22, 70, 38, { click: 0.05, drive: 1.2, gain: g });
+      const o = Math.round((at + d) * 44100);
+      for (let i = 0; i < h.length && o + i < out.length; i++) out[o + i]! += h[i]!;
+    }
+  }
+  return filter(out, 'lowpass', 400, 0.8);
+}
+
+/** Sleep's lullaby: a hushed, swaying hum a fifth over its root. */
+function lullaby(r: Rand, len: number, f: number): Float32Array {
+  return layer(
+    [vowel(r, len, (t) => f * (1 + Math.sin(t * 2.2) * 0.012), VOWELS.oo, { voices: 3, detune: 0.02, breath: 0.5, vibrato: 0.01, env: (t) => ahr(t, len * 0.35, len * 0.25, len * 0.4) }), 1],
+    [vowel(r, len, (t) => f * 1.5 * (1 + Math.sin(t * 1.7 + 1) * 0.012), VOWELS.oo, { voices: 2, detune: 0.02, breath: 0.6, env: (t) => ahr(t, len * 0.45, len * 0.2, len * 0.35), gain: 0.5 }), 0.6],
+  );
 }
 
 export function fallbackSkill(element: string | undefined, targeting: string): SkillSound {

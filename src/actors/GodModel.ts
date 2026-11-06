@@ -74,6 +74,12 @@ const CAST_ACCENTS: Record<string, { bone: string; axis: [number, number, number
     { bone: 'DEF-forearm.R', axis: [0, 1, 0], angle: 2.5 },
     { bone: 'DEF-forearm.R', axis: [1, 0, 0], angle: 1.5 },
   ],
+  // Thanatos leans in and holds the upturned torch out at the one he has come for
+  thanatos: [
+    { bone: 'DEF-spine003', axis: [1, 0, 0], angle: 0.14 },
+    { bone: 'DEF-head', axis: [1, 0, 0], angle: 0.1 },
+    { bone: 'DEF-upper_arm.L', axis: [1, 0, 0], angle: 0.9 },
+  ],
 };
 
 /** Archers: every shot, basic or skill, is a draw of the bow (their accent), with no clip swinging the arms. */
@@ -108,6 +114,11 @@ const IDLE_STANCE: Record<string, { bone: string; axis: [number, number, number]
   anubis: [
     { bone: 'DEF-spine003', axis: [1, 0, 0], angle: 0.1 },
     { bone: 'DEF-head', axis: [1, 0, 0], angle: 0.14 },
+  ],
+  // Thanatos: still and patient, head bowed a little to one side, as if listening
+  thanatos: [
+    { bone: 'DEF-head', axis: [1, 0, 0], angle: 0.14 },
+    { bone: 'DEF-head', axis: [0, 0, 1], angle: 0.07 },
   ],
 };
 

@@ -30,6 +30,8 @@ CAST = {
     'loki': dict(voice='am_puck', lang='en-us', speed=1.04, semitones=0.0, room=(0.35, 0.05), grit=0.0, breath=0.0, double=0.14),
     'anubis': dict(voice={'am_onyx': 0.55, 'am_fenrir': 0.45}, lang='en-us', speed=0.88, semitones=-4.0, room=(0.9, 0.15), grit=0.1, breath=0.07, double=0.2),
     'amaterasu': dict(voice={'af_heart': 0.6, 'bf_emma': 0.4}, lang='en-us', speed=0.95, semitones=-1.0, room=(1.1, 0.13), grit=0.0, breath=0.02, double=0.0),
+    # Thanatos: soft and close, a little slow, with a faint ghostly double
+    'thanatos': dict(voice={'bm_george': 0.5, 'am_echo': 0.5}, lang='en-gb', speed=0.9, semitones=-1.5, room=(1.4, 0.14), grit=0.0, breath=0.05, double=0.08),
     # the Jötunn: far deeper than any god (the drop slows it too), hollow, in a hall of ice
     'jotunn': dict(voice={'am_onyx': 0.65, 'am_fenrir': 0.35}, lang='en-us', speed=1.0, semitones=-5.5, room=(2.2, 0.2), grit=0.18, breath=0.04, double=0.3),
 }

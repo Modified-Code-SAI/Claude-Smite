@@ -32,6 +32,8 @@ export const GOD_VOICES: Record<string, Voice> = {
   anubis: { pitch: 72, throat: 0.82, growl: 0.16, breath: 0.4, voices: 3 },
   // a clear, warm and regal alto
   amaterasu: { pitch: 205, throat: 1.14, growl: 0, breath: 0.12, voices: 1 },
+  // soft, unhurried and close, a faint second voice under it
+  thanatos: { pitch: 118, throat: 0.98, growl: 0, breath: 0.3, voices: 2 },
 };
 
 type Vowel = keyof typeof VOWELS;
