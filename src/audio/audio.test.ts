@@ -6,7 +6,7 @@ import { CHORDS, INST, INSTRUMENTS, Music, SONGS } from './music';
 import type { AudioEngine } from './AudioEngine';
 import { SKILL_SOUNDS } from './skillSounds';
 import { renderRecipe, SOUNDS, type Recipe } from './sounds';
-import { DEPTH_BEDS, DEPTH_SONG, UNDERWORLD_LIFE } from './underworldAmbience';
+import { DEPTH_BEDS, DEPTH_GROUND, DEPTH_SONG, UNDERWORLD_LIFE } from './underworldAmbience';
 
 function check(name: string, recipe: Recipe): number {
   const variants = renderRecipe(recipe, hashSeed(name));
@@ -113,6 +113,9 @@ describe('sound bank', () => {
       const { near, far } = UNDERWORLD_LIFE[d];
       for (const s of [near, far]) expect(s.every[0]).toBeLessThanOrEqual(s.every[1]);
     }
+    // a floor of its own underfoot, for steps and for landings
+    expect(new Set(depths.map((d) => DEPTH_GROUND[d])).size).toBe(depths.length);
+    for (const d of depths) for (const kind of ['step', 'land']) expect(SOUNDS[`${kind}.${DEPTH_GROUND[d]}`], `${kind}.${DEPTH_GROUND[d]}`).toBeTruthy();
     // and a theme of its own
     expect(new Set(depths.map((d) => DEPTH_SONG[d])).size).toBe(depths.length);
     for (const d of depths) expect(SONGS[DEPTH_SONG[d]], DEPTH_SONG[d]).toBeTruthy();

@@ -49,12 +49,17 @@ PACKS = {
 #   keep: longest clip in seconds; hp/lp: filters in Hz; mix: layer level against the synthesized sound in dB
 #   loop: body length in seconds for a looping sound (a multiple of the synthesized loop's length); env: attack, hold, release
 #   drive: soft saturation that tames a recording's sharpest transients
+#   same: reuse an earlier sound's clips (no new files), only at this sound's mix
 LAYERS = {
     # footsteps: Fantozzi's on stone and on grass and sand, gravel under snow for the dirt paths, leather and mail for minions
     'step.stone': dict(files=['footsteps/**/flac/*Stone*.flac'], n=6, keep=0.38, hp=90, mix=0),
     'step.grass': dict(files=['footsteps/**/flac/*Sand*.flac'], n=6, keep=0.4, hp=90, lp=7000, mix=-1),
     'step.dirt': dict(files=['snow/**/*gravel_0*.flac', 'snow/**/*gravel_1*.flac'], n=8, cut='hits', keep=0.38, hp=110, mix=-2),
     'step.minion': dict(files=['armor/**/step_lth*.ogg', 'armor/**/step_metal*.ogg'], n=8, keep=0.3, hp=120, mix=-4),
+    # the Descent's floors are stone too: the same takes, under the ash, the water and the glass the synthesis adds
+    'step.basalt': dict(same='step.stone', mix=-2),
+    'step.wet': dict(same='step.stone', mix=-4),
+    'step.glass': dict(same='step.stone', mix=-3),
     # steel on steel, a sword ringing off a sword or a shield
     'hit.blade': dict(files=['weapons*/*Blade on Blade.wav', 'clash/*.ogg'], n=10, cut='hits', keep=0.55, hp=160, mix=-2, drive=2),
     # a club, a haft or a fist landing
@@ -219,6 +224,10 @@ def main():
     manifest = {'version': 1, 'layers': {}}
     used = set()
     for name, spec in LAYERS.items():
+        if 'same' in spec:
+            # another sound's clips at this sound's own level
+            manifest['layers'][name] = {'mix': spec['mix'], 'files': list(manifest['layers'][spec['same']]['files'])}
+            continue
         sources = []
         for pattern in spec['files']:
             pack = pattern.split('/')[0]

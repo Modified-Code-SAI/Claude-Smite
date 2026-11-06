@@ -9,6 +9,9 @@ import type { SongName } from './music';
 /** Each depth's theme between its bosses: the smith's war song, the drowned halls' slow one, the Abyss's own. */
 export const DEPTH_SONG: Record<Palette, SongName> = { ember: 'forge', soul: 'drowned', spirit: 'abyss' };
 
+/** Each depth's floor underfoot, for steps and landings: the forge's ashy basalt, the Drowned Halls' wet stone, the Abyss's obsidian. */
+export const DEPTH_GROUND: Record<Palette, 'basalt' | 'wet' | 'glass'> = { ember: 'basalt', soul: 'wet', spirit: 'glass' };
+
 /**
  * Each Descent depth's own air, over the cavern breath they all share: the
  * Ashen Depths' furnace, water running in the dark of the Drowned Halls, and
