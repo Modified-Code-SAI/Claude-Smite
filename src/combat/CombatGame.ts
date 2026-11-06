@@ -357,8 +357,9 @@ export class CombatGame implements Updatable {
       if (net && slots) this.addRoster(net, slots);
       else {
         this.match.addGod(this.player);
-        // five a side however many gods there are (the god pick shows these: src/game/lineup.ts)
-        const bots = conquestBots(mine.id);
+        // five a side however many gods there are (the god pick shows these: src/game/lineup.ts);
+        // without a seed (?map=conquest, tools) the same lineup every time
+        const bots = conquestBots(mine.id, this.deps.seed !== undefined ? seeded(this.deps.seed) : () => 0);
         this.addTeam('order', bots.allies.map((id) => godById(id)!), ['solo', 'duo', 'duo', 'roam'], [0, 2, 3, 4]);
         this.addTeam('chaos', bots.enemies.map((id) => godById(id)!), ROLES, [0, 1, 2, 3, 4]);
       }

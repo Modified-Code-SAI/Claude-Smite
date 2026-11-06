@@ -52,7 +52,7 @@
 .hm-mode:hover { background: rgba(255, 240, 210, 0.05); border-left-color: rgba(231, 194, 122, 0.5); }
 .hm-mode:focus-visible { outline: none; }
 .hm-mode:not(.on):focus-visible { border-color: rgba(231, 194, 122, 0.5); }
-.hm-mode.on { background: linear-gradient(90deg, rgba(231, 194, 122, 0.26), rgba(231, 194, 122, 0.04) 85%, transparent); border-left-color: #ffd27a; transform: translateX(6px); }
+.hm-mode.on { background: linear-gradient(90deg, rgba(231, 194, 122, 0.26), rgba(231, 194, 122, 0.04) 85%, transparent) border-box no-repeat; border-left-color: #ffd27a; transform: translateX(6px); }
 .hm-thumb { width: 76px; height: 43px; border-radius: 3px; background: #1a140e center / cover no-repeat; box-shadow: 0 0 0 1px rgba(231, 194, 122, 0.25), 0 3px 8px rgba(0, 0, 0, 0.5); filter: saturate(0.7) brightness(0.75); transition: filter 0.2s, box-shadow 0.2s; }
 .hm-mode:hover .hm-thumb, .hm-mode.on .hm-thumb { filter: none; }
 .hm-mode.on .hm-thumb { box-shadow: 0 0 0 1px #ffd27a, 0 0 14px rgba(255, 210, 120, 0.45); }
@@ -109,11 +109,29 @@
   .hm-card { justify-self: stretch; width: auto; }
   .hm-keys { display: none; }
 }
-@media (max-height: 760px) {
+/* laptop screens (1366x768, 1280x800, 1440x900): the same page, tighter */
+@media (max-height: 920px) {
+  .hm-frame { padding-top: 16px; padding-bottom: 12px; }
+  .hm-word { font-size: clamp(30px, 3vw, 44px); }
+  .hm-body { margin-top: 10px; }
+  .hm-label { margin-bottom: 6px; }
   .hm-mode { padding-top: 4px; padding-bottom: 4px; }
   .hm-thumb { height: 36px; width: 64px; }
-  .hm-card { padding: 18px 22px; gap: 12px; }
-  .hm-desc { font-size: 14px; }
+  .hm-mode { grid-template-columns: 64px 1fr auto; }
+  .hm-mtext b { font-size: 15.5px; }
+  .hm-card { padding: 18px 24px 16px; gap: 11px; }
+  .hm-name { font-size: clamp(30px, 3vw, 44px); margin: 4px 0 6px; }
+  .hm-desc { font-size: 14px; line-height: 1.5; }
+  .hm-rec { margin-top: 6px; }
+  .hm-play { padding: 10px 24px 9px; }
+  .hm-play span { font-size: 25px; }
+  .hm-friends { padding-top: 10px; }
+  .hm-foot { margin-top: 8px; }
+}
+@media (max-height: 700px) {
+  .hm-thumb { display: none; }
+  .hm-mode { grid-template-columns: 1fr auto; }
+  .hm-desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 }
 
 /* -- shared by the home page and the in-game help ------------------------- */
@@ -123,6 +141,12 @@
 .sm-warn ol { margin: 6px 0 8px; padding-left: 22px; }
 .sm-warn li { margin: 2px 0; }
 .sm-warn.gone { display: none; }
+/* on the home page the slow-GPU steps fold away under a one-line warning */
+.sm-fix summary { cursor: pointer; list-style: none; }
+.sm-fix summary::-webkit-details-marker { display: none; }
+.sm-fix summary span { margin-left: 10px; color: #ffd27a; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+.sm-fix[open] summary span { display: none; }
+.hm-warns .sm-warn { padding: 7px 14px; font-size: 13px; }
 .help { position: fixed; inset: 0; z-index: 25; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(4, 3, 2, 0.78); font-family: 'Cinzel', Georgia, serif; color: var(--ink, #f4ead8); pointer-events: auto; overflow: auto; }
 .help.show { display: flex; }
 .help-panel { padding: 20px 26px; background: linear-gradient(180deg, rgba(28, 22, 16, 0.97), rgba(12, 10, 8, 0.98)); border: 1px solid rgba(231, 194, 122, 0.5); border-radius: 8px; max-width: 560px; }

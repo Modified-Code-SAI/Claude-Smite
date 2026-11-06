@@ -50,7 +50,7 @@ stage a held moment in each mode and frame it for a backdrop.
 npm run build && npx vite preview --port 4173 &
 node tools/trailer/film.mjs kaClash,kaDuel,kaArena,kaSiege,kaJotunn --frames 10 --width 1600
 # pick a frame, then for each mode:
-ffmpeg -i out/frames/kaDuel/0009.jpg -vf scale=1600:-1 -q:v 5 public/keyart/duel.jpg
+ffmpeg -i out/frames/kaDuel/0000.jpg -vf scale=1600:-1 -q:v 5 public/keyart/duel.jpg
 ffmpeg -i public/keyart/duel.jpg -vf "scale=480:-1,gblur=sigma=6" -q:v 6 public/keyart/duel-blur.jpg
 ffmpeg -i public/keyart/duel.jpg -vf scale=256:-1 -q:v 4 public/keyart/duel-thumb.jpg
 ```

@@ -166,18 +166,18 @@ export const SHOTS = {
       const ally = gods.find((u) => u.team === p.team), foes = gods.filter((u) => u.team !== p.team);
       g.player.model.root.visible = true;
       s.skip(6);
-      // the hill's two sides squaring up across its middle
-      s.combat.sim.teleport(p, -0.8, 3.2, 0);
-      if (ally) s.combat.sim.teleport(ally, 2.6, 4.8, 0);
-      if (foes[0]) s.combat.sim.teleport(foes[0], 0.9, -3.0, Math.PI);
-      if (foes[1]) s.combat.sim.teleport(foes[1], -2.8, -4.6, Math.PI);
+      // the hill's two sides squaring up in front of its shrine, seen side-on
+      s.combat.sim.teleport(p, -2.6, 6.2, -Math.PI / 2);
+      if (ally) s.combat.sim.teleport(ally, -4.4, 7.8, -Math.PI / 2);
+      if (foes[0]) s.combat.sim.teleport(foes[0], 2.4, 6.0, Math.PI / 2);
+      if (foes[1]) s.combat.sim.teleport(foes[1], 4.2, 7.6, Math.PI / 2);
       s.vars.p = p; s.vars.all = [p, ally, ...foes].filter(Boolean);
       return { who: s.vars.all.map((u) => u.name) };
     }`, `(dt, t, s) => {
       const p = s.vars.p, f = s.vars.all.find((u) => u.team !== p.team);
       for (const u of s.vars.all) u.combatant.health = u.combatant.stats.maxHealth;
       if (!s.vars.cast && t > 0.02 && f) { s.vars.cast = 1; s.cast(p, 0, f.x, f.z); }
-      s.look(4.2, 2.4, 9.4, 0, 1.5, -0.6, 48);
+      s.look(0.6, 2.5, 13.4, 0, 1.5, 5.4, 50);
     }`),
   kaDuel: still('duel', `(s, g) => {
       const p = s.combat.player, r = s.combat.sim.units.find((u) => u.kind === 'god' && u.team === 'chaos');
@@ -238,15 +238,15 @@ export const SHOTS = {
       const ok = s.skipUntil(() => { const j = giant(); return !!j && gods().filter((x) => Math.hypot(x.x - j.x, x.z - j.z) < 12).length >= 2; }, 90);
       // set the fight on the open plaza: the giant in the middle, two gods squaring up to it
       const j = giant(), two = gods().slice(0, 2);
-      s.combat.sim.teleport(j, 0, -2, Math.PI);
-      if (two[0]) s.combat.sim.teleport(two[0], 3.2, 5.2, 0);
-      if (two[1]) s.combat.sim.teleport(two[1], -2.6, 6.4, 0);
+      s.combat.sim.teleport(j, -0.5, -7, Math.PI);
+      if (two[0]) s.combat.sim.teleport(two[0], 2.4, 1.2, 0);
+      if (two[1]) s.combat.sim.teleport(two[1], -2.2, 2.2, 0);
       s.vars.giant = giant; s.vars.two = two;
       return { ok, at: s.skipped, gods: two.map((u) => u.name) };
     }`, `(dt, t, s) => {
       for (const u of s.vars.two) u.combatant.health = u.combatant.stats.maxHealth;
-      // low behind the gods, looking up at the giant over their heads
-      s.look(5.5, 2.4, 15.5, -0.4, 5.6, -1.5, 52);
+      // low behind the gods (inside the plaza's ring of columns), looking up at the giant over their heads
+      s.look(3.6, 1.9, 9.6, -0.4, 8.4, -6, 68);
     }`),
   probeArena: {
     url: 'map=arena&god=zeus&quality=high',

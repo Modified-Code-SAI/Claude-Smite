@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GODS } from './gods';
-import { clashBots, duelRival, lineupFor, seeded, siegeBots } from './lineup';
+import { clashBots, conquestBots, duelRival, lineupFor, seeded, siegeBots } from './lineup';
 import { rushRoster } from '../net/rushRoster';
 import { descentRoster } from '../net/descentRoster';
 import type { NetPlayer } from '../net/roster';
@@ -58,6 +58,12 @@ describe('lineup', () => {
     expect(cq.order).toHaveLength(5);
     expect(cq.chaos).toHaveLength(5);
     expect(cq.order[0]!.player).toBe('me');
+    expect(cq.order.slice(1).map((s) => s.god)).toEqual(conquestBots('zeus', seeded(seed)).allies);
+    expect(cq.chaos.map((s) => s.god)).toEqual(conquestBots('zeus', seeded(seed)).enemies);
+    // every god can turn up as a Conquest bot, not only the first five
+    const seen = new Set<string>();
+    for (let k = 1; k < 40; k++) for (const g of conquestBots('zeus', seeded(k)).enemies) seen.add(g);
+    expect(seen.size).toBe(GODS.length);
   });
 
   it('the Jötunn marks who is the giant first', () => {

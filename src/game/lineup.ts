@@ -41,9 +41,16 @@ function shuffled<T>(list: readonly T[], rng: () => number): T[] {
   return out;
 }
 
-/** Conquest alone: four bot allies (never the player's god) and five enemies, in the roster's order (it sets their lanes). */
-export function conquestBots(mine: string): { allies: string[]; enemies: string[] } {
-  return { allies: ids().filter((id) => id !== mine).slice(0, 4), enemies: ids().slice(0, 5) };
+/**
+ * Conquest alone: four bot allies (never the player's god) and five enemies,
+ * in the roster's order (it sets their lanes), drawn from every god so a
+ * sixth or later god turns up too. Like Clash, changing the player's god only
+ * replaces the ally that clashes with it.
+ */
+export function conquestBots(mine: string, rng: () => number): { allies: string[]; enemies: string[] } {
+  const a = shuffled(ids(), rng);
+  const e = shuffled(ids(), rng);
+  return { allies: a.filter((id) => id !== mine).slice(0, 4), enemies: e.slice(0, 5) };
 }
 
 /**
@@ -112,7 +119,7 @@ export function lineupFor(s: LineupSetup): Lineup {
         const side = (t: Side) => slots.filter((x) => x.team === t).sort((a, b) => Number(!a.player) - Number(!b.player));
         return { order: side('order').map((x) => ({ god: x.god, player: x.player })), chaos: side('chaos').map((x) => ({ god: x.god, player: x.player })) };
       }
-      const b = conquestBots(mine);
+      const b = conquestBots(mine, rng());
       return { order: [human(me), ...b.allies.map(bot)], chaos: b.enemies.map(bot) };
     }
     case 'clash': {

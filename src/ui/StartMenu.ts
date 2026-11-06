@@ -116,11 +116,13 @@ function showWarning(root: HTMLElement, content: string | HTMLElement): HTMLDivE
   return warn;
 }
 
-/** The slow-GPU warning: what's wrong, then numbered steps to fix it. */
+/** The slow-GPU warning: what's wrong on one line, and the numbered steps to fix it a click away. */
 function gpuWarning(advice: GpuAdvice): HTMLElement {
-  const box = document.createElement('div');
-  const text = document.createElement('div');
+  const box = document.createElement('details');
+  box.className = 'sm-fix';
+  const text = document.createElement('summary');
   text.textContent = advice.text;
+  text.appendChild(document.createElement('span')).textContent = 'How to fix';
   const steps = document.createElement('ol');
   for (const step of advice.steps) steps.appendChild(document.createElement('li')).textContent = step;
   box.append(text, steps);
