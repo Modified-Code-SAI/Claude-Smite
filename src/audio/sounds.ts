@@ -4,7 +4,7 @@
  * hits, swings) never sound like one sample on repeat.
  */
 
-import { ahr, Biquad, buf, crackle, dcBlock, declick, drive, fill, glide, loopable, normalize, Osc, perc, pink, RATE, seeded as rngFor, tail, wander, white, type Rand } from './dsp';
+import { ahr, Biquad, brown, buf, crackle, dcBlock, declick, drive, fill, glide, loopable, mixIn, modal, normalize, OnePole, Osc, perc, pink, RATE, seeded as rngFor, tail, wander, white, type Rand } from './dsp';
 import {
   chime, chirp, choir, clang, debris, filter, fire, impact, knock, layer, puff, roar, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
 } from './gestures';
@@ -273,6 +273,15 @@ export const SOUNDS: Record<string, Recipe> = {
   'amb.drip': { variants: 5, peak: 0.3, make: (r) => tail(drip(r), 0.95, 0.55, 2600) },
   'amb.groan': { variants: 2, peak: 0.6, make: (r) => tail(layer([rumble(r, 3.2, { tone: 90, attack: 1.1 }), 1], [debris(r, 2.4, { density: 10, gain: 0.25, tone: 500 }), 0.6, 0.8]), 0.9, 0.4, 1800) },
   'amb.souls': { variants: 2, peak: 0.4, make: (r) => tail(choir(r, 3.4, r() < 0.5 ? 110 : 98, { vowelName: 'oo', env: (t) => ahr(t, 1.2, 0.6, 1.6) }), 0.95, 0.6, 2200) },
+  // each depth's own air: the Ashen Depths' furnace and far-off anvils, steam venting from the rock;
+  // the Drowned Halls' water running in the dark and a sunken bell; the Abyss's hollow wind and whispers
+  'amb.forge': { loop: true, peak: 0.5, make: (r) => forgeBed(r, 13) },
+  'amb.anvil': { variants: 3, peak: 0.4, make: (r) => anvil(r) },
+  'amb.vent': { variants: 2, peak: 0.3, make: (r) => vent(r) },
+  'amb.stream': { loop: true, peak: 0.45, make: (r) => streamBed(r, 12) },
+  'amb.toll': { variants: 2, peak: 0.55, make: (r) => drownedToll(r) },
+  'amb.hollow': { loop: true, peak: 0.5, make: (r) => hollowBed(r, 14) },
+  'amb.whisper': { variants: 4, peak: 0.3, make: (r) => whisper(r) },
   // a soul reaching you: an airy rush drawn in, a ghostly glint and a breath of a choir
   // the dead climbing out of the floor: rock cracking open, grit falling away and a low moan from below
   // a boss's entrance: a deep blow under the floor, a dark brass call and a low choir swelling behind it
@@ -627,6 +636,183 @@ function caveBed(r: Rand, len: number): Float32Array {
     out[i] = (lp.run(v * 3) * 1.4 + bp.run(v * 3) * 0.35 * g) * g + (a.sine(41) + b.sine(61.5) * 0.7) * 0.05 * (0.6 + 0.4 * Math.sin(t * 0.45));
   }
   return loopable(dcBlock(out), 1.5);
+}
+
+/** A great forge somewhere below: the furnace's low roar, breathing with the bellows, and embers spitting. */
+function forgeBed(r: Rand, len: number): Float32Array {
+  const out = buf(len + 1);
+  const br = brown(r);
+  const pk = pink(r);
+  const lp = new Biquad('lowpass', 150, 0.8);
+  const body = new Biquad('bandpass', 280, 0.5);
+  const bp = new Biquad('bandpass', 360, 0.7);
+  const flicker = wander(r, 2.2);
+  const flutter = wander(r, 9);
+  // the bellows push every few seconds; each breath wraps round the loop's length, so the seam falls inside one unheard
+  const breaths: number[] = [];
+  for (let t = r() * 1.5; t < len - 1.5; t += 2.9 + r() * 1.1) breaths.push(t);
+  const push = (t: number): number => {
+    let e = 0;
+    for (const b of breaths) {
+      const d = (((t - b) % len) + len) % len;
+      if (d < 2.6) e = Math.max(e, ahr(d, 0.8, 0.3, 1.5));
+    }
+    return e;
+  };
+  for (let i = 0; i < out.length; i++) {
+    const p = push(i / RATE);
+    if ((i & 63) === 0) bp.set(300 + 400 * p, 0.7);
+    const x = pk();
+    const flame = (0.8 + 0.2 * flicker()) * (0.85 + 0.15 * flutter());
+    out[i] = lp.run(br()) * 0.35 + (body.run(x) * 0.9 + bp.run(x) * 1.7 * p) * (0.55 + 0.45 * p) * flame;
+  }
+  crackle(out, r, 16, (t) => 0.35 + push(t), { tone: 1700, gain: 0.3, len: 0.004 });
+  return loopable(dcBlock(out), 1);
+}
+
+/** A smith's hammer on an anvil far off in the caverns: a few ringing blows, dulled by the distance and carried by the rock. */
+function anvil(r: Rand): Float32Array {
+  const blows = 2 + Math.floor(r() * 3);
+  const gap = 0.58 + r() * 0.2;
+  const out = buf(blows * gap + 1.8);
+  const base = 640 + r() * 150;
+  for (let k = 0; k < blows; k++) {
+    // the last blow is the light one, a tap to settle the work
+    const g = k === blows - 1 && blows > 2 ? 0.45 : 1 - k * 0.08;
+    mixIn(out, clang(r, 1.5, base, { decay: 1.1, bright: 0.5, gain: g }), k * gap + (r() - 0.5) * 0.03);
+  }
+  const lp = new Biquad('lowpass', 2300, 0.7);
+  for (let i = 0; i < out.length; i++) out[i] = lp.run(out[i]!);
+  return tail(out, 1, 0.55, 1700);
+}
+
+/** Steam venting from a crack in the hot rock: a sudden hiss that sputters and sighs away. */
+function vent(r: Rand): Float32Array {
+  const len = 1.3 + r() * 0.8;
+  const out = buf(len + 0.6);
+  const n = white(r);
+  const hp = new Biquad('highpass', 900, 0.7);
+  const bp = new Biquad('bandpass', 3000, 0.6);
+  const sputter = wander(r, 16);
+  const f0 = 2400 + r() * 1400;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    if ((i & 63) === 0) bp.set(f0 * (1 - 0.4 * Math.min(1, t / len)), 0.6);
+    out[i] = bp.run(hp.run(n())) * ahr(t, 0.04, len * 0.2, len * 0.75) * (0.75 + 0.25 * sputter());
+  }
+  return tail(out, 0.8, 0.35, 2800);
+}
+
+/** Water running through the stone in the dark: many small bubbles over a low rush, heard from a hall away. */
+function streamBed(r: Rand, len: number): Float32Array {
+  const out = buf(len + 1);
+  const n = pink(r);
+  const lp = new Biquad('bandpass', 260, 0.7);
+  const bp = new Biquad('bandpass', 750, 0.5);
+  const flow = wander(r, 0.2);
+  for (let i = 0; i < out.length; i++) {
+    const x = n();
+    out[i] = (lp.run(x) * 0.35 + bp.run(x) * 0.5) * (0.75 + 0.25 * flow());
+  }
+  // the babble: little rising bubbles, thick where the flow runs strong
+  const count = Math.round(len * 130);
+  for (let k = 0; k < count; k++) {
+    const at = r() * len;
+    const f = 300 + r() ** 1.3 * 1500;
+    const d = 0.01 + r() * 0.03;
+    const o = new Osc();
+    const g = (0.04 + r() * 0.12) * (0.6 + 0.4 * Math.sin((at / len) * Math.PI * 4 + 1) ** 2);
+    fill(out, (t) => o.sine(f * (1 + t * 18)) * perc(t, 0.0015, d) * g, at, at + d * 1.6);
+  }
+  const far = new Biquad('lowpass', 2800, 0.6);
+  for (let i = 0; i < out.length; i++) out[i] = far.run(out[i]!);
+  return loopable(tail(out, 0.85, 0.35, 2200), 1);
+}
+
+/** A great bell tolling somewhere under the water: deep and muffled, its note wavering as it carries. */
+function drownedToll(r: Rand): Float32Array {
+  const len = 7.5;
+  const dry = buf(len);
+  const base = 182 + r() * 24;
+  // a bell's partials: the hum an octave down, the strike note, its minor third and fifth, the nominal and the clang above
+  modal(dry, base, [[0.5, 0.45, 6.5], [1, 1, 5], [1.19, 0.6, 3.6], [1.5, 0.35, 2.8], [2, 0.65, 2.6], [2.52, 0.35, 1.8], [3.01, 0.32, 1.4], [4.1, 0.2, 1], [5.4, 0.12, 0.7], [6.8, 0.08, 0.5]], { gain: 0.5, attack: 0.004 });
+  mixIn(dry, thump(r, 0.3, 140, 70, { click: 0.04, noise: 0.12 }), 0, 0.3);
+  // the water: a slow wobble in the pitch and a murk that thickens and thins
+  const out = buf(len);
+  const lp = new Biquad('lowpass', 900, 0.6);
+  const murk = wander(r, 0.7);
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    const at = i - (0.005 + 0.0025 * Math.sin(t * 3.4)) * RATE;
+    const j = Math.floor(at);
+    const x = j < 0 ? 0 : dry[j]! + (dry[j + 1] ?? 0) * (at - j) - dry[j]! * (at - j);
+    if ((i & 63) === 0) lp.set(1100 + 800 * (0.5 + 0.5 * murk()), 0.6);
+    out[i] = lp.run(x);
+  }
+  return tail(out, 1.2, 0.45, 1400);
+}
+
+/** Wind over the edge of a bottomless drop: a broad low rush, and hollow moans where it sings across the mouths of shafts. */
+function hollowBed(r: Rand, len: number): Float32Array {
+  const out = buf(len + 1);
+  const n = pink(r);
+  const lp = new Biquad('lowpass', 380, 0.7);
+  const hp = new Biquad('highpass', 110, 0.7);
+  const gust = wander(r, 0.15);
+  const pipes = [215, 330, 470].map((f) => ({ f: f * (0.92 + r() * 0.16), b: new Biquad('bandpass', f, 10), sweep: wander(r, (0.08 + r() * 0.08) * 64), swell: wander(r, 0.1 + r() * 0.12) }));
+  for (let i = 0; i < out.length; i++) {
+    const x = n();
+    const g = 0.4 + 0.6 * Math.max(0, gust());
+    let y = hp.run(lp.run(x)) * 1.2 * (0.5 + 0.5 * g);
+    for (const p of pipes) {
+      if ((i & 63) === 0) p.b.set(p.f * (1 + 0.1 * p.sweep()), 10);
+      y += p.b.run(x) * 6 * Math.max(0, p.swell()) ** 2 * g;
+    }
+    out[i] = y;
+  }
+  return loopable(dcBlock(out), 1);
+}
+
+/** Voices whispering in the dark: breath shaped into syllables no one can make out, two or three at once. */
+function whisper(r: Rand): Float32Array {
+  const len = 2.2 + r() * 0.8;
+  const out = buf(len + 0.6);
+  const shapes = Object.values(VOWELS);
+  const voices = 2 + Math.floor(r() * 2);
+  for (let v = 0; v < voices; v++) {
+    const n = white(r);
+    const fs = [0, 1, 2].map(() => new Biquad('bandpass', 1000, 6));
+    const sib = new Biquad('highpass', 4300, 0.8);
+    const breath = new OnePole(5200);
+    // each whisperer is a little higher or lower, and starts a beat after the last
+    const lift = 0.88 + r() * 0.3;
+    const from = 0.04 + v * (0.2 + r() * 0.35);
+    const to = Math.min(len - 0.1, from + 1.1 + r() * 1.2);
+    let t0 = from;
+    while (t0 < to) {
+      const d = 0.09 + r() * 0.15;
+      const shape = shapes[Math.floor(r() * shapes.length)]!;
+      fs.forEach((f, k) => f.set(shape[k]![0] * lift, 5));
+      const hiss = r() < 0.45 ? 0.05 + r() * 0.05 : 0;
+      const a = Math.round(t0 * RATE);
+      const z = Math.min(out.length, Math.round((t0 + hiss + d) * RATE));
+      const phrase = (t: number) => Math.sin(Math.PI * Math.min(1, Math.max(0, (t - from) / (to - from)))) ** 0.6;
+      for (let i = a; i < z; i++) {
+        const t = (i - a) / RATE;
+        const x = breath.run(n());
+        let y = 0;
+        if (t < hiss) y = sib.run(n()) * 0.35 * Math.sin((Math.PI * t) / hiss);
+        else {
+          const u = (t - hiss) / d;
+          for (let k = 0; k < 3; k++) y += fs[k]!.run(x) * shape[k]![2];
+          y *= Math.sin(Math.PI * u) ** 1.5 * 2.2;
+        }
+        out[i]! += y * phrase(i / RATE) * (0.7 + 0.3 * (v === 0 ? 1 : r()));
+      }
+      t0 += hiss + d + (r() < 0.25 ? 0.12 + r() * 0.15 : 0.015 + r() * 0.04);
+    }
+  }
+  return tail(out, 0.9, 0.45, 3200);
 }
 
 /** One drop falling into a still pool far off: a quick rising plink. */
