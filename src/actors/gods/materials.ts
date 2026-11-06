@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, atan, attribute, color, dot, exp, float, floor, Fn, fract, fwidth, length, Loop, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
-  positionGeometry, positionLocal, positionView, pow, reflectView, saturate, select, sin, smoothstep, time, uv, vec3, vec4,
+  positionGeometry, positionLocal, positionView, pow, reflectView, saturate, select, sin, smoothstep, step, time, uv, vec3, vec4,
 } from '../../render/tsl';
 import { objectUniforms } from '../../render/shared';
+import { CLOTH_SCALE_RANGE } from './clothScale';
 import { reliefFade, reliefNormal, surfaceGradient } from './relief';
 
 /**
@@ -296,6 +297,29 @@ function metalMaterial(base: number, trim: number, opts: { engrave?: boolean; da
   return m;
 }
 
+/**
+ * Coverage (0..1) of a running Greek key, x along the band in periods, y across it
+ * (0 bottom, 1 top): a baseline, and in each period a bar that climbs, runs along the
+ * top, comes back down and hooks inward. Each bar is a box blurred by the pixel's
+ * footprint, so the key stays crisp up close and averages out far away.
+ */
+function greekKey(x: any, y: any): any {
+  const px = fract(x);
+  const hx = fwidth(x).mul(0.5).add(1e-4);
+  const hy = fwidth(y).mul(0.5).add(1e-4);
+  // 1 between a and b, ramping over the footprint at each edge
+  const inside = (u: any, h: any, a: number, b: number): any => saturate(u.sub(a).div(h.mul(2)).add(0.5)).sub(saturate(u.sub(b).div(h.mul(2)).add(0.5)));
+  const s = 0.13;
+  const bar = (x0: number, x1: number, y0: number, y1: number): any => inside(px, hx, x0, x1).mul(inside(y, hy, y0, y1));
+  const baseline = inside(y, hy, 0, s);
+  const climb = bar(0.1, 0.1 + s, 0, 1);
+  const top = bar(0.1, 0.88, 1 - s, 1);
+  const down = bar(0.88 - s, 0.88, 0.34, 1);
+  const back = bar(0.46, 0.88, 0.34, 0.34 + s);
+  const hook = bar(0.46, 0.46 + s, 0.34, 0.74);
+  return max(max(max(baseline, climb), max(top, down)), max(back, hook));
+}
+
 function clothMaterial(c: number, deep: number, trim: number, opts: { pattern?: boolean } = {}): THREE.Material {
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.82, sheen: 0.45, sheenRoughness: 0.5, side: THREE.DoubleSide });
   m.sheenColor = new THREE.Color(c).lerp(new THREE.Color(0xffffff), 0.25);
@@ -310,21 +334,34 @@ function clothMaterial(c: number, deep: number, trim: number, opts: { pattern?: 
   const threads = abs(sin(dot(positionGeometry, vec3(1, 0.35, 0.6)).mul(1400))).add(abs(sin(dot(positionGeometry, vec3(-0.4, 1, 0.5)).mul(1400))));
   let height: any = folds.mul(0.016).mul(reliefFade(0.12)).add(threads.mul(0.00015).mul(reliefFade(0.004)));
   if (opts.pattern) {
-    // gold embroidered border: along uv edges (cloth panels have 0..1 uv)
+    // gold embroidered border: along uv edges (cloth panels have 0..1 uv). Panels the
+    // loader measured (clothScale.ts: meters per uv unit in color z and w) size it in
+    // meters, so a robe and a loincloth carry the same border and keys; anything
+    // unmeasured falls back to fractions of its uv
+    const d = data();
+    const across = d.z.mul(CLOTH_SCALE_RANGE);
+    const down = d.w.mul(CLOTH_SCALE_RANGE);
+    const sized = step(0.004, d.w);
     const ex = min(v.x, float(1).sub(v.x));
     const ey = float(1).sub(v.y);
-    const borderX = float(1).sub(smoothstep(0.035, 0.05, ex));
-    const borderY = float(1).sub(smoothstep(0.05, 0.065, ey));
-    const meanderBand = smoothstep(0.08, 0.09, ey).mul(float(1).sub(smoothstep(0.16, 0.17, ey)));
-    const meander = fract(v.x.mul(18).add(fract(v.y.mul(36)).step(0.5).mul(0.5))).step(0.5).mul(meanderBand);
+    const borderX = float(1).sub(mix(smoothstep(0.035, 0.05, ex), smoothstep(0.016, 0.022, ex.mul(across)), sized));
+    const borderY = float(1).sub(mix(smoothstep(0.05, 0.065, ey), smoothstep(0.024, 0.031, ey.mul(down)), sized));
+    // a running Greek key above the hem, drawn as anti-aliased bars (it was a checker):
+    // about 5 cm keys, a whole number of them across so a skirt's keys meet at its seam
+    const keys = mix(float(9), max(float(1), across.div(0.055).round()), sized);
+    const meander = greekKey(v.x.mul(keys), mix(ey.sub(0.075).div(0.1), ey.mul(down).sub(0.042).div(0.05), sized));
     // shells cut from the body have no panel uv; their border comes from _edge
     const shellBorder = float(1).sub(smoothstep(0.018, 0.024, edge()));
     const t = max(max(max(borderX, borderY), meander), shellBorder);
-    col = mix(col, color(trim), t);
-    m.metalnessNode = t.mul(0.9);
-    m.roughnessNode = mix(float(0.82), float(0.3), t);
+    // gold thread, couched in slanted satin stitches that catch the light one by one
+    const stitchPhase = dot(positionGeometry, vec3(0.8, 1, 0.45)).mul(2600);
+    const stitchFade = float(1).sub(smoothstep(0.3, 0.8, fwidth(stitchPhase)));
+    const stitch = abs(sin(stitchPhase)).pow(0.7).sub(0.64).mul(stitchFade).add(0.64);
+    col = mix(col, color(trim).mul(stitch.mul(0.34).add(0.7)), t);
+    m.metalnessNode = t.mul(0.85);
+    m.roughnessNode = mix(float(0.82), float(0.46).sub(stitch.mul(0.18)), t);
     // gold thread embroidery sits on top of the cloth
-    height = height.add(t.mul(0.0012));
+    height = height.add(t.mul(0.0012)).add(t.mul(stitch.sub(0.64)).mul(0.0005).mul(stitchFade));
   }
   m.colorNode = col;
   relief(m, height);
