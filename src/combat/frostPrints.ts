@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, atan, attribute, float, length, max, min, mix, mx_noise_float, mx_worley_noise_float, positionWorld, pow, sin, smoothstep, step, uniform, vec2, vec3,
+  abs, atan, attribute, float, length, max, min, mix, mx_noise_float, mx_worley_noise_float_2d, positionWorld, pow, sin, smoothstep, step, uniform, vec2, vec3,
 } from '../render/tsl';
 
 /**
@@ -8,8 +8,8 @@ import {
  * blows, slowly breaking up into patches and melting away.
  */
 export const PRINTS = {
-  /** Prints kept at once; the oldest makes room for a new one. */
-  capacity: 56,
+  /** Prints kept at once; the oldest makes room for a new one (a frost breath or a hailstorm lays a dozen). */
+  capacity: 80,
   /** Seconds a footprint lasts, and a blow's frost; both melt over their last `melt` seconds. */
   footLife: 22,
   blowLife: 18,
@@ -92,10 +92,15 @@ export class FrostPrints {
     const blow = step(1.5, kind);
     const life = mix(float(PRINTS.footLife), float(PRINTS.blowLife), blow);
     const wp = positionWorld.xz;
+    // Noise across the ground, each print reading its own stretch of it (its
+    // seed shifts where). Flat noise, not 3D: a third of the cost per pixel,
+    // and prints can carpet the screen.
+    const at = (f: number, k: number, o: number) => vec2(wp.x.mul(f).add(seed.mul(k)).add(o), wp.y.mul(f).sub(seed.mul(k * 0.61)));
     // patches the frost melts away in, and the glints of its crystals
-    const patch = mx_noise_float(vec3(wp.x.mul(1.6), wp.y.mul(1.6), seed)).mul(0.5).add(0.5);
-    const grain = mx_noise_float(vec3(wp.x.mul(7), wp.y.mul(7), seed.add(3))).mul(0.5).add(0.5);
-    const glint = smoothstep(0.16, 0.02, mx_worley_noise_float(vec3(wp.x.mul(5.5), wp.y.mul(5.5), seed.mul(0.7))));
+    const patch = mx_noise_float(at(1.6, 1, 0)).mul(0.5).add(0.5);
+    const grain = mx_noise_float(at(7, 1.3, 3)).mul(0.5).add(0.5);
+    // (flat cells sit closer to their points than a slice through 3D ones, so the spots are drawn tighter to glint as often)
+    const glint = smoothstep(0.075, 0.01, mx_worley_noise_float_2d(at(5.5, 0.7, 0)));
 
     // -- a footprint: the right foot is the left one mirrored; its toes are +y
     const fx = mix(p.x, p.x.negate(), kind);
@@ -111,7 +116,7 @@ export class FrostPrints {
     const sole = smooth(smooth(heel, ball, 0.45), toes, 0.3);
     const inside = smoothstep(0.04, -0.12, sole);
     // thin frost where the sole pressed, in cells like hoarfrost; a bright ridge pushed up at the rim; crystals feathering out past it
-    const cells = smoothstep(0.42, 0.08, mx_worley_noise_float(vec3(wp.x.mul(2.6), wp.y.mul(2.6), seed.add(9))));
+    const cells = smoothstep(0.32, 0.05, mx_worley_noise_float_2d(at(2.6, 1.1, 9)));
     const ridge = smoothstep(-0.3, -0.05, sole).mul(smoothstep(0.1, -0.03, sole));
     const ang = atan(p.y, fx);
     const feathers = pow(abs(sin(ang.mul(21).add(patch.mul(7)))), 5).mul(smoothstep(0.38, 0.0, sole)).mul(step(-0.03, sole));

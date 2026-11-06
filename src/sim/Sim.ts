@@ -98,6 +98,10 @@ export class Sim {
   intercept: ((u: Unit, action: 'basic' | 'cast') => boolean) | null = null;
   /** How far a knockback throws its target, arena meters (Relic Rush throws farther). */
   knockback = 3.5;
+  /** How high (meters) a knockback's arc rises (Jötunn's giant hurls gods high). */
+  knockbackArc = 0.6;
+  /** How high (meters) a knock-up throws its target. */
+  knockupArc = 1.6;
 
   constructor(
     readonly terrain: SimTerrain,
@@ -368,7 +372,7 @@ export class Sim {
         const w = radius(t.width);
         for (const target of this.unitsInLine(u, u.x, u.z, dir, len, w / 2)) this.hit(u, cast, target);
         this.applySelf(u, cast);
-        this.flash(u, { type: 'line', x: u.x, z: u.z, yaw, length: len, width: w });
+        this.flash(u, { type: 'line', x: u.x, z: u.z, yaw, length: len, width: w }, cast.skill.id);
         at = { x: u.x + dir.x * len, z: u.z + dir.z * len };
         break;
       }
@@ -382,7 +386,7 @@ export class Sim {
           this.hit(u, cast, target);
         }
         this.applySelf(u, cast);
-        this.flash(u, { type: 'cone', x: u.x, z: u.z, yaw, range: r, angle: t.angle });
+        this.flash(u, { type: 'cone', x: u.x, z: u.z, yaw, range: r, angle: t.angle }, cast.skill.id);
         break;
       }
       case 'ground': {
@@ -396,8 +400,8 @@ export class Sim {
         } else if (cast.hits.some((e) => e.kind === 'summon') || cast.skill.windup) {
           // (a wound-up blast already showed its warning while it wound up)
           this.area(u, cast, at, r);
-          this.flash(u, { type: 'circle', x: at.x, z: at.z, radius: r });
-          if (cast.skill.windup) this.emit({ type: 'impact', x: at.x, z: at.z, owner: u, big: true });
+          this.flash(u, { type: 'circle', x: at.x, z: at.z, radius: r }, cast.skill.id);
+          if (cast.skill.windup) this.emit({ type: 'impact', x: at.x, z: at.z, owner: u, big: true, skill: cast.skill.id });
         } else {
           // a ground blast lands after a short warning circle, so it can be dodged
           this.spawnZone(u, cast, at, r, 0, 0, null, 0, GROUND_WARNING);
@@ -415,7 +419,7 @@ export class Sim {
           this.spawnZone(u, cast, at, r, ticking.hits, ticking.interval, 'caster', 0);
         } else {
           this.area(u, cast, at, r);
-          this.flash(u, { type: 'circle', x: u.x, z: u.z, radius: r });
+          this.flash(u, { type: 'circle', x: u.x, z: u.z, radius: r }, cast.skill.id);
         }
         break;
       }
@@ -427,7 +431,7 @@ export class Sim {
           const end = this.sweepEnd(u, dir, dist);
           const len = hypot(end.x - u.x, end.z - u.z);
           for (const target of this.unitsInLine(u, u.x, u.z, dir, len, width / 2)) this.hit(u, cast, target);
-          this.flash(u, { type: 'line', x: u.x, z: u.z, yaw, length: len, width });
+          this.flash(u, { type: 'line', x: u.x, z: u.z, yaw, length: len, width }, cast.skill.id);
           this.teleport(u, end.x, end.z);
           at = end;
         } else {
@@ -459,8 +463,8 @@ export class Sim {
           collide: false,
           land: () => {
             this.area(u, cast, { x: u.x, z: u.z }, r);
-            this.flash(u, { type: 'circle', x: u.x, z: u.z, radius: r });
-            this.emit({ type: 'impact', x: u.x, z: u.z, owner: u, big: true });
+            this.flash(u, { type: 'circle', x: u.x, z: u.z, radius: r }, cast.skill.id);
+            this.emit({ type: 'impact', x: u.x, z: u.z, owner: u, big: true, skill: cast.skill.id });
           },
         };
         break;
@@ -675,14 +679,14 @@ export class Sim {
         // Relic Rush's Playmaker tree: Bulldozer throws farther, Iron Footing holds ground
         const dist = this.knockback * (1 + owner.combatant.sport('push')) * Math.max(0.2, 1 - target.combatant.sport('footing'));
         const time = 0.3 * Math.sqrt(dist / 3.5);
-        target.forced = { vx: (dx / d) * (dist / time), vz: (dz / d) * (dist / time), remaining: time, total: time, arc: 0.6, collide: true };
+        target.forced = { vx: (dx / d) * (dist / time), vz: (dz / d) * (dist / time), remaining: time, total: time, arc: this.knockbackArc, collide: true };
       } else if (e.cc === 'pull' || e.cc === 'grab') {
         const time = 0.3;
         const dist = Math.max(0, d - (owner.radius + target.radius + 0.6));
         target.forced = { vx: (-dx / d) * (dist / time), vz: (-dz / d) * (dist / time), remaining: time, total: time, arc: 0.3, collide: true };
       } else if (e.cc === 'knockup') {
         const time = Math.max(0.4, e.duration);
-        target.forced = { vx: 0, vz: 0, remaining: time, total: time, arc: 1.6, collide: true };
+        target.forced = { vx: 0, vz: 0, remaining: time, total: time, arc: this.knockupArc, collide: true };
       }
     }
   }
@@ -842,8 +846,10 @@ export class Sim {
     this.flash(owner, shape);
   }
 
-  private flash(owner: Unit, shape: FlashShape): void {
-    this.flashes.push({ id: nextEntityId(), shape, owner, age: 0, life: 0.45 });
+  private flash(owner: Unit, shape: FlashShape, skill?: string): void {
+    const f: Flash = { id: nextEntityId(), shape, owner, age: 0, life: 0.45 };
+    if (skill) f.skill = skill;
+    this.flashes.push(f);
   }
 
   /** Set by the game to build summoned units; without it summons are skipped. */
@@ -1159,7 +1165,7 @@ export class Sim {
       if (p.cast && isStructure(t)) continue;
       if (hypot(t.x - p.x, t.z - p.z) > p.radius + t.radius) continue;
       p.hit.add(t);
-      this.emit({ type: 'impact', x: p.x, z: p.z, owner: p.owner, big: !!p.cast });
+      this.emit(p.cast ? { type: 'impact', x: p.x, z: p.z, owner: p.owner, big: true, skill: p.cast.skill.id } : { type: 'impact', x: p.x, z: p.z, owner: p.owner, big: false });
       if (p.shot) this.landBasic(p.owner, t, p.shot);
       if (p.cast) {
         this.hit(p.owner, p.cast, t);
@@ -1247,7 +1253,7 @@ export class Sim {
           if (t !== o && !t.targetable) continue;
           this.applyOnce(o, zn.cast, t);
         }
-        this.emit({ type: 'impact', x: zn.x, z: zn.z, owner: o, big: false });
+        this.emit({ type: 'impact', x: zn.x, z: zn.z, owner: o, big: false, skill: zn.cast.skill.id });
       }
     }
     removeWhere(this.zones, (z) => z.ticks <= 0 && z.timer <= -0.4);
@@ -1278,7 +1284,7 @@ export class Sim {
     this.landing = this.landing.filter((l) => l.at > this.time);
     for (const l of due) {
       this.area(l.owner, l.cast, l, l.r);
-      this.flash(l.owner, { type: 'circle', x: l.x, z: l.z, radius: l.r });
+      this.flash(l.owner, { type: 'circle', x: l.x, z: l.z, radius: l.r }, l.cast.skill.id);
     }
   }
 

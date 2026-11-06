@@ -1,18 +1,24 @@
 import { QUALITY_PRESETS, type QualityName } from '../render/Quality';
 import { controlsHtml } from './StartMenu';
 import { setCompatibilityMode } from './Fatal';
+import { openSettings } from './SettingsMenu';
+import { bindingLabel, keyLabel, SLOT_ACTIONS } from '../settings/bindings';
+import { actionKey, onKeyLabels } from '../settings/controls';
+import { codesFor, settings } from '../settings/store';
 
-const SENS_KEY = 'ascendant.sensitivity';
+/** The hint's first line: the keys that matter most, as the player has bound them. */
+const keysLine = () => {
+  const k = (a: Parameters<typeof codesFor>[0]) => keyLabel(codesFor(a)[0]) || '—';
+  const move = (['forward', 'left', 'back', 'right'] as const).map(k).join('');
+  const skills = SLOT_ACTIONS.slice(0, 3).map(k).join(' ');
+  return `${move} move &middot; mouse aim &middot; ${k('attack').toLowerCase()} attack &middot; ${skills} skills &middot; ${bindingLabel(codesFor('ultimate')).replace(' / ', ' or ')} ultimate`;
+};
 
-function loadSensitivity(): number {
-  try {
-    const v = Number(localStorage.getItem(SENS_KEY));
-    if (v >= 0.25 && v <= 3) return v;
-  } catch {
-    /* storage unavailable */
-  }
-  return 1;
-}
+/** The hint's second line: how to reach the menus, with the player's keys. */
+const menuLine = () => {
+  const b = settings().bindings;
+  return `${bindingLabel(b.menu)} game menu &middot; ${bindingLabel(b.settings)} settings &middot; Esc frees the mouse`;
+};
 
 /** Minimal overlay: FPS, backend, quality picker, controls hint, loading screen. */
 export class Hud {
@@ -26,7 +32,7 @@ export class Hud {
   private frames = 0;
   private acc = 0;
 
-  constructor(onQuality: (q: QualityName) => void, onSensitivity: (scale: number) => void = () => {}) {
+  constructor(onQuality: (q: QualityName) => void) {
     this.root = document.createElement('div');
     this.root.className = 'hud';
     this.root.innerHTML = `
@@ -40,42 +46,30 @@ export class Hud {
         </label>
       </div>
       <div class="hud-crosshair"></div>
-      <div class="hud-hint"><b>Click to play</b><span>WASD move &middot; mouse aim &middot; left click attack &middot; 1&ndash;3 skills &middot; 4 or R ultimate</span><span>H controls &amp; settings &middot; Esc frees the mouse</span></div>
+      <div class="hud-hint"><b>Click to play</b><span class="hud-hint-keys"></span><span class="hud-hint-menu"></span></div>
       <div class="hud-loading"><div class="hud-title">ASCENDANT</div><div class="hud-bar"><div></div></div><div class="hud-sub">Raising the temple&hellip;</div></div>
     `;
     document.body.appendChild(this.root);
     this.help = document.createElement('div');
     this.help.className = 'help';
     this.help.innerHTML = `<div class="help-panel"><h3>Controls</h3>${controlsHtml()}
-      <h3 class="help-gap">Settings</h3>
-      <label class="help-row">Mouse sensitivity <input class="help-sens" type="range" min="0.25" max="3" step="0.05"><span class="help-sens-val"></span></label>
+      <div class="help-row help-settings"><button class="help-open-settings">Settings</button><button class="help-open-keys">Change keys</button><span class="help-report-note">Sound, graphics, team colors, interface size, subtitles and every key.</span></div>
       <h3 class="help-gap">Performance</h3>
       <div class="help-row"><button class="help-report">Copy performance report</button><span class="help-report-note">Frame timings from the last minute of play, to paste into a lag report.</span></div>
       <div class="help-actions"><button class="help-resume">Resume</button><button class="help-quit">Quit to title</button></div>
-      <div class="help-foot">Press H to close.</div></div>`;
+      <div class="help-foot">Press <span class="help-menu-key">H</span> to close.</div></div>`;
     this.help.addEventListener('click', (e) => {
       if (e.target === this.help) this.toggleHelp(false);
     });
     this.help.addEventListener('mousedown', (e) => e.stopPropagation());
     this.help.querySelector('.help-resume')!.addEventListener('click', () => this.toggleHelp(false));
     this.help.querySelector('.help-quit')!.addEventListener('click', () => location.reload());
-    const sens = this.help.querySelector<HTMLInputElement>('.help-sens')!;
-    const sensVal = this.help.querySelector<HTMLSpanElement>('.help-sens-val')!;
-    const applySens = (v: number) => {
-      sens.value = String(v);
-      sensVal.textContent = `${v.toFixed(2)}x`;
-      onSensitivity(v);
-    };
-    applySens(loadSensitivity());
-    sens.addEventListener('input', () => {
-      const v = Number(sens.value);
-      applySens(v);
-      try {
-        localStorage.setItem(SENS_KEY, String(v));
-      } catch {
-        /* storage unavailable */
-      }
-    });
+    const helpKey = this.help.querySelector<HTMLSpanElement>('.help-menu-key')!;
+    const setHelpKey = () => (helpKey.textContent = actionKey('menu'));
+    setHelpKey();
+    onKeyLabels(setHelpKey);
+    this.help.querySelector('.help-open-settings')!.addEventListener('click', () => openSettings());
+    this.help.querySelector('.help-open-keys')!.addEventListener('click', () => openSettings('controls'));
     this.help.querySelector('.help-report')!.addEventListener('click', () => this.copyReport());
     document.body.appendChild(this.help);
     this.fps = this.root.querySelector('.hud-fps')!;
@@ -83,6 +77,14 @@ export class Hud {
     this.loading = this.root.querySelector('.hud-loading')!;
     this.bar = this.root.querySelector('.hud-bar > div')!;
     this.hint = this.root.querySelector('.hud-hint')!;
+    const menuHint = this.root.querySelector<HTMLSpanElement>('.hud-hint-menu')!;
+    const keysHint = this.root.querySelector<HTMLSpanElement>('.hud-hint-keys')!;
+    const hints = () => {
+      keysHint.innerHTML = keysLine();
+      menuHint.innerHTML = menuLine();
+    };
+    hints();
+    onKeyLabels(hints);
     const select = this.root.querySelector<HTMLSelectElement>('.hud-quality')!;
     select.addEventListener('change', () => {
       onQuality(select.value as QualityName);
@@ -120,11 +122,24 @@ export class Hud {
   progress(f: number, text?: string): void {
     this.bar.style.width = `${Math.round(f * 100)}%`;
     if (text) this.root.querySelector('.hud-sub')!.textContent = text;
+    this.loaded = { f, text: text ?? this.loaded.text };
+    this.progressTo?.(f, text);
+  }
+
+  private loaded: { f: number; text?: string } = { f: 0 };
+  private progressTo: ((f: number, text?: string) => void) | null = null;
+  /** Where the slow-shaders note goes when another screen shows the loading (the god pick). */
+  notesHost: HTMLElement | null = null;
+
+  /** Another screen shows the loading progress too (it hears how far along it is now, then every step). */
+  mirrorProgress(to: (f: number, text?: string) => void): void {
+    this.progressTo = to;
+    to(this.loaded.f, this.loaded.text);
   }
 
   /** Shown when shaders take long: says the wait is normal and offers the WebGL 2 renderer. */
   slowLoad(webgpu: boolean): void {
-    if (this.loading.querySelector('.hud-slow')) return;
+    if (this.loading.querySelector('.hud-slow') || this.notesHost?.querySelector('.hud-slow')) return;
     const el = document.createElement('div');
     el.className = 'hud-slow';
     el.textContent = 'Your graphics driver is still building shaders. This is only slow the first time.';
@@ -134,7 +149,7 @@ export class Hud {
       btn.addEventListener('click', () => setCompatibilityMode(true));
       el.appendChild(btn);
     }
-    this.loading.appendChild(el);
+    (this.notesHost ?? this.loading).appendChild(el);
   }
 
   ready(): void {

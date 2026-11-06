@@ -17,7 +17,7 @@ const newSim = () => new Sim(flat, { order: { ...JOTUNN.bases.order }, chaos: { 
 /** Five players (the first is you), no bots, so tests drive everything. */
 function setup(order?: number[]) {
   const sim = newSim();
-  const players = GODS.map((g, i) => ({ name: g.name, id: i === 0 ? '' : null, god: g }));
+  const players = GODS.slice(0, 5).map((g, i) => ({ name: g.name, id: i === 0 ? '' : null, god: g }));
   const mode = new Jotunn(sim, players, { order });
   mode.begin();
   const run = (s: number) => {
@@ -353,21 +353,21 @@ describe('Jötunn', () => {
     run(0.1);
     expect(mode.lastRound).toBe('gods');
     // an online guest's end screen shows the same
-    const guest = new Jotunn(newSim(), GODS.map((x, i) => ({ name: x.name, id: i === 0 ? '' : null, god: x })));
+    const guest = new Jotunn(newSim(), GODS.slice(0, 5).map((x, i) => ({ name: x.name, id: i === 0 ? '' : null, god: x })));
     guest.applyNet(JSON.parse(JSON.stringify(mode.netState())));
     guest.players.forEach((p, i) => expect(p.tally).toEqual({ ...mode.players[i]!.tally, might: Math.round(mode.players[i]!.tally.might) }));
   });
 
   it('online, each person takes a turn as the giant', () => {
     const sim = newSim();
-    const players = GODS.map((g, i) => ({ name: g.name, id: i < 3 ? `peer${i}` : null, god: g }));
+    const players = GODS.slice(0, 5).map((g, i) => ({ name: g.name, id: i < 3 ? `peer${i}` : null, god: g }));
     const mode = new Jotunn(sim, players);
     expect(mode.order).toEqual([0, 1, 2]);
   });
 
   it('bots play a whole round to an end, both sides', () => {
     const sim = new Sim(flat, { order: { ...JOTUNN.bases.order }, chaos: { ...JOTUNN.bases.chaos } });
-    const players = GODS.map((g) => ({ name: g.name, id: null, god: g }));
+    const players = GODS.slice(0, 5).map((g) => ({ name: g.name, id: null, god: g }));
     const mode = new Jotunn(sim, players, { order: [2], brains: jotunnBots(sim) });
     mode.begin();
     let swings = 0;
@@ -400,5 +400,40 @@ describe('dodging a warning', () => {
     const cone = flash({ type: 'cone', x: 0, z: 0, yaw: 0, range: 9, angle: 100 });
     expect(escape(cone, { x: -1, z: -4 }, 0.5)!.x).toBeLessThan(0);
     expect(escape(cone, { x: 0, z: 5 }, 0.5)).toBeNull();
+  });
+});
+
+describe("the giant's throws", () => {
+  it('hurl a god far back on a high arc with a stomp, where a god is only shoved', () => {
+    const { sim, mode, run, g } = setup();
+    run(JOTUNN.countdown + 0.2);
+    expect(mode.phase).toBe('fight');
+    const god = mode.gods[0]!;
+    god.combatant.gainXp(1e6);
+    sim.teleport(god, g.x, g.z + 3, 0);
+    const from = { x: god.x, z: god.z };
+    expect(sim.cast(g, g.combatant.loadout.indexOf('jotunn.stomp'))).toBeNull();
+    let peak = 0;
+    let flew = false;
+    for (let i = 0; i < 120; i++) {
+      mode.step(1 / 60);
+      sim.step(1 / 60);
+      if (god.forced) flew = true;
+      peak = Math.max(peak, god.body.y);
+    }
+    expect(flew).toBe(true);
+    expect(god.forced).toBeNull();
+    expect(peak).toBeGreaterThan(JOTUNN.thrown.arc * 0.9);
+    expect(peak).toBeLessThanOrEqual(JOTUNN.thrown.arc + 1e-6);
+    // straight back, away from the giant
+    expect(Math.hypot(god.x - from.x, god.z - from.z)).toBeCloseTo(JOTUNN.thrown.distance, 0);
+    expect(god.z).toBeGreaterThan(from.z);
+  });
+
+  it('leave every other mode with its own short shove and knock-up', () => {
+    const sim = newSim();
+    expect([sim.knockback, sim.knockbackArc, sim.knockupArc]).toEqual([3.5, 0.6, 1.6]);
+    new Jotunn(sim, GODS.map((d) => ({ name: d.name, id: null, god: d })));
+    expect([sim.knockback, sim.knockbackArc, sim.knockupArc]).toEqual([JOTUNN.thrown.distance, JOTUNN.thrown.arc, JOTUNN.thrown.toss]);
   });
 });

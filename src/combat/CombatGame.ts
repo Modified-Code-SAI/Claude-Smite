@@ -5,7 +5,9 @@ import type { Updatable } from '../core/Loop';
 import type { CastError } from '../game/combatant';
 import { GODS, godById } from '../game/gods';
 import type { GodDef } from '../game/types';
-import { SLOT_CODES, ULTIMATE_SLOT } from '../game/loadout';
+import { ULTIMATE_SLOT } from '../game/loadout';
+import { PICK_ACTIONS, SLOT_ACTIONS, type Action } from '../settings/bindings';
+import { settings } from '../settings/store';
 import { FAVOR_THRESHOLDS, XP_TABLE } from '../game/progression';
 import type { PlayerController } from '../player/PlayerController';
 import type { CameraShot } from '../player/ThirdPersonCamera';
@@ -21,7 +23,7 @@ import { LoadoutMenu } from '../ui/LoadoutMenu';
 import { BuildBook, fittingBuild, spendAlong, startingPointsLine } from '../game/builds';
 import { MatchHud } from '../ui/MatchHud';
 import { GroundDecal, type DecalShape } from './GroundDecal';
-import { paletteFor } from './palette';
+import { paletteFor, SIDE } from './palette';
 import type { StructureModel } from './structures';
 import { UnitViews } from './UnitViews';
 import { BuffAuras } from './BuffAuras';
@@ -41,6 +43,7 @@ import { Duel, DUEL } from '../sim/Duel';
 import { DuelHud } from '../ui/DuelHud';
 import { Scoreboard } from '../sim/Scoreboard';
 import { difficultyPerks, type Difficulty } from '../game/difficulty';
+import { clashBots, conquestBots, duelRival, seeded, siegeBots } from '../game/lineup';
 import { setXpDifficulty } from '../ui/ascension';
 import { Coach } from '../ui/Coach';
 import { pitchTerrain, RUSH, type Rush } from '../sim/Rush';
@@ -91,6 +94,8 @@ export interface CombatDeps {
   net?: NetSession;
   /** How hard the bots are (single player only). */
   difficulty?: Difficulty;
+  /** Picks the bots' gods (single player): the god pick screen showed the lineup this seed gives (src/game/lineup.ts). Random without one. */
+  seed?: number;
 }
 
 /** Until the Conquest scene lands, a match on another map follows its ground but ignores its walls. */
@@ -111,7 +116,7 @@ export class CombatGame implements Updatable {
   /** The local player's own god: the same as `player` except while the Jötunn hands them the giant. */
   ownGod!: Unit;
   /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls; souls reaching the player and the dead climbing out of the floor in Underworld Descent. */
-  onCue: ((name: 'step' | DescentCue, at: { x: number; y: number; z: number }, k: number) => void) | null = null;
+  onCue: ((name: 'step' | 'land' | DescentCue, at: { x: number; y: number; z: number }, k: number) => void) | null = null;
   /** A ping went up for the player's team (set by GameAudio): its sound, and whether it was the player's own. */
   onPing: ((sound: PingSound, mine: boolean) => void) | null = null;
   bot: Unit | null = null;
@@ -163,7 +168,7 @@ export class CombatGame implements Updatable {
   private readonly builds: BuildBook;
   private readonly body: Body;
   private readonly bases: Record<'order' | 'chaos', BaseZone>;
-  private preview: { slot: number; code: string } | null = null;
+  private preview: { slot: number; action: Action } | null = null;
   private readonly shapeDecal: GroundDecal;
   private readonly rangeDecal: GroundDecal;
   private suppressBasic = false;
@@ -182,6 +187,11 @@ export class CombatGame implements Updatable {
   private crosshair: Point | null = null;
   private crossT = 140;
 
+  /** The bots' gods' dice: seeded when the god pick screen showed the lineup, otherwise random. */
+  private rng(): () => number {
+    return this.deps.seed !== undefined ? seeded(this.deps.seed) : Math.random;
+  }
+
   constructor(private readonly deps: CombatDeps) {
     const { world, player } = deps;
     // set before anything can end the game, so the end screen's XP always counts it
@@ -194,11 +204,11 @@ export class CombatGame implements Updatable {
     this.groundAt = (x, z) => terrain.groundAt(x, z);
     const net = conquest || rush || deps.mode === 'descent' || deps.mode === 'jotunn' ? deps.net : undefined;
     const slots = net && conquest ? roster(net.players) : null;
-    const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random) : null;
+    const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : this.rng()) : null;
     // Underworld Descent: co-op, or a shared descent (online versus, or a bot team against yours alone)
     const descentSlots =
       deps.mode === 'descent'
-        ? descentRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random, net ? { versus: net.mode === 'versus', bots: net.bots } : { versus: !!deps.rivals, bots: { order: deps.allies !== false } })
+        ? descentRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : this.rng(), net ? { versus: net.mode === 'versus', bots: net.bots } : { versus: !!deps.rivals, bots: { order: deps.allies !== false } })
         : null;
     const mySlot = slots?.find((s) => s.player === net!.me) ?? rushSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
     const myDescent = descentSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
@@ -259,7 +269,8 @@ export class CombatGame implements Updatable {
       teleport: (x, z, yaw) => player.spawn(x, z, yaw !== undefined && this.isHomeTeleport(x, z) ? yaw : player.yaw),
     };
 
-    this.vfx = new CombatVfx(this.groundAt, world.spellLights);
+    this.vfx = new CombatVfx(this.groundAt, world.spellLights, deps.camera);
+    this.vfx.visible = (u) => u.stealth <= 0 || u.team === this.player.team;
     this.vfx.targets = () => (this.match ? [...this.match.brains].map(([s, b]) => [s, b.current] as const) : []);
     world.vfx.add(this.vfx.group, this.auras.group, this.status.group);
     this.shapeDecal = new GroundDecal(this.groundAt);
@@ -349,8 +360,11 @@ export class CombatGame implements Updatable {
       if (net && slots) this.addRoster(net, slots);
       else {
         this.match.addGod(this.player);
-        this.addTeam('order', GODS.filter((g) => g.id !== mine.id), ['solo', 'duo', 'duo', 'roam'], [0, 2, 3, 4]);
-        this.addTeam('chaos', GODS, ROLES, [0, 1, 2, 3, 4]);
+        // five a side however many gods there are (the god pick shows these: src/game/lineup.ts);
+        // without a seed (?map=conquest, tools) the same lineup every time
+        const bots = conquestBots(mine.id, this.deps.seed !== undefined ? seeded(this.deps.seed) : () => 0);
+        this.addTeam('order', bots.allies.map((id) => godById(id)!), ['solo', 'duo', 'duo', 'roam'], [0, 2, 3, 4]);
+        this.addTeam('chaos', bots.enemies.map((id) => godById(id)!), ROLES, [0, 1, 2, 3, 4]);
       }
       this.matchHud = new MatchHud(this.match, this.player);
       this.matchHud.pings = this.pings.mapMarks;
@@ -425,10 +439,9 @@ export class CombatGame implements Updatable {
   /** Temple Clash: two bot allies against three bot enemies, everyone at level 8, all racing for the plaza. */
   private startClash(mine: GodDef): void {
     this.clash = new Clash(this.sim);
-    const others = GODS.filter((g) => g.id !== mine.id);
-    const shuffled = [...others].sort(() => Math.random() - 0.5);
-    const allies = shuffled.slice(0, 2);
-    const enemies = [...GODS].sort(() => Math.random() - 0.5).slice(0, 3);
+    const bots = clashBots(mine.id, this.rng());
+    const allies = bots.allies.map((id) => godById(id)!);
+    const enemies = bots.enemies.map((id) => godById(id)!);
     const gods: Unit[] = [this.player];
     const add = (def: GodDef, team: 'order' | 'chaos', i: number) => {
       const at = CLASH_SPAWNS[team][i]!;
@@ -585,8 +598,7 @@ export class CombatGame implements Updatable {
   /** Temple Duel: the player against one bot god, round by round, inside a closing ring of fire. */
   private startDuel(mine: GodDef): void {
     this.duel = new Duel(this.sim);
-    const others = GODS.filter((g) => g.id !== mine.id);
-    const def = others.find((g) => g.id === this.deps.rival) ?? others[Math.floor(Math.random() * others.length)]!;
+    const def = godById(duelRival(mine.id, this.deps.rival, this.rng()))!;
     const rival = godUnit(def, 'chaos', DUEL.spawns.chaos);
     rival.brain = new GodBot(this.sim, rival, { anchor: { x: 0, z: 0 }, leash: 30, aggro: 40, aggression: 0.8 });
     this.sim.add(rival);
@@ -671,7 +683,7 @@ export class CombatGame implements Updatable {
   /** Temple Siege: the player and two bot allies hold the plaza against endless monster waves. */
   private startSiege(mine: GodDef): void {
     this.siege = new Siege(this.sim, godById('zeus')!);
-    const allies = [...GODS.filter((g) => g.id !== mine.id)].sort(() => Math.random() - 0.5).slice(0, 2);
+    const allies = siegeBots(mine.id, this.rng()).map((id) => godById(id)!);
     const gods: Unit[] = [this.player];
     allies.forEach((def, i) => {
       const at = SIEGE_SPAWNS[i === 0 ? 0 : 2]!;
@@ -824,24 +836,24 @@ export class CombatGame implements Updatable {
     this.updateAim();
     this.updateReticle();
 
+    // picks first: on a controller they share the D-pad with the ping, recall
+    // and the trees, and take the press while a pick is on offer
+    const offer = this.siege?.offer ? 'siege' : this.duel?.offer ? 'duel' : this.descent?.phase === 'reward' || this.descent?.phase === 'draft' ? 'descent' : null;
+    if (offer) {
+      const pick = input.pressedIndex(PICK_ACTIONS);
+      if (pick >= 0) {
+        input.consume(PICK_ACTIONS[pick]!);
+        if (offer === 'siege') this.takeBoon(pick);
+        else if (offer === 'duel') this.takeDuelBoon(pick);
+        else this.descentMode?.pick(pick);
+      }
+    }
     // the giant has no skill trees to grow
-    if (input.wasPressed('KeyK') && !this.jotunnMode?.piloting) this.toggleMenu();
+    if (input.actionPressed('skills') && !this.jotunnMode?.piloting) this.toggleMenu();
     // a taunt: your god says something cutting, and everyone near hears it (the giant has no words)
-    if (input.wasPressed('KeyV') && this.inFight && !this.jotunnMode?.piloting) {
+    if (input.actionPressed('taunt') && this.inFight && !this.jotunnMode?.piloting) {
       if (this.netGuest) this.netGuest.taunt();
       else this.sim.taunt(this.player);
-    }
-    if (this.siege?.offer) {
-      const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
-      if (pick >= 0) this.takeBoon(pick);
-    }
-    if (this.duel?.offer) {
-      const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
-      if (pick >= 0) this.takeDuelBoon(pick);
-    }
-    if (this.descent?.phase === 'reward' || this.descent?.phase === 'draft') {
-      const pick = ['KeyZ', 'KeyX', 'KeyC'].findIndex((k) => input.wasPressed(k));
-      if (pick >= 0) this.descentMode?.pick(pick);
     }
     if (this.menu.isOpen && input.wasPressed('Escape')) this.menu.close();
 
@@ -873,7 +885,7 @@ export class CombatGame implements Updatable {
 
     this.views.frame(this.sim.units, dt, alpha, time);
     this.pings.frame(dt);
-    this.matchHud?.frame(dt, this.sim.units, input.isDown('Tab'));
+    this.matchHud?.frame(dt, this.sim.units, input.actionDown('scoreboard'));
     this.clashHud?.frame(dt);
     this.siegeHud?.frame();
     this.duelHud?.frame();
@@ -901,13 +913,13 @@ export class CombatGame implements Updatable {
     if (this.plazaRing && this.clash) {
       const state = this.clash.plaza;
       const [main, core] =
-        state === 'contested' ? [0xffe08a, 0xffffff] : state === 'neutral' ? [0xd9a845, 0xfff0c0] : state === this.player.team ? [0x4fb2ff, 0xe6f4ff] : [0xff3524, 0xffe0c8];
+        state === 'contested' ? [0xffe08a, 0xffffff] : state === 'neutral' ? [0xd9a845, 0xfff0c0] : state === this.player.team ? [SIDE.ally.main, SIDE.ally.core] : [SIDE.foe.main, SIDE.foe.core];
       // during the blessing the ring's core flickers gold
       const blessed = this.clash.blessing > 0 && Math.sin(time * 8) > 0;
       this.plazaRing.setColors(main, blessed ? 0xffd34a : core);
       const relic = this.clash.relic;
       const mine = relic?.claimer === this.player.team;
-      this.relicView?.set(relic, CLASH.relic.radius, relic?.progress ?? 0, time, mine ? 0x4fb2ff : 0xff3524, mine ? 0xe6f4ff : 0xffe0c8);
+      this.relicView?.set(relic, CLASH.relic.radius, relic?.progress ?? 0, time, mine ? SIDE.ally.main : SIDE.foe.main, mine ? SIDE.ally.core : SIDE.foe.core);
     }
     // the end screens take the place of your god's bars and skills
     if (this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner) this.hud.setVisible(false);
@@ -918,7 +930,7 @@ export class CombatGame implements Updatable {
     this.status.frame(this.sim.units, time, (u) => u.stealth <= 0 || u.team === this.player.team);
     this.updatePreview();
     this.hud.setPreview(this.preview?.slot ?? null);
-    this.hud.holdToasts = this.rushMode?.holdsToasts ?? false;
+    this.hud.holdToasts = this.rushMode?.holdsToasts ?? this.descentMode?.holdsToasts ?? this.jotunnMode?.holdsToasts ?? false;
     this.hud.frame(this.sim.units, dt);
     // (the tips are about your god, not the giant you drive)
     if (!this.jotunnMode?.piloting) this.coach.frame(dt);
@@ -930,6 +942,11 @@ export class CombatGame implements Updatable {
   }
 
   private wasInBase = true;
+
+  /** A menu or the end screen is up: a controller drives the on-screen cursor instead of the god. */
+  get menuUp(): boolean {
+    return this.menu.isOpen || !!(this.match?.winner || this.clash?.winner || this.siege?.phase === 'fallen' || this.duel?.winner || this.rush?.winner || this.descent?.over || this.jotunn?.phase === 'done');
+  }
 
   /** Whether the fight takes input: no menu up, and the match isn't over, counting down or watching a boss rise or fall. */
   private get inFight(): boolean {
@@ -985,7 +1002,7 @@ export class CombatGame implements Updatable {
     const input = this.deps.input;
     const u = this.player;
 
-    if (input.wasPressed('KeyB') && !this.jotunnMode?.piloting) {
+    if (input.actionPressed('recall') && !this.jotunnMode?.piloting) {
       if (this.netGuest) {
         if (u.alive && u.recall <= 0 && !u.combatant.inBase) {
           this.netGuest.recall();
@@ -996,17 +1013,16 @@ export class CombatGame implements Updatable {
 
     // a Relic Rush carrier can't fight: their click throws the relic instead
     const carrying = this.rushMode?.carrying ?? false;
-    if (this.rushMode && !carrying && input.wasPressed('KeyF')) this.rushMode.call();
+    if (this.rushMode && !carrying && input.actionPressed('callPass')) this.rushMode.call();
     if (carrying) {
       this.cancelPreview();
-      if (input.wasPressed('Mouse0') && input.locked) this.rushMode!.throw();
-      if (input.wasPressed('Space')) this.rushMode!.juke();
+      if (input.actionPressed('attack') && input.engaged) this.rushMode!.throw();
+      if (input.actionPressed('jump')) this.rushMode!.juke();
       this.suppressBasic = true;
     }
 
-    SLOT_CODES.forEach((codes, slot) => {
-      const code = codes.find((c) => input.wasPressed(c));
-      if (!code) return;
+    SLOT_ACTIONS.forEach((action, slot) => {
+      if (!input.actionPressed(action)) return;
       if (carrying) {
         this.hud.deny(slot);
         this.hud.toast('Carrying the relic: no skills. Left click passes it, Space jukes.', 'warn');
@@ -1023,20 +1039,21 @@ export class CombatGame implements Updatable {
       }
       const t = u.combatant.resolve(slot).targeting;
       // self casts fire at once; everything else shows where it will land first
-      if (t.type === 'self') this.castSlot(slot);
-      else this.preview = { slot, code };
+      // (quick cast fires every skill at the crosshair the moment its key goes down)
+      if (t.type === 'self' || settings().quickCast) this.castSlot(slot);
+      else this.preview = { slot, action };
     });
 
     if (this.preview) {
-      if (input.isMouseDown(2)) this.cancelPreview();
-      else if (input.isMouseDown(0) && input.locked) {
+      if (input.actionDown('cancel')) this.cancelPreview();
+      else if (input.actionDown('attack') && input.engaged) {
         this.castSlot(this.preview.slot);
         this.suppressBasic = true;
-      } else if (!input.isDown(this.preview.code)) this.castSlot(this.preview.slot);
+      } else if (!input.actionDown(this.preview.action)) this.castSlot(this.preview.slot);
     }
 
-    if (!input.isMouseDown(0)) this.suppressBasic = false;
-    this.basicHeld = !this.preview && !this.suppressBasic && input.locked && input.isMouseDown(0) && u.alive;
+    if (!input.actionDown('attack')) this.suppressBasic = false;
+    this.basicHeld = !this.preview && !this.suppressBasic && input.engaged && input.actionDown('attack') && u.alive;
     if (this.basicHeld && !this.netGuest) this.sim.basic(u);
   }
 
@@ -1126,6 +1143,7 @@ export class CombatGame implements Updatable {
     const { target, inRange } = this.aimTarget();
     this.reticle?.classList.toggle('on-target', target !== null && inRange);
     this.reticle?.classList.toggle('far-target', target !== null && !inRange);
+    this.deps.input.aimFriction = target !== null && inRange;
     this.hud.setTarget(inRange ? target : null);
   }
 

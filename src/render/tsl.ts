@@ -52,6 +52,7 @@ export const mrt: any = T.mrt;
 export const mx_fractal_noise_float: any = T.mx_fractal_noise_float;
 export const mx_noise_float: any = T.mx_noise_float;
 export const mx_worley_noise_float: any = T.mx_worley_noise_float;
+export const mx_worley_noise_float_2d: any = T.mx_worley_noise_float_2d;
 export const normalGeometry: any = T.normalGeometry;
 export const normalLocal: any = T.normalLocal;
 export const normalView: any = T.normalView;

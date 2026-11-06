@@ -3,7 +3,7 @@ import type { CastKind, GodModel } from '../actors/GodModel';
 import { createGodModel } from './godModels';
 import { float, fract, length, mix, mx_noise_float, positionGeometry, smoothstep, uv, vec3 } from '../render/tsl';
 import { summonCount, summonLook, type StructureKind, type SummonLook } from '../sim/factory';
-import { isStructure, type SimEvent, type Unit } from '../sim/Unit';
+import { isStructure, type Forced, type SimEvent, type Unit } from '../sim/Unit';
 import { MinionViews } from './MinionViews';
 import { createMonsterView, monsterViewKey, type MonsterView } from './MonsterViews';
 import { createStructureModel, type StructureModel } from './structures';
@@ -25,6 +25,40 @@ function summonLookOf(u: Unit): SummonLook {
 
 /** Seconds a fallen god stays on the ground before it is hidden. */
 const GOD_CORPSE = 2.8;
+
+/** Radians a god leans at the height of a full throw (a Jötunn stomp's arc); a lower arc, less. */
+export const THROWN_LEAN = 0.6;
+/** Arcs below this (a pull, a stagger) leave a god upright; the full lean is reached at FULL_LEAN_ARC. */
+const LEAN_FROM_ARC = 0.5;
+const FULL_LEAN_ARC = 1.5;
+const leanMid = new THREE.Vector3();
+
+/**
+ * How a god flung through the air leans, in its own frame (pitch: top
+ * forward +; roll: top to its right +). The top goes the way it flies, most
+ * at the height of the arc and upright again as it lands; thrown straight up,
+ * it rocks back. Leaps (which fly over walls) keep their own pose.
+ */
+export function thrownLean(f: Forced | null, yaw: number, out: { pitch: number; roll: number }): { pitch: number; roll: number } {
+  out.pitch = 0;
+  out.roll = 0;
+  if (!f || !f.collide || f.arc < LEAN_FROM_ARC || f.total <= 0) return out;
+  const p = Math.min(1, Math.max(0, 1 - f.remaining / f.total));
+  // whipped back fast as it leaves the ground, righted by the time its feet touch down
+  const s = Math.sin(Math.PI * p);
+  const lean = THROWN_LEAN * Math.min(1, f.arc / FULL_LEAN_ARC) * (p < 0.5 ? Math.sqrt(s) : s * Math.sqrt(s));
+  const speed = hypot(f.vx, f.vz);
+  if (speed < 0.1) {
+    out.pitch = -lean * 0.6;
+    return out;
+  }
+  const sin = Math.sin(yaw);
+  const cos = Math.cos(yaw);
+  // world velocity into the model's frame: forward (-sin, -cos), right (cos, -sin)
+  out.pitch = (lean * (-f.vx * sin - f.vz * cos)) / speed;
+  out.roll = (lean * (f.vx * cos - f.vz * sin)) / speed;
+  return out;
+}
 
 /** How far a fallen god has sunk into the ground, in the last second before it is hidden. */
 function godSink(deathTime: number): number {
@@ -238,6 +272,7 @@ export class UnitViews {
   private readonly viewProj = new THREE.Matrix4();
   private readonly bounds = new THREE.Sphere();
   private frameNo = 0;
+  private readonly lean = { pitch: 0, roll: 0 };
   private created = 0;
   /** Monster views built ahead of their monsters (see stock), by monsterViewKey. */
   private readonly spares = new Map<string, MonsterView[]>();
@@ -670,6 +705,7 @@ export class UnitViews {
       // no sink: the camera follows this root through the respawn wait
       v.root.visible = u.alive || lying || v.deathTime < GOD_CORPSE;
       v.root.position.y += v.lift;
+      this.leanThrown(u, v, 0);
       return;
     }
 
@@ -733,6 +769,7 @@ export class UnitViews {
       v.localDir.set((u.vx * cos - u.vz * sin) / speed, (-u.vx * sin - u.vz * cos) / speed);
     } else v.localDir.set(0, 0);
     v.root.rotation.z = v.wobble * 0.04;
+    if (u.kind === 'god') this.leanThrown(u, v, v.wobble * 0.04);
     v.animDt += dt;
     const every = this.animateEvery(v);
     // GodModel.animate clamps its step to MAX_ANIM_DT, so pose before the backlog would exceed it
@@ -744,6 +781,23 @@ export class UnitViews {
       every === 1 ? v.animDt : Math.min(v.animDt, 1 / 60),
     );
     v.animDt = 0;
+  }
+
+  /** Flung through the air, a god leans the way it flies, turning round its middle (see thrownLean); `roll` is its roll otherwise. */
+  private leanThrown(u: Unit, v: UnitView, roll: number): void {
+    const lean = thrownLean(u.alive ? u.forced : null, u.body.yaw, this.lean);
+    const r = v.root.rotation;
+    // (model +X is its left: a turn round +Z tips its top to its right)
+    r.z = roll + lean.roll;
+    if (lean.pitch === 0 && lean.roll === 0) {
+      if (r.x !== 0) r.x = 0;
+      return;
+    }
+    r.order = 'YXZ';
+    r.x = lean.pitch;
+    const mid = v.height * 0.5;
+    v.root.position.y += mid;
+    v.root.position.sub(leanMid.set(0, mid, 0).applyQuaternion(v.root.quaternion));
   }
 
   /**

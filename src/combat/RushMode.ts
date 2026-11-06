@@ -17,7 +17,7 @@ import type { Unit } from '../sim/Unit';
 import { RushHud } from '../ui/RushHud';
 import { GOAL_CAM, goalCamSpot, WIN_CAM, winDrift } from './goalCam';
 import { RushView } from './RushView';
-import type { GodPalette } from './palette';
+import { SIDE, type GodPalette } from './palette';
 
 /** Seconds after the winning moment that the winners pump their fists (the world stills at 4 s). */
 const VICTORY_PUMPS = [0.45, 1.55, 2.65, 3.6];
@@ -29,8 +29,8 @@ const CATCH_AHEAD = 0.45;
 const CATCH_PALM = 0.35;
 const tone = (main: number, core: number): GodPalette => ({ cloth: main, trim: core, glow: main, vfx: main, core });
 const GOLD = tone(0xffc23a, 0xfff2c4);
-const ALLY = tone(0x4fb2ff, 0xe6f4ff);
-const FOE = tone(0xff3524, 0xffe0c8);
+/** Your side's and theirs (read when used: the colorblind setting can change them). */
+const sideTone = (s: 'ally' | 'foe'): GodPalette => tone(SIDE[s].main, SIDE[s].core);
 
 export interface RushDeps {
   sim: Sim;
@@ -439,7 +439,7 @@ export class RushMode {
     if (at && r.beats.save !== seen.save) {
       // a save: a flash in the keeper's colors, felt by anyone close
       const keeper = r.lastBeat?.kind === 'save' ? r.lastBeat.unit : null;
-      burst(keeper && keeper.team !== me.team ? FOE : ALLY, at.x, at.y, at.z, 1.1);
+      burst(sideTone(keeper && keeper.team !== me.team ? 'foe' : 'ally'), at.x, at.y, at.z, 1.1);
       burst(GOLD, at.x, at.y, at.z, 0.6);
       const near = Math.max(0, 1 - Math.hypot(me.x - at.x, me.z - at.z) / 20);
       if (near > 0) this.deps.shake?.(0.08 + near * 0.2);
@@ -471,7 +471,7 @@ export class RushMode {
       const g = r.lastGoal;
       const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
       const y = this.deps.groundAt(gate.x, gate.z);
-      burst(g.team === me.team ? ALLY : FOE, gate.x, y + 2.4, gate.z, 1.9);
+      burst(sideTone(g.team === me.team ? 'ally' : 'foe'), gate.x, y + 2.4, gate.z, 1.9);
       burst(GOLD, gate.x, y + 0.5, gate.z, 1.2);
       // a hat trick: the gate crowns it in gold, and the scorer shines
       if (r.hatTrick) {

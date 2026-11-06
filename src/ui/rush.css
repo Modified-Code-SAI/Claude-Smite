@@ -8,10 +8,10 @@
 .rush-pointer { position: fixed; left: 0; top: 0; width: 0; height: 0; display: none; filter: drop-shadow(0 0 6px rgba(255, 190, 60, 0.9)); }
 .rush-pointer.show { display: block; }
 .rush-pointer i { position: absolute; left: -16px; top: -14px; width: 32px; height: 28px; clip-path: polygon(100% 50%, 0 0, 26% 50%, 0 100%); background: linear-gradient(90deg, #ffe7a8, #ffb428); animation: rush-nudge 0.9s ease-in-out infinite alternate; }
-.rush-pointer[data-tone='ally'] { filter: drop-shadow(0 0 6px rgba(110, 180, 255, 0.9)); }
-.rush-pointer[data-tone='ally'] i { background: linear-gradient(90deg, #e6f4ff, #2a7cff); }
-.rush-pointer[data-tone='foe'] { filter: drop-shadow(0 0 6px rgba(255, 90, 70, 0.9)); }
-.rush-pointer[data-tone='foe'] i { background: linear-gradient(90deg, #ffe0c8, #e8332a); }
+.rush-pointer[data-tone='ally'] { filter: drop-shadow(0 0 6px rgba(var(--ally-rgb), 0.9)); }
+.rush-pointer[data-tone='ally'] i { background: linear-gradient(90deg, #e6f4ff, var(--ally-deep)); }
+.rush-pointer[data-tone='foe'] { filter: drop-shadow(0 0 6px rgba(var(--foe-rgb), 0.9)); }
+.rush-pointer[data-tone='foe'] i { background: linear-gradient(90deg, #ffe0c8, var(--foe-deep)); }
 @keyframes rush-nudge { from { transform: translateX(-4px); } to { transform: translateX(3px); } }
 .rush .duel-pips i.new { animation: rush-pip 0.7s ease-out; }
 /* match point: the side's last empty pip pulses gold */
@@ -51,8 +51,8 @@
 .rush-intro small { font-size: clamp(11px, 1.1vw, 14px); letter-spacing: 0.05em; color: #f2e6cc; }
 .rush-intro-teams { display: flex; align-items: center; gap: 18px; align-self: stretch; font-size: clamp(12px, 1.3vw, 16px); letter-spacing: 0.08em; }
 .rush-intro-teams div { display: flex; flex: 1; gap: 12px; }
-.rush-intro-teams .ally { justify-content: flex-end; color: #9fd4ff; }
-.rush-intro-teams .foe { color: #ff9a86; }
+.rush-intro-teams .ally { justify-content: flex-end; color: var(--ally-light); }
+.rush-intro-teams .foe { color: var(--foe-light); }
 .rush-intro-teams .me { color: #fff; font-weight: 700; }
 .rush-intro-teams em { font-style: normal; font-weight: 400; color: #9fd4ff; }
 .rush-intro-count { min-width: 2.2em; font-style: normal; font-size: clamp(34px, 4.4vw, 56px); line-height: 1.05; text-align: center; color: #ffe08a; text-shadow: 0 0 18px rgba(255, 200, 80, 0.6), 0 3px 8px #000; }
@@ -82,11 +82,11 @@
 .rush-catch.show { display: block; }
 .rush-catch > span { display: flex; flex-direction: column; align-items: center; }
 .rush-catch.raised { margin-top: -86px; }
-.rush-catch b { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #d8ecff; text-shadow: 0 0 8px rgba(80, 170, 255, 0.9), 0 1px 2px #000; }
+.rush-catch b { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #d8ecff; text-shadow: 0 0 8px rgba(var(--ally-rgb), 0.9), 0 1px 2px #000; }
 .rush-catch i { display: block; width: 22px; height: 22px; animation: rush-catch-bob 0.9s ease-in-out infinite; }
-.rush-catch svg { width: 100%; height: 100%; fill: #4fb2ff; stroke: #e6f4ff; stroke-width: 1.6; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(79, 178, 255, 0.95)); }
-.rush-catch.foe b { color: #ffd9cf; text-shadow: 0 0 8px rgba(255, 70, 40, 0.9), 0 1px 2px #000; }
-.rush-catch.foe svg { fill: #ff3524; stroke: #ffe0c8; filter: drop-shadow(0 0 6px rgba(255, 60, 30, 0.95)); }
+.rush-catch svg { width: 100%; height: 100%; fill: var(--ally-main, #4fb2ff); stroke: #e6f4ff; stroke-width: 1.6; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(var(--ally-rgb), 0.95)); }
+.rush-catch.foe b { color: #ffd9cf; text-shadow: 0 0 8px rgba(var(--foe-rgb), 0.9), 0 1px 2px #000; }
+.rush-catch.foe svg { fill: var(--foe-main, #ff3524); stroke: #ffe0c8; filter: drop-shadow(0 0 6px rgba(var(--foe-rgb), 0.95)); }
 .rush-mode.rush-cine .rush-catch { opacity: 0; }
 @keyframes rush-catch-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
 

@@ -37,6 +37,8 @@ export const DESCENT = {
   enterTime: 2.4,
   /** Seconds the screen is black while the team goes down. */
   fadeTime: 0.9,
+  /** Seconds the team falls after each master, down into the next depth. */
+  plungeTime: 2.2,
   revive: { range: 2.8, time: 3.2, health: 0.4 },
   /** A god still down when the team leaves comes along with this much health. */
   returnHealth: 0.3,
@@ -592,6 +594,10 @@ export class Descent {
   /** 1-based number of the chamber the team is in (0 before the first). */
   chamber = 0;
   phase: DescentPhase = 'enter';
+  /** Whether going down from this chamber falls into the next depth (out of a master's chamber, short of the last). */
+  get plunging(): boolean {
+    return this.chamber % DESCENT.bossEvery === 0 && this.chamber < DESCENT.chambers;
+  }
   /** Seconds left in the current phase, where it has a limit. */
   timer: number = DESCENT.enterTime;
   /** Run clock, seconds. */
@@ -915,7 +921,7 @@ export class Descent {
         const through = walkers.some((g) => g.alive && hypot(g.x - door.x, g.z - door.z) < DESCENT.exitRadius);
         if (through || this.timer <= 0) {
           this.phase = 'descend';
-          this.timer = DESCENT.fadeTime;
+          this.timer = this.plunging ? DESCENT.plungeTime : DESCENT.fadeTime;
         }
         break;
       }

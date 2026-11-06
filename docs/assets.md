@@ -124,16 +124,20 @@ Fetched through `https://api.polyhaven.com` at 2K (skies at 4K). Poly Haven asse
 
 **6. Not surveyed yet:** UI fonts and icons. (Audio and music are covered below: all made in code.) Fonts are easy: `@fontsource/cinzel` and `@fontsource/cormorant-garamond` on npm are OFL-licensed and fit the mythology theme.
 
-## Audio and music: made in code, no files
+## Audio and music
 
-Every sound effect, ambience loop and piece of music is synthesized in code at load time (`src/audio/`), so there are no audio files, downloads or licenses to track. Nothing is sampled from Smite, Hi-Rez or any other game.
+Every sound effect and ambience loop is synthesized in code at load time (`src/audio/`), so there are no effect files to track. The music plays a recorded orchestra cut from free sample libraries, with the synthesized instruments as the fallback. Nothing is sampled from Smite, Hi-Rez or any other game.
 
 - **Effects:** `src/audio/gestures.ts` holds the building blocks (filtered-noise whooshes, pitch-dropping thumps, electric zaps, thunder, struck metal, sand, smoke, insect swarms, formant-filtered voices and roars, falling debris, bells, fire, birdsong). `sounds.ts` layers them into the bank (footsteps on stone, grass and dirt; god, minion, tower and monster attacks and hits; deaths; collapses; bosses; UI; ambience). `skillSounds.ts` gives each of the 55 skills its own cast, in-flight, impact and lingering-area sounds.
-- **Music:** `music.ts` synthesizes strings, choir, harp, horn, bass and drums, and plays two original pieces from written parts: a title hymn and a battle theme whose drums and brass rise with the fighting. Victory and defeat have their own fanfares.
+- **Music:** `music.ts` plays the original pieces from written parts (a title hymn, a battle theme whose drums and brass rise with the fighting, the mode themes, and victory and defeat fanfares). Its instruments are recorded samples (`public/music/`, about 4 MB of Opus, loaded in the background and decoded when audio unlocks) via `orchestra.ts`; until they arrive, or if they fail, the same parts play on synthesized strings, choir, harp, horn, bass and drums. The forge theme's anvil stays synthesized, since its hammer part follows the chords and a real anvil rings inharmonic (`SYNTH_ONLY` in `orchestra.test.ts`).
+  - `tools/music/build.py --fetch` sparse-clones the pinned libraries, measures every sample's pitch, keeps one every few semitones, bakes seamless crossfaded loops, matches each instrument's K-weighted loudness to the synthesized one it replaces, and writes `public/music/` with `samples.json` and `CREDITS.md`.
+  - | Set | Library | License |
+    | --- | --- | --- |
+    | Sustained strings, spiccato strings, harp, bass and tenor drums, shaker, crash and swell cymbals | VSCO 2 Community Edition (sgossner/VSCO-2-CE) | CC0 |
+    | Frame drum | VCSL (sgossner/VCSL) | CC0 |
+    | Choir, horns, double basses, celesta | Sonatina Symphonic Orchestra, Mattias Westlund (peastman/sso) | CC Sampling Plus 1.0 |
 - **Herald:** the spoken cues are original lines spoken by the browser's built-in speech synthesis (the player's own system voices; nothing is shipped). Each line opens with a synthesized sting.
-- Rendering takes a few seconds of CPU and runs on worker threads, so it never stalls the game. Unit tests (`src/audio/audio.test.ts`) check every sound for clipping, silence and DC offset.
-
-If we later want recorded sounds, CC0 libraries on GitHub (for example Kenney's audio packs mirrored there) can be added through the fetch script like the other assets.
+- Rendering the synthesized sounds takes a few seconds of CPU and runs on worker threads, so it never stalls the game. Unit tests (`src/audio/audio.test.ts`, `orchestra.test.ts`) check every sound for clipping, silence and DC offset, and that every note the score writes has a recording within two and a half semitones.
 
 ## License obligations, in one place
 
@@ -142,5 +146,5 @@ If we later want recorded sounds, CC0 libraries on GitHub (for example Kenney's 
 - **MIT** (EZ-Tree): keep the MIT notice when shipping its files or package.
 - **CMU mocap:** free for any use, including commercial; the raw data may not be resold. Credit: "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217."
 - **Poly Haven API:** "Powered by Poly Haven" credit when the Poly Haven tier is used.
-- **Audio:** synthesized in code; no obligations.
+- **Music samples:** VSCO 2 CE and VCSL are CC0. Sonatina Symphonic Orchestra is CC Sampling Plus 1.0: samples may be transformed and used in any work (not advertising), with credit to Mattias Westlund and the license; `public/music/CREDITS.md` has the lines. Sound effects are synthesized in code; no obligations.
 - Nothing here uses Smite or Hi-Rez art, audio, names or trademarks.

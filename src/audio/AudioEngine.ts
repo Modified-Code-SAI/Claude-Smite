@@ -19,11 +19,13 @@ export interface AudioSettings {
   sfx: number;
   voice: number;
   ambience: number;
+  /** Menu clicks, pings and other interface sounds. */
+  ui: number;
   muted: boolean;
 }
 
 const STORAGE_KEY = 'ascendant.audio';
-const DEFAULTS: AudioSettings = { master: 0.8, music: 0.55, sfx: 0.85, voice: 0.9, ambience: 0.6, muted: false };
+export const AUDIO_DEFAULTS: AudioSettings = { master: 0.8, music: 0.55, sfx: 0.85, voice: 0.9, ambience: 0.6, ui: 0.85, muted: false };
 
 /** Mixer trims so the sliders' defaults land at a good balance. */
 const BUS_TRIM: Record<Bus, number> = { music: 0.55, sfx: 0.75, ui: 0.6, voice: 1, ambience: 0.7 };
@@ -271,6 +273,22 @@ export class AudioEngine {
     for (const f of this.settingsListeners) f(this.settings);
   }
 
+  /** Whether the game is silenced while in the background (Settings > Audio). */
+  private background = false;
+
+  /** Silence (or bring back) everything while the game's tab or window is in the background. */
+  setBackground(on: boolean): void {
+    if (on === this.background) return;
+    this.background = on;
+    this.applySettings();
+    for (const f of this.settingsListeners) f(this.settings);
+  }
+
+  /** No sound reaches the speakers: muted, the master at zero, or silenced in the background. */
+  get silent(): boolean {
+    return this.settings.muted || this.background || this.settings.master <= 0.01;
+  }
+
   /** Called after every settings change (the herald's speech bypasses the mixer). */
   onSettings(fn: (s: AudioSettings) => void): void {
     this.settingsListeners.push(fn);
@@ -280,8 +298,8 @@ export class AudioEngine {
     if (!this.ctx) return;
     const s = this.settings;
     const now = this.ctx.currentTime;
-    this.master.gain.setTargetAtTime(s.muted ? 0 : s.master, now, 0.03);
-    const vol: Record<Bus, number> = { music: s.music, sfx: s.sfx, ui: s.sfx, voice: s.voice, ambience: s.ambience };
+    this.master.gain.setTargetAtTime(s.muted || this.background ? 0 : s.master, now, this.background ? 0.15 : 0.03);
+    const vol: Record<Bus, number> = { music: s.music, sfx: s.sfx, ui: s.ui, voice: s.voice, ambience: s.ambience };
     for (const b of Object.keys(BUS_TRIM) as Bus[]) {
       const g = vol[b] * vol[b] * BUS_TRIM[b] * 1.4;
       this.buses[b].gain.setTargetAtTime(g, now, 0.03);
@@ -627,9 +645,11 @@ function impulse(ctx: AudioContext, seconds: number): AudioBuffer {
 
 function loadSettings(): AudioSettings {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<AudioSettings>) };
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<AudioSettings>;
+    // interface sounds followed the effects slider before they had their own
+    return { ...AUDIO_DEFAULTS, ui: saved.sfx ?? AUDIO_DEFAULTS.ui, ...saved };
   } catch {
-    return { ...DEFAULTS };
+    return { ...AUDIO_DEFAULTS };
   }
 }
 

@@ -6,6 +6,7 @@
  */
 
 import type { AudioEngine } from './AudioEngine';
+import { caption } from '../settings/captions';
 
 export type Mood = 'good' | 'bad' | 'neutral' | 'epic';
 
@@ -32,7 +33,7 @@ export class Announcer {
     this.synth?.addEventListener?.('voiceschanged', pick);
     // speech bypasses Web Audio, so mute and the herald slider must reach it directly
     engine.onSettings((s) => {
-      if (s.muted || s.voice <= 0.01 || s.master <= 0.01) this.stop();
+      if (engine.silent || s.voice <= 0.01) this.stop();
     });
   }
 
@@ -68,6 +69,8 @@ export class Announcer {
     if (!line) return;
     this.speaking = true;
     this.engine.play(STINGS[line.mood], { bus: 'voice', gain: 0.8 }, 5);
+    // subtitles show the line even with the voice muted: that is who they are for
+    caption({ speaker: 'Herald', text: line.text, seconds: 0.9 + line.text.length * 0.075, mood: line.mood });
     const done = () => {
       this.speaking = false;
       setTimeout(() => this.next(), 250);
@@ -95,7 +98,7 @@ export class Announcer {
     setTimeout(end, 600 + line.text.length * 110);
     setTimeout(() => {
       const now = this.engine.settings;
-      if (now.muted || now.voice <= 0.01 || now.master <= 0.01) return end();
+      if (this.engine.silent || now.voice <= 0.01) return end();
       u.volume = Math.min(1, now.master * now.voice * 1.1);
       this.synth!.speak(u);
     }, 380);

@@ -1,5 +1,4 @@
-import { godById } from '../game/gods';
-import { NetSession } from './Session';
+import { NetSession, PICK_SECONDS } from './Session';
 import type { NetGameInfo, NetMode } from './roster';
 import './lobby.css';
 
@@ -19,15 +18,17 @@ function inviteLink(code: string): string {
 }
 
 /**
- * The title screen's "Play with friends" box: host a lobby for the selected
+ * The home page's "Play with friends" box: host a lobby for the selected
  * game mode (its co-op or versus options, and share its code), or join one
- * with a code. Calls `onStart` when the host starts the match. `inLobby` tells
+ * with a code. Calls `onStart` when the host starts the match, which opens
+ * the god pick for everyone (src/ui/GodPick.ts). `inLobby` tells
  * the title screen to hold its own Play button (and its mode) while a lobby is
  * open; `onGame` tells it which mode a joined lobby plays.
  */
 export function mountLobby(
   box: HTMLElement,
   hooks: {
+    /** The god a player joins with until the pick screen (their last one). */
     god: () => string;
     /** The game mode the title screen has selected, or a joined lobby's mode by id. */
     game: (id?: string) => NetGameInfo | null;
@@ -35,7 +36,7 @@ export function mountLobby(
     onGame: (id: string) => void;
     onStart: (s: NetSession) => void;
   },
-): { godChanged: () => void; gameChanged: () => void } {
+): { gameChanged: () => void } {
   let session: NetSession | null = null;
   let busy = '';
   let error = '';
@@ -82,11 +83,11 @@ export function mountLobby(
       })
       .join('');
     const rows = s.players
-      .map((p) => {
-        const god = godById(p.god)?.name ?? p.god;
+      .map((p, i) => {
         const you = p.id === s.me ? ' <i>(you)</i>' : '';
-        const team = s.mode === 'versus' ? `<span class="lb-team lb-${p.team}">${p.team === 'order' ? 'Order' : 'Chaos'}</span>` : '';
-        return `<div class="lb-player"><span>${esc(p.name)}${you}</span><span>${esc(god)}</span>${team}</div>`;
+        const role = i === 0 ? '<span class="lb-host">Host</span>' : '<span></span>';
+        const team = s.mode === 'versus' ? `<span class="lb-team lb-${p.team}">${p.team === 'order' ? 'Order' : 'Chaos'}</span>` : '<span></span>';
+        return `<div class="lb-player"><span>${esc(p.name)}${you}</span>${role}${team}</div>`;
       })
       .join('');
     box.innerHTML = `
@@ -101,7 +102,7 @@ export function mountLobby(
         <button class="lb-small lb-leave">Leave</button>
         ${s.isHost ? '<button class="lb-start">Start match</button>' : '<span class="lb-msg">Waiting for the host to start…</span>'}
       </div>
-      <div class="lb-msg">${s.isHost ? (teams.length ? 'Share the code or link. Teams may be uneven: a smaller team hits harder and its souls count for more.' : 'Share the code or link. Empty slots are played by bots.') : ''}</div>`;
+      <div class="lb-msg">${s.isHost ? `${teams.length ? 'Share the code or link. Teams may be uneven: a smaller team hits harder and its souls count for more.' : 'Share the code or link. Empty slots are played by bots.'} When you start, everyone has ${PICK_SECONDS} seconds to pick a god.` : `When the host starts, everyone has ${PICK_SECONDS} seconds to pick a god.`}</div>`;
     box.querySelector('.lb-copy')!.addEventListener('click', (e) => {
       void navigator.clipboard?.writeText(inviteLink(s.code));
       (e.currentTarget as HTMLButtonElement).textContent = 'Copied';
@@ -114,16 +115,16 @@ export function mountLobby(
       error = '';
       render();
     });
-    box.querySelector('.lb-start')?.addEventListener('click', () => s.start());
+    box.querySelector('.lb-start')?.addEventListener('click', () => s.select());
   };
 
   const opened = (s: NetSession) => {
     session = s;
     busy = '';
     s.onLobby = render;
-    s.onStart = () => hooks.onStart(s);
+    s.onSelect = () => hooks.onStart(s);
     s.onLeave = (id) => {
-      if (id !== 'host' || s.started) return;
+      if (id !== 'host' || s.started || s.selecting) return;
       session = null;
       error = 'The host closed the lobby.';
       render();
@@ -169,7 +170,6 @@ export function mountLobby(
   const invited = new URLSearchParams(location.search).get('join');
   if (invited) void join(invited);
   return {
-    godChanged: () => session?.pick(hooks.god()),
     // the host buttons follow the title screen's mode (a lobby keeps its own)
     gameChanged: () => {
       if (!session) render();

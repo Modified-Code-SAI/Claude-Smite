@@ -37,3 +37,23 @@ node tools/trailer/render.mjs
 To change a line, edit `script.json`, rerun steps 1 and 3, and nudge
 `timeline.mjs` if the line got longer. To swap the voice, change `voice`
 (any Kokoro voice; British ones start with `bm_` and `bf_`).
+
+## Home page art
+
+The home page's mode backdrops (`public/keyart/<mode>.jpg`, plus a blurred
+`<mode>-blur.jpg` for the god pick screen and a `<mode>-thumb.jpg` for the mode list) are frames filmed the same
+way: `cqVista`, `mdRush` and `mdDescent` from the trailer's list, and the
+`ka*` stills (`kaClash`, `kaDuel`, `kaArena`, `kaSiege`, `kaJotunn`), which
+stage a held moment in each mode and frame it for a backdrop.
+
+```sh
+npm run build && npx vite preview --port 4173 &
+node tools/trailer/film.mjs kaClash,kaDuel,kaArena,kaSiege,kaJotunn --frames 10 --width 1600
+# pick a frame, then for each mode:
+ffmpeg -i out/frames/kaDuel/0000.jpg -vf scale=1600:-1 -q:v 5 public/keyart/duel.jpg
+ffmpeg -i public/keyart/duel.jpg -vf "scale=480:-1,gblur=sigma=6" -q:v 6 public/keyart/duel-blur.jpg
+ffmpeg -i public/keyart/duel.jpg -vf scale=256:-1 -q:v 4 public/keyart/duel-thumb.jpg
+```
+
+The god pick screen's full-length god art (`public/splash/<god>.jpg`) is baked
+by `node tools/portraits/bake.mjs http://localhost:4173 zeus,thor,... --splash`.

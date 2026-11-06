@@ -23,6 +23,7 @@ const PALETTES: Record<string, GodPalette> = {
   odin: { cloth: 0x3a3f4a, trim: 0xd8a23a, glow: 0xffc955, vfx: 0xffa62a, core: 0xfff1c4, element: 'runes' },
   loki: { cloth: 0x1f5a2a, trim: 0xb8b04a, glow: 0x7dff6a, vfx: 0x3dff7a, core: 0xdcffe2, element: 'smoke' },
   anubis: { cloth: 0x18130e, trim: 0xe0b04a, glow: 0xffa040, vfx: 0xff7a1a, core: 0xffe3a6, element: 'sand' },
+  thanatos: { cloth: 0x1c1826, trim: 0xa8b0bc, glow: 0x74c4ff, vfx: 0x5a9cff, core: 0xe4f4ff },
   // the frost giant of the Jötunn mode
   jotunn: { cloth: 0x4e3c30, trim: 0x9a7444, glow: 0x66e0ff, vfx: 0x4fcfff, core: 0xeafcff, element: 'frost' },
 };
@@ -48,12 +49,29 @@ export function paletteOf(u: { kind: string; team: Team; owner: { combatant: { g
   return TEAM_PALETTES[u.team];
 }
 
+/**
+ * Team-relative colors for HUD marks (health bars, the minimap). Changed in
+ * place by the colorblind setting (src/settings/teamColors.ts), so read them
+ * when drawing rather than copying them.
+ */
 export const TEAM_COLORS = {
   ally: '#46d7c4',
   enemy: '#ff4a3d',
   self: '#7fe36a',
   neutral: '#f2b440',
 };
+
+/**
+ * Your side and the other side in the world and on radars: Relic Rush's
+ * relic, gates and pitch, Temple Clash's plaza and relic. Changed in place
+ * by the colorblind setting, like TEAM_COLORS.
+ */
+export const SIDE = {
+  ally: { main: 0x4fb2ff, core: 0xe6f4ff },
+  foe: { main: 0xff3524, core: 0xffe0c8 },
+};
+/** The same two sides as CSS colors, for canvas radars. */
+export const SIDE_CSS = { ally: '#4fb2ff', foe: '#ff4a38' };
 
 export function hex(c: number): string {
   return `#${c.toString(16).padStart(6, '0')}`;

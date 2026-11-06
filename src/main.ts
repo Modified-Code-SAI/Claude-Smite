@@ -27,7 +27,9 @@ import { parseRole } from './combat/JotunnMode';
 import { monsterWarmup } from './combat/MonsterViews';
 import { GODS, godById } from './game/gods';
 import { parseDifficulty } from './game/difficulty';
-import { mapOf, savedMode, showStartMenu, type GameMode, type StartChoice } from './ui/StartMenu';
+import { mapOf, saveChoice, savedMode, savedPick, showStartMenu, type GameMode, type ModeChoice, type StartChoice } from './ui/StartMenu';
+import { showGodPick, type PickScreen } from './ui/GodPick';
+import { newSeed } from './game/lineup';
 import { compatibilityMode, installErrorHandlers, showFatal } from './ui/Fatal';
 import { playIntro } from './ui/Intro';
 import { Announcer } from './audio/Announcer';
@@ -36,31 +38,39 @@ import { GodVoice } from './audio/GodVoice';
 import { bakeAll } from './audio/bank';
 import { GameAudio } from './audio/GameAudio';
 import { Music } from './audio/music';
+import { Orchestra } from './audio/orchestra';
 import { installUiSounds, mountAudioPanel } from './ui/AudioPanel';
 import { slice } from './core/slices';
+import { applyPageSettings } from './settings/apply';
+import { actionForCode, keyGate, onSettings, settings } from './settings/store';
+import { closeSettings, mountSettings, openSettings, setGraphicsHooks, settingsOpen, typing } from './ui/SettingsMenu';
+import { escapeKey, mountPadCursor, padCursor } from './ui/PadCursor';
+import { pad } from './core/Gamepad';
+import { mountSubtitles } from './ui/Subtitles';
 
 async function main(): Promise<void> {
   installErrorHandlers();
   const perf = new PerfStats();
   let applyQuality: (q: QualityName) => Promise<void> = async () => {};
   let autoQuality: AutoQuality | null = null;
-  let sensitivity = 1;
-  let applySensitivity = (v: number): void => {
-    sensitivity = v;
-  };
   const hud = new Hud((q) => {
     autoQuality?.stop();
     void applyQuality(q);
-  }, (v) => applySensitivity(v));
+  });
   hud.progress(0.05, 'Starting renderer…');
 
   const params = new URLSearchParams(location.search);
   // Sound starts with the first click or key press (browsers require a gesture);
   // the bank renders in small slices while everything else loads.
   const audio = new AudioEngine();
-  const music = new Music(audio);
+  const music = new Music(audio, new Orchestra(`${import.meta.env.BASE_URL}music/`));
   const herald = new Announcer(audio);
+  // the player's settings reach the page first (team colors, HUD size, keys), then the menus
+  applyPageSettings(audio);
   mountAudioPanel(audio);
+  mountSettings(audio);
+  mountSubtitles();
+  mountPadCursor();
   installUiSounds(audio);
   const baked = bakeAll(audio);
   (window as unknown as { __audio: unknown }).__audio = { audio, music, herald, baked };
@@ -71,18 +81,21 @@ async function main(): Promise<void> {
     const gpu = gpuName(r.renderer);
     return { webgpu: r.isWebGPU, gpu, advice: gpuAdvice(gpu) };
   });
-  // a normal launch opens on the home page and the intro trailer; the title
-  // screen (and its hymn) follow once the trailer ends or is skipped
-  const chosen: Promise<StartChoice> = skipMenu
+  // each god (and the giant) says who it is when picked
+  let voice: GodVoice | null = null;
+  const menu = {};
+  const say = (id: string) => voice?.say(menu, id, 'select', { own: true, cut: true, gain: 0.9 });
+  // a normal launch opens on the home page and the intro trailer; the mode
+  // select (and its hymn) follows once the trailer ends or is skipped, then
+  // the god pick once a mode is started
+  const chosen: Promise<StartChoice | ModeChoice> = skipMenu
     ? Promise.resolve({ mode: (['clash', 'siege', 'duel', 'rush', 'descent', 'jotunn'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined, allies: params.get('allies') !== '0', rivals: params.get('rivals') === '1' })
     : playIntro(audio).then(() => {
         music.play('hymn');
-        // each god (and the giant) says who it is when picked
-        const voice = new GodVoice(audio, import.meta.env.BASE_URL);
+        voice = new GodVoice(audio, import.meta.env.BASE_URL);
         for (const g of GODS) voice.load(g.id, ['select']);
         voice.load('jotunn', ['select']);
-        const menu = {};
-        return showStartMenu(GODS, graphics, (id) => voice.say(menu, id, 'select', { own: true, cut: true, gain: 0.9 }));
+        return showStartMenu(graphics, savedPick().god ?? GODS[0]!.id, say);
       });
 
   const { renderer, isWebGPU } = await rendering;
@@ -101,11 +114,27 @@ async function main(): Promise<void> {
   await preloadGodAssets((f) => hud.progress(0.55 + f * 0.05, 'Summoning the gods…'));
 
   let quality = QUALITY_PRESETS[initialQuality(isWebGPU, slowGpu !== null)];
+  // before the match, a pick in Settings only takes the new preset (the map is built with it, or
+  // brought up to it once Play is pressed)
+  applyQuality = async (name: QualityName) => {
+    quality = QUALITY_PRESETS[name];
+    saveQuality(name);
+    hud.setQuality(name);
+  };
+  setGraphicsHooks({
+    quality: () => quality.name,
+    setQuality: (q) => {
+      autoQuality?.stop();
+      void applyQuality(q);
+    },
+    webgpu: isWebGPU,
+  });
   /** Lowered by AutoQuality when the frame rate stays low. */
   let renderScale = 1;
   let autoDrops = 0;
   const resize = () => {
-    const pr = Math.min(window.devicePixelRatio * quality.resolutionScale, quality.maxPixelRatio) * renderScale;
+    // (Settings > Graphics > Render resolution scales on top of the preset and the automatic drops)
+    const pr = Math.min(window.devicePixelRatio * quality.resolutionScale, quality.maxPixelRatio) * renderScale * settings().resolution;
     renderer.setPixelRatio(pr);
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -178,28 +207,58 @@ async function main(): Promise<void> {
     if (mode === 'jotunn') await loadGodAsset('jotunn');
     world.actors.add(models);
     await prepareShaders(world, post, 0.85, 0.86);
-    return { world, post, models };
+    return { world, post, models, builtWith: quality };
   };
   // Start on the mode the title screen opens with (the last one played) while
   // the player picks a god; a different pick builds its own map after Play.
   const guessMode = skipMenu ? null : savedMode();
   const guess = guessMode ? prepare(guessMode) : null;
-  const choice = await chosen;
+  const started = await chosen;
   // A map built for the other mode is left to the garbage collector, not disposed:
   // it shares cached geometry with the new map, and disposing destroys GPU
   // buffers that the new map still draws ("buffer used in submit while destroyed").
-  const reuse = guess && mapOf(guessMode!) === mapOf(choice.mode);
-  const { world, post, models } = reuse ? await guess : await prepare(choice.mode);
+  const reuse = guess && mapOf(guessMode!) === mapOf(started.mode);
+  // the match's map builds while everyone picks a god
+  const loading = reuse ? guess : prepare(started.mode);
+  let pickScreen: PickScreen | null = null;
+  let choice: StartChoice;
+  if ('god' in started) choice = started;
+  else {
+    const seed = newSeed();
+    const last = savedPick();
+    pickScreen = showGodPick({
+      mode: started.mode,
+      net: started.net,
+      gods: GODS,
+      god: last.god ?? GODS[0]!.id,
+      rival: last.rival,
+      allies: started.allies,
+      rivals: started.rivals,
+      role: started.role,
+      seed,
+      say,
+      sound: (name, gain = 0.8) => audio.play(name, { bus: 'ui', gain }, 4, 0.05),
+    });
+    hud.mirrorProgress((f, text) => pickScreen!.progress(f, text));
+    hud.notesHost = pickScreen.notes;
+    const picked = await pickScreen.chosen;
+    // online the host's roster decides the bots; alone the seed the screen showed does
+    choice = { ...started, god: picked.god, rival: picked.rival, seed: started.net ? undefined : seed };
+    saveChoice({ god: picked.god, rival: picked.rival });
+  }
+  const { world, post, models, builtWith } = await loading;
+  // a quality picked in Settings on the home page, after the map was built
+  if (builtWith !== quality) {
+    resize();
+    await world.applyQuality(renderer, quality);
+    post.build(quality);
+  }
 
   const input = new Input(renderer.domElement);
   const god = new GodModel();
   world.actors.add(god.root);
   const player = new PlayerController(input, world.collision, god);
   const baseSensitivity = player.mouseSensitivity;
-  applySensitivity = (v) => {
-    player.mouseSensitivity = baseSensitivity * v;
-  };
-  applySensitivity(sensitivity);
   player.spawn(world.spawn.x, world.spawn.z, world.spawn.yaw);
   const follow = new ThirdPersonCamera(camera, player, world.collision);
   // models only one mode uses (the Jötunn) load on demand
@@ -215,6 +274,8 @@ async function main(): Promise<void> {
 
   applyQuality = async (name: QualityName) => {
     quality = QUALITY_PRESETS[name];
+    autoStopped = true;
+    autoQuality = null;
     renderScale = 1;
     saveQuality(name);
     hud.setQuality(name);
@@ -225,20 +286,51 @@ async function main(): Promise<void> {
   hud.setQuality(quality.name);
   hud.setInfo(`${isWebGPU ? 'WebGPU' : 'WebGL 2'}${gpu ? ` · ${gpu}` : ''}`);
   const advice = params.has('capture') ? null : slowGpu;
-  // a quality forced in the URL (tests, shared links) stays put
-  if (!params.has('quality')) {
+  // a quality forced in the URL (tests, shared links) stays put, and so does one the player picked
+  let autoStopped = params.has('quality');
+  const startAuto = () => {
     autoQuality = new AutoQuality((scale) => {
       renderScale = scale;
       autoDrops++;
       resize();
-      hud.notice(`Lowered the render resolution to ${Math.round(scale * 100)}% for a smoother frame rate. Picking a quality at the bottom right resets it.`);
+      hud.notice(`Lowered the render resolution to ${Math.round(scale * 100)}% for a smoother frame rate. Picking a quality, or turning off Automatic resolution in Settings, resets it.`);
     }, () => perf.gpuAverage(4));
-  }
+  };
+  const stopAuto = () => {
+    autoQuality?.stop();
+    autoQuality = null;
+    if (renderScale !== 1) {
+      renderScale = 1;
+      resize();
+    }
+  };
+
+  // the settings that need the camera, the player and the renderer
+  const fixedCamera = !!(showcase || giant || params.has('stage'));
+  const baseExposure = grading.exposure.value;
+  onSettings((s, changed) => {
+    player.mouseSensitivity = baseSensitivity * s.sensitivity;
+    player.invertY = s.invertY;
+    if (changed.has('fov') && !fixedCamera) {
+      camera.fov = s.fov;
+      camera.updateProjectionMatrix();
+    }
+    grading.exposure.value = baseExposure * s.brightness;
+    if (changed.has('resolution')) resize();
+    if (changed.has('autoResolution')) {
+      if (!s.autoResolution) stopAuto();
+      else if (!autoStopped && !autoQuality) startAuto();
+    }
+    if (autoQuality) autoQuality.minFps = s.frameCap ? Math.min(45, s.frameCap * 0.85) : 45;
+  });
 
   const loop = new Loop();
   loop.addFixed(player);
   // Conquest plays a full match against bots; the arena is the training ground
-  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, shake: (a) => follow.addShake(a), cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
+  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, seed: choice.seed, shake: (a) => {
+    follow.addShake(a * settings().shake);
+    pad.rumble(a * 1.6);
+  }, cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
   void baked;
   // `?stage`: the trailer's film set (tools/trailer)
@@ -259,6 +351,7 @@ async function main(): Promise<void> {
   await pipelines.settle(60000, (done, total) => hud.progress(0.9 + (total ? (0.1 * done) / total : 0.1), `Preparing shaders ${done} / ${total}…`));
   clearTimeout(slow);
   hud.ready();
+  pickScreen?.finish();
   if (advice) hud.notice(advice.text, 15);
   const shadersAtStart = pipelines.built;
   const deferredAtStart = pipelines.deferred;
@@ -281,12 +374,34 @@ async function main(): Promise<void> {
   combat.netReady();
 
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyH' && !e.repeat) hud.toggleHelp();
+    if (!e.repeat && !keyGate.blocked && !typing(e) && actionForCode(e.code) === 'menu') hud.toggleHelp();
   });
-  document.addEventListener('pointerlockchange', () => hud.setLocked(input.locked));
+  document.addEventListener('pointerlockchange', () => hud.setLocked(input.engaged));
+  pad.onChange(() => hud.setLocked(input.engaged));
+  // a controller runs the menus with its cursor, and plays when none is up
+  padCursor.wanted = () => settingsOpen() || hud.helpOpen || combat.menuUp;
+  padCursor.back = () => {
+    if (settingsOpen()) closeSettings();
+    else if (hud.helpOpen) hud.toggleHelp(false);
+    else escapeKey();
+  };
 
+  /** When the next frame is due under Settings > Graphics > Frame rate cap. */
+  let nextFrame = 0;
   const frame = (now: number) => {
+    const cap = captureMode ? 0 : settings().frameCap;
+    if (cap) {
+      // a frame the cap holds back draws nothing: the screen keeps the last one
+      if (now < nextFrame - 1) return;
+      const interval = 1000 / cap;
+      nextFrame = Math.max(nextFrame + interval, now - interval);
+    }
     perf.begin(now);
+    input.beginFrame();
+    // the controller's interface buttons (the keyboard's go through keydown)
+    if (input.padActionPressed('menu')) hud.toggleHelp();
+    if (input.padActionPressed('settings')) openSettings();
+    if (input.padActionPressed('mute')) audio.setSettings({ muted: !audio.settings.muted });
     player.look();
     const wheel = input.consumeWheel();
     if (wheel) follow.zoom(wheel);
@@ -341,7 +456,7 @@ async function main(): Promise<void> {
   };
 
   // Hooks for automated screenshots and for gameplay code during development.
-  const debug = { giant, stage, perf, pipelines, grading, combat, audio, music, herald, world, player, camera, follow, renderer, post, setQuality: applyQuality, isWebGPU, capture, resume: () => renderer.setAnimationLoop(frame) };
+  const debug = { giant, showcase, stage, perf, pipelines, grading, combat, audio, music, herald, world, player, camera, follow, renderer, post, setQuality: applyQuality, isWebGPU, capture, resume: () => renderer.setAnimationLoop(frame) };
   (window as unknown as { __game: typeof debug }).__game = debug;
 }
 

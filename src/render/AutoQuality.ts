@@ -35,6 +35,11 @@ export class AutoQuality {
   private cpu = 0;
   private step = 0;
   private stopped = false;
+  /**
+   * The frame rate worth keeping. Lower under a frame rate cap (Settings >
+   * Graphics): a game held at 30 is not a slow one.
+   */
+  minFps = MIN_FPS;
 
   /** `gpuMs`: average GPU time per frame over the last few seconds, null where it can't be measured. */
   constructor(
@@ -62,7 +67,7 @@ export class AutoQuality {
     // (near-zero readings are a driver that doesn't really time passes, not a fast GPU)
     const gpuIdle = gpu !== null && gpu > 0.5 && gpu < (1000 / fps) * GPU_BOUND;
     this.time = this.frames = this.cpu = 0;
-    if (fps >= MIN_FPS || cpuBound || gpuIdle) return;
+    if (fps >= this.minFps || cpuBound || gpuIdle) return;
     if (this.step >= SCALES.length - 1) {
       this.stopped = true;
       return;

@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { toScreen } from '../combat/screenEdge';
-import { clearOfHud, pickMarks, THREAT_HIT, TOP_CLEAR, type MarkScene } from './JotunnMarks';
+import { CLUSTER, clearOfHud, clusterBraziers, pickMarks, STACK, stackMarks, THREAT_HIT, TOP_CLEAR, type MarkScene, type Stackable } from './JotunnMarks';
 
 const W = 1600;
 const H = 900;
@@ -107,5 +107,63 @@ describe('Jötunn marks and the HUD', () => {
     const side = { x: 0.04 * W, y: 0.1 * H, edge: true, angle: -2.5 };
     clearOfHud(side, W, H);
     expect(side.y).toBe(0.1 * H);
+  });
+});
+
+describe('Jötunn marks from afar', () => {
+  it('shows the giant its braziers as one mark on the temple while it is far off', () => {
+    const m = pickMarks(scene({ piloting: true, clustered: true }));
+    const smash = m.filter((k) => k.kind === 'smash');
+    expect(smash.map((k) => [k.key, k.label])).toEqual([['bc', 'Smash']]);
+    // in the middle of the lit ones (the fourth is out)
+    expect(smash[0]!.x).toBeCloseTo(-7 / 3, 5);
+    expect(smash[0]!.z).toBeCloseTo(7 / 3, 5);
+    // the shrines still show on their own
+    expect(m.filter((k) => k.kind === 'shrine').length).toBe(2);
+  });
+
+  it('joins and splits the braziers with some slack, so they never flicker on the line', () => {
+    expect(clusterBraziers(false, CLUSTER.join + 1)).toBe(true);
+    expect(clusterBraziers(false, CLUSTER.join - 1)).toBe(false);
+    const between = (CLUSTER.join + CLUSTER.split) / 2;
+    expect(clusterBraziers(true, between)).toBe(true);
+    expect(clusterBraziers(false, between)).toBe(false);
+    expect(clusterBraziers(true, CLUSTER.split - 1)).toBe(false);
+    // none lit: nothing to join
+    expect(clusterBraziers(false, Infinity)).toBe(true);
+  });
+});
+
+describe('Jötunn marks stacking', () => {
+  const mark = (tx: number, ty: number, meters: number): Stackable => ({ tx, ty, meters, lift: 0 });
+
+  it('leaves marks apart where they are', () => {
+    const a = mark(100, 300, 20);
+    const b = mark(100 + STACK.w + 1, 300, 30);
+    stackMarks([a, b]);
+    expect([a.lift, b.lift]).toEqual([0, 0]);
+  });
+
+  it('lifts the farther of two marks on one another to just above the nearer', () => {
+    const near = mark(400, 300, 18);
+    const far = mark(410, 290, 58);
+    stackMarks([far, near]);
+    expect(near.lift).toBe(0);
+    expect(far.ty + far.lift).toBe(300 - STACK.h);
+  });
+
+  it('stacks a pile of marks into a column, none covering another', () => {
+    const items = [mark(400, 300, 50), mark(405, 296, 10), mark(398, 305, 30), mark(402, 250, 40)];
+    stackMarks(items);
+    const ys = items.map((k) => k.ty + k.lift);
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const apart = Math.abs(items[i]!.tx - items[j]!.tx) >= STACK.w || Math.abs(ys[i]! - ys[j]!) >= STACK.h - 1e-9;
+        expect(apart).toBe(true);
+      }
+    }
+    // nearest first, and it never moves
+    expect(items[0]!.meters).toBe(10);
+    expect(items[0]!.lift).toBe(0);
   });
 });

@@ -31,6 +31,8 @@ export interface NetPlayer {
   name: string;
   god: string;
   team: Side;
+  /** Locked in on the god pick screen. */
+  ready?: boolean;
 }
 
 /** One of a match's ten god slots, played by a human (their player id) or a bot. */

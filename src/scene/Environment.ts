@@ -155,7 +155,7 @@ export class Environment {
    * walls'), a dim warm bounce from the other side and dark, low-lying haze.
    * Call before the first frame; `setDepth` recolors it later.
    */
-  underworld(c: { fog: number; horizon: number; key: number }): void {
+  underworld(c: { fog: number; horizon: number; key: number; air: { density: number; falloff: number; start: number } }): void {
     const horizon = uniform(new THREE.Color(c.horizon));
     const zenith = uniform(new THREE.Color(0.006, 0.006, 0.012));
     this.dark = { horizon, zenith };
@@ -167,18 +167,18 @@ export class Environment {
     this.sun.intensity = 1.5;
     this.fill.intensity = 0.55;
     this.fill.color.setRGB(1.0, 0.72, 0.6);
-    this.fogDensity.value = 0.011;
-    this.fogHeightFalloff.value = 0.06;
-    this.fogStart.value = 16;
     this.setDepth(c);
   }
 
-  /** Recolors the underworld's sky, haze and light for a depth (uniform writes only). */
-  setDepth(c: { fog: number; horizon: number; key: number }): void {
+  /** Recolors the underworld's sky, haze and light for a depth, and thickens or thins its air (uniform writes only). */
+  setDepth(c: { fog: number; horizon: number; key: number; air: { density: number; falloff: number; start: number } }): void {
     if (!this.dark) return;
     this.dark.horizon.value.setHex(c.horizon);
     this.fogColor.value.setHex(c.fog);
     this.sun.color.setHex(c.key);
+    this.fogDensity.value = c.air.density;
+    this.fogHeightFalloff.value = c.air.falloff;
+    this.fogStart.value = c.air.start;
   }
 
   /** Bakes the current sky into the scene environment (ambient + reflections). */

@@ -1,33 +1,25 @@
-import { SLOT_KEYS } from '../game/loadout';
-import type { GodDef } from '../game/types';
+import { controlRows } from '../settings/controls';
+import { openSettings } from './SettingsMenu';
 import { compatibilityMode, setCompatibilityMode } from './Fatal';
 import type { GpuAdvice } from '../render/gpuAdvice';
-import { skillIcon } from './icons';
 import { mountLobby } from '../net/LobbyPanel';
-import type { NetGameInfo, NetHostOption } from '../net/roster';
+import type { NetGameInfo } from '../net/roster';
 import type { NetSession } from '../net/Session';
 import './start.css';
 import { DIFFICULTIES, parseDifficulty, type Difficulty } from '../game/difficulty';
 import { recordLine } from './records';
 import { rankBadge } from './ascension';
 import type { JotunnRole } from '../combat/JotunnMode';
-import { jotunn } from '../game/gods/jotunn';
+import { MODES, modeArt, modeInfo, modeThumb, type GameMode } from './modes';
 
-export type GameMode = 'conquest' | 'arena' | 'clash' | 'siege' | 'duel' | 'rush' | 'descent' | 'jotunn';
+export { mapOf, type GameMode } from './modes';
 
-/** The map a mode is played on. */
-export function mapOf(mode: GameMode): 'conquest' | 'arena' | 'underworld' {
-  return mode === 'conquest' ? 'conquest' : mode === 'descent' ? 'underworld' : 'arena';
-}
-
-export interface StartChoice {
+/** What the home page decides: the mode and its options (the god is picked on the next screen). */
+export interface ModeChoice {
   mode: GameMode;
-  god: string;
-  /** A multiplayer Conquest match (the lobby's players and connections). */
+  /** An online match (the lobby's players and connections). */
   net?: NetSession;
   difficulty?: Difficulty;
-  /** Temple Duel: the rival god's id, or '' for a random one. */
-  rival?: string;
   /** Underworld Descent alone: whether bots join your team, and whether a bot team descends against yours. */
   allies?: boolean;
   rivals?: boolean;
@@ -35,51 +27,16 @@ export interface StartChoice {
   role?: JotunnRole;
 }
 
+/** Everything a match starts from: the home page's choice and the god pick's. */
+export interface StartChoice extends ModeChoice {
+  god: string;
+  /** Temple Duel: the rival god's id, or '' for a random one. */
+  rival?: string;
+  /** Picks the bots' gods, so the match plays the lineup the pick screen showed (src/game/lineup.ts). */
+  seed?: number;
+}
+
 const STORAGE_KEY = 'ascendant.start';
-
-/** A title-screen mode. `net` lists the lobbies it can host online (none: single player only). */
-const MODES: { id: GameMode; name: string; text: string; net?: NetHostOption[] }[] = [
-  {
-    id: 'conquest',
-    name: 'Conquest',
-    text: '5v5 against bots. Destroy the enemy Titan to win. About 15–20 minutes.',
-    net: [
-      { mode: 'coop', label: 'Host co-op', text: 'Friends together against bots', cap: 5 },
-      { mode: 'versus', label: 'Host versus', text: 'Friends on both teams, bots fill in', cap: 10 },
-    ],
-  },
-  { id: 'clash', name: 'Temple Clash', text: '3v3 king of the hill. Hold the temple plaza and take down gods; the temple\'s blessing doubles points now and then. First to 115. About 4 minutes.' },
-  { id: 'siege', name: 'Temple Siege', text: 'You and two bots hold the temple against endless monster waves, with a boss every fifth. Pick a team boon after each wave. How long can you last?' },
-  {
-    id: 'rush',
-    name: 'Relic Rush',
-    text: '3v3 sport. Carry the Sun Relic through the enemy gate or pass it in; stun the carrier to steal it. Nobody dies, they get dazed. First to 5 goals. About 5 minutes.',
-    net: [
-      { mode: 'coop', label: 'Host co-op', text: 'Friends on one team against bots', cap: 3 },
-      { mode: 'versus', label: 'Host versus', text: 'Friends on both teams, bots fill in', cap: 6 },
-    ],
-  },
-  {
-    id: 'descent',
-    name: 'Underworld Descent',
-    text: 'Dungeon run: go down through fifteen chambers of the underworld, a boss every fifth. Vote on a reward after each chamber, learn new skills as you go, and raise fallen allies. Co-op, or team against team for the most souls. About 25 minutes.',
-    net: [
-      { mode: 'coop', label: 'Host co-op', text: 'Up to four friends descend together; bots fill the team to three if you like', cap: 4, bots: true },
-      { mode: 'versus', label: 'Host versus', text: 'Two teams of up to three race the same chambers for souls; each team picks bots or none', cap: 6, bots: true },
-    ],
-  },
-  {
-    id: 'jotunn',
-    name: 'The Jötunn',
-    text: 'One frost giant against four gods. The giant wins a round by smashing three of the four braziers; the gods win by breaking it at its knees, wrists, back rune and crown. Shrines in the valley give the giant new ultimates. About 3 minutes a round.',
-    net: [{ mode: 'coop', label: 'Host a hunt', text: 'Up to five friends take turns as the giant; bots fill the rest', cap: 5 }],
-  },
-  { id: 'duel', name: 'Temple Duel', text: 'One on one against a bot god. Win a round by taking them down; a ring of fire closes in so nobody can hide. First to 3 rounds. About 2–3 minutes.' },
-  { id: 'arena', name: 'Training ground', text: 'Training posts and one enemy Thor. Swap gods and levels freely with K.' },
-];
-
-const JOTUNN_TIP =
-  'As a god, strike the glowing weak points: break both knees and the giant kneels, opening its crown. As the giant, every blow winds up first, so aim where the gods are going. Claim a shrine for a new ultimate.';
 
 /** Who plays the giant in a Jötunn match on your own. */
 const GIANT_ROLES: { id: JotunnRole; name: string; text: string }[] = [
@@ -92,51 +49,46 @@ function parseGiantRole(s: unknown): JotunnRole {
   return s === 'giant' || s === 'god' ? s : 'rotate';
 }
 
-const ROLE_NAMES: Record<string, string> = { solo: 'Solo', jungle: 'Jungle', mid: 'Mid', carry: 'Carry', support: 'Support' };
-
-/** The controls, shared by the start screen and the in-game help (H). */
-export const CONTROLS: [string, string][] = [
-  ['Click', 'Capture the mouse and play'],
-  ['W A S D', 'Move'],
-  ['Mouse', 'Aim (the camera follows)'],
-  ['Left click', 'Basic attack (Relic Rush: pass the relic)'],
-  ['1  2  3', 'Skills: press to aim, press again or click to cast, right click cancels'],
-  ['4 or R', 'Ultimate (unlocks at level 5)'],
-  ['B', 'Recall to the fountain'],
-  ['G (hold)', 'Ping wheel: attack, on my way, group up, fall back and more. Tap G or middle click to ping what you aim at'],
-  ['V', 'Taunt: your god says something cutting to everyone near'],
-  ['F', 'Relic Rush: call for the pass'],
-  ['Space', 'Jump (Relic Rush carrying the relic: juke, a quick sidestep that slips a tackle)'],
-  ['Z  X  C', 'Temple Siege and Underworld Descent: pick a boon, a reward or a skill'],
-  ['K', 'Skills & trees: spend points; swap skills at the fountain'],
-  ['Tab (hold)', 'Scoreboard'],
-  ['Wheel', 'Camera zoom'],
-  ['H', 'Show or hide this help'],
-  ['M', 'Mute or unmute sound'],
-  ['Esc', 'Release the mouse'],
-];
+/**
+ * The controls, shared by the home page and the in-game help (H), as the
+ * player has bound them (Settings > Controls). A snapshot: `controlsHtml()`
+ * reads the bindings fresh each time.
+ */
+export const CONTROLS: [string, string][] = controlRows();
 
 export function controlsHtml(): string {
-  return `<div class="sm-controls">${CONTROLS.map(([k, v]) => `<div class="sm-key">${k}</div><div>${v}</div>`).join('')}</div>`;
+  return `<div class="sm-controls">${controlRows().map(([k, v]) => `<div class="sm-key">${k}</div><div>${v}</div>`).join('')}</div>`;
 }
 
-function load(): Partial<StartChoice> {
+interface Saved extends Partial<StartChoice> {}
+
+function load(): Saved {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<StartChoice>;
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Saved;
   } catch {
     return {};
   }
 }
 
-/** The mode the title screen opens with: the last one played, Conquest at first. */
+const isMode = (m: unknown): m is GameMode => MODES.some((x) => x.id === m);
+
+/** The mode the home page opens with: the last one played, Conquest at first. */
 export function savedMode(): GameMode {
   const m = load().mode;
-  return m === 'arena' || m === 'clash' || m === 'siege' || m === 'duel' || m === 'rush' || m === 'descent' || m === 'jotunn' ? m : 'conquest';
+  return isMode(m) ? m : 'conquest';
 }
 
-function save(c: StartChoice): void {
+/** The god the pick screen starts on (the last one played), and the last Duel rival. */
+export function savedPick(): { god: string | undefined; rival: string } {
+  const s = load();
+  return { god: s.god, rival: typeof s.rival === 'string' ? s.rival : '' };
+}
+
+/** Remember the choices for next time (merged into what is kept). */
+export function saveChoice(c: Partial<StartChoice>): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(c));
+    const { net: _net, seed: _seed, ...keep } = c;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...load(), ...keep }));
   } catch {
     /* storage unavailable */
   }
@@ -147,15 +99,17 @@ function showWarning(root: HTMLElement, content: string | HTMLElement): HTMLDivE
   const warn = document.createElement('div');
   warn.className = 'sm-warn';
   warn.append(content);
-  root.querySelector('.sm-title')!.after(warn);
+  root.querySelector('.hm-warns')!.appendChild(warn);
   return warn;
 }
 
-/** The slow-GPU warning: what's wrong, then numbered steps to fix it. */
+/** The slow-GPU warning: what's wrong on one line, and the numbered steps to fix it a click away. */
 function gpuWarning(advice: GpuAdvice): HTMLElement {
-  const box = document.createElement('div');
-  const text = document.createElement('div');
+  const box = document.createElement('details');
+  box.className = 'sm-fix';
+  const text = document.createElement('summary');
   text.textContent = advice.text;
+  text.appendChild(document.createElement('span')).textContent = 'How to fix';
   const steps = document.createElement('ol');
   for (const step of advice.steps) steps.appendChild(document.createElement('li')).textContent = step;
   box.append(text, steps);
@@ -188,103 +142,151 @@ async function onBattery(then: (battery: BatteryManager) => void): Promise<void>
   }
 }
 
-/**
- * The title screen: pick a mode and a god, read the controls, press Play.
- * Shown over the loading screen while textures and models load behind it.
- */
-/** What the title screen says about the graphics setup. */
+/** What the home page says about the graphics setup. */
 export interface GraphicsInfo {
   webgpu: boolean;
   advice: GpuAdvice | null;
 }
 
-/** `picked` hears each god the player clicks (it says its line), and 'jotunn' when they pick the giant's mode or to play it. */
-export function showStartMenu(gods: readonly GodDef[], graphics: Promise<GraphicsInfo>, picked?: (god: string) => void): Promise<StartChoice> {
+/** Drifting embers over the art: a few dozen tiny CSS-animated dots (the compositor moves them, not the main thread). */
+function embers(n: number): string {
+  let s = '';
+  for (let i = 0; i < n; i++) {
+    const x = (i * 37.7) % 100;
+    const d = 9 + ((i * 7.3) % 9);
+    const delay = -((i * 3.1) % d);
+    const size = 2 + ((i * 5) % 3);
+    const drift = ((i * 13) % 40) - 20;
+    s += `<i style="left:${x.toFixed(1)}%;width:${size}px;height:${size}px;animation-duration:${d.toFixed(1)}s;animation-delay:${delay.toFixed(1)}s;--drift:${drift}px"></i>`;
+  }
+  return s;
+}
+
+/**
+ * The home page: choose a mode and its options, then Play (or open a lobby
+ * and play with friends). The mode's art fills the screen behind the menu.
+ * Shown while the game loads behind it. `picked` hears 'jotunn' when the
+ * player picks the giant's mode or asks to play the giant (it says its line).
+ */
+export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: string, picked?: (god: string) => void): Promise<ModeChoice> {
   const prev = load();
   let mode = savedMode();
-  let god = gods.some((g) => g.id === prev.god) ? prev.god! : gods[0]!.id;
   let difficulty: Difficulty = parseDifficulty(prev.difficulty);
-  let rival = gods.some((g) => g.id === prev.rival) ? prev.rival! : '';
   let allies = prev.allies !== false;
   let rivals = prev.rivals === true;
   let role = parseGiantRole(prev.role);
 
   const root = document.createElement('div');
-  root.className = 'sm';
+  root.className = 'sm hm';
   root.innerHTML = `
-    <div class="sm-panel">
-      <div class="sm-title">ASCENDANT</div>
-      ${rankBadge()}
-      <div class="sm-gods">${gods.map((g) => `<button class="sm-god" data-god="${g.id}"><img src="${import.meta.env.BASE_URL}portraits/${g.id}.jpg" alt="" onerror="this.remove()"><span class="sm-face"><b>${g.name}</b><span>${ROLE_NAMES[g.role] ?? g.role} &middot; ${g.attackRange}</span></span></button>`).join('')}</div>
-      <div class="sm-cols">
-        <div class="sm-col">
-          <h3>Mode</h3>
-          <div class="sm-modes">${MODES.map((m) => `<button class="sm-mode" data-mode="${m.id}"><b>${m.name}</b><span>${m.text}</span>${recordLine(m.id) ? `<em class="sm-rec">${recordLine(m.id)}</em>` : ''}</button>`).join('')}</div>
-          <div class="sm-diff"><span>Bots</span>${DIFFICULTIES.map((d) => `<button class="sm-dif" data-dif="${d.id}" title="${d.text}">${d.name}</button>`).join('')}</div>
-          <div class="sm-diff sm-role"><span>Giant</span>${GIANT_ROLES.map((r) => `<button class="sm-dif" data-role="${r.id}" title="${r.text}">${r.name}</button>`).join('')}</div>
-          <div class="sm-diff sm-rival"><span>Rival</span><button class="sm-dif" data-rival="">Random</button>${gods.map((g) => `<button class="sm-dif" data-rival="${g.id}">${g.name}</button>`).join('')}</div>
-          <div class="sm-diff sm-descent"><span>Allies</span><button class="sm-dif" data-allies="1" title="Two bot gods descend with you">Two bots</button><button class="sm-dif" data-allies="0" title="Go down alone: the underworld sends fewer monsters">Alone</button></div>
-          <div class="sm-diff sm-descent"><span>Rivals</span><button class="sm-dif" data-rivals="0" title="Co-op: your team against the underworld">None</button><button class="sm-dif" data-rivals="1" title="A shared descent: a team of three bots races you through the same chambers for souls">Bot team</button></div>
-          <div class="sm-detail"></div>
-          <h3 class="help-gap">Play with friends</h3>
-          <div class="sm-net"></div>
-        </div>
-        <div class="sm-col">
-          <h3>Controls</h3>
-          ${controlsHtml()}
-        </div>
+    <div class="hm-art"><div class="hm-img"></div><div class="hm-img"></div></div>
+    <div class="hm-shade"></div>
+    <div class="hm-embers">${embers(28)}</div>
+    <div class="hm-frame">
+      <header class="hm-top">
+        <div class="hm-logo"><span class="hm-word">ASCENDANT</span><span class="hm-sub">A war of gods</span></div>
+        ${rankBadge()}
+        <div class="hm-tools"><button class="hm-tool" data-tool="controls">Controls</button><button class="hm-tool" data-tool="settings">Settings</button></div>
+      </header>
+      <div class="hm-warns"></div>
+      <div class="hm-body">
+        <nav class="hm-modes sm-modes">
+          <div class="hm-label">Choose a mode</div>
+          ${MODES.map(
+            (m, i) => `<button class="hm-mode sm-mode" data-mode="${m.id}" style="--i:${i}">
+              <span class="hm-thumb" style="background-image:url(${modeThumb(m.id)})"></span>
+              <span class="hm-mtext"><b>${m.name}</b><span>${m.tag}</span></span>
+              ${m.net ? '<span class="hm-online" title="Can be played online">Online</span>' : ''}
+            </button>`,
+          ).join('')}
+        </nav>
+        <section class="hm-card">
+          <div class="hm-detail"></div>
+          <div class="hm-opts">
+            <div class="hm-opt" data-row="dif"><span>Bots</span>${DIFFICULTIES.map((d) => `<button class="hm-seg" data-dif="${d.id}" title="${d.text}">${d.name}</button>`).join('')}</div>
+            <div class="hm-opt" data-row="role"><span>Giant</span>${GIANT_ROLES.map((r) => `<button class="hm-seg" data-role="${r.id}" title="${r.text}">${r.name}</button>`).join('')}</div>
+            <div class="hm-opt" data-row="descent"><span>Allies</span><button class="hm-seg" data-allies="1" title="Two bot gods descend with you">Two bots</button><button class="hm-seg" data-allies="0" title="Go down alone: the underworld sends fewer monsters">Alone</button></div>
+            <div class="hm-opt" data-row="descent"><span>Rivals</span><button class="hm-seg" data-rivals="0" title="Co-op: your team against the underworld">None</button><button class="hm-seg" data-rivals="1" title="A shared descent: a team of three bots races you through the same chambers for souls">Bot team</button></div>
+          </div>
+          <div class="hm-actions">
+            <button class="hm-play sm-play"><span>Play</span><small>Choose your god next</small></button>
+          </div>
+          <div class="hm-friends">
+            <div class="hm-label">Play with friends</div>
+            <div class="sm-net"></div>
+          </div>
+        </section>
       </div>
-      <div class="sm-foot">
-        <span class="sm-note"></span>
-        <button class="sm-play">Play</button>
-      </div>
-    </div>`;
+      <footer class="hm-foot"><span class="sm-note"></span><span class="hm-keys">&uarr; &darr; choose &middot; Enter play</span></footer>
+    </div>
+    <div class="hm-modal"><div class="hm-modal-panel"><div class="hm-label">Controls</div>${controlsHtml()}<button class="hm-close">Close</button></div></div>`;
   document.body.appendChild(root);
 
-  const detail = root.querySelector<HTMLDivElement>('.sm-detail')!;
+  // the backdrop crossfades between two layers, each with a slow push-in
+  const layers = [...root.querySelectorAll<HTMLDivElement>('.hm-img')];
+  let front = 0;
+  let shown = '';
+  const showArt = (id: string) => {
+    if (shown === id) return;
+    shown = id;
+    const next = layers[1 - front]!;
+    const url = modeArt(id);
+    const img = new Image();
+    const swap = () => {
+      next.style.backgroundImage = `url(${url})`;
+      // restart its slow zoom
+      next.classList.remove('on');
+      void next.offsetWidth;
+      next.classList.add('on');
+      layers[front]!.classList.remove('on');
+      front = 1 - front;
+    };
+    img.onload = swap;
+    img.onerror = swap;
+    img.src = url;
+  };
+
+  const detail = root.querySelector<HTMLDivElement>('.hm-detail')!;
   const render = () => {
-    root.querySelectorAll<HTMLButtonElement>('.sm-mode').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
-    root.querySelectorAll<HTMLButtonElement>('.sm-god').forEach((b) => b.classList.toggle('on', b.dataset.god === god));
-    root.querySelectorAll<HTMLButtonElement>('.sm-dif[data-dif]').forEach((b) => b.classList.toggle('on', b.dataset.dif === difficulty));
-    // a rival row only for the duel; your own god can't be your rival
-    if (rival === god) rival = '';
-    root.querySelector<HTMLDivElement>('.sm-rival')!.classList.toggle('hide', mode !== 'duel');
-    root.querySelectorAll<HTMLDivElement>('.sm-descent').forEach((row) => row.classList.toggle('hide', mode !== 'descent'));
+    const m = modeInfo(mode);
+    root.querySelectorAll<HTMLButtonElement>('.hm-mode').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
+    root.querySelectorAll<HTMLButtonElement>('[data-dif]').forEach((b) => b.classList.toggle('on', b.dataset.dif === difficulty));
+    root.querySelectorAll<HTMLButtonElement>('[data-role]').forEach((b) => b.classList.toggle('on', b.dataset.role === role));
     root.querySelectorAll<HTMLButtonElement>('[data-allies]').forEach((b) => b.classList.toggle('on', (b.dataset.allies === '1') === allies));
     root.querySelectorAll<HTMLButtonElement>('[data-rivals]').forEach((b) => b.classList.toggle('on', (b.dataset.rivals === '1') === rivals));
-    // the Jötunn: who plays the giant
-    root.querySelector<HTMLDivElement>('.sm-role')!.classList.toggle('hide', mode !== 'jotunn');
-    root.querySelectorAll<HTMLButtonElement>('[data-role]').forEach((b) => b.classList.toggle('on', b.dataset.role === role));
-    root.querySelectorAll<HTMLButtonElement>('[data-rival]').forEach((b) => {
-      b.classList.toggle('on', b.dataset.rival === rival);
-      b.hidden = b.dataset.rival === god;
-    });
-    // picking yourself as the Jötunn's giant shows the giant you'll play
-    const def = mode === 'jotunn' && role === 'giant' ? jotunn : gods.find((g) => g.id === god)!;
-    const skills = def.defaultLoadout.map((id) => def.skills.find((s) => s.id === id)!);
-    const keys = SLOT_KEYS;
+    root.querySelector<HTMLDivElement>('[data-row="role"]')!.classList.toggle('hide', mode !== 'jotunn');
+    root.querySelectorAll<HTMLDivElement>('[data-row="descent"]').forEach((row) => row.classList.toggle('hide', mode !== 'descent'));
+    // the training ground's lone Thor has no difficulty to choose
+    root.querySelector<HTMLDivElement>('[data-row="dif"]')!.classList.toggle('hide', mode === 'arena');
+    const rec = recordLine(mode);
+    const online = m.net ? `Online up to ${Math.max(...m.net.map((h) => h.cap))}` : 'Single player';
     detail.innerHTML = `
-      <div class="sm-name">${def.name} <span>${def.title} &middot; ${def.pantheon}</span></div>
-      <div class="sm-passive"><b>${def.passive.name}</b> (passive): ${def.passive.description}</div>
-      <div class="sm-skills">${skills
-        .map((s, i) => `<div class="sm-skill" title="${s.description.replace(/"/g, '&quot;')}"><div class="sm-ico">${skillIcon(def.id, s)}</div><div class="sm-k">${keys[i]}</div><div class="sm-sn">${s.name}</div></div>`)
-        .join('')}</div>
-      <div class="sm-tip">${mode === 'conquest' ? 'You start mid with four allied bots in the other lanes. Go wherever you like.' : mode === 'clash' ? 'You and two bots start at level 8. Stand on the plaza with no enemy on it to score.' : mode === 'siege' ? 'Monsters on the plaza corrupt it. Meet them at the gates, north and south.' : mode === 'descent' ? (rivals ? 'Both teams go down the same chambers. Every kill pays souls to the team that makes it, rival gods included; the most souls at the bottom wins. A fallen god rises at the gate, or sooner if an ally stands over them.' : 'You start with one skill; a Forgotten Rite reward teaches you another. A fallen god stays down until an ally stands over them.') : mode === 'duel' ? 'Both gods start at level 9 and gain two levels every round. Stay inside the ring once it closes.' : mode === 'rush' ? 'Everyone starts at level 10. The carrier is slower and can\'t fight, so pass to open teammates, juke a tackle with Space, and use your stuns and knockbacks to break up their rushes.' : mode === 'jotunn' ? JOTUNN_TIP : 'Swap gods and jump levels with K at the fountain.'}${mode === 'jotunn' ? '' : ' Press K at your fountain to swap skills and spend tree points.'}</div>`;
+      <div class="hm-kicker"><span>${m.tag}</span><span>${m.time}</span><span>${online}</span></div>
+      <h1 class="hm-name">${m.name}</h1>
+      <p class="hm-desc">${m.text}</p>
+      ${rec ? `<div class="hm-rec">${rec}</div>` : ''}`;
+    // replay the card's entrance on each new mode
+    detail.classList.remove('in');
+    void detail.offsetWidth;
+    detail.classList.add('in');
+    showArt(mode);
   };
   render();
 
+  const choose = (id: GameMode) => {
+    if (root.querySelector('.hm-modes')!.classList.contains('held') || id === mode) return;
+    const was = mode;
+    mode = id;
+    render();
+    lobby.gameChanged();
+    if (mode === 'jotunn' && was !== 'jotunn') picked?.('jotunn');
+  };
   root.querySelectorAll<HTMLButtonElement>('[data-role]').forEach((b) =>
     b.addEventListener('click', () => {
       role = parseGiantRole(b.dataset.role);
       render();
       // the giant answers whoever means to play it
       if (role !== 'god') picked?.('jotunn');
-    }),
-  );
-  root.querySelectorAll<HTMLButtonElement>('[data-rival]').forEach((b) =>
-    b.addEventListener('click', () => {
-      rival = b.dataset.rival ?? '';
-      render();
     }),
   );
   root.querySelectorAll<HTMLButtonElement>('[data-allies]').forEach((b) =>
@@ -299,51 +301,45 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
       render();
     }),
   );
-  root.querySelectorAll<HTMLButtonElement>('.sm-dif[data-dif]').forEach((b) =>
+  root.querySelectorAll<HTMLButtonElement>('[data-dif]').forEach((b) =>
     b.addEventListener('click', () => {
       difficulty = parseDifficulty(b.dataset.dif);
       render();
     }),
   );
-  root.querySelectorAll<HTMLButtonElement>('.sm-mode').forEach((b) =>
-    b.addEventListener('click', () => {
-      if (b.parentElement!.classList.contains('held')) return;
-      const was = mode;
-      mode = b.dataset.mode as GameMode;
-      render();
-      lobby.gameChanged();
-      if (mode === 'jotunn' && was !== 'jotunn') picked?.('jotunn');
-    }),
-  );
-  const play = root.querySelector<HTMLButtonElement>('.sm-play')!;
-  let started: ((c: StartChoice) => void) | null = null;
+  root.querySelectorAll<HTMLButtonElement>('.hm-mode').forEach((b) => b.addEventListener('click', () => choose(b.dataset.mode as GameMode)));
+
+  const modal = root.querySelector<HTMLDivElement>('.hm-modal')!;
+  const toggleModal = (on = !modal.classList.contains('show')) => modal.classList.toggle('show', on);
+  root.querySelector('[data-tool="controls"]')!.addEventListener('click', () => toggleModal(true));
+  root.querySelector('[data-tool="settings"]')!.addEventListener('click', () => openSettings());
+  root.querySelector('.hm-close')!.addEventListener('click', () => toggleModal(false));
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) toggleModal(false);
+  });
+
+  const play = root.querySelector<HTMLButtonElement>('.hm-play')!;
+  let started: ((c: ModeChoice) => void) | null = null;
   const gameInfo = (id: string = mode): NetGameInfo | null => {
     const m = MODES.find((x) => x.id === id);
     return m ? { id: m.id, name: m.name, hosts: m.net ?? [] } : null;
   };
   const lobby = mountLobby(root.querySelector<HTMLDivElement>('.sm-net')!, {
-    god: () => god,
+    god: () => load().god ?? defaultGod,
     game: gameInfo,
     inLobby: (on) => {
       play.classList.toggle('held', on);
       // a lobby plays one mode: the mode list waits until it closes
-      root.querySelector('.sm-modes')!.classList.toggle('held', on);
+      root.querySelector('.hm-modes')!.classList.toggle('held', on);
+      root.classList.toggle('in-lobby', on);
     },
     onGame: (id) => {
-      if (id === mode || !MODES.some((m) => m.id === id)) return;
-      mode = id as GameMode;
+      if (id === mode || !isMode(id)) return;
+      mode = id;
       render();
     },
-    onStart: (net) => started?.({ mode: (MODES.some((m) => m.id === net.game) ? net.game : 'conquest') as GameMode, god: net.self()?.god ?? god, net, difficulty }),
+    onStart: (net) => started?.({ mode: isMode(net.game) ? net.game : 'conquest', net, difficulty }),
   });
-  root.querySelectorAll<HTMLButtonElement>('.sm-god').forEach((b) =>
-    b.addEventListener('click', () => {
-      god = b.dataset.god!;
-      render();
-      lobby.godChanged();
-      picked?.(god);
-    }),
-  );
 
   const note = root.querySelector<HTMLSpanElement>('.sm-note')!;
   void graphics.then(({ webgpu, advice }) => {
@@ -361,14 +357,34 @@ export function showStartMenu(gods: readonly GodDef[], graphics: Promise<Graphic
     battery.addEventListener('chargingchange', () => warn.classList.toggle('gone', battery.charging));
   });
 
+  // keyboard: arrows walk the mode list, Enter plays
+  const onKey = (e: KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement) return;
+    if (modal.classList.contains('show')) {
+      if (e.code === 'Escape') toggleModal(false);
+      return;
+    }
+    const i = MODES.findIndex((m) => m.id === mode);
+    if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+      e.preventDefault();
+      choose(MODES[(i + (e.code === 'ArrowDown' ? 1 : MODES.length - 1)) % MODES.length]!.id);
+      root.querySelector<HTMLButtonElement>(`.hm-mode[data-mode="${mode}"]`)?.focus({ preventScroll: true });
+    } else if (e.code === 'Enter' && !play.classList.contains('held') && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault();
+      play.click();
+    }
+  };
+  window.addEventListener('keydown', onKey);
+
   return new Promise((resolve) => {
-    const finish = (choice: StartChoice) => {
-      save({ mode: choice.mode, god: choice.god, difficulty, rival, role, allies, rivals });
+    const finish = (choice: ModeChoice) => {
+      window.removeEventListener('keydown', onKey);
+      saveChoice({ mode: choice.mode, difficulty, role, allies, rivals });
       root.classList.add('done');
-      setTimeout(() => root.remove(), 400);
+      setTimeout(() => root.remove(), 700);
       resolve(choice);
     };
     started = finish;
-    play.addEventListener('click', () => finish({ mode, god, difficulty, rival, role, allies, rivals }));
+    play.addEventListener('click', () => finish({ mode, difficulty, role, allies, rivals }));
   });
 }

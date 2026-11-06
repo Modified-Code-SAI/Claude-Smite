@@ -127,8 +127,8 @@ export class PingMode {
       this.cancel();
       return;
     }
-    if (!this.hold && input.wasPressed('KeyG')) this.press();
-    else if (!this.hold && input.wasPressed('Mouse1')) {
+    if (!this.hold && input.actionPressed('ping')) this.press();
+    else if (!this.hold && input.actionPressed('pingTarget')) {
       const aim = this.deps.aim();
       this.ping(contextKind(aim.unit, me.team), aim.point, aim.unit);
     }
@@ -168,12 +168,12 @@ export class PingMode {
     }
     const k = Math.min(1, len / REACH) * 38;
     this.hud.select(pick, len > 0 ? (c.x / len) * k : 0, len > 0 ? (c.y / len) * k : 0);
-    if (input.wasPressed('Mouse2') || input.wasPressed('Escape')) {
+    if (input.actionPressed('cancel') || input.wasPressed('Escape')) {
       this.cancel();
       return;
     }
-    const clicked = input.wasPressed('Mouse0');
-    if (!clicked && input.isDown('KeyG')) return;
+    const clicked = input.actionPressed('attack');
+    if (!clicked && input.actionDown('ping')) return;
     const quick = !clicked && pick < 0 && h.t < TAP;
     this.cancel();
     if (pick >= 0) this.ping(WHEEL[pick]!, h.point, h.unit);

@@ -29,6 +29,8 @@ export interface JotunnViewHost {
   burst(at: THREE.Vector3, power: number): void;
   /** A giant's foot came down (its sound), 0..1 how hard. */
   footfall?(at: THREE.Vector3, k: number): void;
+  /** A god it threw hit the ground (its sound), 0..1 how high it flew. */
+  landing?(at: THREE.Vector3, k: number): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +444,7 @@ class ShrineView {
 const tmp = new THREE.Vector3();
 const tmp2 = new THREE.Vector3();
 const tmp3 = new THREE.Vector3();
+const tmp4 = new THREE.Vector3();
 /** How wide (meters) a foot that is down parts the grass round it. */
 const FOOT_PART = 1.9;
 const FEET = [0, 1] as const;
@@ -488,6 +491,8 @@ export class JotunnView {
   /** Seconds until a roar for the camera lands (see roar), or below 0. */
   private cheer = -1;
   private storm: { x: number; z: number; r: number; left: number } | null = null;
+  /** How high each god's arc goes while it is in the air (0 on the ground), for the snow where it comes down. */
+  private readonly aloft = new Map<Unit, number>();
   private readonly state: GiantState = { speed: 0, localDir: new THREE.Vector2(), windup: null, kneel: false, plant: null, silenced: false, staggered: null, dead: false };
 
   constructor(private readonly host: JotunnViewHost) {
@@ -507,6 +512,8 @@ export class JotunnView {
     this.hail.onLand = (p) => {
       this.snow.ring(p.at, 3, 2.2, { life: 0.8, size0: 0.4, size1: 1.4, alpha: 0.55, color: 0xe8f4fa });
       this.spikes.add(p.at, Math.random() * 6.28, 0.35 + Math.random() * 0.25, 0, 0.6);
+      // a few stones leave a star of frost where they struck, so the storm's circle stays rimed a while
+      if (Math.random() < 0.2) this.prints.blow(p.at.x, p.at.z, 0.8 + Math.random() * 0.5);
     };
     this.group.add(this.spikes.mesh, this.hail.mesh);
     this.prints = new FrostPrints(host.ground);
@@ -690,6 +697,26 @@ export class JotunnView {
     }
   }
 
+  /**
+   * Gods thrown by the giant (or leaping) come down in a burst of snow, the
+   * bigger the higher they flew. `skip`: the giant player's own god, parked
+   * off the field.
+   */
+  landings(players: readonly { god: Unit }[], skip: Unit): void {
+    for (const { god: u } of players) {
+      if (u === skip) continue;
+      const arc = u.alive && u.forced ? u.forced.arc : 0;
+      const was = this.aloft.get(u) ?? 0;
+      if (arc === was) continue;
+      this.aloft.set(u, arc);
+      if (arc > 0 || was < 0.3 || !u.alive) continue;
+      const k = Math.min(1, was / JOTUNN.thrown.arc);
+      const at = tmp.set(u.x, this.host.ground(u.x, u.z), u.z);
+      this.snow.ring(at, Math.round(5 + 7 * k), 1.5 + 2.5 * k, { life: 0.9, size0: 0.5, size1: 1.6 + 1.2 * k, alpha: 0.5, color: 0xe2edf3 });
+      this.host.landing?.(at, k);
+    }
+  }
+
   /** The grass parts round each foot while it is down, and springs back as the foot lifts. */
   private partGrass(): void {
     const shown = !!this.model.root.parent && this.model.root.visible;
@@ -853,7 +880,7 @@ export class JotunnView {
       this.model.mouth(tmp, tmp2);
       const n = Math.round(dt * 70) + (Math.random() < (dt * 70) % 1 ? 1 : 0);
       for (let i = 0; i < n; i++) {
-        const v = tmp2.clone();
+        const v = tmp4.copy(tmp2);
         v.y = Math.min(v.y, -0.25);
         v.normalize();
         v.x += (Math.random() - 0.5) * 0.45;
@@ -868,6 +895,8 @@ export class JotunnView {
         const gx = tmp.x + tmp2.x * d;
         const gz = tmp.z + tmp2.z * d;
         this.spikes.add(tmp.set(gx, this.host.ground(gx, gz), gz), Math.random() * 6.28, 0.5 + Math.random() * 0.5, 0, 0.8);
+        // and stays white with frost where the breath raked it
+        if (Math.random() < 0.6) this.prints.blow(gx, gz, 1.8 + Math.random() * 1.1);
       }
     }
     // its breath in the cold, every few seconds (quick and heavy while it kneels), but not over its frost breath

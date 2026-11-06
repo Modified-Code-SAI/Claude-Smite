@@ -1,12 +1,16 @@
 import type { AudioEngine, AudioSettings } from '../audio/AudioEngine';
+import { actionForCode, keyGate, settings } from '../settings/store';
+import { bindingLabel } from '../settings/bindings';
+import { openSettings, typing } from './SettingsMenu';
 import './audio.css';
 
 const SLIDERS: [keyof AudioSettings, string][] = [
   ['master', 'Master'],
   ['music', 'Music'],
   ['sfx', 'Effects'],
-  ['voice', 'Herald'],
+  ['voice', 'Voices'],
   ['ambience', 'Ambience'],
+  ['ui', 'Interface'],
 ];
 
 const ICON_ON = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>`;
@@ -25,7 +29,7 @@ export function mountAudioPanel(engine: AudioEngine): void {
       <div class="snd-head">Sound</div>
       ${SLIDERS.map(([k, label]) => `<label class="snd-row"><span>${label}</span><input type="range" min="0" max="100" step="1" data-k="${k}"><b></b></label>`).join('')}
       <label class="snd-row snd-mute"><span>Mute all</span><input type="checkbox" data-k="muted"></label>
-      <div class="snd-foot">All sound and music is original and made in code. M mutes.</div>
+      <div class="snd-foot">All sound and music is original and made in code. <span class="snd-key"></span> mutes. <button class="snd-more">All sound settings</button></div>
     </div>`;
   document.body.appendChild(root);
   const btn = root.querySelector<HTMLButtonElement>('.snd-btn')!;
@@ -39,8 +43,15 @@ export function mountAudioPanel(engine: AudioEngine): void {
       i.nextElementSibling!.textContent = String(Math.round(v * 100));
     });
     root.querySelector<HTMLInputElement>('input[data-k=muted]')!.checked = s.muted;
+    root.querySelector('.snd-key')!.textContent = bindingLabel(settings().bindings.mute);
   };
   sync();
+  // the settings menu moves the same sliders
+  engine.onSettings(sync);
+  root.querySelector('.snd-more')!.addEventListener('click', () => {
+    root.classList.remove('open');
+    openSettings('audio');
+  });
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -60,7 +71,7 @@ export function mountAudioPanel(engine: AudioEngine): void {
     sync();
   });
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'KeyM' || e.repeat) return;
+    if (e.repeat || keyGate.blocked || typing(e) || actionForCode(e.code) !== 'mute') return;
     engine.setSettings({ muted: !engine.settings.muted });
     sync();
   });
@@ -84,7 +95,9 @@ export function installUiSounds(engine: AudioEngine): void {
         }, 0);
         return;
       }
-      const name = el.classList.contains('sm-play') ? 'ui.play' : el.matches('.sm-god, .sm-mode, [data-act="slot"], [data-act="god"]') ? 'ui.select' : 'ui.click';
+      // (a control that makes its own sound, like the god pick's Ready, says so)
+      if (el.dataset.sound === 'none') return;
+      const name = el.classList.contains('sm-play') ? 'ui.play' : el.matches('.sm-god, .sm-mode, .gp-god, [data-act="slot"], [data-act="god"]') ? 'ui.select' : 'ui.click';
       engine.play(name, { bus: 'ui', gain: name === 'ui.play' ? 0.9 : 0.8 }, 6, 0.03);
     },
     true,
