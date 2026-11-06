@@ -373,18 +373,49 @@ function hairMaterial(root: number, tip: number): THREE.Material {
   // into moire stripes across a fur collar or a beard seen from the game camera
   const fw = fwidth(phase);
   const strands = mix(abs(sin(phase.mul(6.283))).pow(0.6), float(0.73), smoothstep(0.2, 0.55, fw));
-  const t = data().x; // root 0 .. tip 1
-  const tint = data().y.mul(0.16).add(0.88); // per-clump variation
+  const d = data();
+  const t = d.x; // root 0 .. tip 1
+  const tint = d.y.mul(0.16).add(0.88); // per-clump variation
+
+  // Feathers (the forge's feather_data: w is where across the vane a point lies, 0.52 on
+  // the shaft; hair and fur leave it 0). A pale quill runs down the middle, thinning to
+  // the tip; barbs sweep out from it toward the tip at about 45 degrees, here and there
+  // the vane parts between two of them, and the vane shifts toward blue at grazing
+  // angles, the way a quetzal's or a raven's feathers do
+  const isFeather = smoothstep(0.015, 0.03, d.w);
+  const across = d.w.sub(0.52).div(0.48);
+  const ax = abs(across);
+  // (a slow wave in the spacing keeps them from ruling the vane like corduroy)
+  const barbPhase = t.sub(ax.mul(d.z).mul(0.25)).mul(70).add(d.y.mul(17)).add(sin(t.mul(9).add(ax.mul(2)).add(d.y.mul(30))).mul(0.7));
+  const bfw = fwidth(barbPhase);
+  const barbFade = smoothstep(0.25, 0.6, bfw);
+  const barbs = mix(abs(sin(barbPhase.mul(3.1416))).pow(0.45), float(0.7), barbFade);
+  const split = smoothstep(0.9, 0.97, sin(barbPhase.mul(0.23).add(across.sign().mul(2.1)).add(d.y.mul(40))).mul(0.5).add(0.5))
+    .mul(smoothstep(0.2, 0.5, ax)).mul(float(1).sub(barbFade));
+  const quillHalf = mix(float(0.08), float(0.02), t);
+  const quill = float(1).sub(smoothstep(quillHalf.mul(0.55), quillHalf, ax)).mul(isFeather);
+  const pattern = mix(strands, barbs.mul(float(1).sub(split.mul(0.6))), isFeather);
+
   // roots sit in the shadow of the clumps around them
   const occl = smoothstep(0.0, 0.45, t).mul(0.55).add(0.45);
-  // painted shine band a third of the way down each lock, broken up by the strands
-  const shine = smoothstep(0.18, 0.3, t).mul(float(1).sub(smoothstep(0.38, 0.52, t))).mul(strands).mul(0.22);
-  m.colorNode = mix(color(root), color(tip), t.mul(0.8)).mul(strands.mul(0.3).add(0.62)).mul(occl).mul(tint).add(color(tip).mul(shine));
-  m.roughnessNode = float(0.5).sub(strands.mul(0.15));
+  // painted shine band a third of the way down each lock, broken up by the strands (not on feathers)
+  const shine = smoothstep(0.18, 0.3, t).mul(float(1).sub(smoothstep(0.38, 0.52, t))).mul(strands).mul(0.22).mul(float(1).sub(isFeather));
+  const tone = mix(color(root), color(tip), t.mul(0.8));
+  const facing = abs(dot(normalView, positionView.normalize()));
+  const sheen = pow(float(1).sub(facing), 2).mul(0.65).mul(isFeather);
+  const shifted = mix(tone, vec3(tone.x.mul(0.45), tone.y.mul(0.8), tone.y.mul(0.85).add(tone.z.mul(0.7))), sheen);
+  // a vane is palest by its quill and darkens toward its edge
+  const vaneShade = float(1).sub(smoothstep(0.35, 1, ax).mul(0.22).sub(0.06).mul(isFeather));
+  const vane = shifted.mul(pattern.mul(mix(float(0.3), float(0.22), isFeather)).add(mix(float(0.62), float(0.7), isFeather))).mul(vaneShade).mul(occl).mul(tint).add(color(tip).mul(shine));
+  m.colorNode = mix(vane, tone.mul(1.5).add(0.06).mul(tint), quill.mul(0.75));
+  m.roughnessNode = float(0.5).sub(pattern.mul(0.15)).sub(quill.mul(0.15));
   // each lock is a bundle of strands: smooth ridges along it catch the light. The bump
   // goes long before the color does: a ridge a few pixels across already flips the
   // normal from pixel to pixel and reads as a checkered dither on thin locks
-  relief(m, sin(phase.mul(6.283)).mul(0.00075).mul(float(1).sub(smoothstep(0.06, 0.2, fw))).mul(reliefFade(0.005)));
+  const strandBump = sin(phase.mul(6.283)).mul(0.00075).mul(float(1).sub(smoothstep(0.06, 0.2, fw))).mul(reliefFade(0.005));
+  // a feather's barbs ridge the vane and its quill stands up from it
+  const barbBump = sin(barbPhase.mul(3.1416)).abs().mul(0.0004).mul(float(1).sub(smoothstep(0.08, 0.25, bfw))).add(quill.mul(0.0012).mul(reliefFade(0.01)));
+  relief(m, mix(strandBump, barbBump, isFeather));
   // strand sheen (Kajiya-Kay): hair shines in bands across the strands, not in spots. The
   // lock runs the way its root-to-tip value rises over the surface, and a key light above
   // and beside the camera lights it twice: a tight pale band, and a wider one tinted by the
@@ -396,7 +427,7 @@ function hairMaterial(root: number, tip: number): THREE.Material {
     const th = dot(along.add(normalView.mul(shift)).normalize(), hv);
     return pow(saturate(float(1).sub(th.mul(th))), power);
   };
-  const lit = strands.mul(occl).mul(tint);
+  const lit = pattern.mul(occl).mul(tint);
   m.emissiveNode = vec3(1, 0.97, 0.92).mul(band(-0.1, 110).mul(0.3)).add(color(tip).mul(band(0.14, 20).mul(0.22))).mul(lit);
   return m;
 }
