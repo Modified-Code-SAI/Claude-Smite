@@ -8,6 +8,7 @@
 
 import type { AudioEngine } from './AudioEngine';
 import { lineUrl, VOICE_LINES, type VoiceKind } from './godLines';
+import { caption, speakerName } from '../settings/captions';
 
 /** What GodVoice needs from the engine (a stand-in in tests). */
 export type VoiceEngine = Pick<AudioEngine, 'ready' | 'now' | 'has' | 'buffer' | 'play' | 'loadClips'>;
@@ -82,6 +83,13 @@ export class GodVoice {
     const until = now + delay + buf.duration;
     this.speaking.set(speaker, { until, src });
     if (!o.own) this.othersUntil = until + ROOM_BETWEEN;
+    // the line as text, for subtitles
+    const text = VOICE_LINES[god]?.[kind]?.[variant];
+    if (text) {
+      const show = () => caption({ speaker: speakerName(god), text, seconds: buf.duration, god });
+      if (delay > 0.05) setTimeout(show, delay * 1000);
+      else show();
+    }
     return delay + buf.duration;
   }
 }

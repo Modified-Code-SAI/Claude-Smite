@@ -7,7 +7,8 @@
 
 import * as THREE from 'three/webgpu';
 import type { CombatGame } from '../combat/CombatGame';
-import { slotForCode, ULTIMATE_SLOT } from '../game/loadout';
+import { ULTIMATE_SLOT } from '../game/loadout';
+import { keyGate, slotForCode } from '../settings/store';
 import { ConquestLayout as L, nearestOnPolyline } from '../map/ConquestLayout';
 import { isStructure, type Projectile, type SimEvent, type Unit, type Zone } from '../sim/Unit';
 import type { Announcer } from './Announcer';
@@ -471,7 +472,7 @@ export class GameAudio {
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (e.repeat || !this.engine.ready) return;
+    if (e.repeat || !this.engine.ready || keyGate.blocked) return;
     const slot = slotForCode(e.code);
     if (slot < 0 || !this.me.alive) return;
     if (this.me.combatant.canCast(slot)) this.engine.play('ui.deny', { bus: 'ui', gain: 0.6 }, 3, 0.15);

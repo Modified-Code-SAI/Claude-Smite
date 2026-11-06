@@ -1,10 +1,8 @@
-import { hex } from '../combat/palette';
+import { hex, SIDE_CSS } from '../combat/palette';
 import { Arena } from '../scene/ArenaLayout';
 import { JOTUNN, type Jotunn } from '../sim/Jotunn';
 import type { Unit } from '../sim/Unit';
 
-const ALLY = '#4fb2ff';
-const FOE = '#ff4a38';
 const GOLD = '#ffc23a';
 const FIRE = '#ffa040';
 const ICE = '#8fe4ff';
@@ -197,8 +195,8 @@ export class JotunnRadar {
     g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
     // the two ends: the gods' fountain and the giant's lair, in the color of whose they are to you
-    this.base(JOTUNN.bases.order, giantMe ? FOE : ALLY);
-    this.base(JOTUNN.bases.chaos, giantMe ? ALLY : FOE);
+    this.base(JOTUNN.bases.order, giantMe ? SIDE_CSS.foe : SIDE_CSS.ally);
+    this.base(JOTUNN.bases.chaos, giantMe ? SIDE_CSS.ally : SIDE_CSS.foe);
 
     // the shrines: a diamond in its own glow while it is ready, dim while it rearms (the arc fills back)
     for (const s of m.shrines) {
@@ -300,7 +298,7 @@ export class JotunnRadar {
       const u = p.god;
       if (p === m.giantPlayer || u === this.me) continue;
       this.place(u.x, u.z);
-      const col = giantMe ? FOE : ALLY;
+      const col = giantMe ? SIDE_CSS.foe : SIDE_CSS.ally;
       g.beginPath();
       g.arc(this.x, this.y, 3.6, 0, Math.PI * 2);
       if (u.alive) {
@@ -340,7 +338,7 @@ export class JotunnRadar {
       g.translate(gx, gy);
       g.rotate(Math.atan2(f.z * this.flip, f.x * this.flip));
       g.globalAlpha = gi.alive ? 1 : 0.5;
-      g.fillStyle = FOE;
+      g.fillStyle = SIDE_CSS.foe;
       g.beginPath();
       g.moveTo(11.5, 0);
       g.lineTo(4.5, 4.6);
@@ -351,7 +349,7 @@ export class JotunnRadar {
       g.arc(0, 0, 6, 0, Math.PI * 2);
       g.fillStyle = '#1c3044';
       g.fill();
-      g.strokeStyle = FOE;
+      g.strokeStyle = SIDE_CSS.foe;
       g.lineWidth = 2.2;
       g.stroke();
       g.fillStyle = ICE;

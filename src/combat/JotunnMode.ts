@@ -284,8 +284,7 @@ export class JotunnMode {
   /** Where the keys point (relative to the camera), and the camera's heading. */
   private intent(): { move: Point | null; yaw: number } {
     const { input, ctrl } = this.deps;
-    const f = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
-    const r = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
+    const { forward: f, right: r } = input.moveAxes();
     if (!f && !r) return { move: null, yaw: ctrl.yaw };
     const sin = Math.sin(ctrl.yaw);
     const cos = Math.cos(ctrl.yaw);

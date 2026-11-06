@@ -48,12 +48,29 @@ export function paletteOf(u: { kind: string; team: Team; owner: { combatant: { g
   return TEAM_PALETTES[u.team];
 }
 
+/**
+ * Team-relative colors for HUD marks (health bars, the minimap). Changed in
+ * place by the colorblind setting (src/settings/teamColors.ts), so read them
+ * when drawing rather than copying them.
+ */
 export const TEAM_COLORS = {
   ally: '#46d7c4',
   enemy: '#ff4a3d',
   self: '#7fe36a',
   neutral: '#f2b440',
 };
+
+/**
+ * Your side and the other side in the world and on radars: Relic Rush's
+ * relic, gates and pitch, Temple Clash's plaza and relic. Changed in place
+ * by the colorblind setting, like TEAM_COLORS.
+ */
+export const SIDE = {
+  ally: { main: 0x4fb2ff, core: 0xe6f4ff },
+  foe: { main: 0xff3524, core: 0xffe0c8 },
+};
+/** The same two sides as CSS colors, for canvas radars. */
+export const SIDE_CSS = { ally: '#4fb2ff', foe: '#ff4a38' };
 
 export function hex(c: number): string {
   return `#${c.toString(16).padStart(6, '0')}`;

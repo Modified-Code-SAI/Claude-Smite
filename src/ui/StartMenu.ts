@@ -1,3 +1,5 @@
+import { controlRows } from '../settings/controls';
+import { openSettings } from './SettingsMenu';
 import { compatibilityMode, setCompatibilityMode } from './Fatal';
 import type { GpuAdvice } from '../render/gpuAdvice';
 import { mountLobby } from '../net/LobbyPanel';
@@ -47,30 +49,15 @@ function parseGiantRole(s: unknown): JotunnRole {
   return s === 'giant' || s === 'god' ? s : 'rotate';
 }
 
-/** The controls, shared by the home page and the in-game help (H). */
-export const CONTROLS: [string, string][] = [
-  ['Click', 'Capture the mouse and play'],
-  ['W A S D', 'Move'],
-  ['Mouse', 'Aim (the camera follows)'],
-  ['Left click', 'Basic attack (Relic Rush: pass the relic)'],
-  ['1  2  3', 'Skills: press to aim, press again or click to cast, right click cancels'],
-  ['4 or R', 'Ultimate (unlocks at level 5)'],
-  ['B', 'Recall to the fountain'],
-  ['G (hold)', 'Ping wheel: attack, on my way, group up, fall back and more. Tap G or middle click to ping what you aim at'],
-  ['V', 'Taunt: your god says something cutting to everyone near'],
-  ['F', 'Relic Rush: call for the pass'],
-  ['Space', 'Jump (Relic Rush carrying the relic: juke, a quick sidestep that slips a tackle)'],
-  ['Z  X  C', 'Temple Siege and Underworld Descent: pick a boon, a reward or a skill'],
-  ['K', 'Skills & trees: spend points; swap skills at the fountain'],
-  ['Tab (hold)', 'Scoreboard'],
-  ['Wheel', 'Camera zoom'],
-  ['H', 'Show or hide this help'],
-  ['M', 'Mute or unmute sound'],
-  ['Esc', 'Release the mouse'],
-];
+/**
+ * The controls, shared by the home page and the in-game help (H), as the
+ * player has bound them (Settings > Controls). A snapshot: `controlsHtml()`
+ * reads the bindings fresh each time.
+ */
+export const CONTROLS: [string, string][] = controlRows();
 
 export function controlsHtml(): string {
-  return `<div class="sm-controls">${CONTROLS.map(([k, v]) => `<div class="sm-key">${k}</div><div>${v}</div>`).join('')}</div>`;
+  return `<div class="sm-controls">${controlRows().map(([k, v]) => `<div class="sm-key">${k}</div><div>${v}</div>`).join('')}</div>`;
 }
 
 interface Saved extends Partial<StartChoice> {}
@@ -199,7 +186,7 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
       <header class="hm-top">
         <div class="hm-logo"><span class="hm-word">ASCENDANT</span><span class="hm-sub">A war of gods</span></div>
         ${rankBadge()}
-        <div class="hm-tools"><button class="hm-tool" data-tool="controls">Controls</button></div>
+        <div class="hm-tools"><button class="hm-tool" data-tool="controls">Controls</button><button class="hm-tool" data-tool="settings">Settings</button></div>
       </header>
       <div class="hm-warns"></div>
       <div class="hm-body">
@@ -325,6 +312,7 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
   const modal = root.querySelector<HTMLDivElement>('.hm-modal')!;
   const toggleModal = (on = !modal.classList.contains('show')) => modal.classList.toggle('show', on);
   root.querySelector('[data-tool="controls"]')!.addEventListener('click', () => toggleModal(true));
+  root.querySelector('[data-tool="settings"]')!.addEventListener('click', () => openSettings());
   root.querySelector('.hm-close')!.addEventListener('click', () => toggleModal(false));
   modal.addEventListener('click', (e) => {
     if (e.target === modal) toggleModal(false);

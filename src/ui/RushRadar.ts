@@ -1,10 +1,9 @@
 import type { Side } from '../game/combatant';
+import { SIDE_CSS } from '../combat/palette';
 import { Arena } from '../scene/ArenaLayout';
 import { RUSH, type Rush } from '../sim/Rush';
 import type { Unit } from '../sim/Unit';
 
-const ALLY = '#4fb2ff';
-const FOE = '#ff4a38';
 const GOLD = '#ffc23a';
 /** Redraws a second: smooth enough for dots, and one small canvas a frame at most. */
 const RATE = 30;
@@ -102,7 +101,7 @@ export class RushRadar {
     for (const side of ['order', 'chaos'] as const) {
       const gate = RUSH.gates[side];
       const ours = side === this.me.team;
-      const col = ours ? ALLY : FOE;
+      const col = ours ? SIDE_CSS.ally : SIDE_CSS.foe;
       const [x0, y0] = this.at(gate.x - RUSH.keeper.halfWidth, gate.z);
       const [x1, y1] = this.at(gate.x + RUSH.keeper.halfWidth, gate.z - Math.sign(gate.z) * RUSH.keeper.depth);
       g.strokeStyle = col;
@@ -162,13 +161,13 @@ export class RushRadar {
       g.beginPath();
       g.arc(x, y, 4, 0, Math.PI * 2);
       if (u.alive) {
-        g.fillStyle = ours ? ALLY : FOE;
+        g.fillStyle = ours ? SIDE_CSS.ally : SIDE_CSS.foe;
         g.fill();
         g.strokeStyle = 'rgba(0, 0, 0, 0.8)';
         g.lineWidth = 1;
         g.stroke();
       } else {
-        g.strokeStyle = ours ? ALLY : FOE;
+        g.strokeStyle = ours ? SIDE_CSS.ally : SIDE_CSS.foe;
         g.globalAlpha = 0.6;
         g.lineWidth = 1.2;
         g.stroke();
@@ -191,7 +190,7 @@ export class RushRadar {
       const [x, y] = this.at(relic.x, relic.z);
       if (relic.holder) {
         // the ring in the carrier's team color, so whose it is reads at a glance
-        g.strokeStyle = relic.holder.team === this.me.team ? ALLY : FOE;
+        g.strokeStyle = relic.holder.team === this.me.team ? SIDE_CSS.ally : SIDE_CSS.foe;
         g.lineWidth = 2.2;
         g.beginPath();
         g.arc(x, y, 7 + Math.sin(t * 6) * 0.8, 0, Math.PI * 2);
