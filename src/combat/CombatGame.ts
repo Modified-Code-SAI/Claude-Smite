@@ -918,7 +918,7 @@ export class CombatGame implements Updatable {
     this.status.frame(this.sim.units, time, (u) => u.stealth <= 0 || u.team === this.player.team);
     this.updatePreview();
     this.hud.setPreview(this.preview?.slot ?? null);
-    this.hud.holdToasts = this.rushMode?.holdsToasts ?? false;
+    this.hud.holdToasts = this.rushMode?.holdsToasts ?? this.descentMode?.holdsToasts ?? false;
     this.hud.frame(this.sim.units, dt);
     // (the tips are about your god, not the giant you drive)
     if (!this.jotunnMode?.piloting) this.coach.frame(dt);
