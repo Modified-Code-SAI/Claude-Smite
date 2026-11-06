@@ -44,6 +44,9 @@ export type Kit = (k: KitBuild) => void;
 /** Height of the flame over each brazier spot, the same in every depth (the fires belong to the chamber, not its dressing). */
 export const FLAME_Y = 1.5;
 
+/** The floor plans with a landmark of their own, by their place in CHAMBERS (the Burning Pit is known by its pit). */
+const PLAN = { nave: 1 } as const;
+
 /** A spot at the foot of the wall: where it is, the way out into the rock, and its angle round the chamber. */
 interface WallSpot {
   x: number;
@@ -114,8 +117,11 @@ const COALS = new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 
 export const forgeKit: Kit = (k) => {
   const { c, index, random, mats, add } = k;
   // piers: a plinth, four drums of basalt bound with iron at two joints, a wide capital
+  const nave = index === PLAN.nave;
   for (const [x, z, r] of c.pillars) {
-    const h = 9 + random() * 3;
+    // the nave's piers all one height, for the arches sprung between them
+    const tall = 9 + random() * 3;
+    const h = nave ? NAVE_PIER : tall;
     const turn = random() * (Math.PI / 2);
     const w = r * 1.8;
     const seed = 5000 + index * 101 + Math.round((x + 40) * 7 + (z + 40) * 3);
@@ -154,6 +160,7 @@ export const forgeKit: Kit = (k) => {
   }
   if (c.boss) hoard(k, used);
   if (c.pit) chainedHeart(k);
+  if (nave) forgeArches(k);
   const smithies = c.boss ? 2 : 3;
   for (let s = 0, tries = 0; s < smithies && tries < 40; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
@@ -493,6 +500,85 @@ const HEART_CAGE = merge([
 ]);
 
 // ---------------------------------------------------------------------------
+// The Ashen Depths' landmark: the Long Descent's arches
+
+/** How tall the nave's piers stand (to the top of their capitals), where its arches spring. */
+const NAVE_PIER = 6.4;
+/** Half the width of a pier's capital, where an arch springs from its top. */
+const CAPITAL = 1.24;
+
+/**
+ * Round arches of basalt sprung from pier to pier, across the nave and down
+ * each side of it, so the way on runs under a vault of open arches; a
+ * keystone of glowing slag at each crown, and from those over the middle of
+ * the nave, a fire basket hung on a chain.
+ */
+function forgeArches(k: KitBuild): void {
+  const { c, mats, add } = k;
+  const piers = c.pillars;
+  const parts: THREE.BufferGeometry[] = [];
+  const keys: THREE.BufferGeometry[] = [];
+  for (const [ax, az] of piers) {
+    for (const [bx, bz] of piers) {
+      const across = az === bz && ax < bx;
+      const along = ax === bx && bz > az && bz - az < 13;
+      if (!across && !along) continue;
+      arch(parts, keys, new THREE.Vector3(ax, NAVE_PIER, az), new THREE.Vector3(bx, NAVE_PIER, bz), 9300 + Math.round(ax * 3 + az * 7));
+      if (!across) continue;
+      // a fire basket hung under the keystone, over the middle of the nave
+      const r = (bx - ax) / 2 - CAPITAL;
+      const crown = NAVE_PIER + r;
+      const top = crown - 3.2;
+      chain(k, chainLink(), 0, az, top + 0.2, crown + 0.1);
+      add(HUNG_BASKET, mats.iron, 0, top, az);
+      add(COALS, mats.coals, 0, top - 0.12, az, false);
+      add(FLAME_BED, mats.flameBed, 0, top - 0.1, az, false).scale.setScalar(0.9);
+      k.light(0xff7a2e, 34, 15, 0, top + 0.4, az);
+    }
+  }
+  add(merge(parts), mats.forgeStone, 0, 0, 0);
+  add(merge(keys), mats.slag, 0, 0, 0);
+}
+
+/**
+ * A round arch of wedge-shaped stones from the top of the pier at `a` to the
+ * top of the pier at `b`, springing from the inner edges of their capitals;
+ * its stones go in `parts` and its keystone in `keys`.
+ */
+function arch(parts: THREE.BufferGeometry[], keys: THREE.BufferGeometry[], a: THREE.Vector3, b: THREE.Vector3, seed: number): void {
+  const u = b.clone().sub(a).setY(0);
+  const span = u.length() - CAPITAL * 2;
+  u.normalize();
+  const up = new THREE.Vector3(0, 1, 0);
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  const r = span / 2;
+  const n = Math.max(9, Math.round((Math.PI * r) / 1.35) | 1);
+  const thick = 1.05;
+  const len = ((Math.PI * (r + thick / 2)) / n) * 0.97;
+  const stone = chippedBlock(len, thick, 1.5, seed, 0.06, [4, 3, 3]);
+  const key = chippedBlock(len * 1.18, thick * 1.35, 1.75, seed + 1, 0.05, [4, 3, 3]);
+  const m = new THREE.Matrix4();
+  for (let i = 0; i < n; i++) {
+    const th = Math.PI - ((i + 0.5) / n) * Math.PI;
+    const radial = u.clone().multiplyScalar(Math.cos(th)).addScaledVector(up, Math.sin(th));
+    const tangent = u.clone().multiplyScalar(-Math.sin(th)).addScaledVector(up, Math.cos(th));
+    const isKey = i === (n - 1) / 2;
+    const at = mid.clone().addScaledVector(radial, r + (isKey ? thick * 0.62 : thick / 2));
+    m.makeBasis(tangent, radial, tangent.clone().cross(radial)).setPosition(at);
+    (isKey ? keys : parts).push((isKey ? key : stone).clone().applyMatrix4(m));
+  }
+}
+
+/** A fire basket for hanging: a bowl of iron bars, its rim at y 0, and a ring to hang it by. */
+const HUNG_BASKET = merge([
+  new THREE.TorusGeometry(0.85, 0.06, 5, 20).rotateX(Math.PI / 2),
+  new THREE.TorusGeometry(0.55, 0.05, 5, 16).rotateX(Math.PI / 2).translate(0, -0.45, 0),
+  new THREE.CylinderGeometry(0.3, 0.12, 0.12, 12).translate(0, -0.62, 0),
+  ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => new THREE.CylinderGeometry(0.035, 0.035, 0.95, 4).rotateZ(0.42).translate(0.62, -0.32, 0).rotateY((i / 8) * Math.PI * 2)),
+  ...[0, 1, 2].map((i) => new THREE.CylinderGeometry(0.025, 0.025, 1.2, 4).rotateZ(-0.6).translate(0.36, 0.5, 0).rotateY((i / 3) * Math.PI * 2)),
+]);
+
+// ---------------------------------------------------------------------------
 // The Treasure Wyrm's arena: its hoard
 
 /**
@@ -735,6 +821,7 @@ export const drownedKit: Kit = (k) => {
   };
   if (c.boss) foundry(k, used);
   if (c.pit) drownedBell(k);
+  if (index === PLAN.nave) weepingColossi(k, used);
   place(c.boss ? 3 : 2, 0.5, (s) => mourner(k, s));
   place(c.boss ? 1 : 3, 0.45, (s) => sarcophagus(k, s));
   const rocks = Array.from({ length: 5 }, (_, i) => boulder(1, 6200 + i * 19, 3));
@@ -992,6 +1079,105 @@ const CLAPPER = merge([
 ]);
 
 // ---------------------------------------------------------------------------
+// The Drowned Halls' landmark: the Long Descent's weeping colossi
+
+/**
+ * Two colossal hooded mourners carved out of the rock at the far end of the
+ * nave, either side of the way on, heads bowed, each holding out a bowl in
+ * its hands from which a stream of water pours down into a pool at its feet.
+ */
+function weepingColossi(k: KitBuild, used: number[]): void {
+  for (const side of [-1, 1]) {
+    const s = wallAt(k.c, -Math.PI / 2 + side * 0.3);
+    if (!s) continue;
+    colossus(k, s, 6900 + side);
+    used.push(s.a);
+  }
+}
+
+/** How many times a mourner's size the colossi stand. */
+const COLOSSUS = 4.2;
+
+function colossus(k: KitBuild, s: WallSpot, seed: number): void {
+  const { mats } = k;
+  const { g, part } = setPiece();
+  const plinth = 1.6;
+  part(chippedBlock(6.4, plinth, 5.2, seed, 0.04), mats.tideStone, 0, plinth / 2, 0);
+  part(chippedBlock(6.8, 0.3, 5.6, seed + 1, 0.04), mats.tideStone, 0, plinth - 0.1, 0);
+  // the figure, in a mourner's own measure
+  const fig = new THREE.Group();
+  fig.position.y = plinth;
+  fig.scale.setScalar(COLOSSUS);
+  g.add(fig);
+  const piece = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.castShadow = cast;
+    m.receiveShadow = true;
+    fig.add(m);
+    return m;
+  };
+  piece(ROBE, mats.tideStone, 0, 0, 0);
+  piece(SLEEVES, mats.tideStone, 0, 0, 0);
+  piece(OFFERING, mats.tideStone, 0, BOWL.y, BOWL.z);
+  piece(BOWL_WATER, mats.waterfall, 0, BOWL.y - 0.02, BOWL.z, false);
+  const head = new THREE.Group();
+  head.position.set(0, 2.3, 0.04);
+  head.rotation.x = 0.5;
+  fig.add(head);
+  for (const [geo, mat] of [[HOOD, mats.tideStone], [FACE, mats.obsidian], [EYES, mats.coals]] as const) {
+    const m = new THREE.Mesh(geo, mat);
+    if (geo !== HOOD) m.position.set(0, 0.2, 0.03);
+    m.castShadow = geo === HOOD;
+    m.receiveShadow = true;
+    head.add(m);
+  }
+  // the stream pouring off the bowl's lip, and the pool it falls into
+  const lip = new THREE.Vector3(0, plinth + BOWL.y * COLOSSUS, (BOWL.z + 0.17) * COLOSSUS);
+  for (const turn of [0, Math.PI / 2]) part(stream(lip.y), mats.waterfall, 0, 0, lip.z, false).rotation.y = turn;
+  part(new THREE.CircleGeometry(2.3, 36).rotateX(-Math.PI / 2), mats.pool, 0, 0.04, lip.z, false);
+  const back = 1.6;
+  standAt(k, g, s, back);
+  const [lx, lz] = fromSpot(s, back, 0, lip.z + 0.6);
+  k.light(0x6ab8ff, 30, 15, lx, 3.4, lz);
+}
+
+/** Where a colossus holds its bowl, in a mourner's measure. */
+const BOWL = { y: 1.5, z: 0.72 } as const;
+
+/** Sleeves from the shoulders down and forward to the hands under the bowl. */
+const SLEEVES = merge(
+  [-1, 1].map((side) => {
+    const from = new THREE.Vector3(side * 0.44, 2.08, 0.02);
+    const to = new THREE.Vector3(side * 0.16, BOWL.y - 0.08, BOWL.z - 0.08);
+    const len = from.distanceTo(to);
+    const geo = new THREE.CylinderGeometry(0.11, 0.17, len, 12).translate(0, -len / 2, 0);
+    geo.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), to.clone().sub(from).normalize())));
+    return geo.translate(from.x, from.y, from.z);
+  }),
+);
+/** A shallow bowl held in two hands, its rim at y 0. */
+const OFFERING = merge([
+  new THREE.SphereGeometry(0.2, 18, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2).scale(1, 0.95, 1),
+  new THREE.TorusGeometry(0.2, 0.022, 6, 24).rotateX(Math.PI / 2),
+  new THREE.CylinderGeometry(0.07, 0.1, 0.08, 12).translate(0, -0.22, 0),
+  // the hands cupped under it, fingers up its sides
+  ...[-1, 1].map((side) => new THREE.SphereGeometry(0.1, 10, 8).scale(0.7, 1.3, 1.3).rotateZ(side * 0.5).translate(side * 0.18, -0.1, 0)),
+]);
+const BOWL_WATER = new THREE.CircleGeometry(0.18, 20).rotateX(-Math.PI / 2);
+
+/** A stream of water `h` tall, falling from its top and spreading as it falls. */
+function stream(h: number): THREE.BufferGeometry {
+  const geo = new THREE.PlaneGeometry(0.5, h, 1, 16).translate(0, h / 2, 0);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const t = 1 - pos.getY(i) / h;
+    pos.setX(i, pos.getX(i) * (1 + t * 1.6));
+  }
+  return geo;
+}
+
+// ---------------------------------------------------------------------------
 // The Molten Colossus's arena: its foundry
 
 /**
@@ -1184,13 +1370,15 @@ export const abyssKit: Kit = (k) => {
   const near = (a: number, gap: number) => used.some((b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < gap);
   {
     const spot = wallAt(c, (index % 2 ? 0 : Math.PI) + (random() - 0.5) * 0.3);
-    if (spot) {
+    // (the nave is already inside a ribcage)
+    if (spot && index !== PLAN.nave) {
       ribcage(k, spot);
       used.push(spot.a);
     }
   }
   if (c.boss) court(k, used);
   if (c.pit) reachingHand(k);
+  if (index === PLAN.nave) leviathan(k);
   for (let n = 0, tries = 0; n < (c.boss ? 2 : 3) && tries < 60; tries++) {
     const spot = wallAt(c, random() * Math.PI * 2);
     if (!spot || near(spot.a, 0.42)) continue;
@@ -1505,6 +1693,44 @@ function phalanx(len: number, r: number): THREE.BufferGeometry {
   return lathe([
     [0, -0.05], [r * 1.25, 0], [r * 1.3, len * 0.12], [r * 0.85, len * 0.3], [r * 0.8, len * 0.7], [r * 1.15, len * 0.9], [r, len], [0, len + 0.05],
   ], 10);
+}
+
+// ---------------------------------------------------------------------------
+// The Abyss's landmark: the Long Descent's leviathan
+
+/** How high the leviathan's spine runs along the nave. */
+const KEEL = 15.4;
+
+/**
+ * The bones of a leviathan the nave was dug through: its spine runs the
+ * length of the hall high overhead, and its ribs arch down out of the dark
+ * on either side to plunge into the rock at the foot of the walls, so the
+ * way on runs through its ribcage.
+ */
+function leviathan(k: KitBuild): void {
+  const { c, mats, random, add } = k;
+  const parts: THREE.BufferGeometry[] = [];
+  const length = (c.extent + 3) * 2;
+  parts.push(spine(0.85, length, 9500).rotateX(Math.PI / 2).translate(0, KEEL, -length / 2));
+  // the straight sides of the nave, then the rounded ends (the nave is a capsule)
+  const straight = 17;
+  const radius = 12;
+  for (let z = -19.5; z <= 19.5; z += 3) {
+    const out = Math.abs(z) <= straight ? radius : Math.sqrt(radius * radius - (Math.abs(z) - straight) ** 2);
+    for (const side of [-1, 1]) {
+      // a circular arc leaving the spine level and meeting the rock at (out + 1.3, 2.4)
+      const dx = out + 1.3 - 0.75;
+      const dy = KEEL - 2.4;
+      const curl = 2 * Math.atan2(dy, dx) * (0.97 + random() * 0.06);
+      const len = (dx / Math.sin(curl)) * curl;
+      const rib = curvedBone(len, 0.5, curl, 0.42, 20).rotateZ(-Math.PI / 2).translate(0.75, 0, 0);
+      if (side < 0) rib.rotateY(Math.PI);
+      parts.push(rib.translate(0, KEEL, z + (random() - 0.5) * 0.3));
+    }
+  }
+  add(merge(parts), mats.bone, 0, 0, 0);
+  // spirit fire guttering in the marrow of the spine, lighting its ribs from within
+  for (const z of [-12, 0, 12]) k.light(0x5aff8a, 26, 16, 0, KEEL - 2.4, z);
 }
 
 // ---------------------------------------------------------------------------
