@@ -157,6 +157,25 @@ describe('skill shapes', () => {
     expect(full.marks.has('charge')).toBe(false);
   });
 
+  it('a skill that sets off a mark does it whatever its shape: a skill shot or a dash only touches enemies carrying the mark', () => {
+    // (no god has a detonating skill shot or dash yet: Zeus with his Arc Bolt and Storm Step made into detonators)
+    for (const id of ['zeus.arc-bolt', 'zeus.storm-step']) {
+      const def: GodDef = { ...zeus, skills: zeus.skills.map((s) => (s.id === id ? { ...s, detonates: 'charge' } : s)) };
+      const reached = (stacks: number) => {
+        const sim = setup();
+        const z = god(sim, def, 'order', 0, 0);
+        const t = target(sim, 0, -4);
+        if (stacks) t.marks.set('charge', { stacks, remaining: 6 });
+        castAt(sim, z, id, 0, -8);
+        return { dealt: damaged(run(sim, 0.6), t).length, marked: t.marks.has('charge') };
+      };
+      expect(reached(0).dealt, id).toBe(0);
+      const full = reached(3);
+      expect(full.dealt, id).toBeGreaterThan(0);
+      expect(full.marked, id).toBe(false);
+    }
+  });
+
   it('All-Seeing Eye waits on each enemy god for Odin\'s next hit', () => {
     const sim = setup();
     const o = god(sim, odin, 'order', 0, 0, 5);

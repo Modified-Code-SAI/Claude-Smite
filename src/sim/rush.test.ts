@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anubis, GODS, loki, odin, thor, zeus } from '../game/gods';
+import { anubis, GODS, loki, odin, thanatos, thor, zeus } from '../game/gods';
 import { normalizeLoadout, skillById, ULTIMATE_SLOT, validateLoadout } from '../game/loadout';
 import type { GodDef } from '../game/types';
 import { XP_TABLE } from '../game/progression';
@@ -207,8 +207,8 @@ describe('Relic Rush', () => {
     }
     expect(count(odin, odin.defaultLoadout)).toBe(0);
     expect(count(loki, loki.defaultLoadout)).toBe(0);
-    // the first five bring exactly one each, so no bot team fields a stack of stuns
-    for (const g of [zeus, thor, odin, loki, anubis]) expect(count(g, rushBar(g)), g.id).toBe(1);
+    // the first six bring exactly one each, so no bot team fields a stack of stuns
+    for (const g of [zeus, thor, odin, loki, anubis, thanatos]) expect(count(g, rushBar(g)), g.id).toBe(1);
   });
 
   it('a bot keeps its stun for whoever carries the relic', () => {
@@ -241,6 +241,32 @@ describe('Relic Rush', () => {
     const d = play('chaos');
     expect(d.used).toBe(true);
     expect(d.holder).not.toBe(d.foe);
+  });
+
+  it('a bot sets off a mark-detonating tackle on the carrier only at full stacks, when it stuns', () => {
+    const { sim, rush } = match();
+    const coach = new RushCoach(sim, rush);
+    const carrier = god(sim, thor, 'order', 0);
+    const bot = god(sim, zeus, 'chaos', 0);
+    rush.begin([carrier, bot]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(carrier, 0, 1.6);
+    run(sim, rush, 0.4, () => rush.holder === carrier);
+    expect(rush.holder).toBe(carrier);
+    bot.brain = new RushBot(sim, bot, rush, coach, null, { aggression: 1 });
+    const discharge = bot.combatant.loadout.indexOf('zeus.static-discharge');
+    // one Charge on the carrier: setting it off now would only sting, and spend the Charge
+    sim.teleport(bot, carrier.x + 4, carrier.z);
+    for (let i = 0; i < 30; i++) {
+      carrier.marks.set('charge', { stacks: 1, remaining: 5 });
+      run(sim, rush, 1 / 60);
+    }
+    expect(bot.combatant.cooldownOf(discharge)).toBe(0);
+    // at three it stuns, and the relic comes loose
+    carrier.marks.set('charge', { stacks: 3, remaining: 5 });
+    run(sim, rush, 0.5, () => rush.holder !== carrier);
+    expect(bot.combatant.cooldownOf(discharge)).toBeGreaterThan(0);
+    expect(rush.holder).not.toBe(carrier);
   });
 
   it('a bot pressing the carrier marks them at arm’s length instead of standing inside them', () => {

@@ -138,11 +138,15 @@ export function tackles(skill: SkillDef): boolean {
  * relic back (in bot matches those gods won about a third of the time), so
  * Odin and Loki swap one in; Anubis's own bar has two, and bots who keep their
  * stuns for the carrier made his team win 62%, so his bots bring one.
+ * Thanatos's bar wins 37%: his bots trade Pitiless Edge for Poppy Haze, whose
+ * slow lets them catch a carrier (Final Rest instead put a carrier to sleep
+ * so often that his team won 60%).
  */
 const RUSH_BARS: Readonly<Record<string, readonly string[]>> = {
   odin: ['odin.gungnir-sweep', 'odin.ravens', 'odin.lunge', 'odin.ring-of-spears'],
   loki: ['loki.decoy', 'loki.vanish', 'loki.backstab', 'loki.assassinate'],
   anubis: ['anubis.mummify', 'anubis.locust-swarm', 'anubis.sand-step', 'anubis.sandstorm'],
+  thanatos: ['thanatos.claim', 'thanatos.wingbeat', 'thanatos.poppy-haze', 'thanatos.kiss-of-death'],
 };
 
 export function rushBar(god: GodDef): readonly string[] {
