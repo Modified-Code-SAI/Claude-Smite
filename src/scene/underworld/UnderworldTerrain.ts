@@ -3,7 +3,7 @@ import { fbm2, simplex2, smoothstep as sstep } from '../../core/random';
 import { hypot } from '../../core/math';
 import { CHAMBERS, chamberAt, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
 import {
-  abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionWorld, pow, sin, smoothstep, texture, time, transformNormalToView, vec2, vec3,
+  abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionWorld, pow, sin, smoothstep, step, texture, time, transformNormalToView, vec2, vec3,
 } from '../../render/tsl';
 import { planar, triplanar, type TextureLibrary } from '../Materials';
 import type { Terrain, TerrainDef } from '../Terrain';
@@ -46,6 +46,9 @@ const hash1 = (x: any) => fract(sin(x.mul(12.9898)).mul(43758.5453));
 /** How wide (m) the forge's basalt columns are, and the Abyss's facets of glass. */
 const COLUMN = 0.95;
 const FACET = 1.4;
+
+/** How wide (m) the Drowned Halls' courses of paving are. */
+const COURSE = 1.0;
 
 /**
  * The cell of a hex lattice (centers 1 apart) that p falls in: p's offset
@@ -183,37 +186,77 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const abyss = float(1).sub(ember).sub(soul);
   const depthTint = (abyss: any, forge: any, drowned: any) => mix(mix(abyss, forge, ember), drowned, soul);
 
-  // each depth lays its own slabs: great black ones in the Abyss, the forge's
-  // middling basalt, the crypt's small worn paving
-  const flag = planar(textures.get('flagstone'), positionWorld.xz.mul(depthTint(float(0.058), float(0.085), float(0.115))), n);
+  const flag = planar(textures.get('flagstone'), positionWorld.xz.mul(0.058), n);
   const dust = planar(textures.get('dirt'), positionWorld.xz.mul(0.23).add(vec2(0.31, 0.17)), n);
   const rock = triplanar(textures.get('rock'), 0.055, 6);
   const fine = triplanar(textures.get('rock'), 0.2, 6);
-  // polished black basalt tinted by the depth, the slabs varied by the macro noise
-  const basalt = vec3(lum(flag.color)).mul(depthTint(vec3(0.1, 0.112, 0.106), vec3(0.2, 0.158, 0.146), vec3(0.13, 0.15, 0.16))).mul(mix(float(0.75), float(1.2), macro));
+  const wy = positionWorld.y;
+  // one hex lattice serves two depths: upright in the forge, where its cells
+  // are the columns the basalt has split into (their tops are the floor, their
+  // sides the walls), and skewed and tipped in the Abyss, where they are the
+  // facets of volcanic glass on the walls
+  // (the forge's lattice bent by two slow noises, so its columns come in
+  // uneven sizes and shapes as real basalt does, not a tiled honeycomb)
+  const bend = vec2(wornN, mx_noise_float(xz.mul(0.31).add(vec2(17.3, 5.1)))).mul(0.42);
+  const hex = hexCell(mix(vec2(xz.x.mul(0.62).add(wy.mul(0.45)), xz.y.mul(0.62).sub(wy.mul(0.38))).div(FACET), xz.add(bend).div(COLUMN), ember));
+  // (meters a pixel spans here, so thin joints fade rather than shimmer far off)
+  const px = abs(dFdx(xz.x)).add(abs(dFdy(xz.x))).add(abs(dFdx(xz.y))).add(abs(dFdy(xz.y))).mul(0.5).max(0.002);
+  const seam = (d: any, w: number) => smoothstep(px.add(w), max(px.negate().add(w), 0), d).mul(min(float(w).div(px.add(w)), 1));
+
+  // each depth lays its own floor. The Abyss: great slabs of black glass. The
+  // Ashen Depths: the tops of the basalt columns the chamber was cut down
+  // into, each its own shade and set a little askew, their edges worn round.
+  // The Drowned Halls: a crypt's paving, laid in courses, the slabs sunk
+  // unevenly, their edges worn by the water, here and there a grave slab
+  // with a border cut round it
+  const floorGrain = lum(fine.color).mul(1.25).add(lum(dust.color));
+  const grainNrm = mix(n, fine.normal, 0.45);
+  const topEdge = hex.edge.mul(COLUMN);
+  const topJoint = seam(topEdge, 0.035);
+  const outward = vec3(hex.q.x, 0, hex.q.y).div(max(length(hex.q), 0.05));
+  const topNrm = grainNrm.add(outward.mul(smoothstep(0.17, 0.02, topEdge).mul(0.7))).add(vec3(fract(hex.h.mul(13.7)).sub(0.5), 0, fract(hex.h.mul(9.1)).sub(0.5)).mul(0.08)).normalize();
+  const cz = xz.y.div(COURSE);
+  const course = floor(cz);
+  const courseH = hash(course.add(2048));
+  const slabL = mix(float(1.4), float(2.4), courseH);
+  const bx = xz.x.div(slabL).add(courseH.mul(7.3));
+  const fx = fract(bx);
+  const fz = fract(cz);
+  const ex = min(fx, float(1).sub(fx)).mul(slabL);
+  const ez = min(fz, float(1).sub(fz)).mul(COURSE);
+  const slabEdge = min(ex, ez);
+  const slabH = hash(floor(bx).add(2048).mul(4096).add(course.add(2048)));
+  const slabJoint = seam(slabEdge, 0.035);
+  const slabOut = select(ex.lessThan(ez), vec3(step(0.5, fx).mul(2).sub(1), 0, 0), vec3(0, 0, step(0.5, fz).mul(2).sub(1)));
+  const wear = mix(float(0.05), float(0.2), smoothstep(-0.3, 0.5, wornN));
+  const slabNrm = grainNrm.add(slabOut.mul(smoothstep(wear, 0.01, slabEdge).mul(0.6))).add(vec3(fract(slabH.mul(13.7)).sub(0.5), 0, fract(slabH.mul(9.1)).sub(0.5)).mul(0.1)).normalize();
+  const grave = seam(abs(slabEdge.sub(0.15)), 0.018).mul(step(0.91, slabH));
+  const floorLum = depthTint(
+    lum(flag.color),
+    floorGrain.mul(mix(float(0.72), float(1.22), hex.h)).mul(float(1).sub(topJoint.mul(0.65))),
+    floorGrain.mul(mix(float(0.78), float(1.16), slabH)).mul(float(1).sub(slabJoint.mul(0.7)).sub(grave.mul(0.4))),
+  );
+  // polished black stone tinted by the depth, varied by the macro noise
+  const basalt = vec3(floorLum).mul(depthTint(vec3(0.1, 0.112, 0.106), vec3(0.2, 0.158, 0.146), vec3(0.13, 0.15, 0.16))).mul(mix(float(0.75), float(1.2), macro));
   // what has drifted against the walls: in the Abyss pale bone dust, in the
   // Ashen Depths a black crust of cooling lava, in the Drowned Halls the
   // grey-green silt the water left behind
   const ashCol = vec3(lum(dust.color)).mul(depthTint(vec3(0.44, 0.42, 0.37), vec3(0.075, 0.06, 0.055), vec3(0.2, 0.235, 0.215)));
   const ashW = smoothstep(0.2, 0.8, ash.add(dust.color.g.mul(0.6)).sub(0.25));
   let col: any = mix(basalt, ashCol, ashW);
-  let nrm: any = mix(flag.normal, dust.normal, ashW);
+  let nrm: any = mix(depthTint(flag.normal, topNrm, slabNrm), dust.normal, ashW);
   // polished enough to catch the braziers' light; the Abyss's slabs are black
   // glass, polished to a mirror between their scratches
-  let rough: any = mix(flag.roughness.mul(mix(float(0.5), float(0.32), abyss)).add(mix(float(0.08), float(0.04), abyss)), float(0.95), ashW);
+  const floorRough = depthTint(flag.roughness.mul(0.32).add(0.04), mix(mix(float(0.42), float(0.56), fract(hex.h.mul(4.3))), float(0.9), topJoint), mix(mix(float(0.46), float(0.62), fract(slabH.mul(4.3))), float(0.9), max(slabJoint, grave)));
+  let rough: any = mix(floorRough, float(0.95), ashW);
 
   // rock: the steep faces and everything above the floor, each depth's walls
   // their own stone
   const rockNrm = rock.normal.add(fine.normal).normalize();
   const raw = rock.color.mul(fine.color.mul(1.7));
-  const wy = positionWorld.y;
   // level and along the wall, for shading across its columns and beds
   const along = vec3(n.z.negate(), 0, n.x).div(max(length(n.xz), 0.05));
   const sheer = smoothstep(0.93, 0.6, n.y);
-  // one hex lattice serves two depths: upright in the forge, where its cells
-  // are the columns the basalt has split into, and skewed and tipped in the
-  // Abyss, where they are the facets of volcanic glass
-  const hex = hexCell(mix(vec2(xz.x.mul(0.62).add(wy.mul(0.45)), xz.y.mul(0.62).sub(wy.mul(0.38))).div(FACET), xz.div(COLUMN), ember));
 
   // the Ashen Depths: columns of basalt, each its own shade, rounded across
   // the wall, split into drums at joints of their own heights
@@ -307,14 +350,14 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   // (in patches a few slabs across, where the runes' wear noise runs high)
   const open = float(1).sub(ashW);
   const patch = smoothstep(0.25, 0.62, wornN).mul(smoothstep(0.3, 0.55, macro));
-  const joint = smoothstep(0.955, 0.998, flag.roughness).mul(patch).mul(open);
+  const joint = topJoint.mul(patch).mul(open);
   const crustCracks = smoothstep(0.07, 0.0, crackN).mul(ashW);
   const forgeFloor = floorW.mul(ember);
   // round each seeping patch the slabs are heated: their edges scorched and
   // glowing dull red, and a warm light rising off the stone that fades out
   // over a few slabs
   const warmth = smoothstep(0.0, 0.6, wornN).mul(smoothstep(0.15, 0.55, macro)).mul(open);
-  const rimHeat = smoothstep(0.86, 0.955, flag.roughness).mul(warmth);
+  const rimHeat = smoothstep(0.24, 0.05, topEdge).mul(warmth);
   // cinders caught in the black crust along the walls (and a few among the
   // hot slabs), each glowing and fading on its own beat
   const cell = floor(xz.mul(3.5)).add(2048);
@@ -325,12 +368,12 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   // and molten light up the joints between some of the columns at the walls' foot
   const lavaUp = smoothstep(1.8, 0.1, wy);
   const lavaJoint = colJoint.mul(lavaUp.mul(lavaUp)).mul(smoothstep(0.45, 0.75, hex.h)).mul(rockW).mul(ember);
-  const seep = joint.mul(1.25).add(crustCracks.mul(2.4)).add(rimHeat.mul(0.3)).add(warmth.mul(0.045)).add(fleck.mul(3.5)).mul(forgeFloor);
+  const seep = joint.mul(0.8).add(crustCracks.mul(2.4)).add(rimHeat.mul(0.3)).add(warmth.mul(0.045)).add(fleck.mul(3.5)).mul(forgeFloor);
   col = col.mul(float(1).sub(joint.add(rimHeat.mul(0.45)).mul(forgeFloor).mul(0.6)));
   // the Drowned Halls: the slabs are wet, moss grows in their joints, and
   // still water stands in the hollows, stirred by slow ripples
   const wetFloor = floorW.mul(soul);
-  const moss = smoothstep(0.955, 0.998, flag.roughness).mul(float(1).sub(ashW));
+  const moss = max(slabJoint, grave.mul(0.6)).mul(float(1).sub(ashW));
   col = mix(col, vec3(0.04, 0.075, 0.062).mul(lum(flag.color).add(0.5)), moss.mul(wetFloor).mul(0.85));
   const puddle = smoothstep(0.44, 0.36, macro).mul(smoothstep(-0.35, 0.05, wornN)).mul(wetFloor);
   const ripple = textures.get('dirt').nr;
