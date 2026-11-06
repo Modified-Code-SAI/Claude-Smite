@@ -47,6 +47,13 @@ const PEDESTAL_CLEAR = 3.2;
  * out for `time` s.
  */
 const WEDGED = { after: 0.8, within: 0.6, time: 1.2 } as const;
+/**
+ * A carrier's run at the gate (see RushBot.mouth): straight at the mouth from
+ * within `lane` of its middle; wider, at a point `slope` m out in front of the
+ * mouth for each meter wider, at most `standoff`, so the run clears the
+ * pillar's corner (the pillar's inner face is 4.4 m out, a god 0.55 m round).
+ */
+const MOUTH = { lane: 3.4, slope: 1.5, standoff: 3.5 } as const;
 
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 const dist = (a: Point, b: Point) => hypot(a.x - b.x, a.z - b.z);
@@ -134,8 +141,8 @@ export class RushBot implements Brain {
   private route: { goal: Point; next: Point; at: number } | null = null;
   /** Which way (+1 or -1) the carrier breaks past a defender dead ahead, kept until one shows a clear side. */
   private veer = 1;
-  /** Carrying: steering out from beside a gate pillar to the front of its mouth (see mouth). */
-  private besidePillar = false;
+  /** Carrying: on the far side of the gate, coming back through it (see mouth). */
+  private behindGate = false;
   /** Where the carrier last made ground from, and when (see WEDGED), and until when it takes the pathfinder's way out. */
   private readonly wedge = { x: 0, z: 0, at: 0, carry: -1, until: -1 };
   /** Scratch for elbowRoom. */
@@ -345,7 +352,8 @@ export class RushBot implements Brain {
       // push sideways, away from the defender's side of the line (this once pushed toward it); one dead ahead is passed the way the carrier was already breaking (choosing afresh each step, it jittered left and right in place)
       const across = ex * dz - ez * dx;
       const side = Math.abs(across) < DEAD_AHEAD ? this.veer : across > 0 ? 1 : -1;
-      if (ed < 4 && Math.abs(across) >= DEAD_AHEAD) this.veer = side;
+      // (and any defender showing a clear side sets that way: set by near ones only, one further off on the edge of dead ahead flicked the push from side to side as it crossed it)
+      if (Math.abs(across) >= DEAD_AHEAD) this.veer = side;
       const w = ((8 - ed) / 8) * (0.6 + ahead) * (ed < MARK.near ? MARK.nearWeight : 1);
       ax += -dz * side * w * 1.6 - (ex / ed) * w * 0.5;
       az += dx * side * w * 1.6 - (ez / ed) * w * 0.5;
@@ -479,19 +487,27 @@ export class RushBot implements Brain {
     return true;
   }
 
-  /** The point to run at to pass through the gate: its center, from whichever side the carrier is on. */
+  /**
+   * The point to run at to pass through the gate: its center, from whichever
+   * side the carrier is on. From wide of the mouth it is a point out in front
+   * of the mouth (or behind it, coming from behind), the further out the wider
+   * the carrier, so the run curves round the pillar's corner and in. (This was
+   * a state, stepping out in front once beside a pillar, which ended at a
+   * distance: pushed past it by a defender the carrier headed for the mouth,
+   * came beside the pillar again and stepped out again, about face every half
+   * second. Aimed by where the carrier is, the run has one way at each spot.)
+   */
   private mouth(gate: Point): Point {
     const { u } = this;
     const out = Math.sign(gate.z);
-    // from behind the gate (beyond it, seen from the temple), come back through it
-    const behind = (u.z - gate.z) * out > RUSH.gateDepth;
+    // from behind the gate (beyond it, seen from the temple), come back through it (kept until well in front, as beside a pillar it sets which way round)
+    const dz = (u.z - gate.z) * out;
+    this.behindGate = dz > (this.behindGate ? 0 : RUSH.gateDepth);
+    const side = this.behindGate ? 1 : -1;
     const x = Math.max(-3, Math.min(3, u.x * 0.5));
-    // beside a pillar: step in front of the mouth first, and keep at it until in line with the mouth (at the region's
-    // edge the two aims point opposite ways, and a carrier on it, pushed back and forth by defenders, turned about every step)
-    const was = this.besidePillar;
-    this.besidePillar = Math.abs(u.x) > RUSH.gateHalfWidth + (was ? -0.5 : 0.5) && Math.abs(u.z - gate.z) < (was ? 5 : 3);
-    if (this.besidePillar) return { x: 0, z: gate.z - out * 3.5 * (behind ? -1 : 1) };
-    return { x, z: gate.z + out * (behind ? -0.2 : 0.4) };
+    const wide = Math.abs(u.x) - MOUTH.lane;
+    if (wide <= 0) return { x, z: gate.z + out * (this.behindGate ? -0.2 : 0.4) };
+    return { x, z: gate.z + out * side * Math.min(MOUTH.standoff, wide * MOUTH.slope) };
   }
 
   /** Throw through the gate when close and nobody is in its mouth to catch it. */
