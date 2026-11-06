@@ -10,6 +10,8 @@ import './jotunn.css';
 const PART_GLYPH: Record<PartId, string> = { kneeL: 'L', kneeR: 'R', rune: 'ᛟ', wristL: 'L', wristR: 'R', crown: '♛' };
 const PART_GROUP: Record<PartId, string> = { kneeL: 'knee', kneeR: 'knee', rune: 'rune', wristL: 'wrist', wristR: 'wrist', crown: 'crown' };
 const SHRINE_ULT: Record<string, string> = { rime: 'Frost Breath', avalanche: 'Avalanche', hail: 'Hailstorm' };
+/** Seconds the braziers' count stays on the state line once it changes (the bar keeps it), before the line clears off the giant's chest. */
+const QUIET_AFTER = 6;
 
 /**
  * The Jötunn readout: the giant's Might with its weak points beneath it (lit
@@ -39,6 +41,9 @@ export class JotunnHud {
   private tally: KillTally;
   private tallyRound = 0;
   private lag01 = 1;
+  /** The braziers' count last said on the state line, and for how long. */
+  private idleLine = '';
+  private idleFor = 0;
   private readonly last: Record<string, string> = {};
   private shownEnd = false;
 
@@ -52,8 +57,7 @@ export class JotunnHud {
       <div class="jt-top">
         <div class="jt-head"><span class="jt-round"></span><span class="jt-who"></span></div>
         <div class="jt-might"><div class="jt-lag"></div><div class="jt-fill"></div><span class="jt-pct"></span></div>
-        <div class="jt-parts"></div>
-        <div class="jt-row"><div class="jt-braziers"></div><div class="jt-shrines"></div></div>
+        <div class="jt-row"><div class="jt-braziers"></div><div class="jt-parts"></div><div class="jt-shrines"></div></div>
       </div>
       <div class="clash-state"></div>
       <div class="duel-big jt-big"></div>
@@ -213,7 +217,9 @@ export class JotunnHud {
     let text = '';
     let tone = '';
     let big = '';
+    let quiet = false;
     if (m.phase === 'countdown') {
+      this.idleLine = '';
       big = String(Math.max(1, Math.ceil(m.timer)));
       text = mine ? 'Smash three of the four braziers' : 'Guard the braziers: break its knees, then strike its crown';
     } else if (m.phase === 'fight') {
@@ -229,6 +235,12 @@ export class JotunnHud {
       } else {
         const left = m.braziersLeft;
         text = `${left} of ${JOTUNN.braziers.length} braziers burn · the giant needs ${JOTUNN.braziersToWin}`;
+        if (text !== this.idleLine) {
+          this.idleLine = text;
+          this.idleFor = 0;
+        }
+        this.idleFor += dt;
+        quiet = this.idleFor > QUIET_AFTER;
       }
     } else if (m.phase === 'over') {
       const giantWon = m.lastRound === 'giant';
@@ -237,10 +249,11 @@ export class JotunnHud {
       text = giantWon ? `${mine ? 'You' : m.giantPlayer.name} smashed the braziers` : 'The Jötunn has fallen';
       tone = won ? 'order' : 'chaos';
     }
-    this.set('state', `${tone}|${text}`, () => {
+    this.set('state', `${tone}|${text}|${quiet}`, () => {
       this.state.textContent = text;
       this.state.dataset.state = tone;
       this.state.style.display = text ? '' : 'none';
+      this.state.classList.toggle('quiet', quiet);
     });
     this.set('big', big, () => {
       this.big.textContent = big;
