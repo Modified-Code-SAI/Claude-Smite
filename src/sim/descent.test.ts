@@ -551,9 +551,11 @@ describe('Underworld Descent: the run', () => {
     jump.nextChamber();
     step(sim, run, DESCENT.enterTime + DESCENT.bossIntro + 0.2);
     const boss = run.boss!;
+    expect(run.calls).toBe(0);
     // under both thresholds: it calls up both lots of adds
     boss.combatant.health = boss.combatant.stats.maxHealth * 0.3;
     step(sim, run, 0.5);
+    expect(run.calls).toBe(DESCENT.bossAdds.length);
     const retinue = run.monsters.filter((m) => m.alive && m !== boss && m !== run.gilded);
     const adds = retinue.length;
     expect(adds).toBeGreaterThan(5);
@@ -582,6 +584,7 @@ describe('Underworld Descent: the run', () => {
     const guest = new Descent(new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(1)), zeus);
     guest.applyNet(run.netState());
     expect(guest.fall).toBeCloseTo(run.fall, 1);
+    expect(guest.calls).toBe(DESCENT.bossAdds.length);
     // the team holds and watches it go down; then the reward comes
     const stood = team.map((g) => ({ x: g.x, z: g.z }));
     step(sim, run, DESCENT.bossFall * 0.4 - 0.4);

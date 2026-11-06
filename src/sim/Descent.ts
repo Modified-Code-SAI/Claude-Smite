@@ -707,6 +707,11 @@ export class Descent {
     return this.fallLeft;
   }
 
+  /** How many times this chamber's boss has called up its adds (see DESCENT.bossAdds). */
+  get calls(): number {
+    return this.bossAddsCalled;
+  }
+
   /** The chamber the team is in (or about to enter). */
   get current(): ChamberPlan {
     return this.plan[Math.max(0, this.chamber - 1)]!;
@@ -1515,6 +1520,7 @@ export class Descent {
       ...(this.relics.held.length || this.relics.procs.length ? { rl: this.relics.netState(sideCode) } : {}),
       ...(this.introLeft > 0 ? { it: r2(this.introLeft) } : {}),
       ...(this.fallLeft > 0 ? { fl: r2(this.fallLeft) } : {}),
+      ...(this.bossAddsCalled ? { bc: this.bossAddsCalled } : {}),
       l: this.learned,
       h: [...this.humans].map(gi),
       ...(this.versus
@@ -1545,6 +1551,7 @@ export class Descent {
     if (s.pl && s.c > 0) this.plan[s.c - 1] = { n: s.c, layout: s.pl[0], kind: s.pl[1] };
     this.introLeft = s.it ?? 0;
     this.fallLeft = s.fl ?? 0;
+    this.bossAddsCalled = s.bc ?? 0;
     this.kills = s.k;
     this.obols = s.o;
     this.obolUsed = s.ou;
@@ -1685,6 +1692,8 @@ export interface DescentNet {
   it?: number;
   /** Seconds left of a boss's fall (left out the rest of the time). */
   fl?: number;
+  /** Times the boss has called up its adds (left out until it does). */
+  bc?: number;
   l: [number, number, number, string][];
   h: number[];
   /** A shared descent's score and team choices (teams as 'o' and 'c'). */
