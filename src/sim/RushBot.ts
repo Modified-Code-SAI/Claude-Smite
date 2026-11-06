@@ -544,6 +544,17 @@ export class RushBot implements Brain {
         this.aimAt(enemyCarrier);
         if (sim.cast(u, s) === null) return;
       }
+      // a tackle that waits on a mark (Zeus's Static Discharge on a Charge): put the mark on the carrier first
+      for (const s of ready) {
+        const mark = c.resolve(s).skill.detonates;
+        if (!mark || enemyCarrier.marks.get(mark)?.stacks || !c.resolve(s).hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) continue;
+        for (const p of ready) {
+          if (p === s || reachOf(u, p) + enemyCarrier.radius < d) continue;
+          if (!c.resolve(p).hits.some((h) => h.kind === 'mark' && h.mark === mark)) continue;
+          this.aimAt(enemyCarrier);
+          if (sim.cast(u, p) === null) return;
+        }
+      }
     }
     // 2. close the distance to the relic or the carrier with a dash or leap
     if (role === 'chase' || role === 'press') {
@@ -584,6 +595,8 @@ export class RushBot implements Brain {
     const offense = ready.filter((s) => {
       const cast = c.resolve(s);
       if (skillRole(cast.skill) !== 'offense') return false;
+      // a stun that would knock the relic loose is kept for whoever carries it: spent on anyone else, it is cooling when the carrier comes
+      if (foe !== enemyCarrier && cast.hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) return false;
       if (posted && (cast.targeting.type === 'dash' || cast.targeting.type === 'leap' || cast.hits.some((h) => h.kind === 'movement')) && d > 5) return false;
       if (cast.skill.detonates && !foe!.marks.get(cast.skill.detonates)?.stacks) return false;
       return reachOf(u, s) + foe!.radius >= d;

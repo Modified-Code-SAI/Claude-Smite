@@ -199,16 +199,48 @@ describe('Relic Rush', () => {
   });
 
   it('every god brings a tackle to Relic Rush: bots whose own bar has none swap one in', () => {
-    const tackle = (g: GodDef, bar: readonly string[]) => bar.slice(0, ULTIMATE_SLOT).some((id) => tackles(skillById(g, id)!));
+    const count = (g: GodDef, bar: readonly string[]) => bar.slice(0, ULTIMATE_SLOT).filter((id) => tackles(skillById(g, id)!)).length;
     for (const g of GODS) {
       const bar = rushBar(g);
       expect(validateLoadout(g, bar), g.id).toBeNull();
-      expect(tackle(g, bar), g.id).toBe(true);
-      // a god whose own bar already tackles keeps it
-      if (tackle(g, g.defaultLoadout)) expect(bar, g.id).toEqual(g.defaultLoadout);
+      expect(count(g, bar), g.id).toBeGreaterThan(0);
     }
-    expect(tackle(odin, odin.defaultLoadout)).toBe(false);
-    expect(tackle(loki, loki.defaultLoadout)).toBe(false);
+    expect(count(odin, odin.defaultLoadout)).toBe(0);
+    expect(count(loki, loki.defaultLoadout)).toBe(0);
+    // the first five bring exactly one each, so no bot team fields a stack of stuns
+    for (const g of [zeus, thor, odin, loki, anubis]) expect(count(g, rushBar(g)), g.id).toBe(1);
+  });
+
+  it('a bot keeps its stun for whoever carries the relic', () => {
+    // `carrier` takes the relic at the center; Thor, a bot on the order side, stands at the shoulder of `other`
+    const play = (carrierTeam: 'order' | 'chaos') => {
+      const { sim, rush } = match();
+      const coach = new RushCoach(sim, rush);
+      const mate = god(sim, zeus, 'order', 0);
+      const bot = god(sim, thor, 'order', 1);
+      const foe = god(sim, loki, 'chaos', 0);
+      bot.brain = new RushBot(sim, bot, rush, coach, null, { aggression: 1 });
+      rush.begin([mate, bot, foe]);
+      run(sim, rush, RUSH.countdown + 0.1);
+      const carrier = carrierTeam === 'order' ? mate : foe;
+      sim.teleport(carrier, 0, 1.6);
+      run(sim, rush, 0.4, () => rush.holder === carrier);
+      expect(rush.holder).toBe(carrier);
+      const slam = bot.combatant.loadout.indexOf('thor.mjolnir-slam');
+      for (let i = 0; i < 20 && bot.combatant.cooldownOf(slam) === 0; i++) {
+        // the enemy at our carrier's side (or carrying), within the slam's reach
+        sim.teleport(foe, mate.x + 1.2, mate.z - 1);
+        sim.teleport(bot, mate.x + 1.2, mate.z + 1.2);
+        run(sim, rush, 0.1);
+      }
+      return { used: bot.combatant.cooldownOf(slam) > 0, holder: rush.holder, foe };
+    };
+    // knocking defenders off our carrier, the bot holds the stun back
+    expect(play('order').used).toBe(false);
+    // on the enemy carrier it goes in, and knocks the relic loose
+    const d = play('chaos');
+    expect(d.used).toBe(true);
+    expect(d.holder).not.toBe(d.foe);
   });
 
   it('a juke sidesteps the carrier, beats a stun in its guard, keeps the relic, and waits out its cooldown', () => {

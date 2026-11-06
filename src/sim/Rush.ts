@@ -133,14 +133,16 @@ export function tackles(skill: SkillDef): boolean {
 }
 
 /**
- * The skills a bot brings to Relic Rush: its god's own bar, except where that
- * bar has no tackle, which leaves a god unable to win the relic back (in bot
- * matches those gods won about a third of the time). Those swap one skill for
- * a tackle from their pool.
+ * The skills a bot brings to Relic Rush: its god's own bar, with one tackle
+ * among its regular skills. A bar with none leaves a god unable to win the
+ * relic back (in bot matches those gods won about a third of the time), so
+ * Odin and Loki swap one in; Anubis's own bar has two, and bots who keep their
+ * stuns for the carrier made his team win 62%, so his bots bring one.
  */
 const RUSH_BARS: Readonly<Record<string, readonly string[]>> = {
   odin: ['odin.gungnir-sweep', 'odin.ravens', 'odin.lunge', 'odin.ring-of-spears'],
   loki: ['loki.decoy', 'loki.vanish', 'loki.backstab', 'loki.assassinate'],
+  anubis: ['anubis.mummify', 'anubis.locust-swarm', 'anubis.sand-step', 'anubis.sandstorm'],
 };
 
 export function rushBar(god: GodDef): readonly string[] {
