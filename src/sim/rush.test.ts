@@ -284,8 +284,14 @@ describe('Relic Rush', () => {
     expect(rush.phase).toBe('goal');
     const moves: { unit: Unit; quiet?: boolean }[] = [];
     sim.listeners.push((e) => e.type === 'teleport' && moves.push(e));
+    // (a defender left battered by the run)
+    t.combatant.health = t.combatant.stats.maxHealth * 0.2;
+    t.combatant.mana = 0;
     run(sim, rush, RUSH.celebrate + 0.1);
     expect(rush.phase).toBe('kickoff');
+    // every point starts fresh
+    expect(t.combatant.health).toBe(t.combatant.stats.maxHealth);
+    expect(t.combatant.mana).toBe(t.combatant.stats.maxMana);
     expect(rush.relic.phase).toBe('center');
     expect(a.z).toBeCloseTo(RUSH.kickoff.order[0]!.z, 1);
     // the reset happens under the HUD's dip to dark, so it raises no teleport flashes

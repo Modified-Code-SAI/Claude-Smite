@@ -879,6 +879,9 @@ export class Rush {
           g.wasAlive = true;
           this.sim.inject({ type: 'respawn', unit: g });
         }
+        // every point starts fresh: the beaten-up line up at full strength too (under the dip, so the bars refill unseen)
+        c.health = c.stats.maxHealth;
+        c.mana = c.stats.maxMana;
         g.forced = null;
         c.cc.reset();
         this.place(g, i);
