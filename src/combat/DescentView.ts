@@ -193,6 +193,12 @@ export class DescentView {
       const c = DEPTH_COLORS[palette];
       if (this.map?.setPalette(palette)) this.world.recolorFires();
       this.world.environment.setDepth(c);
+      const dust = this.world.dust;
+      dust.tint.value.setHex(c.motes.color);
+      dust.glow.value = c.motes.glow;
+      dust.rise.value = c.motes.rise;
+      dust.grow.value = c.motes.grow;
+      dust.near.value = c.motes.near;
       this.burst = { cloth: 0, trim: 0, glow: c.glow, vfx: c.glow, core: c.fire.high };
       this.soul = SOULS_OF[palette];
       for (const d of this.eruptions) d.setColors(c.glow, c.fire.high);

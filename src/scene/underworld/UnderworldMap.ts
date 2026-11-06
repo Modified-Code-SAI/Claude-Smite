@@ -2,20 +2,21 @@ import * as THREE from 'three/webgpu';
 import { rng } from '../../core/random';
 import { slice } from '../../core/slices';
 import {
-  addUnderworldColliders, CHAMBERS, chamberField, entranceSpot, GATE, type ChamberDef, type Palette,
+  addUnderworldColliders, CHAMBERS, entranceSpot, GATE, type ChamberDef, type Palette,
 } from '../../map/UnderworldLayout';
 import {
   abs, atan, cameraPosition, cos, dot, exp, float, length, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, sin, smoothstep, time,
   transformNormalToView, uv, vec2, vec3, vec4,
 } from '../../render/tsl';
 import type { QualitySettings } from '../../render/Quality';
-import { boulder, chippedBlock, lathe } from '../Architecture';
+import { chippedBlock } from '../Architecture';
 import type { CollisionWorld } from '../Collision';
 import { Fire } from '../Effects';
 import { triplanar, type MaterialLibrary } from '../Materials';
 import { mergeStatic } from '../merge';
 import type { MapContent } from '../World';
-import { DEPTH_COLORS, gateOpen, underworldGlow } from './palettes';
+import { cavernKit, FLAME_Y, forgeKit, type Kit } from './kits';
+import { DEPTH_COLORS, depthLook, depthWeights, gateOpen, underworldGlow } from './palettes';
 import { showRunes } from './UnderworldTerrain';
 
 /** How tall the gate pylons stand, and the lintel across them. */
@@ -23,11 +24,13 @@ const PYLON_H = 7.2;
 const LINTEL_Y = 6.4;
 
 /**
- * The underworld's scenery: in each of the six chambers, obsidian columns,
- * bronze braziers of soul fire, glowing crystals and fallen rock along the
- * walls, and a gate at each end whose doorway lights up once the chamber is
- * cleared. Only the chamber the team is in is shown (the walls hide the rest),
- * and each chamber is baked into a handful of draws, one per material.
+ * The underworld's scenery. Each of the six chambers has a shell shared by
+ * every depth (its gates, their veils and flames, the fires at its brazier
+ * spots and the Burning Pit's lake) and a dressing for each depth, built from
+ * that depth's kit (see kits.ts): the same hall is a forge in the Ashen
+ * Depths and something else further down. Only the chamber the team is in
+ * shows, in the current depth's dressing (the walls hide the rest), and each
+ * is baked into a handful of draws, one per material.
  */
 export class UnderworldMap implements MapContent {
   readonly group = new THREE.Group();
@@ -35,8 +38,10 @@ export class UnderworldMap implements MapContent {
   readonly lights: THREE.PointLight[] = [];
   readonly spawn: { x: number; z: number; yaw: number };
   readonly groundColor = new THREE.Color(0.05, 0.045, 0.055);
-  /** Each chamber's scenery, in CHAMBERS order. */
+  /** Each chamber's shell, in CHAMBERS order. */
   readonly chambers: THREE.Group[] = [];
+  /** Each depth's dressing of each chamber: dressings[depth][chamber]. */
+  readonly dressings: THREE.Group[][] = KITS.map(() => []);
   private shown = -1;
   private palette: Palette = 'ember';
   private readonly mats: ReturnType<typeof underworldMaterials>;
@@ -52,43 +57,56 @@ export class UnderworldMap implements MapContent {
     const m = new UnderworldMap(mats);
     addUnderworldColliders(collision);
     for (let i = 0; i < CHAMBERS.length; i++) {
-      m.chambers.push(m.buildChamber(CHAMBERS[i]!, i));
+      m.chambers.push(m.buildShell(CHAMBERS[i]!, i));
       await slice();
+      for (let d = 0; d < KITS.length; d++) {
+        m.dressings[d]!.push(m.buildDressing(CHAMBERS[i]!, i, d));
+        await slice();
+      }
     }
     m.show(0);
     return m;
   }
 
-  /** Shows one chamber's scenery and hides the rest (their lights drop out of the light pool too). */
+  /** Shows one chamber's shell and the current depth's dressing of it, and hides the rest (their lights drop out of the light pool too). */
   show(i: number): void {
     if (i === this.shown) return;
     this.shown = i;
-    this.chambers.forEach((g, k) => (g.visible = k === i));
-    showRunes(i);
+    this.updateShown();
   }
 
-  /** Relights the underworld in a depth's colors: the glow, the fires and their lights. */
+  /** Relights the underworld in a depth's colors and dresses its chambers in that depth's kit: the glow, the fires and their lights. */
   setPalette(p: Palette): boolean {
     if (p === this.palette) return false;
     this.palette = p;
     const c = DEPTH_COLORS[p];
     underworldGlow.value.setHex(c.glow);
+    depthLook.value.set(...depthWeights(p));
     for (const f of this.fires) {
       if (f.group.userData.gateFire) continue;
       f.low.setHex(c.fire.low);
       f.high.setHex(c.fire.high);
       f.ember.setHex(c.fire.ember);
       f.light.color.setHex(c.fire.light);
+      f.group.scale.setScalar(c.fire.scale);
     }
+    this.updateShown();
     return true;
   }
 
-  private buildChamber(c: ChamberDef, index: number): THREE.Group {
+  private updateShown(): void {
+    const depth = PALETTES.indexOf(this.palette);
+    this.chambers.forEach((g, k) => (g.visible = k === this.shown));
+    this.dressings.forEach((list, d) => list.forEach((g, k) => (g.visible = k === this.shown && d === depth)));
+    showRunes(this.shown);
+  }
+
+  /** What every depth shares in a chamber: its gates, the fires at its brazier spots, and the pit. */
+  private buildShell(c: ChamberDef, index: number): THREE.Group {
     const g = new THREE.Group();
     g.name = `chamber-${index}`;
     // hidden chambers still get their shaders prepared while the map loads
     g.userData.shownLater = true;
-    const random = rng(4100 + index * 31);
     const keep: THREE.Object3D[] = [];
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true): THREE.Mesh => {
       const mesh = new THREE.Mesh(geo, mat);
@@ -99,23 +117,11 @@ export class UnderworldMap implements MapContent {
       return mesh;
     };
 
-    // obsidian columns: faceted, tapering monoliths with a carved collar
-    for (const [x, z, r] of c.pillars) {
-      const h = 9 + random() * 3.5;
-      const column = add(obsidianColumn(r, h, Math.floor(random() * 1e5)), this.mats.obsidian, x, 0, z);
-      column.rotation.y = random() * Math.PI;
-    }
-
-    // braziers against the walls
-    const plinth = chippedBlock(1.1, 0.7, 1.1, 4100);
-    const bowl = braZierBowl();
-    const coalGeo = new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.25, 1);
+    // the fires at the brazier spots (each depth's kit builds the vessel under them)
     c.fires.forEach(([x, z], i) => {
-      add(plinth, this.mats.obsidian, x, 0.3, z).rotation.y = random() * Math.PI;
-      add(bowl, this.mats.bronze, x, 0.65, z);
-      add(coalGeo, this.mats.coals, x, 0.65 + 0.84, z, false);
       const pal = DEPTH_COLORS.ember.fire;
-      const fire = new Fire(new THREE.Vector3(x, 1.5, z), 0.9, index * 13.1 + i * 7.3, 22, pal);
+      const fire = new Fire(new THREE.Vector3(x, FLAME_Y, z), 0.9, index * 13.1 + i * 7.3, 22, pal);
+      fire.group.scale.setScalar(pal.scale);
       g.add(fire.group);
       keep.push(fire.group);
       this.fires.push(fire);
@@ -152,37 +158,39 @@ export class UnderworldMap implements MapContent {
       }
     }
 
-    // fallen rock and soul crystals along the foot of the walls
-    const rocks = Array.from({ length: 6 }, (_, i) => boulder(1, 4500 + i * 13, 3));
-    const crystal = crystalCluster(4600 + index);
-    const steps = 72;
-    for (let k = 0; k < steps; k++) {
-      const a = (k / steps) * Math.PI * 2 + random() * 0.05;
-      const dx = Math.cos(a);
-      const dz = Math.sin(a);
-      // walk out from the middle to the wall
-      let r = 2;
-      while (r < 40 && chamberField(c, dx * r, dz * r) > -0.4) r += 0.35;
-      const x = dx * r;
-      const z = dz * r;
-      // keep the gates' doorways clear
-      if (Math.abs(x) < GATE.halfWidth + 2.5 && Math.abs(z) > c.extent - 6) continue;
-      if (c.pit && r < c.pit + 1) continue;
-      if (k % 9 === 4) {
-        const cr = add(crystal, this.mats.crystal, x * 1.01, -0.2, z * 1.01, false);
-        cr.rotation.set((random() - 0.5) * 0.5, random() * Math.PI, (random() - 0.5) * 0.5);
-        cr.scale.setScalar(0.8 + random() * 0.7);
-        continue;
-      }
-      const s = 1.1 + random() * 1.9;
-      const rock = add(rocks[k % rocks.length]!, this.mats.basalt, x + dx * s * 0.45, s * 0.05, z + dz * s * 0.45);
-      rock.scale.set(s, s * (0.7 + random() * 0.6), s);
-      rock.rotation.y = random() * Math.PI * 2;
-    }
-
     if (c.pit) keep.push(this.buildPit(g, c.pit));
-    if (c.boss) this.buildThrone(add, c);
 
+    mergeStatic(g, keep);
+    g.position.set(c.x, 0, c.z);
+    this.group.add(g);
+    return g;
+  }
+
+  /** One depth's dressing of a chamber, from that depth's kit. */
+  private buildDressing(c: ChamberDef, index: number, depth: number): THREE.Group {
+    const g = new THREE.Group();
+    g.name = `chamber-${index}-${PALETTES[depth]}`;
+    g.userData.shownLater = true;
+    const keep: THREE.Object3D[] = [];
+    // the caverns' dressing draws on the sequence the chambers were first built with, so they look as they did
+    const random = rng(4100 + index * 31);
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true): THREE.Mesh => {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = cast;
+      mesh.receiveShadow = true;
+      g.add(mesh);
+      return mesh;
+    };
+    const light = (color: number, intensity: number, distance: number, x: number, y: number, z: number) => {
+      const l = new THREE.PointLight(color, intensity, distance, 2);
+      l.position.set(x, y, z);
+      l.castShadow = false;
+      g.add(l);
+      keep.push(l);
+      this.lights.push(l);
+    };
+    KITS[depth]!({ c, index, random, mats: this.mats, group: g, add, light });
     mergeStatic(g, keep);
     g.position.set(c.x, 0, c.z);
     this.group.add(g);
@@ -204,21 +212,6 @@ export class UnderworldMap implements MapContent {
     return lake;
   }
 
-  /** The boss arena's dais and broken colossi along the walls. */
-  private buildThrone(add: (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast?: boolean) => THREE.Mesh, c: ChamberDef): void {
-    // a low round dais under the boss's spot
-    const dais = lathe([[0, 0], [7.4, 0], [7.4, 0.12], [7.1, 0.2], [0, 0.2]], 64);
-    add(dais, this.mats.obsidian, 0, -0.08, -c.extent * 0.35, false);
-    // four great broken statues' plinths and stumps against the walls
-    for (const a of [35, 145, 215, 325]) {
-      const rad = (a * Math.PI) / 180;
-      const x = Math.cos(rad) * (c.extent - 2.6);
-      const z = Math.sin(rad) * (c.extent - 2.6);
-      add(chippedBlock(3.2, 2.2, 3.2, 4700 + a), this.mats.obsidian, x, 1.1, z).rotation.y = -rad;
-      add(obsidianColumn(1.2, 5 + (a % 3), 4800 + a), this.mats.obsidian, x, 2.2, z).rotation.y = rad;
-    }
-  }
-
   applyQuality(_q: QualitySettings): void {}
 
   update(_dt: number, time: number): void {
@@ -226,66 +219,9 @@ export class UnderworldMap implements MapContent {
   }
 }
 
-/** A faceted obsidian monolith: an eight-sided shaft tapering up from a collar, with a flared cap. */
-function obsidianColumn(radius: number, height: number, seed: number): THREE.BufferGeometry {
-  const random = rng(seed);
-  const pts: [number, number][] = [
-    [radius * 1.35, 0], [radius * 1.35, 0.5], [radius * 1.12, 0.62], [radius * 1.05, 1.1], [radius * 1.18, 1.25],
-    [radius * 1.0, 1.4], [radius * 0.82, height * 0.82], [radius * 0.98, height * 0.86], [radius * 0.86, height * 0.9],
-    [radius * 1.15, height - 0.35], [radius * 1.2, height], [0, height],
-  ];
-  const geo = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 8);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  // a slight lean and uneven facets, so no two columns match
-  const lean = (random() - 0.5) * 0.06;
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i);
-    pos.setX(i, pos.getX(i) * (1 + (random() - 0.5) * 0.03) + lean * y);
-  }
-  const flat = geo.toNonIndexed();
-  flat.computeVertexNormals();
-  return flat;
-}
-
-function braZierBowl(): THREE.BufferGeometry {
-  return lathe([
-    [0, 0], [0.22, 0], [0.25, 0.05], [0.12, 0.1], [0.1, 0.55], [0.18, 0.62], [0.55, 0.72], [0.72, 0.9],
-    [0.76, 1.0], [0.7, 1.02], [0.52, 0.86], [0, 0.82],
-  ], 32);
-}
-
-/** A cluster of long crystals leaning out from one root. */
-function crystalCluster(seed: number): THREE.BufferGeometry {
-  const random = rng(seed);
-  const parts: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 6; i++) {
-    const h = 1.2 + random() * 2.2;
-    const geo = new THREE.OctahedronGeometry(1, 0).scale(0.22 + random() * 0.14, h, 0.22 + random() * 0.14);
-    geo.translate(0, h * 0.75, 0);
-    const tilt = new THREE.Euler((random() - 0.5) * 0.9, random() * Math.PI * 2, (random() - 0.5) * 0.9);
-    geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(tilt));
-    geo.translate((random() - 0.5) * 0.7, 0, (random() - 0.5) * 0.7);
-    parts.push(geo.index ? geo.toNonIndexed() : geo);
-  }
-  const merged = mergeGeos(parts);
-  merged.computeVertexNormals();
-  return merged;
-}
-
-function mergeGeos(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  let n = 0;
-  for (const p of parts) n += p.getAttribute('position').count;
-  const pos = new Float32Array(n * 3);
-  let o = 0;
-  for (const p of parts) {
-    const a = p.getAttribute('position').array as Float32Array;
-    pos.set(a, o);
-    o += a.length;
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  return g;
-}
+/** The depths in order, and the kit each dresses its chambers with (the Drowned Halls and the Abyss keep the caverns' for now). */
+const PALETTES: readonly Palette[] = ['ember', 'soul', 'spirit'];
+const KITS: readonly Kit[] = [forgeKit, cavernKit, cavernKit];
 
 /**
  * The underworld's own materials, all shared across the chambers: obsidian
@@ -306,9 +242,24 @@ function underworldMaterials(lib: MaterialLibrary) {
     obsidian.metalnessNode = float(0);
     obsidian.normalNode = transformNormalToView(s.normal.mix(normalWorld, 0.45).normalize());
     // a faint seam of the depth's glow low down in the deepest cracks
-    const seam = smoothstep(0.04, 0.0, abs(mx_noise_float(positionWorld.mul(vec3(0.9, 0.35, 0.9)))));
+    const seam = smoothstep(0.04, 0.0, abs(mx_noise_float(positionWorld.mul(vec3(0.9, 0.35, 0.9)).add(fine.color.sub(0.3).mul(0.6)))));
     obsidian.emissiveNode = underworldGlow.mul(seam.mul(smoothstep(0.06, 0.02, l)).mul(smoothstep(3.5, 0.2, positionWorld.y)).mul(2.2));
     obsidian.name = 'obsidian';
+  }
+
+  // dressed basalt for the forges' masonry: rougher than obsidian, so big faces don't mirror the haze, with the same glowing seams
+  const forgeStone = new THREE.MeshStandardNodeMaterial();
+  {
+    const s = triplanar(tex.get('rock'), 0.22, 6);
+    const fine = triplanar(tex.get('rock'), 0.7, 6);
+    const l = lum(s.color.mul(fine.color).mul(1.8));
+    forgeStone.colorNode = vec3(l).mul(vec3(0.21, 0.175, 0.165)).add(0.01);
+    forgeStone.roughnessNode = mix(float(0.5), float(0.85), smoothstep(0.1, 0.35, l));
+    forgeStone.metalnessNode = float(0);
+    forgeStone.normalNode = transformNormalToView(s.normal.add(fine.normal).normalize().mix(normalWorld, 0.35).normalize());
+    const seam = smoothstep(0.04, 0.0, abs(mx_noise_float(positionWorld.mul(vec3(0.9, 0.35, 0.9)).add(fine.color.sub(0.3).mul(0.7)))));
+    forgeStone.emissiveNode = underworldGlow.mul(seam.mul(smoothstep(0.07, 0.02, l)).mul(smoothstep(4.5, 0.2, positionWorld.y)).mul(2.4));
+    forgeStone.name = 'forgeStone';
   }
 
   const basalt = new THREE.MeshStandardNodeMaterial();
@@ -376,5 +327,60 @@ function underworldMaterials(lib: MaterialLibrary) {
     sealed.colorNode = vec4(underworldGlow.mul(edge.mul(0.12)), 1);
   }
 
-  return { obsidian, basalt, coals, crystal, lava, portal, sealed, bronze: lib.bronze };
+  // wrought iron: near-black metal with rust in its grain, picking up the fires' light
+  const iron = new THREE.MeshStandardNodeMaterial();
+  {
+    const s = triplanar(tex.get('rock'), 0.7, 6);
+    const grain = lum(s.color);
+    const rust = smoothstep(0.32, 0.18, grain);
+    iron.colorNode = mix(vec3(0.075, 0.07, 0.068), vec3(0.2, 0.085, 0.04), rust.mul(0.7));
+    iron.metalnessNode = mix(float(0.75), float(0.2), rust);
+    iron.roughnessNode = mix(float(0.42), float(0.85), rust);
+    iron.normalNode = transformNormalToView(s.normal.mix(normalWorld, 0.55).normalize());
+    iron.name = 'iron';
+  }
+
+  // slag: a dark glassy crust over metal still glowing in its cracks, hottest low down
+  const slag = new THREE.MeshStandardNodeMaterial();
+  {
+    const s = triplanar(tex.get('rock'), 0.35, 6);
+    const l = lum(s.color.mul(1.6));
+    slag.colorNode = vec3(l).mul(vec3(0.11, 0.085, 0.075));
+    slag.roughnessNode = mix(float(0.25), float(0.7), smoothstep(0.1, 0.4, l));
+    slag.metalnessNode = float(0);
+    slag.normalNode = transformNormalToView(s.normal);
+    const crack = smoothstep(0.08, 0.0, abs(mx_noise_float(positionWorld.mul(1.6))));
+    const heat = smoothstep(1.6, 0.0, positionWorld.y).mul(0.7).add(0.3);
+    const pulse = sin(time.mul(0.9).add(positionWorld.x.mul(0.5))).mul(0.2).add(0.8);
+    slag.emissiveNode = underworldGlow.mul(crack.mul(3.2).add(smoothstep(0.2, 0.05, l).mul(0.35)).mul(heat).mul(pulse));
+    slag.name = 'slag';
+  }
+
+  // a furnace's fire seen through its bars: white-hot at the bed, flames licking up
+  const furnace = new THREE.MeshBasicNodeMaterial();
+  {
+    const u = uv();
+    const n = mx_fractal_noise_float(vec3(u.x.mul(3.2), u.y.mul(2.2).sub(time.mul(1.3)), time.mul(0.25)), 3, 2.0, 0.5).mul(0.5).add(0.5);
+    const heat = smoothstep(1.05, 0.0, u.y.add(n.mul(0.35).sub(0.15))).mul(n.mul(0.7).add(0.45));
+    const sides = smoothstep(0.0, 0.18, u.x).mul(smoothstep(1.0, 0.82, u.x));
+    furnace.colorNode = mix(underworldGlow.mul(2.4), vec3(1.0, 0.82, 0.48).mul(7), smoothstep(0.6, 1.0, heat)).mul(heat.mul(1.5).add(0.08)).mul(sides);
+    furnace.name = 'furnace';
+  }
+
+  // a sheet of flames licking up off a bed of coals: soft at its sides and top, each sheet flickering on its own
+  const flameBed = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  {
+    const u = uv();
+    const seed = positionWorld.x.mul(0.71).add(positionWorld.z.mul(0.37));
+    const n = mx_fractal_noise_float(vec3(u.x.mul(6.5).add(seed), u.y.mul(2.6).sub(time.mul(2.6)), seed.add(time.mul(0.5))), 3, 2.0, 0.55).mul(0.5).add(0.5);
+    // tongues: the noise eats the sheet from the top down, lower toward the sides
+    const sides = smoothstep(0.0, 0.25, u.x).mul(smoothstep(1.0, 0.75, u.x));
+    const reach = sides.mul(0.7).add(0.05);
+    const body = smoothstep(reach, reach.mul(0.35), u.y.add(n.mul(0.8)).sub(0.42)).mul(smoothstep(0.0, 0.08, u.y)).mul(sides);
+    const heat = body.mul(float(1).sub(u.y.mul(0.7))).mul(n.mul(0.5).add(0.6)).clamp(0, 1);
+    flameBed.colorNode = vec4(mix(underworldGlow.mul(0.7), vec3(1.0, 0.78, 0.42).mul(2.4), smoothstep(0.5, 0.95, heat)).mul(heat), 1);
+    flameBed.name = 'flameBed';
+  }
+
+  return { obsidian, forgeStone, basalt, coals, crystal, lava, portal, sealed, bronze: lib.bronze, iron, slag, furnace, flameBed };
 }

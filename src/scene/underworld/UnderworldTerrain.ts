@@ -7,7 +7,7 @@ import {
 } from '../../render/tsl';
 import { planar, triplanar, type TextureLibrary } from '../Materials';
 import type { Terrain, TerrainDef } from '../Terrain';
-import { gateOpen, runeRings, underworldGlow } from './palettes';
+import { depthLook, gateOpen, runeRings, underworldGlow } from './palettes';
 
 /** Rune rings carved in each chamber's floor (local center and radius), glowing in the depth's color. */
 const RUNES: readonly (readonly [number, number, number])[][] = [
@@ -128,7 +128,8 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const xz = positionWorld.xz;
   const runeD = min(ringDistance(xz, runeRings[0], 0), min(ringDistance(xz, runeRings[1], 1), ringDistance(xz, runeRings[2], 2)));
   const runeAA = abs(dFdx(runeD)).add(abs(dFdy(runeD))).max(0.004);
-  const worn = smoothstep(-0.7, -0.35, mx_noise_float(xz.mul(0.35)));
+  const wornN = mx_noise_float(xz.mul(0.35));
+  const worn = smoothstep(-0.7, -0.35, wornN);
   const runeCore = float(1).sub(smoothstep(0.035, runeAA.add(0.06), runeD)).mul(worn);
   const runeHalo = exp(runeD.mul(-7)).mul(0.28);
   const groove = float(1).sub(smoothstep(0.06, 0.15, runeD));
@@ -143,8 +144,11 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const fine = triplanar(textures.get('rock'), 0.2, 6);
 
   // polished black basalt, a touch cool, the slabs varied by the macro noise
-  const basalt = vec3(lum(flag.color)).mul(vec3(0.17, 0.162, 0.19)).mul(mix(float(0.75), float(1.2), macro));
-  const ashCol = vec3(lum(dust.color)).mul(vec3(0.36, 0.34, 0.33));
+  // each depth's own look, by weight (see depthLook): the Ashen Depths' forge
+  const ember = depthLook.x;
+  const basalt = vec3(lum(flag.color)).mul(mix(vec3(0.17, 0.162, 0.19), vec3(0.2, 0.158, 0.146), ember)).mul(mix(float(0.75), float(1.2), macro));
+  // the Ashen Depths: the ash drifted against the walls is a black crust of cooling lava
+  const ashCol = mix(vec3(lum(dust.color)).mul(vec3(0.36, 0.34, 0.33)), vec3(lum(dust.color)).mul(vec3(0.075, 0.06, 0.055)), ember);
   const ashW = smoothstep(0.2, 0.8, ash.add(dust.color.g.mul(0.6)).sub(0.25));
   let col: any = mix(basalt, ashCol, ashW);
   let nrm: any = mix(flag.normal, dust.normal, ashW);
@@ -155,7 +159,7 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const rockNrm = rock.normal.add(fine.normal).normalize();
   const raw = rock.color.mul(fine.color.mul(1.7));
   const strata = sin(positionWorld.y.mul(1.1).add(rock.color.r.mul(5))).mul(0.5).add(0.5);
-  const rockCol = vec3(lum(raw)).mul(vec3(0.3, 0.28, 0.31)).mul(mix(float(0.8), float(1.12), strata));
+  const rockCol = vec3(lum(raw)).mul(mix(vec3(0.3, 0.28, 0.31), vec3(0.33, 0.25, 0.215), ember)).mul(mix(float(0.8), float(1.12), strata));
   const rockW = max(smoothstep(0.82, 0.6, n.y), smoothstep(0.25, 1.2, positionWorld.y));
   col = mix(col, rockCol, rockW);
   nrm = mix(nrm, rockNrm, rockW);
@@ -171,22 +175,32 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const breathe = sin(time.mul(1.3).add(positionWorld.x.mul(0.07)).add(positionWorld.z.mul(0.05))).mul(0.18).add(0.82);
   // thin branching cracks where a slow noise crosses zero, their width wandering,
   // low on the walls and in the rock's darker grain, each with a scorched crust
-  const crackN = abs(mx_noise_float(positionWorld.mul(vec3(0.32, 0.5, 0.32))));
+  // the rock's own grain shoves the line about, so it zigzags along the crevices like a split in stone
+  const jag = fine.color.sub(0.3).mul(0.55).add(rock.color.sub(0.3).mul(0.25));
+  const crackN = abs(mx_noise_float(positionWorld.mul(vec3(0.32, 0.5, 0.32)).add(jag)));
   const crackW = mix(float(0.012), float(0.045), smoothstep(-0.4, 0.6, mx_noise_float(positionWorld.mul(0.11).add(7))));
   const grain = smoothstep(0.22, 0.08, lum(raw));
   const low = smoothstep(5.5, 0.4, positionWorld.y);
   const zone = grain.mul(rockW).mul(low);
   const crack = smoothstep(crackW, 0.0, crackN);
   col = col.mul(float(1).sub(smoothstep(crackW.mul(4), crackW, crackN).mul(zone).mul(0.55)));
-  const veins = crack.mul(zone).mul(3.6);
+  // in runs a few meters long, not one unbroken line round the walls
+  const veins = crack.mul(zone).mul(smoothstep(-0.4, 0.05, wornN)).mul(3.6);
   // a slow wave of light runs round the rings, and they flare as the way down opens
   const wave = sin(atan(xz.y.sub(runeRings[0].y), xz.x.sub(runeRings[0].x)).mul(3).sub(time.mul(1.4))).mul(0.25).add(0.85);
   const runes = runeCore.mul(2.4).add(runeHalo).mul(floorW).mul(wave).mul(gateOpen.mul(0.7).add(1));
   const bowl = smoothstep(-0.15, -1.6, positionWorld.y).mul(2.2);
+  // the Ashen Depths: lava seeping up through the joints between the slabs in
+  // patches, and through the cracks in the crust along the walls
+  // (in patches a few slabs across, where the runes' wear noise runs high)
+  const joint = smoothstep(0.955, 0.998, flag.roughness).mul(smoothstep(0.25, 0.62, wornN)).mul(smoothstep(0.3, 0.55, macro)).mul(float(1).sub(ashW));
+  const crustCracks = smoothstep(0.07, 0.0, crackN).mul(ashW);
+  const seep = joint.mul(1.25).add(crustCracks.mul(2.4)).mul(floorW).mul(ember);
+  col = col.mul(float(1).sub(joint.mul(ember).mul(floorW).mul(0.6)));
   mat.colorNode = col;
   mat.normalNode = transformNormalToView(nrm.normalize());
   mat.roughnessNode = rough;
   mat.metalnessNode = float(0);
-  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).mul(breathe));
+  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).add(seep).mul(breathe));
   return mat;
 }
