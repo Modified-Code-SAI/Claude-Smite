@@ -71,7 +71,35 @@ export const GOD_LINES: Record<string, Record<LineKind, readonly string[]>> = {
   },
 };
 
+/** Moments only the Jötunn speaks to, besides its waking, its kills and its fall. */
+export type GiantLineKind = 'brazier' | 'kneel' | 'shrine' | 'stand' | 'win';
+
+/** Anything a voice may say: a god's moment or the giant's. */
+export type VoiceKind = LineKind | GiantLineKind;
+
+export const GIANT_KINDS = ['start', 'kill', 'streak', 'brazier', 'kneel', 'shrine', 'stand', 'win', 'death'] as const satisfies readonly VoiceKind[];
+
+/**
+ * The Jötunn: old as the ice, slow, and contemptuous of the little gods
+ * until they bring it to its knees. Said in a voice deeper than any god's,
+ * and heard across the whole temple.
+ */
+export const GIANT_LINES: Record<(typeof GIANT_KINDS)[number], readonly string[]> = {
+  start: ['Little gods. Your fires end tonight.', 'I have slept for an age. No more.', 'The long night wakes.'],
+  kill: ['Crushed, like the rest.', 'Like frost underfoot.', 'Stay down, little god.'],
+  streak: ['Who is next to break?', 'Your gods grow few.'],
+  brazier: ['Another fire dies.', 'Your light goes dark.', 'Burn out, little flame.'],
+  kneel: ['You dare?', 'I will rise!'],
+  shrine: ['The old cold answers me.', 'This power is mine.'],
+  stand: ['Enough! Now face the true winter!', 'I will not fall to insects!'],
+  win: ['The long winter begins.', 'Your temple is mine to freeze.'],
+  death: ['The winter... ends...', 'Even the mountain... falls.'],
+};
+
+/** Everyone with lines, by god id: the gods, and the Jötunn. */
+export const VOICE_LINES: Record<string, Partial<Record<VoiceKind, readonly string[]>>> = { ...GOD_LINES, jotunn: GIANT_LINES };
+
 /** Where a line's recording is served from. */
-export function lineUrl(base: string, god: string, kind: LineKind, n: number): string {
+export function lineUrl(base: string, god: string, kind: VoiceKind, n: number): string {
   return `${base}voices/${god}/${kind}-${n + 1}.mp3`;
 }
