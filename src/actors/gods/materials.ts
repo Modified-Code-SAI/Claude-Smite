@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, atan, attribute, color, dot, exp, float, fract, fwidth, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
+  abs, atan, attribute, color, dot, exp, float, fract, fwidth, length, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
   mx_worley_noise_float, positionGeometry, positionView, pow, reflectView, saturate, select, sin, smoothstep, time, uv, vec3,
 } from '../../render/tsl';
 import { objectUniforms } from '../../render/shared';
-import { reliefFade, reliefNormal } from './relief';
+import { reliefFade, reliefNormal, surfaceGradient } from './relief';
 
 /**
  * Stylized PBR materials for the gods, keyed by the material names the build
@@ -118,7 +118,8 @@ const relief = (m: THREE.MeshPhysicalNodeMaterial, height: any): void => {
 };
 
 function skinMaterial(p: GodPalette): THREE.Material {
-  const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.55, sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xff9a7a) });
+  // the peach fuzz of skin, tinted by the god's own skin so a dark hide doesn't glitter red
+  const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.55, sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xff9a7a).lerp(new THREE.Color(p.skin), 0.45) });
   const d = data();
   const crease = d.x;
   const ridge = d.y;
@@ -126,7 +127,8 @@ function skinMaterial(p: GodPalette): THREE.Material {
   const fine = mx_noise_float(positionGeometry.mul(220)).mul(0.04);
   const base = mix(color(p.skin), color(p.skinDeep), crease.mul(0.75).add(mottle.mul(0.12)));
   // warm subsurface-looking tint in creases, light catches the ridges of muscle
-  const lit = base.mul(float(1).add(ridge.mul(0.22))).add(fine);
+  // the fine grain scales with the skin's own tone: added flat, it speckled dark hides (Anubis)
+  const lit = base.mul(float(1).add(ridge.mul(0.22)).add(fine.mul(2.5)));
   // painted face shading: deep eye sockets and tinted lips
   const lips = d.z;
   const socket = d.w;
@@ -137,7 +139,7 @@ function skinMaterial(p: GodPalette): THREE.Material {
   // a little warm back-scatter at grazing angles
   m.emissiveNode = color(p.skinDeep).mul(rim().mul(0.18));
   // pores, and the soft lumps of flesh over muscle
-  relief(m, fine.mul(0.006).mul(reliefFade(0.005)).add(mottle.mul(0.0009).mul(reliefFade(0.06))));
+  relief(m, fine.mul(0.004).mul(reliefFade(0.006)).add(mottle.mul(0.0009).mul(reliefFade(0.06))));
   return m;
 }
 
@@ -237,9 +239,12 @@ function metalMaterial(base: number, trim: number, opts: { engrave?: boolean; da
   // space, so it reads the same from the game camera as up close): a bright band where the
   // metal faces the camera, darker where it turns to mirror the ground, a softer sky above.
   // The map's real sky alone is too even, and gold reads as flat yellow plastic in it.
+  // Where it mirrors the ground the color also deepens (squared: gold goes amber, not
+  // brown-grey), the way painted gold shades.
   const ry = reflectView.normalize().y;
-  const studio = mix(float(0.58), float(1), smoothstep(-0.55, -0.05, ry)).add(exp(ry.mul(ry).mul(-28)).mul(0.18)).sub(smoothstep(0.35, 0.95, ry).mul(0.14));
-  col = col.mul(studio);
+  const low = float(1).sub(smoothstep(-0.55, -0.05, ry));
+  const studio = mix(float(1), float(0.62), low).add(exp(ry.mul(ry).mul(-28)).mul(0.18)).sub(smoothstep(0.35, 0.95, ry).mul(0.14));
+  col = mix(col, col.mul(col).mul(1.3), low.mul(0.8)).mul(studio);
   m.colorNode = col;
   m.roughnessNode = mix(float(0.3).add(hammer.mul(0.1)), float(0.16), band).add(groove.mul(0.3)).add(inside.mul(0.3));
   m.emissiveNode = color(trim).mul(rim().mul(0.08));
@@ -321,7 +326,8 @@ function hairMaterial(root: number, tip: number): THREE.Material {
   const phase = v.x.mul(7).add(mx_noise_float(positionGeometry.mul(40)).mul(0.32));
   // the strands settle to their average once a pixel spans one, instead of beating
   // into moire stripes across a fur collar or a beard seen from the game camera
-  const strands = mix(abs(sin(phase.mul(6.283))).pow(0.6), float(0.73), smoothstep(0.2, 0.55, fwidth(phase)));
+  const fw = fwidth(phase);
+  const strands = mix(abs(sin(phase.mul(6.283))).pow(0.6), float(0.73), smoothstep(0.2, 0.55, fw));
   const t = data().x; // root 0 .. tip 1
   const tint = data().y.mul(0.16).add(0.88); // per-clump variation
   // roots sit in the shadow of the clumps around them
@@ -330,8 +336,23 @@ function hairMaterial(root: number, tip: number): THREE.Material {
   const shine = smoothstep(0.18, 0.3, t).mul(float(1).sub(smoothstep(0.38, 0.52, t))).mul(strands).mul(0.22);
   m.colorNode = mix(color(root), color(tip), t.mul(0.8)).mul(strands.mul(0.3).add(0.62)).mul(occl).mul(tint).add(color(tip).mul(shine));
   m.roughnessNode = float(0.5).sub(strands.mul(0.15));
-  // each lock is a bundle of strands: ridges along it catch the light
-  relief(m, strands.mul(0.0015).mul(reliefFade(0.005)));
+  // each lock is a bundle of strands: smooth ridges along it catch the light. The bump
+  // goes long before the color does: a ridge a few pixels across already flips the
+  // normal from pixel to pixel and reads as a checkered dither on thin locks
+  relief(m, sin(phase.mul(6.283)).mul(0.00075).mul(float(1).sub(smoothstep(0.06, 0.2, fw))).mul(reliefFade(0.005)));
+  // strand sheen (Kajiya-Kay): hair shines in bands across the strands, not in spots. The
+  // lock runs the way its root-to-tip value rises over the surface, and a key light above
+  // and beside the camera lights it twice: a tight pale band, and a wider one tinted by the
+  // hair, shifted toward the tips (light that went into the strand and back out)
+  const g = surfaceGradient(t).grad;
+  const along = g.div(max(length(g), float(1e-12)));
+  const hv = vec3(-0.3, 0.55, 0.78).normalize().add(positionView.normalize().negate()).normalize();
+  const band = (shift: number, power: number): any => {
+    const th = dot(along.add(normalView.mul(shift)).normalize(), hv);
+    return pow(saturate(float(1).sub(th.mul(th))), power);
+  };
+  const lit = strands.mul(occl).mul(tint);
+  m.emissiveNode = vec3(1, 0.97, 0.92).mul(band(-0.1, 110).mul(0.3)).add(color(tip).mul(band(0.14, 20).mul(0.22))).mul(lit);
   return m;
 }
 
@@ -361,14 +382,16 @@ function eyeMaterial(c: number, glow = 1.4): THREE.Material {
   const streak = abs(sin(around.mul(19).add(mx_noise_float(positionGeometry.mul(500)).mul(2.5)))).mul(0.35).add(0.75);
   const fibers = mix(grain, grain.mul(streak), real);
   const sclera = mix(color(0xd8cfc4), color(0xf2ece4), smoothstep(0.3, 0.75, d));
-  let col: any = mix(sclera, color(c).mul(fibers).mul(float(1).add(collarette.mul(0.45))), iris);
+  // darker toward the rim, so even a pale god's iris stands clear of the white
+  const irisTone = smoothstep(0.81, 0.93, d).mul(0.5).add(0.5);
+  let col: any = mix(sclera, color(c).mul(fibers).mul(irisTone).mul(float(1).add(collarette.mul(0.45))), iris);
   col = mix(col, color(c).mul(0.12), limbal.mul(0.85));
   col = mix(col, color(0x050404), pupil);
   // the upper lid shades the top of the eye, and the corners sit in shadow
   const lid = float(1).sub(smoothstep(0.05, 0.6, up).mul(0.5)).mul(float(1).sub(float(1).sub(smoothstep(0.2, 0.55, d)).mul(real).mul(0.35)));
   m.colorNode = col.mul(lid);
   const key = smoothstep(0.991, 0.996, normalView.dot(vec3(-0.25, 0.32, 1).normalize())).mul(real);
-  m.emissiveNode = color(c).mul(iris.mul(float(1).sub(pupil)).mul(fibers).mul(lid).mul(glow)).add(vec3(1, 0.98, 0.95).mul(key.mul(2.2)));
+  m.emissiveNode = color(c).mul(iris.mul(float(1).sub(pupil)).mul(fibers).mul(irisTone).mul(lid).mul(glow)).add(vec3(1, 0.98, 0.95).mul(key.mul(2.2)));
   return m;
 }
 
