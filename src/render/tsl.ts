@@ -43,6 +43,7 @@ export const ivec2: any = T.ivec2;
 export const length: any = T.length;
 export const luminance: any = T.luminance;
 export const mat3: any = T.mat3;
+export const materialSheen: any = T.materialSheen;
 export const max: any = T.max;
 export const min: any = T.min;
 export const mix: any = T.mix;

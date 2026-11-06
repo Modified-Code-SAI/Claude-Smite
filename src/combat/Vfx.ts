@@ -786,6 +786,13 @@ export class CombatVfx {
 
   private readonly cloudLook = { color: 0, swirl: 0 };
 
+  /** The plain beasts' colors for the flares of their blows and deaths where something gives them a look of their own (the Descent's depths), or null for their own. */
+  monsterFire: GodPalette | null = null;
+
+  private monsterPalette(u: Unit): GodPalette {
+    return monsterPalette(u, this.monsterFire);
+  }
+
   /** The world's simulated clouds (World.billows); without them a billow falls back to a puff cloud. */
   billows: Billows | null = null;
 
@@ -835,7 +842,7 @@ export class CombatVfx {
         const reach = u.radius + 1.2;
         const x = u.x + f.x * reach;
         const z = u.z + f.z * reach;
-        this.burst(monsterPalette(u), x, this.ground(x, z) + 0.3, z, u.radius > 2 ? 2.4 : 1.5);
+        this.burst(this.monsterPalette(u), x, this.ground(x, z) + 0.3, z, u.radius > 2 ? 2.4 : 1.5);
         break;
       }
       case 'cast': {
@@ -854,7 +861,7 @@ export class CombatVfx {
         // a hop under a meter (a duelist held on their mark) is not worth a flash:
         // the countdown's hold used to stack hundreds of bursts in a few seconds
         if (!e.quiet && e.unit.alive && hypot(e.unit.x - e.fromX, e.unit.z - e.fromZ) > 1) {
-          const p = monsterPalette(e.unit);
+          const p = this.monsterPalette(e.unit);
           this.burst(p, e.fromX, this.ground(e.fromX, e.fromZ) + 1.2, e.fromZ, 1.2);
           this.burst(p, e.unit.x, e.unit.body.y + 1.2, e.unit.z, 1.2);
         }
@@ -868,18 +875,18 @@ export class CombatVfx {
         if ((u.kind !== 'god' && u.kind !== 'dummy' && u.kind !== 'monster') || !e.source || e.amount <= 0) break;
         if (this.clock - (this.lastFlare.get(u) ?? -1) < 0.12) break;
         this.lastFlare.set(u, this.clock);
-        this.burst(paletteOf(e.source), u.x, u.body.y + 1.4, u.z, e.crit ? 0.7 : 0.4);
+        this.burst(e.source.kind === 'monster' ? this.monsterPalette(e.source) : paletteOf(e.source), u.x, u.body.y + 1.4, u.z, e.crit ? 0.7 : 0.4);
         break;
       }
       case 'death': {
         const k = e.unit.kind;
         if (k === 'god' && this.soulPillars) this.pillar(paletteOf(e.unit), e.unit.x, e.unit.z);
         const power = k === 'minion' ? 0.6 : isStructure(e.unit) || e.unit.radius > 2 ? 4 : k === 'monster' ? (e.unit.tag.endsWith('warden') ? 2.6 : 0.9) : 1.8;
-        this.burst(monsterPalette(e.unit), e.unit.x, e.unit.body.y + (isStructure(e.unit) ? 4 : 1.2), e.unit.z, power);
+        this.burst(this.monsterPalette(e.unit), e.unit.x, e.unit.body.y + (isStructure(e.unit) ? 4 : 1.2), e.unit.z, power);
         // a buff leaves its Warden in a flare and settles on the god who took it
         if (k === 'monster' && e.unit.tag.endsWith('warden') && e.killer?.kind === 'god') {
           const g = e.killer;
-          this.burst(monsterPalette(e.unit), g.x, g.body.y + 1.3, g.z, 1.6);
+          this.burst(this.monsterPalette(e.unit), g.x, g.body.y + 1.3, g.z, 1.6);
         }
         break;
       }
@@ -900,7 +907,7 @@ export class CombatVfx {
         const size = p.cast ? Math.min(1.3, 0.35 + p.radius * 0.45) : isStructure(p.owner) ? 0.75 : p.owner.kind === 'minion' ? 0.16 : p.owner.tag.endsWith(':shade') ? 0.55 : 0.28;
         const look = p.cast ? lookFor(p.cast.skill.id) : basicLookFor(p.owner);
         // structure shots crackle like lightning so they read as heavy
-        v.reset(look ? this.skills.palette(look, p.owner) : monsterPalette(p.owner), size, at, isStructure(p.owner), look?.shot);
+        v.reset(look ? this.skills.palette(look, p.owner) : monsterPalette(p.owner, null), size, at, isStructure(p.owner), look?.shot);
         this.projectiles.set(p.id, v);
       }
       v.update(at, t);
@@ -948,7 +955,8 @@ export class CombatVfx {
       if (!v) {
         v = this.flashPool.take();
         const look = f.warn ? undefined : lookFor(f.skill);
-        const p = look ? this.skills.palette(look, f.owner) : monsterPalette(f.owner);
+        // (warnings keep the beasts' own colors, which read against every floor)
+        const p = look ? this.skills.palette(look, f.owner) : monsterPalette(f.owner, null);
         v.reset(p, f.shape.type === 'circle');
         if (look) {
           v.strength = this.skills.onFlash(f);
@@ -1008,7 +1016,7 @@ export class CombatVfx {
       // (a Shade's bolt too: its violet light sweeping over the floor shows where it flies)
       const shade = p.owner.tag.endsWith(':shade');
       if (!p.cast && !isStructure(p.owner) && !shade) continue;
-      sources.push({ x: p.x, y: this.ground(p.x, p.z) + projectileHeight(p), z: p.z, color: monsterPalette(p.owner).vfx, intensity: shade ? 7 : 9 });
+      sources.push({ x: p.x, y: this.ground(p.x, p.z) + projectileHeight(p), z: p.z, color: monsterPalette(p.owner, null).vfx, intensity: shade ? 7 : 9 });
     }
     this.lights.forEach((l, i) => {
       const s = sources[i];
@@ -1026,15 +1034,16 @@ export class CombatVfx {
 /** The palette a plain cloud starts from (its own color is passed in). */
 const CLOUD_PALETTE: GodPalette = { cloth: 0, trim: 0, glow: 0, vfx: 0xffffff, core: 0xffffff };
 
-/** Wardens burn in their buff's color; everything else uses its usual palette. */
-function monsterPalette(u: Unit): GodPalette {
+/** Wardens burn in their buff's color; the plain beasts in `fire` where something gives them a look of their own (the Descent's depths); everything else uses its usual palette. */
+function monsterPalette(u: Unit, fire: GodPalette | null): GodPalette {
   const p = paletteOf(u);
   if (u.tag.endsWith('treasureWyrm') || u.tag.endsWith('gildedThornback')) return { ...p, vfx: 0xffc83a, core: 0xfff6d0 };
   if (u.tag.endsWith('moltenColossus')) return { ...p, vfx: 0xff4a10, core: 0xffd080 };
   if (u.tag.endsWith('thornSpitter')) return { ...p, vfx: ACID, core: 0xe8ffc0 };
   if (u.tag.endsWith(':shade')) return { ...p, vfx: SHADE_GLOW, core: SHADE_CORE };
   if (u.tag.endsWith(':gravekeeper') || u.tag.endsWith(':ossuaryKing')) return { ...p, vfx: KEEPER_GLOW, core: KEEPER_CORE };
-  if (u.kind !== 'monster' || !u.tag.endsWith('warden')) return p;
+  if (u.kind !== 'monster') return p;
+  if (!u.tag.endsWith('warden')) return fire ?? p;
   const kind = u.tag.split(':')[0]!.split('-')[1] as keyof typeof BUFF_GLOW;
   const c = BUFF_GLOW[kind];
   return c === undefined ? p : { ...p, vfx: c, core: 0xffffff };

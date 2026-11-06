@@ -121,6 +121,9 @@ def clumps(paths: list[np.ndarray], normals: np.ndarray, style: Style, widths=No
         col = np.zeros((len(m.v), 4))
         col[:, 0] = np.repeat(t, sides)
         col[:, 1] = rng.uniform()  # per-clump random for tint variation
+        # how freely the lock swings (the hair shader's sway): a long mane fully, a beard
+        # half, a brow or a mustache hardly at all
+        col[:, 2] = min(1.0, float(np.linalg.norm(np.diff(path, axis=0), axis=1).sum()) / 0.5)
         m.col = col
         meshes.append(m)
     return merge(meshes)
@@ -133,3 +136,16 @@ def hair(body: Body, field: np.ndarray, spacing: float, style: Style, extra_root
         N = np.vstack([N, extra_normals])
     paths = grow(body, P, N, style)
     return clumps(paths, N, style), paths
+
+
+def pelt(body: Body, field: np.ndarray, spacing: float, length: float, width: float, clearance: float,
+         flow: Callable, lift: float = 0.8, seed: int = 1, curl: float = 0.25, jitter: float = 0.35) -> Mesh:
+    """A fur pelt: fur breaks into many narrow, pointed tufts of mixed length, not the
+    broad sculpted locks of hair (which, on a collar, read as a ring of plastic leaves).
+    Each tuft keeps one groove down its face."""
+    rng = np.random.default_rng(seed + 3)
+    style = Style(length=lambda P, N: length * rng.uniform(0.7, 1.15, len(P)), width=width, flatness=0.45, segments=6,
+                  sides=8, grooves=1, lift=lift, gravity=0.5, flow=flow, curl=curl, curl_freq=1.0, jitter=jitter,
+                  clearance=clearance, taper=1.5, seed=seed)
+    m, _ = hair(body, field, spacing, style)
+    return m

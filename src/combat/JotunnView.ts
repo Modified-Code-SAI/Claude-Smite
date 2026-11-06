@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clusterGeometry, crystalGeometry, GIANT_ACTS, GiantModel, MOTIONS, type GiantAct, type GiantPart, type GiantPartState, type GiantState } from '../actors/GiantModel';
 import { attribute, color, float, hash, instanceIndex, mix, mx_noise_float, normalView, positionGeometry, positionView, pow, saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
 import { placedGeometry, placeInstances, spriteQuads } from '../render/shared';
+import type { BillowOptions, BillowSheet } from '../scene/Billows';
 import type { Fire } from '../scene/Effects';
 import { giantFeet } from '../scene/frost';
 import { JOTUNN, PART_IDS, type PartId, type ShrineState } from '../sim/Jotunn';
@@ -27,6 +28,8 @@ export interface JotunnViewHost {
   shake(amount: number, at: THREE.Vector3): void;
   /** A frost burst from the shared spell effects (flash, sparks, ring, snow). */
   burst(at: THREE.Vector3, power: number): void;
+  /** A simulated cloud (World.billows), `size` meters across, its center at `at`: the snow its blows throw up, a smashed brazier's smoke. */
+  billow?(sheet: BillowSheet, at: THREE.Vector3, size: number, o?: BillowOptions): void;
   /** A giant's foot came down (its sound), 0..1 how hard. */
   footfall?(at: THREE.Vector3, k: number): void;
   /** A god it threw hit the ground (its sound), 0..1 how high it flew. */
@@ -445,6 +448,12 @@ const tmp = new THREE.Vector3();
 const tmp2 = new THREE.Vector3();
 const tmp3 = new THREE.Vector3();
 const tmp4 = new THREE.Vector3();
+const cloudAt = new THREE.Vector3();
+
+/** Powder snow in sun: blue-grey where a cloud shades itself, white where the sun catches it. */
+const POWDER = 0xdfe9f1;
+/** Snow churned with the rock a boulder tears up. */
+const GRIT = 0xc4ccd2;
 /** How wide (meters) a foot that is down parts the grass round it. */
 const FOOT_PART = 1.9;
 const FEET = [0, 1] as const;
@@ -693,6 +702,9 @@ export class JotunnView {
       this.host.burst(at, 2);
       this.spikes.add(at.clone().setY(at.y - 1.4), 0, 1.6, 0, 1.2);
       this.mist.ring(at, 14, 5, { life: 1.4, size0: 1, size1: 3.5, alpha: 0.45, color: 0xcfefff });
+      // the temple fire it held bursts out, and smoke rolls up from the wreck
+      this.host.billow?.('blast', at, 4.5, { duration: 1.2, tint: 0x4a4440, rise: 0.6 });
+      this.host.billow?.('smoke', cloudAt.copy(at).setY(at.y + 1.2), 5.5, { duration: 3, delay: 0.15, tint: 0x5e5a58, rise: 1.1 });
       this.host.shake(0.35, at);
     }
   }
@@ -713,6 +725,7 @@ export class JotunnView {
       const k = Math.min(1, was / JOTUNN.thrown.arc);
       const at = tmp.set(u.x, this.host.ground(u.x, u.z), u.z);
       this.snow.ring(at, Math.round(5 + 7 * k), 1.5 + 2.5 * k, { life: 0.9, size0: 0.5, size1: 1.6 + 1.2 * k, alpha: 0.5, color: 0xe2edf3 });
+      if (k > 0.3) this.powder(at, 2.5 + 2.5 * k, { duration: 1.2 });
       this.host.landing?.(at, k);
     }
   }
@@ -741,6 +754,8 @@ export class JotunnView {
   private step(at: THREE.Vector3, k: number, foot: 0 | 1): void {
     // snow kicked up around the foot, the ground shaking, and a print of frost left where it stood
     this.snow.ring(at, Math.round(5 + k * 5), 3 + k * 3, { life: 1.1, size0: 0.8, size1: 2.6 + k, alpha: 0.5, color: 0xe2edf3 });
+    // and a thin, low cloud of powder round the foot (thin: the gods fight at its feet, and its blows' warnings show there)
+    this.powder(at, 2.5 + 3 * k, { duration: 1 + 0.4 * k, opacity: 0.5 });
     this.prints.foot(at, this.yaw, foot ? 'footR' : 'footL');
     this.host.shake(0.18 * k, at);
     this.host.footfall?.(at, k);
@@ -757,6 +772,7 @@ export class JotunnView {
         this.prints.blow(at.x, at.z, 2.4);
         this.host.burst(tmp.copy(at).setY(at.y + 0.6), 1.4);
         this.snow.ring(at, 10, 6, { life: 1, size0: 1, size1: 3, alpha: 0.5, color: 0xe2edf3 });
+        this.powder(at, 5.5, { duration: 1.4 });
         this.host.shake(0.3, at);
         break;
       case 'stomp': {
@@ -765,6 +781,9 @@ export class JotunnView {
         this.host.burst(tmp.copy(at).setY(at.y + 0.5), 2.4);
         this.ringOfSpikes(at, 13, r * 0.55, r * 0.95, 1.6, 2.6, 0.9);
         this.snow.ring(at, 26, 12, { life: 1.5, size0: 1.4, size1: 4.5, alpha: 0.55, color: 0xe2edf3 });
+        // a wall of powder rolling out all round, and a finer plume thrown up through it
+        this.powder(at, r * 2.1, { duration: 1.9 });
+        this.host.billow?.('smoke', cloudAt.copy(at).setY(at.y + 2.2), r * 1.1, { duration: 1.8, delay: 0.1, tint: POWDER, bright: 1.3, opacity: 0.55, rise: 0.7 });
         this.host.shake(0.75, at);
         break;
       }
@@ -773,6 +792,8 @@ export class JotunnView {
         this.host.burst(tmp.copy(at).setY(at.y + 0.5), 2);
         this.ringOfSpikes(at, 9, 1.6, 3.6, 1.2, 2.2, JOTUNN.plant - 0.3);
         this.snow.ring(at, 18, 9, { life: 1.3, size0: 1.2, size1: 3.8, alpha: 0.55, color: 0xe2edf3 });
+        // (thinner over the planted fist, whose wrist the gods are about to strike)
+        this.powder(at, 7.5, { duration: 1.5, opacity: 0.6 });
         this.host.shake(0.65, at);
         break;
       case 'boulder':
@@ -780,11 +801,16 @@ export class JotunnView {
         this.host.burst(tmp.copy(at).setY(at.y + 0.8), 2.2);
         this.ringOfSpikes(at, 7, 1.2, 3.4, 0.7, 1.4, 1.2);
         this.snow.ring(at, 20, 10, { life: 1.4, size0: 1.2, size1: 4, alpha: 0.6, color: 0xc9d3da });
+        // snow and rock dust, the grit hanging and rising a little after the powder settles
+        this.powder(at, 8, { duration: 1.7, tint: GRIT });
+        this.host.billow?.('smoke', cloudAt.copy(at).setY(at.y + 1.8), 5, { duration: 2, delay: 0.08, tint: 0xa9b1b8, bright: 1.1, opacity: 0.6, rise: 0.8 });
         this.host.shake(0.5, at);
         break;
       case 'roar': {
         // a wave of frost mist rolls out from its feet as the roar hits
         this.mist.ring(at, 36, 16, { life: 1.4, size0: 1.6, size1: 5, alpha: 0.45, color: 0xa8e8ff });
+        // the blast of it lifts the loose snow off the ground all round
+        this.powder(at, 15, { duration: 1.8, tint: 0xd6eaf6, opacity: 0.6 });
         this.host.burst(tmp.copy(at).setY(at.y + 0.5), 2.6);
         this.host.shake(0.6, at);
         break;
@@ -835,13 +861,23 @@ export class JotunnView {
       }
       if (Math.random() < 0.6) this.snow.spawn(tmp.set(x + fx * d, this.host.ground(x + fx * d, z + fz * d) + 0.5, z + fz * d), tmp2.set((Math.random() - 0.5) * 4, 2 + Math.random() * 2, (Math.random() - 0.5) * 4), { life: 1.6, size0: 1.5, size1: 4.5, alpha: 0.55, color: 0xe2edf3, drag: 1.2 });
     }
+    // powder bursting up down its length, each cloud as the ice reaches it
+    for (let d = 3; d < length; d += 4.2) {
+      const px = x + fx * d;
+      const pz = z + fz * d;
+      this.powder(tmp.set(px, this.host.ground(px, pz), pz), width * 1.7, { duration: 1.7, delay: d * 0.018 });
+    }
     // frost left down its length
     for (let d = 3; d < length; d += 4.5) this.prints.blow(x + fx * d, z + fz * d, Math.max(2, width * 0.75));
   }
 
-  private shatter(_part: GiantPart, at: THREE.Vector3): void {
+  private shatter(part: GiantPart, at: THREE.Vector3): void {
     this.host.burst(at, 1.6);
     this.mist.ring(at, 12, 7, { life: 0.9, size0: 0.8, size1: 2.6, alpha: 0.6, color: 0xbfefff });
+    // a flash of cold blue fire where the ice bursts, then a cloud of ice dust hanging a moment (the rune and crown bigger)
+    const big = part === 'rune' || part === 'crown' ? 1.3 : 1;
+    this.host.billow?.('blast', at, 4 * big, { duration: 0.9, tint: 0x9fc8de, bright: 1.2, opacity: 0.7, flame: [0x1e8cff, 0xd4f6ff], rise: 0.4 });
+    this.host.billow?.('smoke', cloudAt.copy(at), 5.5 * big, { duration: 1.8, delay: 0.06, tint: 0xd8eef8, bright: 1.3, opacity: 0.55, rise: 0.3 });
     this.host.shake(0.3, at);
   }
 
@@ -867,7 +903,17 @@ export class JotunnView {
     at.y = this.host.ground(at.x, at.z);
     this.prints.blow(at.x, at.z, 3 + 2.5 * k);
     this.snow.ring(at, Math.round(30 * k), 14, { life: 2, size0: 2, size1: 6, alpha: 0.6, color: 0xe2edf3 });
+    // the ground round it goes up in powder, thin enough that the gods rushing its crown as it kneels still see it
+    this.powder(at, 9 + 4 * k, { duration: 1.8, opacity: 0.45 });
+    this.host.billow?.('smoke', cloudAt.copy(at).setY(at.y + 3), 5 + 3 * k, { duration: 2, delay: 0.15, tint: POWDER, bright: 1.15, opacity: 0.3, rise: 0.6 });
     this.host.shake(0.9 * k, at);
+  }
+
+  /** A low cloud of powder snow thrown up where a blow lands, `size` meters across. */
+  private powder(at: THREE.Vector3, size: number, o: BillowOptions = {}): void {
+    // the dust sheet is half as tall as wide: sat on the ground, not sunk in it
+    // (bright as snow in sun, and thin enough that the ground's warnings show through)
+    this.host.billow?.('dust', cloudAt.set(at.x, at.y + size * 0.13, at.z), size, { duration: 1.8, tint: POWDER, bright: 1.15, opacity: 0.8, ...o });
   }
 
   // ------------------------------------------------------------------ frame
@@ -897,6 +943,8 @@ export class JotunnView {
         this.spikes.add(tmp.set(gx, this.host.ground(gx, gz), gz), Math.random() * 6.28, 0.5 + Math.random() * 0.5, 0, 0.8);
         // and stays white with frost where the breath raked it
         if (Math.random() < 0.6) this.prints.blow(gx, gz, 1.8 + Math.random() * 1.1);
+        // the breath billows where it strikes the ground
+        if (Math.random() < 0.5) this.host.billow?.('smoke', cloudAt.set(gx, this.host.ground(gx, gz) + 1.4, gz), 4.5 + Math.random() * 2, { duration: 1.6, tint: 0xbfe6f6, bright: 1.3, opacity: 0.6, rise: 0.4 });
       }
     }
     // its breath in the cold, every few seconds (quick and heavy while it kneels), but not over its frost breath

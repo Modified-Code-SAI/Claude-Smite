@@ -203,9 +203,7 @@ class Jotunn(God):
 
     # ------------------------------------------------------------- pieces
     def fur_patch(self, name, field, length, width, clearance, spacing, seed, flow, lift=0.7):
-        style = hairmod.Style(length=length, width=width * 1.3, flatness=0.4, segments=6, sides=8, grooves=3, lift=lift, gravity=0.5, flow=flow,
-                              curl=0.3, curl_freq=1.0, jitter=0.4, clearance=clearance, taper=0.8, seed=seed)
-        m, _ = hairmod.hair(self.body, field, spacing, style)
+        m = hairmod.pelt(self.body, field, spacing * 0.75, length, width * 0.85, clearance, flow, lift=lift, seed=seed, curl=0.3, jitter=0.4)
         self.add(name, 'fur', m, None)
 
     def surface(self, O, D, bones=None):
