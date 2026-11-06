@@ -69,18 +69,6 @@ export const GOD_LINES: Record<string, Record<LineKind, readonly string[]>> = {
     taunt: ['I have embalmed kings. You will not take long.', 'Your heart is lighter than a feather. That is not a compliment.', 'Run. The sand remembers your steps.'],
     omw: ['I am coming.', 'Death is on its way.'],
   },
-  // calm, bright and certain, like the morning
-  amaterasu: {
-    select: ['Let the dawn begin.'],
-    start: ['Every shadow ends where I stand.', 'Rise with me. The day is ours.'],
-    kill: ['The light finds you.', 'Night is over for you.', 'One arrow. One sunrise.'],
-    streak: ['The sun does not miss.', 'They fall like evening.'],
-    ult: ['Behold the sun!', 'Dawn breaks!'],
-    death: ['Even the sun must set...', 'I will rise again...'],
-    respawn: ['The sun always rises.', 'Morning has returned.'],
-    taunt: ['I left a cave to see this? How disappointing.', 'You cast a very small shadow.', 'Look at me. Go on. Try not to squint.'],
-    omw: ['I am coming. Hold the light.', 'On my way, swift as morning.'],
-  },
   // gentle and patient, never cruel: he is the death that comes kindly
   thanatos: {
     select: ['Hush now. I am here.'],

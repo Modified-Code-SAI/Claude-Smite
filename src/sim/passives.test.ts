@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amaterasu, anubis, loki, odin, thanatos, thor, zeus } from '../game/gods';
+import { anubis, loki, odin, thanatos, thor, zeus } from '../game/gods';
 import type { GodDef } from '../game/types';
 import { godUnit } from './factory';
 import { conquestBases } from './Match';
@@ -86,21 +86,6 @@ describe('god passives', () => {
     ally.combatant.health = ally.combatant.stats.maxHealth * 0.3;
     basicAt(sim, foe, ally);
     expect(ally.combatant.shieldTotal).toBeGreaterThan(0);
-  });
-
-  it('Amaterasu: each basic that lands stacks attack speed, up to five times, and the stacks fade together', () => {
-    const sim = setup();
-    const a = place(sim, amaterasu, 'order', 0, 0);
-    const t = place(sim, thor, 'chaos', 0, -8);
-    t.brain = null;
-    t.combatant.health = 1e6;
-    const base = a.combatant.stats.bonusAttackSpeed;
-    basicAt(sim, a, t);
-    expect(a.combatant.stats.bonusAttackSpeed).toBeCloseTo(base + 0.06, 5);
-    for (let i = 0; i < 6; i++) basicAt(sim, a, t);
-    expect(a.combatant.stats.bonusAttackSpeed).toBeCloseTo(base + 0.3, 5);
-    for (let i = 0; i < 4 * 60; i++) sim.step(1 / 60);
-    expect(a.combatant.stats.bonusAttackSpeed).toBeCloseTo(base, 5);
   });
 
   it('Thanatos: each hit leaves Drowse, up to 3 stacks, slowing the target more and making his hits land harder', () => {

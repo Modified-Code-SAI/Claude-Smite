@@ -4,8 +4,7 @@ from .odin import Odin
 from .loki import Loki
 from .anubis import Anubis
 from .jotunn import Jotunn
-from .amaterasu import Amaterasu
 from .thanatos import Thanatos
 
-GODS = {'zeus': Zeus, 'thor': Thor, 'odin': Odin, 'loki': Loki, 'anubis': Anubis, 'jotunn': Jotunn, 'amaterasu': Amaterasu,
+GODS = {'zeus': Zeus, 'thor': Thor, 'odin': Odin, 'loki': Loki, 'anubis': Anubis, 'jotunn': Jotunn,
         'thanatos': Thanatos}

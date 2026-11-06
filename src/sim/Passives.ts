@@ -22,13 +22,8 @@ const ANUBIS_RANGE = 9 * WORLD_SCALE;
 const ANUBIS_THRESHOLD = 0.3;
 const ANUBIS_SHIELD = 0.12;
 const ANUBIS_COOLDOWN = 30;
-/** Amaterasu: each landed basic adds attack speed, stacking, and restarts the timer. */
-const DAWN_KEY = 'unbroken-dawn';
-const DAWN_STACK = 0.06;
-const DAWN_MAX = 5;
-const DAWN_DURATION = 3;
 /** Thanatos: every hit leaves Drowse (the mark Final Rest spends); each stack slows and softens the target. */
-export const DROWSE = 'drowse';
+const DROWSE = 'drowse';
 const DROWSE_MAX = 3;
 const DROWSE_DURATION = 5;
 const DROWSE_SLOW = 0.06;
@@ -105,7 +100,6 @@ export class Passives {
       if (n >= THOR_EVERY) this.shockwave(src, e.target);
     }
     if (src && god === 'thanatos' && e.target.alive) this.drowse(src, e.target);
-    if (src && god === 'amaterasu' && !e.ability) src.combatant.stackTimedMod(DAWN_KEY, 'bonusAttackSpeed', DAWN_STACK, DAWN_MAX, DAWN_DURATION);
     this.anubisWard(e.target);
   }
 
