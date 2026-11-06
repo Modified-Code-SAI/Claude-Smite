@@ -1,8 +1,9 @@
 /**
  * Original procedural score. A handful of instruments are synthesized once
  * (strings, choir, harp, horn, bass, drums) and a small sequencer plays them
- * at pitch from written parts: a slow hymn for the title screen and a
- * battle theme for the match whose drums and brass rise with the fighting.
+ * at pitch from written parts: a slow hymn for the title screen, a war
+ * council for the god pick and a battle theme for the match whose drums
+ * and brass rise with the fighting.
  */
 
 import type { AudioEngine } from './AudioEngine';
@@ -253,6 +254,50 @@ const HYMN: Song = {
     };
     for (const [m, b, d] of theme[bar] ?? []) out.push({ inst: 'mus.horn', midi: m - 12, beat: b, dur: d, gain: 0.34, layer: 'base' });
     if (loop >= 1 && bar === 14) out.push({ inst: 'mus.bell', midi: 86, beat: 0, gain: 0.25, layer: 'base' }, { inst: 'mus.bell', midi: 81, beat: 1, gain: 0.2, layer: 'base' });
+  },
+};
+
+/**
+ * The god pick: a war council before the battle, about one loop of the
+ * twenty-second clock. A low string pulse and a heartbeat under a held choir
+ * while everyone chooses, a horn calling over the second half; the `battle`
+ * layer (the pick screen raises it as the clock runs down) brings in the
+ * drums, the low brass, the high strings and the high choir, so the last
+ * seconds build to the lock.
+ */
+const COUNCIL: Song = {
+  bpm: 84,
+  beats: 4,
+  chords: ['Dm', 'Dm', 'Bb', 'Bb', 'Gm', 'Gm', 'Asus', 'A'],
+  write(bar, _loop, ch, out) {
+    // -- base: the pulse, the heartbeat and the held voices
+    if (bar % 2 === 0) {
+      for (const n of up(ch, 12)) out.push({ inst: 'mus.pad.hi', midi: n, beat: 0, dur: 8, gain: 0.2, layer: 'base' });
+      for (const n of up(ch, 12)) out.push({ inst: 'mus.choir', midi: n, beat: 0, dur: 8, gain: 0.15, layer: 'base' });
+      out.push({ inst: 'mus.bass', midi: ch[0]! - 12, beat: 0, dur: 8, gain: 0.4, layer: 'base' });
+    }
+    for (let i = 0; i < 8; i++) out.push({ inst: 'mus.stac', midi: i % 4 === 3 ? ch[2]! : ch[0]!, beat: i * 0.5, gain: i % 2 ? 0.13 : 0.21, layer: 'base', pan: -0.15 });
+    for (const b of [0, 2]) out.push({ inst: 'mus.frame', beat: b, gain: 0.34, layer: 'base' }, { inst: 'mus.frame', beat: b + 0.4, gain: 0.2, layer: 'base' });
+    if (bar % 4 === 0) out.push({ inst: 'mus.bell', midi: ch[0]! + 36, beat: 0, gain: 0.13, layer: 'base' });
+    const call: Record<number, [number, number, number][]> = {
+      4: [[62, 0, 1], [65, 1, 1], [67, 2, 2]],
+      5: [[70, 0, 3], [69, 3, 1]],
+      6: [[69, 0, 2], [64, 2, 2]],
+      7: [[61, 0, 4]],
+    };
+    for (const [m, b, d] of call[bar] ?? []) out.push({ inst: 'mus.horn', midi: m - 12, beat: b, dur: d, gain: 0.3, layer: 'base' });
+
+    // -- battle: the clock running out
+    const drums: [number, number, string][] = [[0, 0.85, 'mus.taiko'], [1, 0.4, 'mus.taiko.hi'], [1.5, 0.35, 'mus.taiko.hi'], [2, 0.7, 'mus.taiko'], [3, 0.45, 'mus.taiko.hi'], [3.5, 0.55, 'mus.taiko']];
+    for (const [b, g, inst] of drums) out.push({ inst, beat: b, gain: g, layer: 'battle' });
+    if (bar % 2 === 1) for (const b of [3.25, 3.5, 3.75]) out.push({ inst: 'mus.taiko.hi', beat: b, gain: 0.25 + (b - 3.25) * 0.4, layer: 'battle' });
+    for (let i = 0; i < 16; i++) out.push({ inst: 'mus.stac.hi', midi: (i % 4 === 2 ? ch[1]! : ch[0]!) + 12, beat: i * 0.25, gain: i % 4 === 0 ? 0.17 : 0.1, layer: 'battle', pan: 0.25 });
+    if (bar % 2 === 0) {
+      for (const n of ch) out.push({ inst: 'mus.horn.lo', midi: n, beat: 0, dur: 1.5, gain: 0.26, layer: 'battle' }, { inst: 'mus.horn.lo', midi: n, beat: 2.5, dur: 1, gain: 0.2, layer: 'battle' });
+      for (const n of up(ch, 24)) out.push({ inst: 'mus.choir.hi', midi: n, beat: 0, dur: 8, gain: 0.08, layer: 'battle' });
+    }
+    if (bar === 7) out.push({ inst: 'mus.swell', beat: 4 - (1.8 * COUNCIL.bpm) / 60, gain: 0.45, layer: 'battle' });
+    if (bar === 0) out.push({ inst: 'mus.crash', beat: 0, gain: 0.3, layer: 'battle' });
   },
 };
 
@@ -627,7 +672,7 @@ const FROST_STAND: Song = {
   },
 };
 
-export const SONGS = { hymn: HYMN, dawn: DAWN, battle: BATTLE, siege: SIEGE, abyss: ABYSS, forge: FORGE, drowned: DROWNED, frost: FROST, frostStand: FROST_STAND } as const;
+export const SONGS = { hymn: HYMN, council: COUNCIL, dawn: DAWN, battle: BATTLE, siege: SIEGE, abyss: ABYSS, forge: FORGE, drowned: DROWNED, frost: FROST, frostStand: FROST_STAND } as const;
 export type SongName = keyof typeof SONGS;
 
 // ---------------------------------------------------------------------------
