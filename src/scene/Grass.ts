@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { Layers } from '../render/Layers';
 import {
-  attribute, cameraPosition, clamp, cos, dot, faceDirection, float, fract, mix, mx_noise_float, normalize, positionLocal, pow, sin,
+  attribute, cameraPosition, clamp, cos, dot, faceDirection, float, fract, min, mix, mx_noise_float, normalize, positionLocal, pow, sin,
   smoothstep, step, time, transformNormalToView, uniform, vec2, vec3,
 } from '../render/tsl';
 import { rng } from '../core/random';
 import type { Terrain } from './Terrain';
-import { frosted } from './frost';
+import { frosted, giantFeet } from './frost';
 import type { QualitySettings } from '../render/Quality';
 import { hypot } from '../core/math';
 import { slice } from '../core/slices';
@@ -133,6 +133,16 @@ export class Grass {
     const pushDist = toBlade.xz.length();
     const push = smoothstep(1.4, 0.2, pushDist).mul(0.9);
     const pushDir = toBlade.xz.div(pushDist.max(1e-3));
+    // the Jötunn's feet part it far wider and press it nearly flat (each is 0 wide when lifted, and in every other mode)
+    const parted = (f: any) => {
+      const d = root.xz.sub(f.xz);
+      const dist = d.length();
+      const k = smoothstep(f.w.max(0.01), f.w.mul(0.3), dist).mul(step(0.05, f.w)).mul(1.1);
+      return d.div(dist.max(1e-3)).mul(k);
+    };
+    const pushAll = pushDir.mul(push).add(parted(giantFeet[0])).add(parted(giantFeet[1]));
+    const pushLen = pushAll.length();
+    const pushed = pushAll.mul(min(pushLen, 1.15).div(pushLen.max(1e-3)));
 
     const dirX = cos(yaw);
     const dirZ = sin(yaw);
@@ -146,7 +156,7 @@ export class Grass {
     const facing = vec2(dirZ.negate(), dirX);
     const bendXZ = facing.mul(lean)
       .add(vec2(this.wind.direction).mul(windAmt))
-      .add(pushDir.mul(push))
+      .add(pushed)
       .mul(bendCurve).mul(height);
     // Keep blade length roughly constant when bending.
     const sag = bendXZ.length().mul(bendXZ.length()).mul(0.35).div(height.max(0.1));
