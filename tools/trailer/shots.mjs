@@ -171,7 +171,14 @@ export const SHOTS = {
       if (ally) s.combat.sim.teleport(ally, -4.4, 7.8, -Math.PI / 2);
       if (foes[0]) s.combat.sim.teleport(foes[0], 2.4, 6.0, Math.PI / 2);
       if (foes[1]) s.combat.sim.teleport(foes[1], 4.2, 7.6, Math.PI / 2);
-      s.vars.p = p; s.vars.all = [p, ally, ...foes].filter(Boolean);
+      // only the player's bolt in the air: the bots hold their skills (a cloud or whirlwind
+      // from one of the shuffled gods would fill the frame), the rest leave, and the fight so far is cleared
+      for (const u of gods) if (u !== ally && u !== foes[0] && u !== foes[1]) s.combat.sim.remove(u);
+      for (const u of [ally, ...foes]) if (u?.brain?.options) u.brain.options.aggression = 0;
+      s.combat.sim.projectiles.length = 0;
+      s.combat.sim.zones.length = 0;
+      s.combat.vfx.reset();
+      s.vars.p = p; s.vars.all = [p, ally, ...foes.slice(0, 2)].filter(Boolean);
       return { who: s.vars.all.map((u) => u.name) };
     }`, `(dt, t, s) => {
       const p = s.vars.p, f = s.vars.all.find((u) => u.team !== p.team);
