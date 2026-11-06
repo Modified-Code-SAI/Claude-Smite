@@ -7,6 +7,7 @@ import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
 import { DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
+import { DepthTracks } from '../scene/underworld/prints';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { ArcView } from './Arcs';
 import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
@@ -118,6 +119,8 @@ export class DescentView {
   /** The newest soul fire already marked (the Ossuary King's rain sends a bolt into each new one). */
   private lastErupt = 0;
   private clock = 0;
+  /** Where the gods have walked, marked in the depth's floor (fed by `step`). */
+  private readonly tracks: DepthTracks;
   /** The slain still to go down into the ground: where, when (on this view's clock), how big and whether a boss. */
   private readonly sinking: { x: number; z: number; at: number; r: number; boss: boolean }[] = [];
   /** The run of souls reaching the player: its length and when the last landed. */
@@ -181,6 +184,13 @@ export class DescentView {
     this.chainArc.setColors(RELIC_FX.chain.vfx, RELIC_FX.chain.core);
     this.chainArc.group.visible = false;
     world.vfx.add(this.chainArc.group);
+    this.tracks = new DepthTracks(groundAt);
+    world.vfx.add(this.tracks.mesh);
+  }
+
+  /** A god's foot came down (UnitViews.onFootfall): it marks the depth's floor. */
+  step(x: number, z: number, dx: number, dz: number, right: boolean, size: number): void {
+    if (this.run.phase !== 'descend') this.tracks.step(x, z, dx, dz, right, size);
   }
 
   frame(dt: number, time: number): void {
@@ -192,6 +202,7 @@ export class DescentView {
       this.wisps.swarm.clear();
       this.raised.clear();
       this.sinking.length = 0;
+      this.tracks.clear();
       this.callAt.age = -1;
       this.callRing.mesh.visible = false;
     }
@@ -219,6 +230,7 @@ export class DescentView {
       for (const d of this.eruptions) d.setColors(c.glow, c.fire.high);
     }
     this.clock += dt;
+    this.tracks.update(dt);
     for (let i = this.sinking.length - 1; i >= 0; i--) {
       const s = this.sinking[i]!;
       if (this.clock < s.at) continue;

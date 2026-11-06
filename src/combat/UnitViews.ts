@@ -249,7 +249,13 @@ interface UnitView {
   /** The meshes that cast shadows when near the camera, collected on first use. */
   casters?: THREE.Mesh[];
   shadows?: boolean;
+  /** Each foot's ball and whether it is planted, once a mode asks for footfalls (see `onFootfall`). */
+  feet?: { bone: THREE.Bone; down: boolean }[];
 }
+
+/** A god's toe is planted below this height off the ground, and lifted again above the second (meters on the UAL mannequin). */
+export const FOOT_DOWN = 0.12;
+export const FOOT_UP = 0.2;
 
 /**
  * The 3D side of every unit: god models for bots and summons, training
@@ -271,6 +277,13 @@ export class UnitViews {
   readonly catchAt = new THREE.Vector3();
   /** Underworld Descent: the dead claw their way up out of the floor instead of appearing on it. */
   emergeMonsters = false;
+  /**
+   * Underworld Descent: a god's foot came down, the ball of it at (x, z), the
+   * god heading along (dx, dz), `size` its height against the mannequin's.
+   * Read off the run animation, so it lands as the foot does. Null: no mode
+   * wants them, and the feet are never read.
+   */
+  onFootfall: ((x: number, z: number, dx: number, dz: number, right: boolean, size: number) => void) | null = null;
   /** Turns laid over how gods face (see `turn`), by god. */
   private readonly turns = new Map<Unit, { yaw: number; weight: number }>();
   private readonly prev = new Map<Unit, THREE.Vector3>();
@@ -723,6 +736,8 @@ export class UnitViews {
       v.root.visible = u.alive || lying || v.deathTime < GOD_CORPSE;
       v.root.position.y += v.lift;
       this.leanThrown(u, v, 0);
+      // (the controller animates the player's model; its feet are read all the same)
+      if (this.onFootfall && v.model) this.footfalls(u, v, hypot(u.vx, u.vz));
       return;
     }
 
@@ -798,6 +813,32 @@ export class UnitViews {
       every === 1 ? v.animDt : Math.min(v.animDt, 1 / 60),
     );
     v.animDt = 0;
+    if (this.onFootfall) this.footfalls(u, v, speed);
+  }
+
+  /** Watches a god's toes for the moment each comes down (see `onFootfall`); only gods seen walking on the ground leave a mark. */
+  private footfalls(u: Unit, v: UnitView, speed: number): void {
+    const model = v.model!;
+    const feet = (v.feet ??= ['DEF-toe.L', 'DEF-toe.R'].flatMap((n) => {
+      const bone = model.bone(n);
+      return bone ? [{ bone, down: true }] : [];
+    }));
+    if (feet.length !== 2) return;
+    const walking = u.alive && v.root.visible && !u.forced && speed > 1.2;
+    const size = model.height / 1.75;
+    const rootY = v.root.matrixWorld.elements[13]!;
+    for (let i = 0; i < 2; i++) {
+      const f = feet[i]!;
+      const e = f.bone.matrixWorld.elements;
+      const h = (e[13]! - rootY) / size;
+      if (f.down) {
+        if (h > FOOT_UP) f.down = false;
+        continue;
+      }
+      if (h > FOOT_DOWN) continue;
+      f.down = true;
+      if (walking) this.onFootfall!(e[12]!, e[14]!, u.vx / speed, u.vz / speed, i === 1, size);
+    }
   }
 
   /** Flung through the air, a god leans the way it flies, turning round its middle (see thrownLean); `roll` is its roll otherwise. */

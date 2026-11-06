@@ -679,6 +679,8 @@ export class CombatGame implements Updatable {
     this.descentMode = mode;
     this.descent = mode.run;
     this.views.emergeMonsters = true;
+    // the gods' footfalls mark each depth's floor
+    this.views.onFootfall = (x, z, dx, dz, right, size) => mode.view.step(x, z, dx, dz, right, size);
     // the boss bar marks where the boss calls up its adds
     this.hud.bossPhases = (u) => (u === mode.run.boss ? DESCENT.bossAdds : null);
     this.netHost = mode.host;
