@@ -49,7 +49,12 @@ function ccTag(u: Unit): { kind: CCKind; text: string } | null {
     const bestHard = best !== null && !SOFT_CC.has(best.kind);
     if (!best || (hard && !bestHard) || (hard === bestHard && a.remaining > best.remaining)) best = a;
   }
-  return best && { kind: best.kind, text: `${CC_LABEL[best.kind]} ${best.remaining.toFixed(1)}` };
+  return best && { kind: best.kind, text: `${CC_LABEL[best.kind]} ${ccSeconds(best.remaining)}` };
+}
+
+/** Seconds of crowd control left, to a tenth and rounded up, so an effect still on never reads 0.0. */
+export function ccSeconds(remaining: number): string {
+  return (Math.ceil(remaining * 10 - 1e-6) / 10).toFixed(1);
 }
 
 interface Bar {
@@ -535,7 +540,7 @@ export class CombatHud {
 
     // crowd control on the player
     const cc = c.cc.active.filter((a) => CC_LABEL[a.kind]);
-    setHtml(this.status, cc.map((a) => `<span class="ch-cc ch-cc-${a.kind}">${CC_LABEL[a.kind]} ${a.remaining.toFixed(1)}</span>`).join(''));
+    setHtml(this.status, cc.map((a) => `<span class="ch-cc ch-cc-${a.kind}">${CC_LABEL[a.kind]} ${ccSeconds(a.remaining)}</span>`).join(''));
 
     this.recall.classList.toggle('show', p.recall > 0);
     setStyle(this.recallFill, 'width', percent(1 - p.recall / RECALL_TIME));
