@@ -105,6 +105,9 @@ function setHtml(e: Element, html: string): void {
 }
 const percent = (f: number): string => `${(f * 100).toFixed(1)}%`;
 
+/** A toast coming in (the same as the stylesheet's ch-in), for the ones that waited. */
+const TOAST_IN: Keyframe[] = [{ opacity: 0, transform: 'scale(1.3)' }, { opacity: 1, transform: 'none' }];
+
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?: HTMLElement, html = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
   e.className = cls;
@@ -161,6 +164,11 @@ export class CombatHud {
   private target: Unit | null = null;
   private objectiveLag = 1;
   private readonly floaters: Floater[] = [];
+  /** Toasts showing, and seconds left on each (game time: see `toast`). */
+  private readonly toasts: { el: HTMLElement; text: string; left: number }[] = [];
+  /** While set (a mode's match card or camera shot is up), toasts wait out of sight with their time stopped. */
+  holdToasts = false;
+  private toastsHeld = false;
   private readonly v = new THREE.Vector3();
   private readonly head = new THREE.Vector3();
   private readonly screen = { x: 0, y: 0 };
@@ -247,10 +255,47 @@ export class CombatHud {
     this.bars.clear();
   }
 
+  /**
+   * A line in the middle of the screen for a moment. Its time runs with the
+   * game's frames, not the wall clock: a mode's opening toasts are made while
+   * the loading screen still covers everything, and on a clock they faded
+   * before the match was shown. Longer lines stay up long enough to read.
+   */
   toast(text: string, kind: 'info' | 'warn' | 'gold' = 'info'): void {
-    const t = el('div', `ch-toast ch-toast-${kind}`, this.toastBox, text);
-    setTimeout(() => t.classList.add('out'), 1400);
-    setTimeout(() => t.remove(), 2000);
+    const left = Math.min(6, 1.4 + text.length * 0.035);
+    // the same line again (a skill key pressed over and over) keeps the one showing up instead of stacking
+    const same = this.toasts.find((t) => t.left > 0 && t.text === text);
+    if (same) {
+      same.left = left;
+      return;
+    }
+    // and only the newest few stay
+    while (this.toasts.filter((t) => t.left > 0).length >= 4) {
+      const old = this.toasts.find((t) => t.left > 0)!;
+      old.left = 0;
+      old.el.classList.add('out');
+    }
+    this.toasts.push({ el: el('div', `ch-toast ch-toast-${kind}`, this.toastBox, text), text, left });
+  }
+
+  private ageToasts(dt: number): void {
+    if (this.holdToasts !== this.toastsHeld) {
+      this.toastsHeld = this.holdToasts;
+      this.toastBox.style.visibility = this.holdToasts ? 'hidden' : '';
+      // the ones that waited come in now
+      if (!this.holdToasts) for (const t of this.toasts) if (t.left > 0) t.el.animate(TOAST_IN, { duration: 250, easing: 'ease-out' });
+    }
+    if (this.holdToasts) return;
+    for (let i = this.toasts.length - 1; i >= 0; i--) {
+      const t = this.toasts[i]!;
+      const was = t.left;
+      t.left -= dt;
+      if (was > 0 && t.left <= 0) t.el.classList.add('out');
+      if (t.left <= -0.6) {
+        t.el.remove();
+        this.toasts.splice(i, 1);
+      }
+    }
   }
 
   /** Outline the health bar of the enemy the player's basic attack is lined up on. */
@@ -376,6 +421,7 @@ export class CombatHud {
     const p = this.player;
     const c = p.combatant;
     const s = c.stats;
+    this.ageToasts(dt);
 
     // resources and level
     const hpPct = (c.health / s.maxHealth) * 100;
