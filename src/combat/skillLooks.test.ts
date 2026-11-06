@@ -3,7 +3,7 @@ import { GODS } from '../game/gods';
 import { SKILL_LOOKS } from './skillLooks';
 
 /** The gods whose every skill must have its own look (gods added later get theirs in a later round). */
-const COVERED = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos'];
+const COVERED = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan', 'cthulhu'];
 
 describe('skill looks', () => {
   it('gives every skill of the covered gods its own look', () => {
