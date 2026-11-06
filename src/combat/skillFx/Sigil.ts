@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { abs, cos, exp, float, max, min, mix, sin, smoothstep, step, uv, vec2, vec4 } from '../../render/tsl';
+import { abs, atan, cos, exp, float, fract, max, min, mix, sin, smoothstep, step, uv, vec2, vec4 } from '../../render/tsl';
 import { objectUniforms, useUniforms } from '../../render/shared';
 import type { Live } from './pool';
 
 /** The glyphs a sigil can draw (one shader draws them all). */
-export const GLYPHS = { bolt: 0, eye: 1, ankh: 2, algiz: 3, scales: 4, tiwaz: 5, moon: 6, heart: 7 } as const;
+export const GLYPHS = { bolt: 0, eye: 1, ankh: 2, algiz: 3, scales: 4, tiwaz: 5, moon: 6, heart: 7, star: 8, mask: 9, spiral: 10 } as const;
 export type Glyph = keyof typeof GLYPHS;
 
 const sigilUniforms = () => ({
@@ -67,9 +67,25 @@ function makeMaterial(): THREE.MeshBasicNodeMaterial {
   const moon = lines(crescent, seg(p, 0.36, 0.76, 0.7, 0.76), seg(p, 0.7, 0.76, 0.36, 0.42), seg(p, 0.36, 0.42, 0.7, 0.42));
   // a heart in an iron ring
   const heart = lines(frame, dome(p, -0.3, 0.2, 0.3), dome(p, 0.3, 0.2, 0.3), seg(p, -0.6, 0.2, 0, -0.62), seg(p, 0.6, 0.2, 0, -0.62));
+  // the morning star: a four-pointed star of Venus about a bright eye
+  const star = lines(
+    seg(p, 0, 0.9, 0.2, 0.2), seg(p, 0.2, 0.2, 0.9, 0), seg(p, 0.9, 0, 0.2, -0.2), seg(p, 0.2, -0.2, 0, -0.9),
+    seg(p, 0, -0.9, -0.2, -0.2), seg(p, -0.2, -0.2, -0.9, 0), seg(p, -0.9, 0, -0.2, 0.2), seg(p, -0.2, 0.2, 0, 0.9), ring(p, 0, 0, 0.13),
+  );
+  // a king's jade death mask: the face, slit eyes, a mouth, the ear spools
+  const face = abs(vec2(p.x.mul(1.3), p.y.mul(0.95).sub(0.02)).length().sub(0.66));
+  const mask = lines(
+    face, seg(p, -0.36, 0.2, -0.12, 0.15), seg(p, 0.12, 0.15, 0.36, 0.2), seg(p, 0, 0.08, 0, -0.1), seg(p, -0.2, -0.32, 0.2, -0.32),
+    ring(p, -0.66, 0.04, 0.12), ring(p, 0.66, 0.04, 0.12),
+  );
+  // a spiral wound three times (a dream, a reeling mind)
+  const pr = p.length();
+  const turn = pr.div(0.28).sub(atan(p.y, p.x).div(6.2832));
+  const spiral = max(abs(fract(turn.add(0.5)).sub(0.5)).mul(0.28), pr.sub(0.86));
 
   const pick = (k: number) => step(abs(u.glyph.sub(k)), 0.5);
-  const d = bolt.mul(pick(0)).add(eye.mul(pick(1))).add(ankh.mul(pick(2))).add(algiz.mul(pick(3))).add(scales.mul(pick(4))).add(tiwaz.mul(pick(5))).add(moon.mul(pick(6))).add(heart.mul(pick(7)));
+  const d = bolt.mul(pick(0)).add(eye.mul(pick(1))).add(ankh.mul(pick(2))).add(algiz.mul(pick(3))).add(scales.mul(pick(4))).add(tiwaz.mul(pick(5))).add(moon.mul(pick(6))).add(heart.mul(pick(7)))
+    .add(star.mul(pick(8))).add(mask.mul(pick(9))).add(spiral.mul(pick(10)));
   const core = smoothstep(0.05, 0.015, d);
   const halo = exp(d.mul(-11)).mul(0.55);
   // drawn on from the middle outward (the eye opens instead)
