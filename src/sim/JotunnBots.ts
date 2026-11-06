@@ -1,7 +1,7 @@
 import { hypot } from '../core/math';
 import { ULTIMATE_SLOT } from '../game/loadout';
 import { GodBot } from './Bot';
-import { PARTS, type Jotunn, type JotunnBrains, type PartId } from './Jotunn';
+import { PARTS, type Jotunn, type JotunnBrains, type PartId, type ShrineState } from './Jotunn';
 import type { Sim } from './Sim';
 import { WORLD_SCALE, type Brain, type Flash, type Point, type Unit } from './Unit';
 
@@ -218,7 +218,8 @@ export class GiantBot implements Brain {
  * fights like any god bot.
  */
 export class WardenBot implements Brain {
-  private readonly inner: GodBot;
+  /** (BotComms hands it teammates' calls: see godBotOf) */
+  readonly inner: GodBot;
   private readonly anchor = { x: 0, z: 0 };
   /** This bot's place in the team, which decides who takes the rune. */
   private readonly index: number;
@@ -265,7 +266,22 @@ export class WardenBot implements Brain {
     const g = mode.giant;
     this.anchor.x = g.x;
     this.anchor.z = g.z;
+    // a teammate's call gives way to the moments that win the round: an open crown, or a shrine to hold
+    const o = this.inner.order;
+    if (o) {
+      const crown = mode.parts.get('crown')!;
+      if ((crown.alive && crown.targetable && o.subject !== crown) || this.holding()) this.inner.order = null;
+    }
     this.inner.update(dt);
+  }
+
+  /** The shrine the giant is taking, when this is the god closest to it (it goes to hold it). */
+  holding(): ShrineState | null {
+    const { mode, u } = this;
+    const claimed = mode.shrines.find((s) => s.progress > 0 && s.dormant <= 0);
+    if (!claimed) return null;
+    const closest = mode.gods.filter((o) => o.alive).sort((a, b) => hypot(a.x - claimed.def.x, a.z - claimed.def.z) - hypot(b.x - claimed.def.x, b.z - claimed.def.z))[0];
+    return closest === u ? claimed : null;
   }
 
   /** The way out of a warning it stands in, once it has noticed it. */
@@ -289,14 +305,11 @@ export class WardenBot implements Brain {
     const g = mode.giant;
     if (!g.alive) return null;
     // hold a shrine the giant is taking, if this is the god closest to it
-    const claimed = mode.shrines.find((s) => s.progress > 0 && s.dormant <= 0);
-    if (claimed) {
-      const closest = mode.gods.filter((o) => o.alive).sort((a, b) => hypot(a.x - claimed.def.x, a.z - claimed.def.z) - hypot(b.x - claimed.def.x, b.z - claimed.def.z))[0];
-      if (closest === u) {
-        this.anchor.x = claimed.def.x;
-        this.anchor.z = claimed.def.z;
-        return null;
-      }
+    const held = this.holding();
+    if (held) {
+      this.anchor.x = held.def.x;
+      this.anchor.z = held.def.z;
+      return null;
     }
     const open = (id: PartId) => {
       const p = mode.parts.get(id)!;
@@ -319,6 +332,59 @@ export class WardenBot implements Brain {
       return l < r ? kneeL : kneeR;
     }
     return kneeL ?? kneeR ?? rune ?? g;
+  }
+}
+
+/** Seconds before the bots make the same call again. */
+export const CALL_GAP = 6;
+/** A bot calls a planted wrist only when it is this close (it is on the far side otherwise). */
+const WRIST_CALL = 25;
+
+/**
+ * The bot gods' own calls, so a player fighting beside them hears a team:
+ * when the giant kneels the bot nearest it pings the crown, and when it
+ * plants a fist the nearest bot close by pings the open wrist. (Run where
+ * the match is: the host, or solo.)
+ */
+export class WardenCalls {
+  private readonly open = new Set<PartId>();
+  private readonly last = new Map<string, number>();
+
+  constructor(
+    private readonly sim: Sim,
+    private readonly mode: Jotunn,
+  ) {}
+
+  step(): void {
+    const { mode } = this;
+    if (mode.phase !== 'fight') {
+      this.open.clear();
+      return;
+    }
+    const wardens = mode.gods.filter((u) => u.alive && u.brain instanceof WardenBot);
+    for (const id of ['crown', 'wristL', 'wristR'] as const) {
+      const p = mode.parts.get(id)!;
+      if (!(p.alive && p.targetable)) {
+        this.open.delete(id);
+        continue;
+      }
+      if (this.open.has(id)) continue;
+      this.open.add(id);
+      const crown = id === 'crown';
+      let caller: Unit | null = null;
+      let best = crown ? Infinity : WRIST_CALL;
+      for (const u of wardens) {
+        const d = hypot(u.x - p.x, u.z - p.z);
+        if (d < best) [best, caller] = [d, u];
+      }
+      if (caller) this.call(caller, crown ? 'crown' : 'wrist', p);
+    }
+  }
+
+  private call(u: Unit, key: string, subject: Unit): void {
+    const t = this.sim.time;
+    if (t - (this.last.get(key) ?? -99) < CALL_GAP) return;
+    if (this.sim.ping(u, 'attack', subject.x, subject.z, subject)) this.last.set(key, t);
   }
 }
 

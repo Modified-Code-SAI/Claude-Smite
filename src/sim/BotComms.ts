@@ -2,6 +2,7 @@ import { hypot } from '../core/math';
 import type { Side } from '../game/combatant';
 import { GodBot } from './Bot';
 import { DescentBot } from './DescentBot';
+import { WardenBot } from './JotunnBots';
 import type { CampState } from './Jungle';
 import { LaneBot } from './LaneBot';
 import type { Match } from './Match';
@@ -14,6 +15,7 @@ export function godBotOf(b: Brain | null): GodBot | null {
   if (b instanceof GodBot) return b;
   if (b instanceof LaneBot) return b.bot;
   if (b instanceof DescentBot) return b.inner;
+  if (b instanceof WardenBot) return b.inner;
   return null;
 }
 
