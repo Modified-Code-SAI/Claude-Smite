@@ -157,10 +157,19 @@ export async function loadLayers(engine: Pick<AudioEngine, 'layer'>, base: strin
     if (!res.ok) return false;
     const manifest = (await res.json()) as LayerManifest;
     const ctx = new OfflineAudioContext(1, 1, RATE);
-    const decode = async (file: string): Promise<Float32Array> => {
-      const r = await fetch(`${base}${file}`);
-      if (!r.ok) throw new Error(`${file}: ${r.status}`);
-      return (await ctx.decodeAudioData(await r.arrayBuffer())).getChannelData(0);
+    // sounds can share clips (each depth's floor is stone too): fetch and decode each file once
+    const decoded = new Map<string, Promise<Float32Array>>();
+    const decode = (file: string): Promise<Float32Array> => {
+      let got = decoded.get(file);
+      if (!got) {
+        got = (async () => {
+          const r = await fetch(`${base}${file}`);
+          if (!r.ok) throw new Error(`${file}: ${r.status}`);
+          return (await ctx.decodeAudioData(await r.arrayBuffer())).getChannelData(0);
+        })();
+        decoded.set(file, got);
+      }
+      return got;
     };
     const all = await Promise.all(Object.entries(manifest.layers).map(async ([name, layer]) => [name, layer, await Promise.all(layer.files.map(decode))] as const));
     for (const [name, layer, clips] of all) engine.layer(name, (synth, loop) => mixLayer(synth, clips, layer, loop));
