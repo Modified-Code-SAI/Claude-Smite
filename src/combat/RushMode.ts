@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { Side } from '../game/combatant';
 import { GODS, godById } from '../game/gods';
+import { normalizeLoadout, ULTIMATE_SLOT } from '../game/loadout';
 import { XP_TABLE } from '../game/progression';
 import { NetGuest, NetHost } from '../net/NetGame';
 import type { RushSlot } from '../net/rushRoster';
@@ -9,7 +10,7 @@ import type { PlayerController } from '../player/PlayerController';
 import type { CameraShot } from '../player/ThirdPersonCamera';
 import { godUnit } from '../sim/factory';
 import { Nav } from '../sim/Nav';
-import { Rush, RUSH } from '../sim/Rush';
+import { FUMBLE_CC, Rush, RUSH, rushBar, tackles } from '../sim/Rush';
 import { RushBot, RushCoach } from '../sim/RushBot';
 import type { Sim } from '../sim/Sim';
 import type { Unit } from '../sim/Unit';
@@ -131,7 +132,10 @@ export class RushMode {
     for (const s of slots) {
       let u = player;
       if (s.player !== deps.me) {
-        u = godUnit(godById(s.god) ?? GODS[0]!, s.team, RUSH.homes[s.team][s.spot]!);
+        const def = godById(s.god) ?? GODS[0]!;
+        u = godUnit(def, s.team, RUSH.homes[s.team][s.spot]!);
+        // a bot brings a tackle (people keep their own bar; see tackleHint)
+        if (!s.player) u.combatant.loadout = normalizeLoadout(def, rushBar(def));
         if (s.player) host?.assign(s.player, u);
         else if (!guest) bot(u);
         sim.add(u);
@@ -211,6 +215,29 @@ export class RushMode {
   step(dt: number): void {
     if (this.guest) this.rush.follow(dt);
     else this.rush.step(dt);
+  }
+
+  /** Whether the player was told their bar has no tackle: at the first kickoff, then once at their fountain, where they can swap one in. */
+  private readonly tackleTold = { kickoff: false, fountain: false };
+
+  /**
+   * A bar with no skill that knocks the relic loose can never win it back
+   * from a carrier, so a player who brings one is told which skill would.
+   */
+  private tackleHint(): void {
+    const told = this.tackleTold;
+    if (told.fountain) return;
+    const me = this.deps.player;
+    const c = me.combatant;
+    const phase = this.rush.phase;
+    if (!told.kickoff) {
+      if (phase !== 'kickoff') return;
+      told.kickoff = true;
+    } else if (phase === 'play' && me.alive && c.inBase) told.fountain = true;
+    else return;
+    for (let slot = 0; slot < ULTIMATE_SLOT; slot++) if (c.resolve(slot).hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) return;
+    const pick = c.god.skills.find((s) => s.kind === 'regular' && tackles(s));
+    if (pick) this.deps.toast(`None of your skills can knock the relic loose. Swap in ${pick.name} at your fountain (K) to tackle.`);
   }
 
   /** The first kickoff's fly-over (see FLYOVER), and where it ends: the player's own side of the pitch. */
@@ -383,6 +410,7 @@ export class RushMode {
 
   frame(dt: number, time: number): void {
     this.flyoverFrame();
+    this.tackleHint();
     this.goalCamFrame(dt);
     const r = this.rush.relic;
     this.deps.carry?.(r.phase === 'held' ? r.holder : null);

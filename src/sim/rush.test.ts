@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { anubis, loki, odin, thor, zeus } from '../game/gods';
+import { anubis, GODS, loki, odin, thor, zeus } from '../game/gods';
+import { normalizeLoadout, skillById, ULTIMATE_SLOT, validateLoadout } from '../game/loadout';
 import type { GodDef } from '../game/types';
 import { XP_TABLE } from '../game/progression';
 import { godUnit } from './factory';
 import { Nav } from './Nav';
-import { Rush, RUSH } from './Rush';
+import { Rush, RUSH, rushBar, tackles } from './Rush';
 import { RushBot, RushCoach } from './RushBot';
 import { rushTestField } from './rushTestField';
 import { Sim, type SimTerrain } from './Sim';
@@ -174,6 +175,40 @@ describe('Relic Rush', () => {
     // and the fumbler can't grab it straight back
     run(sim, rush, 0.4);
     expect(rush.holder).not.toBe(a);
+  });
+
+  it("a taunt knocks the relic loose too: Loki's Decoy is his tackle", () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    const t = god(sim, loki, 'chaos', 0);
+    t.combatant.loadout = normalizeLoadout(loki, rushBar(loki));
+    rush.begin([a, t]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(a, 0, 1.6);
+    run(sim, rush, 0.2);
+    expect(rush.holder).toBe(a);
+    sim.teleport(t, 0, 5, 0);
+    t.aim.x = a.x;
+    t.aim.z = a.z;
+    const slot = t.combatant.loadout.indexOf('loki.decoy');
+    expect(slot).toBeGreaterThanOrEqual(0);
+    expect(sim.cast(t, slot)).toBeNull();
+    run(sim, rush, 0.05);
+    expect(rush.holder).toBeNull();
+    expect(rush.lines.get(t)!.tackles).toBe(1);
+  });
+
+  it('every god brings a tackle to Relic Rush: bots whose own bar has none swap one in', () => {
+    const tackle = (g: GodDef, bar: readonly string[]) => bar.slice(0, ULTIMATE_SLOT).some((id) => tackles(skillById(g, id)!));
+    for (const g of GODS) {
+      const bar = rushBar(g);
+      expect(validateLoadout(g, bar), g.id).toBeNull();
+      expect(tackle(g, bar), g.id).toBe(true);
+      // a god whose own bar already tackles keeps it
+      if (tackle(g, g.defaultLoadout)) expect(bar, g.id).toEqual(g.defaultLoadout);
+    }
+    expect(tackle(odin, odin.defaultLoadout)).toBe(false);
+    expect(tackle(loki, loki.defaultLoadout)).toBe(false);
   });
 
   it('a juke sidesteps the carrier, beats a stun in its guard, keeps the relic, and waits out its cooldown', () => {
