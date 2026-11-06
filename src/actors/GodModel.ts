@@ -451,6 +451,24 @@ export class GodModel {
    * Drives animation and secondary physics. Call once per rendered frame after placing `root`.
    * `clothDt` lets a caller run the cloth on less time than the skeleton (distant or off-screen gods).
    */
+  /**
+   * Back to a fresh standing pose's state, for a model handed to a new unit
+   * (pooled summons): no cast, flinch, hit-stop or fall left over. The cloth
+   * resets itself when the model next appears somewhere else.
+   */
+  rest(): void {
+    this.castWeight = 0;
+    this.prevCast = 0;
+    this.castTime = 1e9;
+    this.flinchTime = 1e9;
+    this.stopLeft = 0;
+    this.deathTime = -1;
+    this.deathWeight = 0;
+    this.smoothedSpeed = 0;
+    this.prevSpeed = 0;
+    this.airWeight = 0;
+  }
+
   animate(dt: number, s: LocomotionState, clothDt = dt): void {
     if (this.stopLeft > 0) {
       this.stopLeft -= dt;

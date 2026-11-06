@@ -49,6 +49,25 @@ const SUMMONS: Record<string, { name: string; health: number; speed: number }> =
   einherjar: { name: 'Einherjar', health: 400, speed: 340 },
 };
 
+/** How many units one cast of a summon calls up (Odin's Einherjar and Loki's Mirror Legion come in pairs). */
+export function summonCount(kind: string): number {
+  return kind === 'einherjar' || kind === 'mirror-copy' ? 2 : 1;
+}
+
+export interface SummonLook {
+  god: string;
+  variant: 'god' | 'einherjar';
+}
+
+/**
+ * The god model a summon is drawn with: Loki's Decoy and Mirror Copies wear
+ * their summoner's own body (enemies must not tell them from the real god),
+ * Odin's Einherjar the fallback warrior's body in their own colors.
+ */
+export function summonLook(kind: string, ownerGod: string): SummonLook {
+  return kind === 'einherjar' ? { god: `summon:${kind}`, variant: 'einherjar' } : { god: ownerGod, variant: 'god' };
+}
+
 export function summonUnit(owner: Unit, kind: string, at: Point, index: number): Unit {
   const info = SUMMONS[kind] ?? { name: kind, health: 200, speed: 0 };
   const def = variant(owner.combatant.god, `summon:${kind}`, info.name, { maxHealth: info.health, moveSpeed: info.speed });
