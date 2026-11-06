@@ -356,6 +356,11 @@ export class RushMode {
       const y = this.deps.groundAt(gate.x, gate.z);
       burst(g.team === me.team ? ALLY : FOE, gate.x, y + 2.4, gate.z, 1.9);
       burst(GOLD, gate.x, y + 0.5, gate.z, 1.2);
+      // a hat trick: the gate crowns it in gold, and the scorer shines
+      if (r.hatTrick) {
+        burst(GOLD, gate.x, y + 5, gate.z, 1.7);
+        burst(GOLD, g.scorer.x, this.deps.groundAt(g.scorer.x, g.scorer.z) + 1.4, g.scorer.z, 0.9);
+      }
       // the scorer throws a fist to the sky (Rush.goal marked it as an action, so every end holds the pose)
       this.deps.swing?.(g.scorer, 'ult');
       this.cheerAt = 0;

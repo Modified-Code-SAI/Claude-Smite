@@ -238,6 +238,11 @@ export class Rush {
   readonly possession: Record<Side, number> = { order: 0, chaos: 0 };
   /** The latest goal, for the herald and the HUD. */
   lastGoal: RushGoal | null = null;
+  /** Whether the last goal was its scorer's third of the match. */
+  get hatTrick(): boolean {
+    const g = this.lastGoal;
+    return !!g && this.lines.get(g.scorer)?.goals === 3;
+  }
   /** Counts every goal, so watchers can tell a new one from the last. */
   goalCount = 0;
   /** Bumped on each fumble, interception, catch, Captain's shrug, save (a shot caught on its way in) and juke, for sounds and banners. */

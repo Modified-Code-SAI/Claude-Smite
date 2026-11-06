@@ -179,6 +179,30 @@ describe('Relic Rush', () => {
     expect(Math.hypot(a.x - RUSH.homes.order[0]!.x, a.z - RUSH.homes.order[0]!.z)).toBeLessThan(0.5);
   });
 
+  it("a god's third goal is a hat trick, and a guest sees it too", () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    const t = god(sim, thor, 'chaos', 0);
+    rush.begin([a, t]);
+    const hats: boolean[] = [];
+    for (let k = 0; k < 3; k++) {
+      run(sim, rush, RUSH.countdown + 0.1, () => rush.phase === 'play');
+      sim.teleport(a, 0, 1.6);
+      run(sim, rush, 0.4, () => rush.holder === a);
+      sim.teleport(a, 0, RUSH.gates.chaos.z);
+      run(sim, rush, 0.05);
+      expect(rush.score.order).toBe(k + 1);
+      hats.push(rush.hatTrick);
+      run(sim, rush, RUSH.celebrate + 0.1, () => rush.phase === 'kickoff');
+    }
+    expect(hats).toEqual([false, false, true]);
+    const guest = match();
+    const gods = [god(guest.sim, zeus, 'order', 0), god(guest.sim, thor, 'chaos', 0)];
+    guest.rush.join(gods);
+    guest.rush.applyNet(JSON.parse(JSON.stringify(rush.netState())));
+    expect(guest.rush.hatTrick).toBe(true);
+  });
+
   it('carrying the relic through the enemy gate scores, then a kickoff resets everyone', () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);
