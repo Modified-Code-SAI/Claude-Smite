@@ -16,8 +16,10 @@ import { jotunnBots, WardenCalls } from '../sim/JotunnBots';
 import type { Sim } from '../sim/Sim';
 import type { Point, SimEvent, Unit } from '../sim/Unit';
 import { JotunnHud } from '../ui/JotunnHud';
+import { JotunnGuide } from '../ui/JotunnGuide';
 import { JotunnMarks } from '../ui/JotunnMarks';
 import { CINE, CINE_CLEARANCE, JotunnCine, type CineSight } from './jotunnCine';
+import { JotunnDeathCam } from './jotunnDeathCam';
 import { JotunnView } from './JotunnView';
 import { JotunnWeather } from './jotunnWeather';
 import { paletteFor } from './palette';
@@ -99,6 +101,10 @@ export class JotunnMode {
   private readonly marks: JotunnMarks | null;
   /** The giant's moments on camera, where the game lends the camera. */
   private readonly cine: JotunnCine | null;
+  /** The rules card for a player's first rounds on each side. */
+  private readonly guide = new JotunnGuide();
+  /** The fallen god's camera, watching the giant while the god waits to return. */
+  private readonly deathCam: JotunnDeathCam | null;
   /** The giant's winter: snow, and the colder light it brings. */
   readonly weather: JotunnWeather;
   /** The local player drives the giant this round. */
@@ -191,6 +197,7 @@ export class JotunnMode {
           dip: (s) => this.hud.dip(s),
         })
       : null;
+    this.deathCam = set ? new JotunnDeathCam({ ground: deps.groundAt, height: view.model.height, clear: (ax, ay, az, bx, by, bz, upTo) => this.clearLine(ax, ay, az, bx, by, bz, upTo), set }) : null;
     // (a guest's rounds start with the host's state: see Jotunn.applyNet)
     if (!guest) {
       mode.begin();
@@ -208,6 +215,7 @@ export class JotunnMode {
     const me = this.deps.net?.me ?? '';
     if (this.host) for (const x of mode.players) if (x.id && x.id !== me) this.host.assign(x.id, x === p ? g : x.god);
     this.handicap();
+    this.guide.start(mine ? 'giant' : 'god');
     this.deps.control(mine ? g : this.deps.player, mine);
     if (mine) {
       this.deps.ctrl.spawn(g.x, g.z, g.body.yaw);
@@ -320,10 +328,24 @@ export class JotunnMode {
 
   frame(dt: number, time: number): void {
     this.cine?.frame(dt);
+    this.deathCam?.frame(dt, { me: this.deps.player, giant: this.mode.giant, cine: !!this.cine?.kind, off: this.piloting || this.mode.phase !== 'fight' });
     this.weather.frame(dt, this.mode);
     this.view.update(dt, time);
     this.hud.frame(dt, this.cine?.kind ?? null);
+    this.guide.frame(this.mode.phase, this.mode.timer);
     this.marks?.frame(dt, this.piloting, !!this.cine?.kind, this.piloting ? this.mode.giant : this.deps.player);
+  }
+
+  /** Nothing solid, nor the ground, on the line from a to b over its first `upTo` meters (the camera's own ray test). */
+  private clearLine(ax: number, ay: number, az: number, bx: number, by: number, bz: number, upTo = Infinity): boolean {
+    const c = this.deps.collision;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const d = Math.hypot(dx, dy, dz);
+    if (!c || d < 0.01) return true;
+    const len = Math.min(d, upTo);
+    return c.raycast(ax, ay, az, dx / d, dy / d, dz / d, len, 0.35) >= len;
   }
 
   /** Clear floor for a shot's camera at (x, z), `y` up, that looks at each of `sights` (see CineHost.room). */
