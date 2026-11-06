@@ -534,6 +534,7 @@ export class CombatGame implements Updatable {
       groundAt: this.groundAt,
       fires: (world.content as unknown as { fires?: Fire[] }).fires ?? [],
       burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
+      billow: (sheet, x, y, z, size, o) => this.vfx.billow(sheet, x, y, z, size, o),
       shake: this.deps.shake,
       control: (u, giant) => this.control(u, giant),
       toast: (t) => this.hud.toast(t),

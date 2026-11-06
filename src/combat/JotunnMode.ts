@@ -8,6 +8,7 @@ import type { Roster } from '../net/Replica';
 import type { NetSession } from '../net/Session';
 import type { PlayerController } from '../player/PlayerController';
 import type { CameraShot } from '../player/ThirdPersonCamera';
+import type { BillowOptions, BillowSheet } from '../scene/Billows';
 import type { CollisionWorld } from '../scene/Collision';
 import type { Fire } from '../scene/Effects';
 import type { Environment } from '../scene/Environment';
@@ -44,6 +45,8 @@ export interface JotunnDeps {
   fires: readonly Fire[];
   /** A burst of light and sparks (CombatVfx.burst). */
   burst: (p: ReturnType<typeof paletteFor>, x: number, y: number, z: number, power: number) => void;
+  /** A simulated cloud of smoke, dust or a blast (CombatVfx.billow). */
+  billow?: (sheet: BillowSheet, x: number, y: number, z: number, size: number, o?: BillowOptions) => void;
   shake?: (amount: number) => void;
   /** Hands the local player a unit to play: the giant, or their god again. */
   control: (u: Unit, giant: boolean) => void;
@@ -181,6 +184,7 @@ export class JotunnMode {
         deps.shake?.(amount * THREE.MathUtils.clamp(1.15 - d / 70, 0.15, 1));
       },
       burst: (at, power) => deps.burst(FROST, at.x, at.y, at.z, power),
+      billow: (sheet, at, size, o) => deps.billow?.(sheet, at.x, at.y, at.z, size, o),
       footfall: (at, k) => deps.cue?.('step', at, k),
       landing: (at, k) => deps.cue?.('land', at, k),
     });
