@@ -34,7 +34,8 @@ export const DEPTH_COLORS: Record<Palette, DepthColors> = {
     fog: 0x070d1a,
     horizon: 0x0a2a5a,
     key: 0xa8d0ff,
-    motes: { color: 0xfff1c8, glow: 0, rise: 0, grow: 1, near: 2 },
+    // pale soul-light motes sinking slowly through the damp air
+    motes: { color: 0x9fd8ff, glow: 0.45, rise: -0.12, grow: 1.25, near: 4 },
   },
   // the Abyss: green spirit fire
   spirit: {
@@ -43,7 +44,8 @@ export const DEPTH_COLORS: Record<Palette, DepthColors> = {
     fog: 0x07140e,
     horizon: 0x0c3a22,
     key: 0xc0ffd8,
-    motes: { color: 0xfff1c8, glow: 0, rise: 0, grow: 1, near: 2 },
+    // spirit wisps rising out of the dark
+    motes: { color: 0x7affa0, glow: 0.8, rise: 0.22, grow: 1.5, near: 5 },
   },
 };
 
@@ -74,3 +76,6 @@ export const depthLook = uniform(new THREE.Vector3(1, 0, 0));
 export function depthWeights(p: Palette): [number, number, number] {
   return p === 'ember' ? [1, 0, 0] : p === 'soul' ? [0, 1, 0] : [0, 0, 1];
 }
+
+/** The white-hot heart of the current depth's fire (its fire's tip color), for the flame beds in its fire baskets. */
+export const flameHot = uniform(new THREE.Color(0xffc46a));
