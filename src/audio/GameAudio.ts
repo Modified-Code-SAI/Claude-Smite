@@ -131,6 +131,8 @@ export class GameAudio {
       else if (name === 'soul') this.engine.play('soul.absorb', { gain: 0.32, rate: 1 + Math.min(k, 10) * 0.055, vary: 0.03 }, 1, 0.05);
       // the dead clawing up out of the floor: one rumble for a wave rising together, a boss louder and lower
       else if (name === 'emerge') this.engine.play('monster.emerge', { at, gain: 0.5 + k * 0.6, rate: 1.15 - k * 0.35, vary: 0.06, ref: 12 + k * 20 }, 2, 0.12);
+      // a body going down into the depth's ground: crumbling into ash, under the water, unwinding into the dark (a wave falling together shares a few voices)
+      else if (name === 'sink' && this.game.descent) this.engine.play(`sink.${DEPTH_GROUND[DEPTHS[this.game.descent.depth]!.palette]}`, { at, gain: 0.45 + k * 0.5, rate: 1.1 - k * 0.25, vary: 0.07, ref: 10 + k * 16 }, 3, 0.07);
       // a boss's entrance (the camera turns to it): the whole chamber hears it, not just whoever is near
       else if (name === 'boss') this.engine.play('boss.intro', { bus: 'ui', gain: 0.75 }, 3);
       else if (name === 'bossFall') this.engine.play('boss.fall', { bus: 'ui', gain: 0.75 }, 3);
