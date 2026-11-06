@@ -2,12 +2,23 @@
 .sm button { font: inherit; color: inherit; cursor: pointer; }
 
 /* -- home page ------------------------------------------------------------ */
-.hm { position: fixed; inset: 0; z-index: 30; overflow: hidden; background: #070605; color: var(--ink, #f4ead8); font-family: 'Cinzel', Georgia, serif; pointer-events: auto; transition: opacity 0.6s ease, transform 0.6s ease; }
-.hm.done { opacity: 0; transform: scale(1.03); pointer-events: none; }
+.hm { position: fixed; inset: 0; z-index: 30; overflow: hidden; background: #070605; color: var(--ink, #f4ead8); font-family: 'Cinzel', Georgia, serif; pointer-events: auto; transition: opacity 0.6s ease; }
+/* Play: the menu flies apart, the art rushes in and blurs into the god pick's backdrop (the same art), a flash of gold */
+.hm.done { opacity: 0; pointer-events: none; transition: opacity 0.55s ease 0.35s; }
+.hm.done .hm-frame { opacity: 0; transition: opacity 0.4s ease-in; }
+.hm.done .hm-modes { translate: -56px 0; transition: translate 0.45s cubic-bezier(0.5, 0, 0.75, 0); }
+.hm.done .hm-card { translate: 56px 0; transition: translate 0.45s cubic-bezier(0.5, 0, 0.75, 0); }
+.hm.done .hm-top { translate: 0 -28px; transition: translate 0.45s cubic-bezier(0.5, 0, 0.75, 0); }
+.hm.done .hm-img.on { scale: 1.12; filter: blur(4px) brightness(0.8); transition: opacity 1.1s ease, translate 1.1s ease, scale 0.9s cubic-bezier(0.3, 0, 0.2, 1), filter 0.9s ease; }
+.hm.done .hm-embers { opacity: 0; transition: opacity 0.4s; }
+.hm-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse 50% 60% at 66% 62%, rgba(255, 236, 190, 0.5), rgba(255, 200, 110, 0.12) 45%, transparent 75%); }
+.hm.done .hm-flash { animation: hm-flash 0.75s ease-out; }
+@keyframes hm-flash { 0% { opacity: 0; } 18% { opacity: 1; } 100% { opacity: 0; } }
+:root.st-calm .hm.done .hm-flash { animation: none; }
 
 /* the mode's art fills the screen: two layers crossfade, each with a slow push-in */
 .hm-art { position: absolute; inset: 0; overflow: hidden; }
-.hm-img { position: absolute; inset: -2%; background: center / cover no-repeat; opacity: 0; transition: opacity 1.1s ease; will-change: transform, opacity; }
+.hm-img { position: absolute; inset: -2%; background: center / cover no-repeat; opacity: 0; transition: opacity 1.1s ease, translate 1.1s cubic-bezier(0.2, 0.8, 0.2, 1); will-change: transform, opacity; }
 .hm-img.on { opacity: 1; animation: hm-push 28s ease-out forwards; }
 @keyframes hm-push { from { transform: scale(1.04); } to { transform: scale(1.14) translate3d(-1.2%, -0.8%, 0); } }
 .hm-shade { position: absolute; inset: 0; pointer-events: none; background:
@@ -16,15 +27,6 @@
   linear-gradient(180deg, rgba(6, 5, 4, 0.75) 0%, rgba(6, 5, 4, 0) 24%),
   radial-gradient(ellipse at 60% 40%, rgba(255, 200, 120, 0.08), transparent 60%); }
 
-/* embers rising through the light */
-.hm-embers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.hm-embers i { position: absolute; bottom: -12px; border-radius: 50%; background: radial-gradient(circle, #ffe2a0 0%, rgba(255, 160, 70, 0.6) 45%, rgba(255, 140, 60, 0) 72%); opacity: 0; animation: hm-ember linear infinite; will-change: transform, opacity; }
-@keyframes hm-ember {
-  0% { transform: translate3d(0, 0, 0); opacity: 0; }
-  12% { opacity: 0.85; }
-  70% { opacity: 0.5; }
-  100% { transform: translate3d(var(--drift, 0px), -105vh, 0); opacity: 0; }
-}
 
 .hm-frame { position: relative; height: 100%; display: flex; flex-direction: column; padding: 26px clamp(20px, 3.4vw, 56px) 18px clamp(64px, 4.4vw, 76px); overflow: auto; }
 .hm-top { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding-left: 44px; animation: hm-drop 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
@@ -126,6 +128,10 @@
   .hm-play { padding: 10px 24px 9px; }
   .hm-play span { font-size: 25px; }
   .hm-friends { padding-top: 10px; }
+  /* in a lobby the seats need the room: the mode's blurb steps aside */
+  .hm.in-lobby .hm-desc, .hm.in-lobby .hm-rec { display: none; }
+  .lb-face { width: 44px; height: 44px; }
+  .lb-seat { padding: 6px 4px 5px; }
   .hm-foot { margin-top: 8px; }
 }
 @media (max-height: 700px) {

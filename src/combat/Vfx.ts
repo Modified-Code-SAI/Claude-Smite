@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import type { Billows, BillowOptions, BillowSheet } from '../scene/Billows';
 import {
-  attribute, cos, float, fract, hash, instanceIndex, mix, mx_noise_float, sin, smoothstep, time, uv, vec2, vec3, vec4,
+  attribute, cos, float, fract, hash, instanceIndex, mix, mx_noise_float, normalView, positionView, sin, smoothstep, time, uv, vec2,
+  vec3, vec4,
 } from '../render/tsl';
 import { instancedSprite, objectUniforms, spriteQuads, useUniforms } from '../render/shared';
 import type { Sim } from '../sim/Sim';
@@ -325,7 +326,9 @@ function makePillarMaterial(): THREE.MeshBasicNodeMaterial {
   const fade = float(1).sub(age.div(PILLAR_LIFE)).clamp(0, 1);
   // bright at the foot, streaked as it climbs
   const streak = sin(uv().x.mul(6.283 * 7).add(age.mul(3))).mul(0.25).add(0.75);
-  const body = float(1).sub(v).pow(1.6).mul(streak);
+  // soft at its sides, where the view grazes the wall: a column of light, not a glass tube
+  const soft = smoothstep(0.05, 0.5, normalView.dot(positionView.normalize().negate()).abs());
+  const body = float(1).sub(v).pow(1.6).mul(streak).mul(soft);
   m.colorNode = vec4(mix(main, hot, float(1).sub(v).pow(10)).mul(body).mul(3).mul(fade.pow(1.5)), 1);
   m.opacityNode = body.mul(fade);
   return m;
@@ -349,18 +352,21 @@ class Pillar {
   /** Its height and width: 1 for a fallen god's column (soul fire erupting is short and wide). */
   private size = 1;
   private width = 1;
+  /** How fast it plays: 1 for a fallen god's slow column, faster for a quick surge. */
+  private rate = 1;
 
-  start(p: GodPalette, x: number, y: number, z: number, size = 1, width = 1): void {
+  start(p: GodPalette, x: number, y: number, z: number, size = 1, width = 1, rate = 1): void {
     this.group.position.set(x, y, z);
     this.values.main.setHex(p.vfx);
     this.values.hot.setHex(p.core);
     this.values.age = 0;
     this.size = size;
     this.width = width;
+    this.rate = rate;
   }
 
   update(dt: number): boolean {
-    const k = (this.values.age += dt);
+    const k = (this.values.age += dt * this.rate);
     const rise = 1 - Math.exp(-k * 5);
     const w = (0.5 + 0.9 * (1 - rise) + 0.3) * this.width;
     this.beam.scale.set(w, (2 + rise * 30) * this.size, w);
@@ -756,10 +762,10 @@ export class CombatVfx {
     }
   }
 
-  /** A column of light rising from the ground (a god's fall is size 1, width 1). */
-  pillar(p: GodPalette, x: number, z: number, size = 1, width = 1): void {
+  /** A column of light rising from the ground (a god's fall is size 1, width 1, rate 1: `rate` plays it faster). */
+  pillar(p: GodPalette, x: number, z: number, size = 1, width = 1, rate = 1): void {
     const c = this.pillarPool.take();
-    c.start(p, x, this.ground(x, z), z, size, width);
+    c.start(p, x, this.ground(x, z), z, size, width, rate);
     this.pillars.push(c);
   }
 
@@ -835,7 +841,13 @@ export class CombatVfx {
       case 'cast': {
         const u = e.unit;
         const f = u.forward;
-        this.burst(paletteOf(u), u.x + f.x * 0.7, u.body.y + 1.9, u.z + f.z * 0.7, 0.7);
+        const p = paletteOf(u);
+        if (e.cast.skill.kind === 'ultimate' && u.alive) {
+          // an ultimate surges up through its god before its own look takes over, so
+          // everyone can tell it from a skill: a flare, a shock ring and a short wide column
+          this.burst(p, u.x, u.body.y + 1.1, u.z, 1.5);
+          this.pillar(p, u.x, u.z, 0.2, 0.8, 2.2);
+        } else this.burst(p, u.x + f.x * 0.7, u.body.y + 1.9, u.z + f.z * 0.7, 0.7);
         break;
       }
       case 'teleport':

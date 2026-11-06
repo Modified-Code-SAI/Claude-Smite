@@ -5,7 +5,7 @@ import {
 
 import { frosted } from './frost';
 
-/** Names of the generated PBR sets in public/textures/pbr (see tools/textures/gen.py). */
+/** Names of the PBR sets in public/textures/pbr (painted by tools/textures/paint.py over gen.py's layouts). */
 export type PbrName = 'flagstone' | 'marble' | 'sandstone_blocks' | 'rock' | 'grass_ground' | 'dirt' | 'bark';
 
 export interface PbrSet {
@@ -208,7 +208,8 @@ export class MaterialLibrary {
   constructor(readonly textures: TextureLibrary, readonly space: SurfaceSpace = drawnSpace) {
     this.marble = this.make('marble', 0.42, { tint: vec3(1.0, 0.985, 0.96) });
     this.sandstone = this.make('sandstone_blocks', 0.25);
-    this.flagstone = this.make('flagstone', 0.2);
+    // the painted slabs are smaller in the map than gen.py's were, so it repeats less often (same slab size)
+    this.flagstone = this.make('flagstone', 0.14);
     this.rock = this.make('rock', 0.11, { aoStrength: 1.2 });
     this.bronze = this.metal(new THREE.Color(0x8c5a32), 0.38, true);
     this.gold = this.metal(new THREE.Color(0xd9a441), 0.26, false);

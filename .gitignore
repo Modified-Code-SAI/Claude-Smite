@@ -19,3 +19,6 @@ tools/music/src/
 # Blender effect and collapse scratch (tools/vfx, tools/collapse READMEs)
 tools/vfx/out/
 tools/collapse/out/
+
+# AI texture candidates (tools/textures/paint.py)
+tools/textures/out/

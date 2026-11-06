@@ -6,13 +6,18 @@ import { jotunn } from '../game/gods/jotunn';
 import type { JotunnRole } from '../combat/JotunnMode';
 import type { NetPlayer } from '../net/roster';
 import { PICK_SECONDS, type NetSession } from '../net/Session';
+import { paletteFor } from '../combat/palette';
 import { skillIcon } from './icons';
+import { embersHtml, parallax } from './menuFx';
 import { modeArt, modeBlur, modeInfo, type GameMode } from './modes';
 import './godpick.css';
 
 const BASE = import.meta.env.BASE_URL;
 const ROLE_NAMES: Record<string, string> = { solo: 'Solo', jungle: 'Jungle', mid: 'Mid', carry: 'Carry', support: 'Support' };
 const RANGE_NAMES: Record<string, string> = { melee: 'Melee', ranged: 'Ranged' };
+
+/** The versus screen stays up at least this long (seconds), so the matchup reads even when the map is already built. */
+const VERSUS_HOLD = 2.6;
 
 /** Seconds a bot takes to lock in (cosmetic: their gods are fixed by the seed), and the cascade once every person is ready. */
 const BOT_LOCK = { first: 1.2, spread: 5.5, cascade: 0.14 };
@@ -34,6 +39,11 @@ export interface PickSetup {
   say?: (god: string) => void;
   /** A sound from the game's bank (ui.*). */
   sound?: (name: string, gain?: number) => void;
+  /**
+   * The music's intensity, 0 to 1, about ten times a second: low while
+   * everyone chooses, rising over the second half of the clock, full at the lock.
+   */
+  mood?: (v: number) => void;
 }
 
 export interface PickScreen {
@@ -43,6 +53,8 @@ export interface PickScreen {
   progress(f: number, text?: string): void;
   /** Where loading notes go (the slow-shaders card). */
   readonly notes: HTMLElement;
+  /** Resolves once the versus screen has been up long enough to read (VERSUS_HOLD). */
+  shown(): Promise<void>;
   /** The match is ready: the screen fades away. */
   finish(): void;
 }
@@ -52,6 +64,8 @@ function esc(s: string): string {
 }
 
 const portrait = (id: string) => `${BASE}portraits/${id}.jpg`;
+/** A god's spell color as CSS: the light behind them on the pick screen. */
+const godColor = (id: string) => `#${paletteFor(id).vfx.toString(16).padStart(6, '0')}`;
 const splash = (id: string) => `${BASE}splash/${id}.jpg`;
 
 /** The silhouette shown for a god not chosen yet, or one the other team keeps hidden. */
@@ -92,8 +106,9 @@ export function showGodPick(setup: PickSetup): PickScreen {
   const root = document.createElement('div');
   root.className = 'gp';
   root.innerHTML = `
-    <div class="gp-bg" style="background-image:url(${modeBlur(mode)}), url(${modeArt(mode)})"></div>
+    <div class="gp-bg fx-far" style="background-image:url(${modeBlur(mode)}), url(${modeArt(mode)})"></div>
     <div class="gp-shade"></div>
+    <div class="gp-embers embers fx-mid">${embersHtml(22)}</div>
     <header class="gp-head">
       <div class="gp-mode"><b>${info.name}</b><span>${info.tag}</span></div>
       <div class="gp-call">Choose your god</div>
@@ -105,7 +120,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
     <div class="gp-main">
       <aside class="gp-team gp-allies"><div class="gp-tlabel">Your team</div><div class="gp-slots"></div></aside>
       <section class="gp-hero">
-        <div class="gp-art"><img alt=""></div>
+        <div class="gp-art fx-near"><div class="gp-aura"><i></i></div><img alt=""><img alt=""></div>
         <div class="gp-info"></div>
       </section>
       <aside class="gp-team gp-foes"><div class="gp-tlabel"></div><div class="gp-slots"></div><div class="gp-rival"></div></aside>
@@ -128,9 +143,11 @@ export function showGodPick(setup: PickSetup): PickScreen {
         <div class="gp-notes"></div>
       </div>
     </div>
+    <div class="gp-edge"></div>
     <div class="gp-flash"></div>`;
   document.body.appendChild(root);
   requestAnimationFrame(() => root.classList.add('in'));
+  const stopParallax = parallax(root);
 
   const $ = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
   const secs = $<HTMLElement>('.gp-secs');
@@ -140,7 +157,11 @@ export function showGodPick(setup: PickSetup): PickScreen {
   const foeSlots = $<HTMLDivElement>('.gp-foes .gp-slots');
   const foeLabel = $<HTMLDivElement>('.gp-foes .gp-tlabel');
   const rivalRow = $<HTMLDivElement>('.gp-rival');
-  const art = $<HTMLImageElement>('.gp-art img');
+  const artBox = $<HTMLDivElement>('.gp-art');
+  /** Two layers, so one god's art crossfades into the next's. */
+  const arts = [...root.querySelectorAll<HTMLImageElement>('.gp-art img')];
+  let artFront = 0;
+  let artGod = '';
   const infoBox = $<HTMLDivElement>('.gp-info');
   const readyBtn = $<HTMLButtonElement>('.gp-ready');
   const wait = $<HTMLDivElement>('.gp-wait');
@@ -287,19 +308,29 @@ export function showGodPick(setup: PickSetup): PickScreen {
   const renderHero = () => {
     const def = asGiant ? jotunn : godDef(god);
     root.querySelectorAll<HTMLButtonElement>('.gp-god').forEach((b) => b.classList.toggle('on', b.dataset.god === god));
+    // the light behind the god (and the screen's glow) takes their color
+    root.style.setProperty('--god', godColor(def.id));
     const src = splash(def.id);
-    if (art.dataset.god !== def.id) {
-      art.dataset.god = def.id;
-      art.classList.remove('show');
-      art.onerror = () => {
+    if (artGod !== def.id) {
+      artGod = def.id;
+      // the new god loads into the back layer, then steps in as the last one steps out
+      const next = arts[1 - artFront]!;
+      const id = def.id;
+      next.classList.remove('show', 'out', 'bust');
+      next.onerror = () => {
         // no splash baked: the face card, framed the same way (and nothing at all for the giant)
-        art.onerror = () => art.classList.remove('show');
-        art.src = portrait(def.id);
-        art.classList.add('bust');
+        next.onerror = null;
+        next.classList.add('bust');
+        next.src = portrait(id);
       };
-      art.onload = () => art.classList.add('show');
-      art.classList.remove('bust');
-      art.src = src;
+      next.onload = () => {
+        if (artGod !== id) return;
+        const prev = arts[artFront]!;
+        if (prev !== next && prev.classList.contains('show')) prev.classList.replace('show', 'out');
+        next.classList.add('show');
+        artFront = arts.indexOf(next);
+      };
+      next.src = src;
     }
     const choice = builds ? buildChoice(def) : { list: [], active: null };
     const active = choice.list.find((b) => b.id === choice.active);
@@ -308,7 +339,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
     const focus = hovered && skills.includes(hovered) ? hovered : null;
     infoBox.innerHTML = `
       <div class="gp-kick">${esc(def.pantheon)} &middot; ${ROLE_NAMES[def.role] ?? def.role} &middot; ${RANGE_NAMES[def.attackRange] ?? def.attackRange}</div>
-      <h2 class="gp-name">${esc(def.name)}</h2>
+      <h2 class="gp-name" data-name="${esc(def.name)}">${esc(def.name)}</h2>
       <div class="gp-title">${esc(def.title)}</div>
       <div class="gp-skills">${skills
         .map(
@@ -343,8 +374,17 @@ export function showGodPick(setup: PickSetup): PickScreen {
     );
   };
 
+  /** The last god whose voice was heard, so Ready speaks for one chosen without a click. */
+  let said = '';
+  const say = (id: string) => {
+    said = id;
+    setup.say?.(id);
+  };
+  const indexOf = (id: string) => gods.findIndex((g) => g.id === id);
   const pick = (id: string) => {
     if (ready || locked || asGiant || id === god || !gods.some((g) => g.id === id)) return;
+    // the new god steps in from the side the strip moved toward
+    artBox.style.setProperty('--from', `${indexOf(id) > indexOf(god) ? 22 : -22}px`);
     god = id;
     hovered = null;
     net?.pick(god);
@@ -356,7 +396,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
     hero.classList.remove('swap');
     void hero.offsetWidth;
     hero.classList.add('swap');
-    setup.say?.(god);
+    say(god);
   };
   root.querySelectorAll<HTMLButtonElement>('.gp-god').forEach((b) => b.addEventListener('click', () => pick(b.dataset.god!)));
   if (asGiant) root.classList.add('giant');
@@ -380,6 +420,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
     ready = true;
     root.classList.add('is-ready');
     setup.sound?.('ui.lock', 0.9);
+    if (said !== god && !asGiant) say(god);
     if (net) net.lockIn(god);
     else {
       // the bots still choosing lock in one after another, then the match is on
@@ -400,7 +441,8 @@ export function showGodPick(setup: PickSetup): PickScreen {
     } else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft' || /^Digit[1-9]$/.test(e.code)) {
       const i = gods.findIndex((g) => g.id === god);
       const n = /^Digit/.test(e.code) ? Number(e.code.slice(5)) - 1 : (i + (e.code === 'ArrowRight' ? 1 : gods.length - 1)) % gods.length;
-      if (gods[n]) pick(gods[n]!.id);
+      // (through the card, so the keys sound like a click)
+      if (gods[n] && !ready && !asGiant) root.querySelector<HTMLButtonElement>(`.gp-god[data-god="${gods[n]!.id}"]`)?.click();
     }
   };
   window.addEventListener('keydown', onKey, true);
@@ -417,6 +459,9 @@ export function showGodPick(setup: PickSetup): PickScreen {
       if (s <= 5 && s > 0 && !ready) setup.sound?.('ui.tick', s <= 3 ? 0.9 : 0.6);
     }
     renderTeams();
+    // the music builds over the second half of the clock (and stands ready with you)
+    const total = net ? PICK_SECONDS : seconds;
+    setup.mood?.(Math.max(ready ? 0.55 : 0, Math.min(1, (1 - t / total - 0.4) / 0.5)));
     if (!net && t <= 0) lock('time');
     // online the host ends the pick for everyone; a guest whose clock ran out waits for its word
     if (net && t <= 0 && !ready) {
@@ -452,6 +497,9 @@ export function showGodPick(setup: PickSetup): PickScreen {
     };
   }
 
+  let swell: ReturnType<typeof setInterval> | undefined;
+  let versusDone!: () => void;
+  const versusShown = new Promise<void>((r) => (versusDone = r));
   /** The pick is over: everyone's god is final; both teams are revealed and the loading begins. */
   function lock(why: 'ready' | 'time'): void {
     if (locked) return;
@@ -459,6 +507,10 @@ export function showGodPick(setup: PickSetup): PickScreen {
     ready = true;
     clearInterval(tick);
     window.removeEventListener('keydown', onKey, true);
+    // the music swells to the lock; the god chosen for you speaks too
+    swell = setInterval(() => setup.mood?.(1), 100);
+    setTimeout(() => clearInterval(swell), 1800);
+    if (said !== god && !asGiant) say(god);
     secs.textContent = '0';
     call.textContent = why === 'ready' ? 'All gods ready' : 'Locked in';
     root.classList.add('locked');
@@ -469,6 +521,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
       buildVersus();
       root.classList.add('loading');
       setup.sound?.('ui.versus', 0.85);
+      setTimeout(versusDone, VERSUS_HOLD * 1000);
     }, 650);
     resolve({ god, rival });
   }
@@ -498,17 +551,21 @@ export function showGodPick(setup: PickSetup): PickScreen {
         : info.foe
           ? `<div class="gp-vcard gp-vfoe"><div class="gp-vimg" style="background-image:url(${modeArt(mode)})"></div><div class="gp-vname"><b>${esc(info.foe.name)}</b><span>${esc(info.foe.text)}</span></div></div>`
           : '';
-    $<HTMLDivElement>('.gp-versus').innerHTML = `
+    const versus = $<HTMLDivElement>('.gp-versus');
+    versus.style.setProperty('--n', String(Math.max(1, allies.length, foes.length)));
+    versus.innerHTML = `
       <div class="gp-vside gp-vallies">${allies.map(card).join('')}</div>
       <div class="gp-vs"><span>VS</span><b>${info.name}</b></div>
       <div class="gp-vside gp-vfoes">${foeSide}</div>`;
   };
 
   renderHero();
+  // (the hero card's entrance plays for the first god too)
+  $<HTMLElement>('.gp-hero').classList.add('swap');
   renderRival();
   renderTeams();
   renderGo();
-  if (asGiant) setup.say?.('jotunn');
+  if (asGiant) say('jotunn');
 
   return {
     chosen,
@@ -517,8 +574,11 @@ export function showGodPick(setup: PickSetup): PickScreen {
       if (text) sub.textContent = text;
     },
     notes: $<HTMLDivElement>('.gp-notes'),
+    shown: () => versusShown,
     finish() {
       clearInterval(tick);
+      clearInterval(swell);
+      stopParallax();
       window.removeEventListener('keydown', onKey, true);
       root.classList.add('done');
       setTimeout(() => root.remove(), 900);

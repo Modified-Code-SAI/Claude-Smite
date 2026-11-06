@@ -3,6 +3,7 @@ import {
   abs, attribute, color, float, fract, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
   mx_worley_noise_float, positionLocal, positionView, pow, saturate, select, sin, smoothstep, time, uv, vec3,
 } from '../../render/tsl';
+import { objectUniforms } from '../../render/shared';
 
 /**
  * Stylized PBR materials for the gods, keyed by the material names the build
@@ -436,6 +437,14 @@ export const COMBINED: Record<string, readonly string[]> = {
 const combinedCache = new Map<string, Map<string, THREE.Material>>();
 
 /**
+ * Each god model's own hit flash (`hit` 0..1 in `hitColor`), read by the
+ * combined materials every model of a god shares, so a struck god flashes
+ * without a material of its own (see GodModel.flash).
+ */
+export const hitUniforms = () => ({ hit: 0, hitColor: new THREE.Color(0xffffff) });
+let hitNodes: ReturnType<typeof objectUniforms<ReturnType<typeof hitUniforms>>> | null = null;
+
+/**
  * One material per `COMBINED` group for one god (shared by every instance),
  * shading each vertex's part (`_part`) exactly as that part's own material
  * does, so a god draws in two calls instead of one per material. Only the
@@ -478,7 +487,10 @@ function combine(name: string, parts: readonly (THREE.MeshPhysicalNodeMaterial |
   const c = new THREE.MeshPhysicalNodeMaterial({ side: used.some((m) => m.side === THREE.DoubleSide) ? THREE.DoubleSide : THREE.FrontSide });
   // an unlit glow becomes pure emission
   c.colorNode = pick((m, lit) => (lit ? vec3(m.colorNode ?? color(m.color)) : vec3(0)));
-  c.emissiveNode = pick((m, lit) => (lit ? vec3(m.emissiveNode ?? color(m.emissive).mul(m.emissiveIntensity)) : vec3(m.colorNode)));
+  // a struck god flashes for a moment: white-hot along the silhouette, a lighter wash over the rest
+  const h = (hitNodes ??= objectUniforms(hitUniforms()));
+  const emissive = pick((m, lit) => (lit ? vec3(m.emissiveNode ?? color(m.emissive).mul(m.emissiveIntensity)) : vec3(m.colorNode)));
+  c.emissiveNode = emissive.add(h.hitColor.mul(h.hit.mul(rim().mul(4).add(0.6))));
   c.roughnessNode = pick((m, lit) => (lit ? float(m.roughnessNode ?? m.roughness) : float(1)));
   c.metalnessNode = pick((m, lit) => (lit ? float(m.metalnessNode ?? m.metalness) : float(0)));
   // zero sheen and zero clearcoat shade exactly as a material without them

@@ -9,6 +9,7 @@ import { GiantShowcase } from './dev/GiantShowcase';
 import { PlayerController } from './player/PlayerController';
 import { ThirdPersonCamera } from './player/ThirdPersonCamera';
 import { grading, PostFX } from './render/PostFX';
+import { screenPulse } from './render/screenPulse';
 import { AsyncPipelines } from './render/AsyncPipelines';
 import { AutoQuality } from './render/AutoQuality';
 import { PerfStats } from './render/PerfStats';
@@ -98,7 +99,7 @@ async function main(): Promise<void> {
         voice = new GodVoice(audio, import.meta.env.BASE_URL);
         for (const g of GODS) voice.load(g.id, ['select']);
         voice.load('jotunn', ['select']);
-        return showStartMenu(graphics, savedPick().god ?? GODS[0]!.id, say);
+        return showStartMenu(graphics, savedPick().god ?? GODS[0]!.id, say, (name, gain = 0.8) => audio.play(name, { bus: 'ui', gain }, 4, 0.05));
       });
 
   const { renderer, isWebGPU } = await rendering;
@@ -229,6 +230,8 @@ async function main(): Promise<void> {
   else {
     const seed = newSeed();
     const last = savedPick();
+    // the hymn gives way to the war council, which builds as the clock runs down
+    music.play('council');
     pickScreen = showGodPick({
       mode: started.mode,
       net: started.net,
@@ -241,6 +244,7 @@ async function main(): Promise<void> {
       seed,
       say,
       sound: (name, gain = 0.8) => audio.play(name, { bus: 'ui', gain }, 4, 0.05),
+      mood: (v) => music.setIntensity(v, 0.1),
     });
     hud.mirrorProgress((f, text) => pickScreen!.progress(f, text));
     hud.notesHost = pickScreen.notes;
@@ -315,7 +319,7 @@ async function main(): Promise<void> {
     player.mouseSensitivity = baseSensitivity * s.sensitivity;
     player.invertY = s.invertY;
     if (changed.has('fov') && !fixedCamera) {
-      camera.fov = s.fov;
+      camera.fov = follow.baseFov = s.fov;
       camera.updateProjectionMatrix();
     }
     grading.exposure.value = baseExposure * s.brightness;
@@ -333,6 +337,10 @@ async function main(): Promise<void> {
   const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, seed: choice.seed, shake: (a) => {
     follow.addShake(a * settings().shake);
     pad.rumble(a * 1.6);
+  }, pulse: (hex, strength, fov) => {
+    // (reduce flashing: a faint glow; the FOV kick is camera motion, so it follows the shake setting)
+    screenPulse(hex, strength * (settings().reduceFlashes ? 0.35 : 1));
+    if (!fixedCamera) follow.kickFov(fov * settings().shake);
   }, cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
   void baked;
@@ -340,6 +348,8 @@ async function main(): Promise<void> {
   const stage = params.has('stage') ? new (await import('./dev/Stage')).Stage(combat, camera, () => (player.model.root.visible = false)) : null;
   if (stage) follow.update = () => {};
   const gameAudio = new GameAudio(audio, music, herald, combat, camera, choice.mode === 'conquest', () => !player.grounded);
+  // the match's song starts calm: the god pick's swell doesn't carry over into it
+  music.setIntensity(0, 60);
   // Prepare what the match added (the player, spell effects, structures), every
   // god and monster still included, then wait (bounded) for the driver to
   // finish compiling the pipelines before revealing the scene.
@@ -353,6 +363,8 @@ async function main(): Promise<void> {
   models.removeFromParent();
   await pipelines.settle(60000, (done, total) => hud.progress(0.9 + (total ? (0.1 * done) / total : 0.1), `Preparing shaders ${done} / ${total}…`));
   clearTimeout(slow);
+  // the versus screen holds long enough to see who faces whom, then the match begins
+  await pickScreen?.shown();
   hud.ready();
   pickScreen?.finish();
   if (advice) hud.notice(advice.text, 15);

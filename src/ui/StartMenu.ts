@@ -11,6 +11,7 @@ import { recordLine } from './records';
 import { rankBadge } from './ascension';
 import type { JotunnRole } from '../combat/JotunnMode';
 import { MODES, modeArt, modeInfo, modeThumb, type GameMode } from './modes';
+import { embersHtml, parallax } from './menuFx';
 
 export { mapOf, type GameMode } from './modes';
 
@@ -148,27 +149,14 @@ export interface GraphicsInfo {
   advice: GpuAdvice | null;
 }
 
-/** Drifting embers over the art: a few dozen tiny CSS-animated dots (the compositor moves them, not the main thread). */
-function embers(n: number): string {
-  let s = '';
-  for (let i = 0; i < n; i++) {
-    const x = (i * 37.7) % 100;
-    const d = 9 + ((i * 7.3) % 9);
-    const delay = -((i * 3.1) % d);
-    const size = 2 + ((i * 5) % 3);
-    const drift = ((i * 13) % 40) - 20;
-    s += `<i style="left:${x.toFixed(1)}%;width:${size}px;height:${size}px;animation-duration:${d.toFixed(1)}s;animation-delay:${delay.toFixed(1)}s;--drift:${drift}px"></i>`;
-  }
-  return s;
-}
-
 /**
  * The home page: choose a mode and its options, then Play (or open a lobby
  * and play with friends). The mode's art fills the screen behind the menu.
  * Shown while the game loads behind it. `picked` hears 'jotunn' when the
- * player picks the giant's mode or asks to play the giant (it says its line).
+ * player picks the giant's mode or asks to play the giant (it says its line);
+ * `sound` plays the lobby's joins, leaves and copies.
  */
-export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: string, picked?: (god: string) => void): Promise<ModeChoice> {
+export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: string, picked?: (god: string) => void, sound?: (name: string, gain?: number) => void): Promise<ModeChoice> {
   const prev = load();
   let mode = savedMode();
   let difficulty: Difficulty = parseDifficulty(prev.difficulty);
@@ -179,9 +167,10 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
   const root = document.createElement('div');
   root.className = 'sm hm';
   root.innerHTML = `
-    <div class="hm-art"><div class="hm-img"></div><div class="hm-img"></div></div>
+    <div class="hm-art"><div class="hm-img fx-far"></div><div class="hm-img fx-far"></div></div>
     <div class="hm-shade"></div>
-    <div class="hm-embers">${embers(28)}</div>
+    <div class="hm-embers embers fx-mid">${embersHtml(28)}</div>
+    <div class="hm-flash"></div>
     <div class="hm-frame">
       <header class="hm-top">
         <div class="hm-logo"><span class="hm-word">ASCENDANT</span><span class="hm-sub">A war of gods</span></div>
@@ -221,6 +210,7 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
     </div>
     <div class="hm-modal"><div class="hm-modal-panel"><div class="hm-label">Controls</div>${controlsHtml()}<button class="hm-close">Close</button></div></div>`;
   document.body.appendChild(root);
+  const stopParallax = parallax(root);
 
   // the backdrop crossfades between two layers, each with a slow push-in
   const layers = [...root.querySelectorAll<HTMLDivElement>('.hm-img')];
@@ -339,6 +329,7 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
       render();
     },
     onStart: (net) => started?.({ mode: isMode(net.game) ? net.game : 'conquest', net, difficulty }),
+    sound,
   });
 
   const note = root.querySelector<HTMLSpanElement>('.sm-note')!;
@@ -367,8 +358,10 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
     const i = MODES.findIndex((m) => m.id === mode);
     if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
       e.preventDefault();
-      choose(MODES[(i + (e.code === 'ArrowDown' ? 1 : MODES.length - 1)) % MODES.length]!.id);
-      root.querySelector<HTMLButtonElement>(`.hm-mode[data-mode="${mode}"]`)?.focus({ preventScroll: true });
+      // (through the button, so the keys sound like a click)
+      const next = root.querySelector<HTMLButtonElement>(`.hm-mode[data-mode="${MODES[(i + (e.code === 'ArrowDown' ? 1 : MODES.length - 1)) % MODES.length]!.id}"]`);
+      if (!root.querySelector('.hm-modes')!.classList.contains('held')) next?.click();
+      next?.focus({ preventScroll: true });
     } else if (e.code === 'Enter' && !play.classList.contains('held') && !(e.target instanceof HTMLButtonElement)) {
       e.preventDefault();
       play.click();
@@ -379,9 +372,11 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
   return new Promise((resolve) => {
     const finish = (choice: ModeChoice) => {
       window.removeEventListener('keydown', onKey);
+      stopParallax();
       saveChoice({ mode: choice.mode, difficulty, role, allies, rivals });
+      // the menu flies apart and the art rushes in, under the god pick fading up
       root.classList.add('done');
-      setTimeout(() => root.remove(), 700);
+      setTimeout(() => root.remove(), 1000);
       resolve(choice);
     };
     started = finish;
