@@ -259,7 +259,8 @@ function zap(k: FxKit, c: Colors, u: Unit, n = 3, width = 0.08): void {
 /** A glyph floating over a god while `life` lasts (or while `keep` holds). */
 function brand(k: FxKit, c: Colors, u: Unit, glyph: Glyph, life: number, size = 0.85, keep?: (u: Unit) => boolean): void {
   const dy = u.radius * 3.6 + 0.75;
-  const s = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph, size, main: c.vfx, hot: c.core, life, spin: glyph === 'eye' ? 0 : 0.15 });
+  // a touch larger than asked: a brand has to read over a god from across a fight
+  const s = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph, size: size * 1.25, main: c.vfx, hot: c.core, life, spin: glyph === 'eye' ? 0 : 0.15 });
   k.attach(s, u, dy, life, (x, y, z) => s.follow(x, y, z), keep);
 }
 
@@ -708,7 +709,10 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       if (s.type !== 'circle') return;
       k.sigil({ x: s.x, y: k.ground(s.x, s.z) + 0.15, z: s.z, glyph: 'tiwaz', size: 4, main: f.p.vfx, hot: f.p.core, life: 1.6, flat: true, open: 0.3 });
       basis(yawOf(s) || f.owner.body.yaw);
-      for (const side of [-1, 1]) k.pillar(f.p, s.x + RIGHT.x * side * 0.9, s.z + RIGHT.z * side * 0.9, 0.3, 0.55);
+      for (const side of [-1, 1]) k.pillar(f.p, s.x + RIGHT.x * side * 0.9, s.z + RIGHT.z * side * 0.9, 0.45, 0.55);
+      shock(k, f.p, s.x, s.z, 0.3, s.radius + 0.8, { life: 0.5, wall: true, width: 0.9 });
+      // the fallen rise: motes of rune light climbing out of the circle
+      k.swarm({ x: s.x, y: k.ground(s.x, s.z), z: s.z, mode: 'orbit', main: f.p.vfx, hot: f.p.core, range: s.radius, spread: 3.2, size: 0.2, life: 1.8, count: 0.6 });
     },
   },
   'odin.ring-of-spears': {
@@ -941,7 +945,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   },
   'anubis.grave-grasp': {
     colors: { vfx: 0xffa040, core: 0xfff0d0 },
-    shot: { prop: 'claw', size: 1.7, orb: 0.4, trail: 0.8, tether: 0.18 },
+    shot: { prop: 'claw', size: 2.1, orb: 0.4, trail: 0.8, tether: 0.22 },
     hit: (k, h) => k.cloud(0xd9b072, h.target.x, h.target.body.y + 0.5, h.target.z, 1, 1),
   },
   'anubis.sand-step': {
