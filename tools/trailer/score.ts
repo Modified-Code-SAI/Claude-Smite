@@ -12,7 +12,7 @@ import { seeded, hashSeed, RATE } from '../../src/audio/dsp';
 import { thunder, whoosh } from '../../src/audio/gestures';
 import { GODS } from '../../src/game/gods';
 // @ts-expect-error plain JS module shared with compose.html
-import { FINALE, HEROES, LENGTH, TITLE, VOICE } from './timeline.mjs';
+import { FINALE, FRIENDS, HEROES, LENGTH, MODES, SKILLS, TITLE, TREES, VOICE } from './timeline.mjs';
 
 const here = new URL('./', import.meta.url);
 const lengths: Record<string, number> = JSON.parse(readFileSync(new URL('out/voice/lengths.json', here), 'utf8'));
@@ -79,8 +79,8 @@ function note(inst: string, midi: number | undefined, t: number, dur: number, ga
 }
 
 // ---------------------------------------------------------------------------
-// Music: a dark swell to the title, the battle theme under the gods and the
-// game, quieter while the rules are explained, a held breath, and a last hit.
+// Music: a quick swell to the title hit, the battle theme under the gods and
+// the modes (quieter under the kit), a held breath, and a last hit.
 
 const music = { L: new Float32Array(N), R: new Float32Array(N) };
 function intoMusic(fn: () => void): void {
@@ -95,26 +95,26 @@ function intoMusic(fn: () => void): void {
 }
 
 intoMusic(() => {
+  // a quick swell into the title hit
   const dm = CHORDS.Dm!;
-  for (const n of dm) note('mus.pad.lo', n - 12, 0.3, TITLE - 0.6, 0.32);
-  note('mus.bass', dm[0]! - 24, 0.3, TITLE - 0.5, 0.4);
-  for (const n of dm) note('mus.choir', n, 3.0, TITLE - 3.3, 0.2);
-  for (const t of [0.6, 3.1, 5.1]) note('mus.taiko', undefined, t, 0, 0.8);
-  for (const t of [6.1, 6.55, 6.85, 7.05, 7.2]) note('mus.taiko.hi', undefined, t, 0, 0.35 + (t - 6) * 0.3);
-  note('mus.swell', undefined, TITLE - 1.8, 0, 0.7);
+  for (const n of dm) note('mus.pad.lo', n - 12, 0, 2.2, 0.28);
+  note('mus.bass', dm[0]! - 24, TITLE, 2.0, 0.4);
+  for (const n of dm) note('mus.choir', n, TITLE, 1.9, 0.2);
+  note('mus.taiko', undefined, TITLE, 0, 0.9);
+  for (const t of [1.5, 1.75, 1.95, 2.1, 2.2]) note('mus.taiko.hi', undefined, t, 0, 0.35 + (t - 1.4) * 0.4);
 });
 
 const battleGain = (t: number): number => {
-  if (t < HEROES[0].at) return 0.55;
-  if (t < VOICE.skills1 - 0.6) return 0.85;
-  if (t < VOICE.conquest - 0.4) return 0.3;
+  if (t < SKILLS - 0.2) return 0.9;
+  if (t < VOICE.modes - 0.4) return 0.35;
   return 1;
 };
-const BATTLE_END = VOICE.close1 - 0.3;
+const BATTLE_START = HEROES[0].at - 0.2;
+const BATTLE_END = FINALE - 0.25;
 intoMusic(() => {
   const song = SONGS.battle;
   const beat = 60 / song.bpm;
-  for (let bar = 0, t = TITLE; t < BATTLE_END; bar++, t += song.beats * beat) {
+  for (let bar = 0, t = BATTLE_START; t < BATTLE_END; bar++, t += song.beats * beat) {
     const notes: { inst: string; midi?: number; beat: number; dur?: number; gain: number; layer: string; pan?: number }[] = [];
     const i = bar % song.chords.length;
     song.write(i, Math.floor(bar / song.chords.length) + 1, CHORDS[song.chords[i]!]!, notes as never);
@@ -125,23 +125,21 @@ intoMusic(() => {
       note(n.inst, n.midi, at, Math.min((n.dur ?? 0) * beat, BATTLE_END - at), n.gain * g, n.pan ?? 0);
     }
   }
-  note('mus.crash', undefined, TITLE, 0, 0.5);
+  note('mus.crash', undefined, BATTLE_START, 0, 0.5);
 });
 
 intoMusic(() => {
-  // the held breath before "Ascend", then the last chord
-  for (const n of CHORDS.Bb!) note('mus.pad.hi', n + 12, VOICE.close1 - 0.3, FINALE - VOICE.close1, 0.26);
-  for (const n of CHORDS.Bb!) note('mus.choir', n + 12, VOICE.close1, FINALE - VOICE.close1 - 0.2, 0.2);
+  // a held breath before "Ascend", then the last chord
   note('mus.swell', undefined, FINALE - 1.8, 0, 0.6);
   for (const n of CHORDS.D!) {
-    note('mus.horn', n, FINALE, 3.2, 0.36);
-    note('mus.pad.hi', n + 12, FINALE, 4, 0.3);
-    note('mus.choir', n + 12, FINALE, 4, 0.28);
+    note('mus.horn', n, FINALE, 1.2, 0.36);
+    note('mus.pad.hi', n + 12, FINALE, 1.3, 0.3);
+    note('mus.choir', n + 12, FINALE, 1.3, 0.28);
   }
-  note('mus.bass', CHORDS.D![0]! - 24, FINALE, 4, 0.5);
+  note('mus.bass', CHORDS.D![0]! - 24, FINALE, 1.3, 0.5);
   note('mus.taiko', undefined, FINALE, 0, 1);
   note('mus.crash', undefined, FINALE, 0, 0.6);
-  for (const [k, m] of [86, 90, 93].entries()) note('mus.bell', m, FINALE + 0.4 + k * 0.25, 0, 0.25);
+  for (const [k, m] of [86, 90, 93].entries()) note('mus.bell', m, FINALE + 0.3 + k * 0.2, 0, 0.25);
 });
 
 // ---------------------------------------------------------------------------
@@ -149,39 +147,31 @@ intoMusic(() => {
 
 const r = seeded(7);
 const sfx = (name: string, t: number, gain = 1, pan = 0, variant = 0) => put(sample(name, variant), t, gain, { pan });
-put(thunder(r, 3.2, { crack: 1.2, rumble: 1.3 }), 0.55, 0.75);
-put(thunder(r, 3.5, { crack: 1.4, rumble: 1.5 }), TITLE - 0.02, 0.8);
-sfx('sting.epic', TITLE, 0.75);
-// a quick cut montage under "Now, they rise again"
-for (const [k, t] of [5.2, 5.9, 6.6].entries()) sfx('hit.blunt', t + 0.25, 0.5, k % 2 ? 0.3 : -0.3, k);
+put(thunder(r, 2.5, { crack: 1.4, rumble: 1.5 }), TITLE - 0.02, 0.8);
+sfx('sting.epic', TITLE, 0.7);
 
-// each hero clip: the ultimate at 0.15 s, the first skill at 1.25 s, a whoosh on the cut
+// each hero clip opens on its ultimate landing, with a whoosh on the cut
 for (const h of HEROES) {
   const def = GODS.find((g) => g.id === h.god)!;
-  const ult = def.defaultLoadout[4]!;
-  const first = def.defaultLoadout[0]!;
-  put(whoosh(r, 0.5, 300, 2600, { q: 0.9, peak: 0.7 }), h.at - 0.3, 0.45);
-  for (const [id, at] of [[ult, 0.15], [first, 1.25]] as const) {
-    for (const part of ['cast', 'impact'] as const) {
-      const name = skillPart(id, part);
-      if (!recipes.has(name)) continue;
-      sfx(name, h.at + at + (part === 'impact' ? 0.45 : 0), part === 'impact' ? 0.55 : 0.6);
-    }
-  }
+  const ult = def.defaultLoadout[def.defaultLoadout.length - 1]!;
+  put(whoosh(r, 0.4, 300, 2600, { q: 0.9, peak: 0.7 }), h.at - 0.25, 0.4);
+  const name = skillPart(ult, 'impact');
+  if (recipes.has(name)) sfx(name, h.at + 0.2, 0.5);
 }
-// section changes
-for (const t of [VOICE.skills1 - 0.4, VOICE.trees - 0.4, VOICE.conquest - 0.5, VOICE.jungle - 0.4, VOICE.bosses - 0.4, VOICE.multi - 0.4]) put(whoosh(r, 0.7, 250, 3000, { q: 0.8, peak: 0.65 }), t, 0.4);
-sfx('ui.select', VOICE.skills1 + 1.6, 0.35);
-sfx('ui.point', VOICE.trees + 2.0, 0.35);
-sfx('ui.point', VOICE.trees + 4.0, 0.35);
-sfx('wave.horn', VOICE.conquest - 0.2, 0.45);
-sfx('tower.shot', VOICE.conquest + 5.2, 0.4);
-sfx('structure.collapse', VOICE.conquest + 8.2, 0.45);
-sfx('monster.aggro', VOICE.jungle + 0.8, 0.4);
-sfx('wyrm.roar', VOICE.bosses + 0.3, 0.5);
-sfx('colossus.stomp', VOICE.bosses + 3.2, 0.55);
-sfx('kill.confirm', VOICE.multi + 3.4, 0.3);
-put(thunder(r, 3.5, { crack: 1.2, rumble: 1.4 }), FINALE - 0.02, 0.7);
+// the kit, then each mode cut
+put(whoosh(r, 0.6, 250, 3000, { q: 0.8, peak: 0.65 }), SKILLS - 0.35, 0.4);
+for (let i = 0; i < 4; i++) sfx('ui.select', SKILLS + 0.35 + i * 0.18, 0.25);
+put(whoosh(r, 0.5, 250, 3000, { q: 0.8, peak: 0.65 }), TREES - 0.3, 0.35);
+sfx('ui.point', TREES + 0.8, 0.3);
+sfx('ui.point', TREES + 1.5, 0.3);
+for (const [k, m] of MODES.entries()) {
+  put(whoosh(r, 0.4, 250, 3000, { q: 0.8, peak: 0.6 }), m.at - 0.25, 0.4);
+  sfx('hit.blunt', m.at + 0.02, 0.4, k % 2 ? 0.3 : -0.3, k);
+}
+sfx('wave.horn', MODES[0].at, 0.35);
+put(whoosh(r, 0.5, 250, 3000, { q: 0.8, peak: 0.6 }), FRIENDS - 0.3, 0.4);
+sfx('kill.confirm', VOICE.friends + 1.6, 0.3);
+put(thunder(r, 2.5, { crack: 1.2, rumble: 1.4 }), FINALE - 0.02, 0.7);
 
 // ---------------------------------------------------------------------------
 // Mix: music ducks under the voice, a little room on everything, a soft limiter
@@ -265,7 +255,7 @@ for (let i = 0; i < N; i++) {
   peak = Math.max(peak, Math.abs(out.L[i]!), Math.abs(out.R[i]!));
 }
 const norm = 0.8 / peak;
-const fadeOut = (i: number) => Math.min(1, (N - i) / (RATE * 1.5));
+const fadeOut = (i: number) => Math.min(1, (N - i) / (RATE * 0.6));
 
 const wav = Buffer.alloc(44 + N * 4);
 wav.write('RIFF', 0);
