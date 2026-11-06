@@ -186,6 +186,33 @@ export const SHOTS = {
       if (!s.vars.cast && t > 0.02 && f) { s.vars.cast = 1; s.cast(p, 0, f.x, f.z); }
       s.look(0.6, 2.5, 13.4, 0, 1.5, 5.4, 50);
     }`),
+  kaRush: still('rush', `(s, g) => {
+      const p = s.combat.player;
+      const gods = s.combat.sim.units.filter((u) => u.kind === 'god' && u !== p);
+      const ally = gods.find((u) => u.team === p.team), foes = gods.filter((u) => u.team !== p.team);
+      g.player.model.root.visible = true;
+      // after the opening face-off (it puts everyone back on their spawn)
+      s.skip(7);
+      // the two sides squaring up across the relic's dais, as in the clash still: the rest
+      // leave, the bots hold their skills and the fight so far is cleared
+      const face = (x, z, tx, tz) => Math.atan2(-(tx - x), -(tz - z));
+      s.combat.sim.teleport(p, 3.4, 3.0, face(3.4, 3.0, -3.2, -1.2));
+      if (ally) s.combat.sim.teleport(ally, 4.8, 4.6, face(4.8, 4.6, -3.2, -1.2));
+      if (foes[0]) s.combat.sim.teleport(foes[0], -3.2, -1.2, face(-3.2, -1.2, 3.4, 3.0));
+      if (foes[1]) s.combat.sim.teleport(foes[1], -4.4, 0.9, face(-4.4, 0.9, 3.4, 3.0));
+      for (const u of gods) if (u !== ally && u !== foes[0] && u !== foes[1]) s.combat.sim.remove(u);
+      for (const u of [ally, ...foes]) if (u?.brain?.options) u.brain.options.aggression = 0;
+      s.combat.sim.projectiles.length = 0;
+      s.combat.sim.zones.length = 0;
+      s.combat.vfx.reset();
+      s.vars.p = p; s.vars.all = [p, ally, foes[0], foes[1]].filter(Boolean);
+      return { who: s.vars.all.map((u) => u.name) };
+    }`, `(dt, t, s) => {
+      const p = s.vars.p, f = s.vars.all.find((u) => u.team !== p.team);
+      for (const u of s.vars.all) u.combatant.health = u.combatant.stats.maxHealth;
+      if (!s.vars.cast && t > 0.02 && f) { s.vars.cast = 1; s.cast(p, 0, f.x, f.z); }
+      s.look(-8.2, 8, 11.8, 0, 1, 0.6, 50);
+    }`),
   kaDuel: still('duel', `(s, g) => {
       const p = s.combat.player, r = s.combat.sim.units.find((u) => u.kind === 'god' && u.team === 'chaos');
       g.player.model.root.visible = true;
