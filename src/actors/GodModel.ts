@@ -187,6 +187,18 @@ const ULT_ACCENT: { bone: string; axis: [number, number, number]; angle: number 
   { bone: 'DEF-upper_arm.L', axis: [0, 0, 1], angle: 1.7 },
 ];
 
+/**
+ * Hair sway (see GodModel.swayHair): spring stiffness and damping (1/s^2, 1/s),
+ * how hard the head's acceleration throws the hair (a sprint start, ~15 m/s^2,
+ * swings the tips ~5 cm), the furthest they swing (m) and the breeze (m).
+ */
+export const SWAY = { stiff: 55, damp: 4.5, pull: 0.18, max: 0.07, breeze: 0.006 };
+const swayTmp = new THREE.Vector3();
+const swayTmp2 = new THREE.Vector3();
+const swayTmp3 = new THREE.Vector3();
+const swayInv = new THREE.Matrix4();
+const swayM3 = new THREE.Matrix3();
+
 const aloftDir = new THREE.Vector3();
 const aloftTo = new THREE.Vector3();
 const aloftPole = new THREE.Vector3();
@@ -280,6 +292,9 @@ export class GodModel {
   private stopLeft = 0;
   /** This model's hit flash, as its combined materials read it (see `flash`). */
   private readonly hitValues = hitUniforms();
+  /** Hair sway: a damped spring the hair's tips hang on, lagging the head (world meters). */
+  private readonly sway = { at: new THREE.Vector3(), vel: new THREE.Vector3(), x: new THREE.Vector3(), v: new THREE.Vector3(), primed: false, t: 0 };
+  private swayMesh: THREE.Object3D | null = null;
   private hitPeak = 0;
   private hitTime = 1e9;
   private readonly physics: SecondaryPhysics;
@@ -477,7 +492,10 @@ export class GodModel {
       if (!(o as THREE.SkinnedMesh).isSkinnedMesh) return;
       packScalars((o as THREE.Mesh).geometry);
       // every model of this god draws with one material: each reads its own hit flash
-      if (shared.has((o as THREE.Mesh).material as THREE.Material)) useUniforms(this.hitValues, o);
+      if (shared.has((o as THREE.Mesh).material as THREE.Material)) {
+        useUniforms(this.hitValues, o);
+        this.swayMesh ??= o;
+      }
     });
   }
 
@@ -630,6 +648,7 @@ export class GodModel {
    * resets itself when the model next appears somewhere else.
    */
   rest(): void {
+    this.sway.primed = false;
     this.castWeight = 0;
     this.prevCast = 0;
     this.castTime = 1e9;
@@ -782,7 +801,44 @@ export class GodModel {
     // the weapon hand stays closed around its handle in every clip
     for (const c of this.curl) c.bone.quaternion.multiply(c.q);
     this.root.updateMatrixWorld(true);
+    this.swayHair(dt);
     this.physics.update(Math.min(clothDt, 1 / 20));
+  }
+
+  /**
+   * Hair that lags its head: a damped spring pulled back by the head's
+   * acceleration (a sprint start throws the mane back, a stop swings it
+   * forward, a jump lifts it), plus a slow breeze. The body shader moves each
+   * lock's tip by it, its root not at all, so it costs a few vector ops here
+   * and nothing per lock.
+   */
+  private swayHair(dt: number): void {
+    const head = this.bones.get('DEF-head');
+    const mesh = this.swayMesh;
+    if (!head || !mesh || dt <= 0) return;
+    const w = this.sway;
+    const p = head.getWorldPosition(swayTmp);
+    const vel = swayTmp2.copy(p).sub(w.at).divideScalar(dt);
+    w.at.copy(p);
+    // a teleport (spawn, respawn, a blink) is not a jolt
+    if (!w.primed || vel.lengthSq() > 30 * 30) {
+      w.vel.set(0, 0, 0);
+      w.x.set(0, 0, 0);
+      w.v.set(0, 0, 0);
+      w.primed = true;
+      return;
+    }
+    const acc = swayTmp3.copy(vel).sub(w.vel).divideScalar(dt).clampLength(0, 60);
+    w.vel.copy(vel);
+    // x'' = -K x - C x' - a (semi-implicit, stable for dt up to 1/20)
+    w.v.addScaledVector(w.x, -SWAY.stiff * dt).addScaledVector(w.v, -SWAY.damp * dt).addScaledVector(acc, -SWAY.pull * dt);
+    w.x.addScaledVector(w.v, dt).clampLength(0, SWAY.max);
+    w.t += dt;
+    const out = this.hitValues.sway.copy(w.x);
+    out.x += Math.sin(w.t * 1.3) * SWAY.breeze;
+    out.z += Math.sin(w.t * 0.9 + 1.7) * SWAY.breeze;
+    // into the mesh's own space, where the shader adds it after skinning
+    out.applyMatrix3(swayM3.setFromMatrix4(swayInv.copy(mesh.matrixWorld).invert()));
   }
 
   /**

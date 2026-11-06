@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, atan, attribute, color, dot, exp, float, fract, fwidth, length, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
-  mx_worley_noise_float, positionGeometry, positionView, pow, reflectView, saturate, select, sin, smoothstep, time, uv, vec3,
+  mx_worley_noise_float, positionGeometry, positionLocal, positionView, pow, reflectView, saturate, select, sin, smoothstep, time, uv, vec3,
 } from '../../render/tsl';
 import { objectUniforms } from '../../render/shared';
 import { reliefFade, reliefNormal, surfaceGradient } from './relief';
@@ -454,11 +454,12 @@ export const COMBINED: Record<string, readonly string[]> = {
 const combinedCache = new Map<string, Map<string, THREE.Material>>();
 
 /**
- * Each god model's own hit flash (`hit` 0..1 in `hitColor`), read by the
+ * Each god model's own hit flash (`hit` 0..1 in `hitColor`) and hair sway
+ * (`sway`, meters in the mesh's space, see GodModel.swayHair), read by the
  * combined materials every model of a god shares, so a struck god flashes
  * without a material of its own (see GodModel.flash).
  */
-export const hitUniforms = () => ({ hit: 0, hitColor: new THREE.Color(0xffffff) });
+export const hitUniforms = () => ({ hit: 0, hitColor: new THREE.Color(0xffffff), sway: new THREE.Vector3() });
 let hitNodes: ReturnType<typeof objectUniforms<ReturnType<typeof hitUniforms>>> | null = null;
 
 /**
@@ -518,6 +519,14 @@ function combine(name: string, parts: readonly (THREE.MeshPhysicalNodeMaterial |
   if (used.some((m) => m.clearcoat > 0)) {
     c.clearcoatNode = pick((m, lit) => float(lit ? m.clearcoat : 0));
     c.clearcoatRoughnessNode = pick((m, lit) => float(lit ? m.clearcoatRoughness : 0));
+  }
+  // hair lags its head: each lock's tip swings by the model's sway, its root stays put
+  // (after skinning, in the mesh's own space; the lock's weight is in its color's z)
+  const hairPart = COMBINED[name]?.indexOf('hair') ?? -1;
+  if (hairPart >= 0 && parts[hairPart]) {
+    const d = data();
+    const onHair = select(part.sub(hairPart).abs().lessThan(0.5), float(1), float(0));
+    c.positionNode = positionLocal.add(h.sway.mul(d.x.mul(d.x).mul(d.z).mul(onHair)));
   }
   // one bump for the whole god from each part's relief height
   if (used.some((m) => (m as Relief).reliefNode)) c.normalNode = reliefNormal(pick((m, lit) => (lit && (m as Relief).reliefNode ? float((m as Relief).reliefNode) : float(0))));
