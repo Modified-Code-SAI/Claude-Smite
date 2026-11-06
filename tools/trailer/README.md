@@ -41,25 +41,28 @@ To change a line, edit `script.json`, rerun steps 1 and 3, and nudge
 ## Home page art
 
 The home page's mode backdrops (`public/keyart/<mode>.jpg`, plus a blurred
-`<mode>-blur.jpg` for the god pick screen and a `<mode>-thumb.jpg` for the mode list) are frames filmed the same
-way: `cqVista`, `mdRush` and `mdDescent` from the trailer's list, and the
-`ka*` stills (`kaClash`, `kaDuel`, `kaArena`, `kaSiege`, `kaJotunn`), which
-stage a held moment in each mode and frame it for a backdrop.
+`<mode>-blur.jpg` for the god pick screen and a `<mode>-thumb.jpg` for the mode
+list) are filmed the same way, then their scenery is painted over with FLUX
+while the gods stay exactly as the game draws them. The shots are `cqVista` and
+`mdDescent` from the trailer's list and the `ka*` stills (`kaClash`, `kaRush`,
+`kaDuel`, `kaArena`, `kaSiege`, `kaJotunn`), which stage a held moment in each
+mode and frame it for a backdrop. `--plate` films the last frame's instant
+twice more, settled, with every god, unit and effect hidden (`NNNN-plate.jpg`)
+and shown (`NNNN-full.jpg`); `tools/textures/keyart.py` paints the bare
+scenery and lays the gods back on through the difference of the two.
 
 ```sh
 npm run build && npx vite preview --port 4173 &
-node tools/trailer/film.mjs kaClash,kaDuel,kaArena,kaSiege,kaJotunn --frames 10 --width 1600
-# pick a frame, then for each mode:
-ffmpeg -i out/frames/kaDuel/0000.jpg -vf scale=1600:-1 -q:v 5 public/keyart/duel.jpg
-ffmpeg -i public/keyart/duel.jpg -vf "scale=480:-1,gblur=sigma=6" -q:v 6 public/keyart/duel-blur.jpg
-ffmpeg -i public/keyart/duel.jpg -vf scale=256:-1 -q:v 4 public/keyart/duel-thumb.jpg
+# --frames is the shipped frame + 1 (keyart.py's PICKS)
+for s in kaClash:3 kaRush:3 kaDuel:1 kaSiege:1 kaJotunn:10 kaArena:10 cqVista:6 mdDescent:2; do
+  node tools/trailer/film.mjs ${s%:*} --frames ${s#*:} --width 1600 --plate
+done
+python tools/textures/keyart.py          # FLUX setup: tools/textures/paint.py
 ```
 
-The shipped frames: clash `kaClash/0002`, jotunn `kaJotunn/0009`, siege
-`kaSiege/0000`, duel `kaDuel/0000`, arena `kaArena/0009` mirrored, conquest
-`cqVista/0005`, rush `mdRush/0002` and descent `mdDescent/0001` mirrored (from
-a `cqVista,mdRush,mdDescent --frames 8` run; the bots' gods are shuffled, so a
-rerun can need a different frame). Refilm them after changing a map's textures.
+The bots' gods are shuffled on every run and `mdDescent` films whatever fight
+it finds, so look at each `NNNN-full.jpg` before painting and refilm a shot
+that came out badly. Refilm after changing a map's textures.
 
 The god pick screen's full-length god art (`public/splash/<god>.jpg`) is baked
 by `node tools/portraits/bake.mjs http://localhost:4173 zeus,thor,... --splash`.

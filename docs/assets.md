@@ -142,13 +142,14 @@ Every sound effect and ambience loop is synthesized in code at load time (`src/a
 - **Herald:** the spoken cues are original lines spoken by the browser's built-in speech synthesis (the player's own system voices; nothing is shipped). Each line opens with a synthesized sting.
 - Rendering the synthesized sounds takes a few seconds of CPU and runs on worker threads, so it never stalls the game. Unit tests (`src/audio/audio.test.ts`, `orchestra.test.ts`, `layers.test.ts`) check every sound for clipping, silence and DC offset, and that every note the score writes has a recording within two and a half semitones.
 
-## AI-painted textures (shipped in `public/textures/pbr`)
+## AI-painted textures and key art (shipped in `public/textures/pbr` and `public/keyart`)
 
 The seven tiling surface sets (flagstone, marble, sandstone blocks, rock, grass ground, dirt, bark) are hand-painted-style images made with **FLUX.1-schnell** (Black Forest Labs, Apache-2.0), run on the CPU through OpenVINO from the `OpenVINO/FLUX.1-schnell-int4-ov` export on Hugging Face (also Apache-2.0). Every prompt describes generic materials in an original painterly style; none names a game, studio or artist.
 
 - `tools/textures/paint.py` paints each material as a seamless tile (`flux.py` blends two rolled views per denoising step and `ovtile.py` makes the VAE wrap around), then bakes it into the same two maps per material the shaders read. Flagstone and the sandstone wall are painted over `gen.py`'s procedural layout so slab and course sizes stay where the levels were tuned.
 - The bake matches each painting to the old map's mean colour (and its contrast, relief and roughness a little bolder), because the terrain, metal and frost shaders were tuned on those statistics.
 - `gen.py` still builds the procedural layouts and the foliage atlas.
+- The home page's mode backdrops (`public/keyart`) are filmed in the game, then only their scenery is repainted by the same model (`tools/textures/keyart.py`, low strength); the gods, units and effects are laid back on exactly as the game rendered them.
 - Apache-2.0 has no attribution requirement for generated images; the model is credited here anyway.
 
 ## License obligations, in one place
@@ -159,6 +160,6 @@ The seven tiling surface sets (flagstone, marble, sandstone blocks, rock, grass 
 - **CMU mocap:** free for any use, including commercial; the raw data may not be resold. Credit: "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217."
 - **Poly Haven API:** "Powered by Poly Haven" credit when the Poly Haven tier is used.
 - **Music samples:** VSCO 2 CE and VCSL are CC0. Sonatina Symphonic Orchestra is CC Sampling Plus 1.0: samples may be transformed and used in any work (not advertising), with credit to Mattias Westlund and the license; `public/music/CREDITS.md` has the lines. Sound effects are synthesized in code, and their recorded layers are all CC0 (`public/sfx/CREDITS.md`); no obligations.
-- **AI-painted textures:** FLUX.1-schnell, Apache-2.0; no obligations (credited above).
+- **AI-painted textures and key art scenery:** FLUX.1-schnell, Apache-2.0; no obligations (credited above).
 - **God voices:** Kokoro is Apache-2.0 and Chatterbox is MIT; both let the generated speech ship in any work with no credit owed (credited anyway). Chatterbox marks its audio with an inaudible Perth watermark that identifies it as generated. Whisper (MIT) only checks the takes and is not shipped.
 - Nothing here uses Smite or Hi-Rez art, audio, names or trademarks.
