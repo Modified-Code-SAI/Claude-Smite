@@ -55,5 +55,11 @@ ffmpeg -i public/keyart/duel.jpg -vf "scale=480:-1,gblur=sigma=6" -q:v 6 public/
 ffmpeg -i public/keyart/duel.jpg -vf scale=256:-1 -q:v 4 public/keyart/duel-thumb.jpg
 ```
 
+The shipped frames: clash `kaClash/0002`, jotunn `kaJotunn/0009`, siege
+`kaSiege/0000`, duel `kaDuel/0000`, arena `kaArena/0009` mirrored, conquest
+`cqVista/0005`, rush `mdRush/0002` and descent `mdDescent/0001` mirrored (from
+a `cqVista,mdRush,mdDescent --frames 8` run; the bots' gods are shuffled, so a
+rerun can need a different frame). Refilm them after changing a map's textures.
+
 The god pick screen's full-length god art (`public/splash/<god>.jpg`) is baked
 by `node tools/portraits/bake.mjs http://localhost:4173 zeus,thor,... --splash`.
