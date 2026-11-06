@@ -1,0 +1,11 @@
+/* Subtitles: bottom center, above the action bar and the coach's tips. */
+.subs { --sub-bg: 0.6; position: fixed; left: 50%; bottom: max(calc(250px * var(--ui-scale, 1)), 23vh); transform: translateX(-50%); z-index: 34; display: flex; flex-direction: column; align-items: center; gap: 6px; width: min(92vw, 900px); pointer-events: none; font-size: 19px; }
+.subs[data-size='small'] { font-size: 15px; }
+.subs[data-size='large'] { font-size: 24px; }
+.subs[data-size='huge'] { font-size: 31px; }
+.sub-line { max-width: 100%; padding: 0.22em 0.7em 0.28em; line-height: 1.32; text-align: center; color: #fbf6ea; font-family: Georgia, 'Times New Roman', serif; background: rgba(6, 5, 4, var(--sub-bg)); border-radius: 0.3em; text-shadow: 0 1px 2px #000, 0 0 6px rgba(0, 0, 0, 0.9); animation: sub-in 0.18s ease-out; transition: opacity 0.28s, transform 0.28s; }
+.sub-line.gone { opacity: 0; transform: translateY(-4px); }
+.sub-who { margin-right: 0.45em; font-family: 'Cinzel', Georgia, serif; font-weight: 700; letter-spacing: 0.04em; }
+.sub-who::after { content: ':'; }
+.subs.no-names .sub-who { display: none; }
+@keyframes sub-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

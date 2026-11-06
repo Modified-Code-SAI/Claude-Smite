@@ -63,6 +63,36 @@ body.descent-boss-up .descent .mh-banner { top: max(34%, 246px); }
 .descent-skill .descent-icon svg { width: 100%; height: 100%; display: block; }
 .descent-fade { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 0.7s ease-in; }
 .descent-fade.show { opacity: 1; transition: opacity 0.35s ease-out; }
+/* falling into the next depth: its glow far below, and its embers, bubbles or souls rushing up past the team */
+.descent-fade > i { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity 0.5s; }
+.descent-fade.plunge > i { opacity: 1; background: radial-gradient(ellipse 85% 65% at 50% 115%, var(--plunge-glow), transparent 72%), radial-gradient(ellipse 30% 22% at 50% 104%, var(--plunge-glow), transparent), radial-gradient(ellipse 90% 70% at 50% 45%, transparent 45%, rgba(0, 0, 0, 0.8)); }
+.descent-fade > i::before, .descent-fade > i::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 200%; background-size: 100% 50%; will-change: transform; }
+.descent-fade.plunge > i::before {
+  background-image:
+    radial-gradient(ellipse 1.5px 20px at 2% 15%, var(--plunge-mote), transparent), radial-gradient(ellipse 1.5px 34px at 10% 9%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 1.5px 25px at 13% 9%, var(--plunge-mote), transparent), radial-gradient(ellipse 2.0px 21px at 18% 42%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 1.5px 19px at 27% 63%, var(--plunge-mote), transparent), radial-gradient(ellipse 2.0px 19px at 31% 40%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 1.5px 35px at 36% 13%, var(--plunge-mote), transparent), radial-gradient(ellipse 2.0px 23px at 40% 31%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 1.0px 21px at 45% 57%, var(--plunge-mote), transparent), radial-gradient(ellipse 1.0px 24px at 53% 6%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 2.0px 32px at 58% 53%, var(--plunge-mote), transparent), radial-gradient(ellipse 1.5px 23px at 64% 45%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 1.5px 34px at 70% 24%, var(--plunge-mote), transparent), radial-gradient(ellipse 1.5px 37px at 75% 34%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 1.5px 42px at 83% 12%, var(--plunge-mote), transparent), radial-gradient(ellipse 1.5px 39px at 85% 93%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 2.0px 28px at 90% 56%, var(--plunge-mote), transparent), radial-gradient(ellipse 1.5px 32px at 97% 35%, var(--plunge-mote), transparent);
+  animation: descent-rush 0.42s linear infinite;
+}
+.descent-fade.plunge > i::after {
+  background-image:
+    radial-gradient(ellipse 3.0px 60px at 2% 9%, var(--plunge-mote), transparent), radial-gradient(ellipse 3.0px 84px at 16% 70%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 3.0px 57px at 33% 39%, var(--plunge-mote), transparent), radial-gradient(ellipse 3.0px 87px at 55% 36%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 2.5px 71px at 59% 77%, var(--plunge-mote), transparent), radial-gradient(ellipse 3.0px 66px at 77% 92%, var(--plunge-mote), transparent),
+    radial-gradient(ellipse 3.5px 83px at 92% 55%, var(--plunge-mote), transparent);
+  opacity: 0.55; filter: blur(1px); animation: descent-rush 0.26s linear infinite;
+}
+@keyframes descent-rush { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+.descent-fade[data-depth='soul'] { --plunge-glow: rgba(40, 120, 255, 0.7); --plunge-mote: rgba(170, 220, 255, 0.85); }
+.descent-fade[data-depth='spirit'] { --plunge-glow: rgba(40, 255, 120, 0.55); --plunge-mote: rgba(160, 255, 195, 0.8); }
+.descent-fade[data-depth='ember'] { --plunge-glow: rgba(255, 80, 20, 0.7); --plunge-mote: rgba(255, 160, 80, 0.9); }
+@media (prefers-reduced-motion: reduce) { .descent-fade > i::before, .descent-fade > i::after { animation: none; } }
 .ch-death.downed .ch-death-title { font-size: 0; }
 .ch-death.downed .ch-death-title::after { content: 'Downed'; font-size: 54px; }
 .ch-death.downed::after { content: 'Hold on: an ally standing over you raises you'; font-size: 16px; color: #f2e6cc; letter-spacing: 0.06em; }
@@ -71,10 +101,10 @@ body.descent-boss-up .descent .mh-banner { top: max(34%, 246px); }
 .descent-souls { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 74px; line-height: 1; }
 .descent-souls b { font-size: 24px; font-weight: 700; text-shadow: 0 2px 4px #000; transition: text-shadow 0.4s; }
 .descent-souls span { margin-top: 3px; font: 600 10px system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
-.descent-souls.ally b { color: #9fd4ff; }
-.descent-souls.foe b { color: #ff9f8a; }
-.descent-souls.ally.lead b { text-shadow: 0 0 12px rgba(110, 180, 255, 0.95), 0 2px 4px #000; }
-.descent-souls.foe.lead b { text-shadow: 0 0 12px rgba(255, 90, 70, 0.95), 0 2px 4px #000; }
+.descent-souls.ally b { color: var(--ally-light); }
+.descent-souls.foe b { color: var(--foe-light); }
+.descent-souls.ally.lead b { text-shadow: 0 0 12px rgba(var(--ally-rgb), 0.95), 0 2px 4px #000; }
+.descent-souls.foe.lead b { text-shadow: 0 0 12px rgba(var(--foe-rgb), 0.95), 0 2px 4px #000; }
 .descent-souls i { position: absolute; top: -4px; left: 50%; font: 700 14px system-ui, sans-serif; font-style: normal; color: #ffe08a; opacity: 0; pointer-events: none; text-shadow: 0 0 8px rgba(255, 200, 90, 0.9), 0 1px 2px #000; }
 .descent-souls i.pop { animation: descent-gain 1.1s ease-out; }
 @keyframes descent-gain { 0% { opacity: 0; transform: translate(-50%, 6px) scale(0.8); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -16px) scale(1); } }

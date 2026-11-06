@@ -11,6 +11,8 @@ import { hex, TEAM_COLORS } from '../combat/palette';
 import { skillIcon } from './icons';
 import { DamageLog, killerHtml, recapHtml, type RecapName } from './deathRecap';
 import { hypot } from '../core/math';
+import { settings } from '../settings/store';
+import { onKeyLabels } from '../settings/controls';
 import './combat.css';
 import { BOSS_EPITHET } from './bossNames';
 
@@ -226,12 +228,15 @@ export class CombatHud {
     this.manaText = el('span', 'ch-res-text', mana);
 
     const row = el('div', 'ch-abilities', frame);
+    // each slot's key, kept in step with the player's bindings
+    const keyBadges: HTMLElement[] = [];
+    onKeyLabels(() => keyBadges.forEach((b, i) => (b.textContent = SLOT_KEYS[i] ?? '')));
     for (let i = 0; i < SLOT_COUNT; i++) {
       const tile = el('div', `ch-slot${i === ULTIMATE_SLOT ? ' ch-ult' : ''}`, row);
       const icon = el('div', 'ch-icon', tile);
       const cd = el('div', 'ch-cd', tile);
       const cdText = el('span', 'ch-cd-text', tile);
-      el('span', 'ch-key', tile, SLOT_KEYS[i]);
+      keyBadges.push(el('span', 'ch-key', tile, SLOT_KEYS[i]));
       const cost = el('span', 'ch-cost', tile);
       const lock = el('span', 'ch-lock', tile);
       const charges = el('span', 'ch-charges', tile);
@@ -465,8 +470,10 @@ export class CombatHud {
     const hpPct = (c.health / s.maxHealth) * 100;
     this.hurt = Math.max(0, this.hurt - dt * 2.2);
     const low = p.alive ? Math.max(0, (35 - hpPct) / 35) : 0;
-    const beat = low > 0 ? 0.75 + 0.25 * Math.sin(performance.now() / 180) : 0;
-    setStyle(this.vignette, 'opacity', Math.min(1, this.hurt * 0.9 + low * beat).toFixed(2));
+    // (reduce flashing: a gentler hurt flash and a steady low-health edge, no heartbeat)
+    const calm = settings().reduceFlashes;
+    const beat = low > 0 ? (calm ? 0.7 : 0.75 + 0.25 * Math.sin(performance.now() / 180)) : 0;
+    setStyle(this.vignette, 'opacity', Math.min(1, this.hurt * (calm ? 0.35 : 0.9) + low * beat).toFixed(2));
     this.updateHitDirs(dt);
     const shield = c.shieldTotal;
     setStyle(this.hpFill, 'width', percent(hpPct / 100));
@@ -718,7 +725,8 @@ export class CombatHud {
     const bar = el('div', 'ch-ob-bar', root);
     const lag = el('div', 'ch-ob-lag', bar);
     const hp = el('div', 'ch-ob-hp', bar);
-    hp.style.setProperty('--c', TEAM_COLORS[side]);
+    // (a CSS variable, so a change of team colors mid-match recolors every bar)
+    hp.style.setProperty('--c', `var(--${side}, ${TEAM_COLORS[side]})`);
     const shield = el('div', 'ch-ob-shield', bar);
     el('div', 'ch-ob-ticks', bar);
     if (u === this.target) root.classList.add('ch-ob-target');

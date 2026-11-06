@@ -7,7 +7,8 @@
 
 import * as THREE from 'three/webgpu';
 import type { CombatGame } from '../combat/CombatGame';
-import { slotForCode, ULTIMATE_SLOT } from '../game/loadout';
+import { ULTIMATE_SLOT } from '../game/loadout';
+import { keyGate, slotForCode } from '../settings/store';
 import { ConquestLayout as L, nearestOnPolyline } from '../map/ConquestLayout';
 import { isStructure, type Projectile, type SimEvent, type Unit, type Zone } from '../sim/Unit';
 import type { Announcer } from './Announcer';
@@ -123,6 +124,8 @@ export class GameAudio {
     game.onCue = (name, at, k) => {
       if (!this.engine.ready) return;
       if (name === 'step') this.engine.play('step.giant', { at, gain: 0.45 + 0.55 * k, vary: 0.05, ref: 26 }, 3);
+      // a god the giant threw hitting the snow (a stomp throws several at once: they land close together, so they share a few voices)
+      else if (name === 'land') this.engine.play('land.thrown', { at, gain: 0.35 + 0.45 * k, vary: 0.08, ref: 12 }, 2, 0.04);
       else if (name === 'soul') this.engine.play('soul.absorb', { gain: 0.32, rate: 1 + Math.min(k, 10) * 0.055, vary: 0.03 }, 1, 0.05);
       // the dead clawing up out of the floor: one rumble for a wave rising together, a boss louder and lower
       else if (name === 'emerge') this.engine.play('monster.emerge', { at, gain: 0.5 + k * 0.6, rate: 1.15 - k * 0.35, vary: 0.06, ref: 12 + k * 20 }, 2, 0.12);
@@ -471,7 +474,7 @@ export class GameAudio {
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (e.repeat || !this.engine.ready) return;
+    if (e.repeat || !this.engine.ready || keyGate.blocked) return;
     const slot = slotForCode(e.code);
     if (slot < 0 || !this.me.alive) return;
     if (this.me.combatant.canCast(slot)) this.engine.play('ui.deny', { bus: 'ui', gain: 0.6 }, 3, 0.15);
@@ -1289,8 +1292,11 @@ export class GameAudio {
       }
       if (r.phase === 'draft' && r.drafts.has(this.me)) this.herald.say('A forgotten rite. Learn a new power.', 'good', 2);
       if (r.phase === 'exit') this.engine.play('god.respawn', { gain: 0.5, rate: 0.7 }, 2);
-      // the ground gives way beneath the team as it goes down
+      // the ground gives way beneath the team as it goes down; out of a
+      // master's chamber they fall a long way, and land hard at the bottom
       if (r.phase === 'descend') this.engine.play('amb.groan', { gain: 0.9 }, 3);
+      if (r.phase === 'descend' && r.plunging) this.engine.play('amb.plunge', { gain: 0.85 }, 3);
+      if (r.phase === 'enter' && seen.phase === 'descend' && r.chamber % DESCENT.bossEvery === 1) this.engine.play('land', { gain: 0.9, rate: 0.75 }, 3);
       if (r.over) this.music.sting(r.phase === 'won' && (!r.versus || r.winner === this.me.team) ? 'victory' : 'defeat');
       if (r.phase === 'won' && r.versus) this.herald.say(r.winner === 'draw' ? 'A dead heat. The underworld keeps you both.' : r.winner === this.me.team ? 'Victory! Your team rules the underworld.' : 'The rivals rule the underworld.', r.winner === this.me.team ? 'epic' : 'bad', 9);
       else if (r.phase === 'won') this.herald.say('You rise again! The underworld could not hold you.', 'epic', 9);

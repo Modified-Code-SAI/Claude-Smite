@@ -47,7 +47,7 @@ export interface FxKit {
   /** A glowing trail riding on a unit (through a dash or a leap). */
   comet(p: GodPalette, u: Unit, life: number, size: number, crackle?: boolean): void;
   /** Lightning crawling around a unit (or a point when `u` is null). */
-  crackle(p: Colors, u: Unit, life: number, radius: number, height: number, every?: number): void;
+  crackle(p: Colors, u: Unit, life: number, radius: number, height: number, every?: number, width?: number): void;
   fly(kind: PropKind, glow: number, size: number, from: THREE.Vector3, to: THREE.Vector3, time: number, arc?: number, spin?: number): { onLand: ((x: number, y: number, z: number) => void) | null };
   /** Keeps an effect on a unit for `life` seconds (or while `keep` holds), `dy` above its feet. */
   attach(fx: Live, u: Unit, dy: number, life: number, move: (x: number, y: number, z: number) => void, keep?: (u: Unit) => boolean): void;
@@ -217,12 +217,12 @@ function shock(k: FxKit, c: Colors, x: number, z: number, from: number, to: numb
 }
 
 /** Bands wound round a god and climbing (burial wraps, a swirl of smoke). */
-function wrap(k: FxKit, c: Colors, u: Unit, life: number, o: { radius?: number; height?: number; turns?: number; width?: number; sweep?: number } = {}): void {
+function wrap(k: FxKit, c: Colors, u: Unit, life: number, o: { radius?: number; height?: number; turns?: number; width?: number; sweep?: number; spin?: number; taper?: number; hold?: boolean } = {}): void {
   const turns = o.turns ?? 3;
   const r = k.ribbon({
     x: u.x, y: u.body.y + 0.15, z: u.z, main: c.vfx, hot: c.core, ax: NORTH, ay: EAST, an: UP,
     radius: o.radius ?? u.radius + 0.25, a0: Math.random() * 6, span: turns * Math.PI * 2, width: o.width ?? 0.32, wall: 1,
-    sweep: o.sweep ?? 0.3, tail: 1, lift: o.height ?? 2.1, life,
+    sweep: o.sweep ?? 0.3, tail: 1, taper: o.taper, lift: o.height ?? 2.1, life, spin: o.spin, hold: o.hold,
   });
   k.attach(r, u, 0.15, life, (x, y, z) => r.follow(x, y, z));
 }
@@ -259,7 +259,8 @@ function zap(k: FxKit, c: Colors, u: Unit, n = 3, width = 0.08): void {
 /** A glyph floating over a god while `life` lasts (or while `keep` holds). */
 function brand(k: FxKit, c: Colors, u: Unit, glyph: Glyph, life: number, size = 0.85, keep?: (u: Unit) => boolean): void {
   const dy = u.radius * 3.6 + 0.75;
-  const s = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph, size, main: c.vfx, hot: c.core, life, spin: glyph === 'eye' ? 0 : 0.15 });
+  // a touch larger than asked: a brand has to read over a god from across a fight
+  const s = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph, size: size * 1.25, main: c.vfx, hot: c.core, life, spin: glyph === 'eye' ? 0 : 0.15 });
   k.attach(s, u, dy, life, (x, y, z) => s.follow(x, y, z), keep);
 }
 
@@ -457,7 +458,12 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const u = c.owner;
       k.strike(c.p, u.x, u.z, { width: 0.8, height: 24, forks: 4, spread: 0.5 });
       const f = k.funnel({ x: u.x, y: u.body.y, z: u.z, main: 0x5ac8ff, hot: 0xffffff, bottom: 0.9, top: 1.4, height: 16, twist: 4, density: 0.55, glow: 1.6, sway: 0, life: 4 });
-      k.attach(f, u, 0, 4, (x, y, z) => f.move(x, y, z));
+      // the column lasts while he is in the air (it ends as he lands)
+      let flew = false;
+      k.attach(f, u, 0, 4, (x, y, z) => f.move(x, y, z), (g) => {
+        if (g.forced) flew = true;
+        return !flew || g.forced !== null;
+      });
       shock(k, c.p, u.x, u.z, 0.5, 5, { life: 0.5, wall: true });
     },
     impact: (k, i) => k.strike(i.p, i.x, i.z, { width: 0.6, height: 20, forks: 3, spread: 1.5 }),
@@ -528,7 +534,8 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     cast: (k, c) => {
       const u = c.owner;
       shock(k, c.p, u.x, u.z, 0.4, 2.6, { life: 0.35, wall: true, width: 0.7 });
-      k.crackle(c.p, u, 4, 1.15, 2.6, 0.09);
+      k.crackle(c.p, u, 4, 1.15, 2.6, 0.09, 0.13);
+      wrap(k, c.p, u, 4, { radius: u.radius + 0.55, height: 2.4, turns: 1.5, width: 0.16, sweep: 0.25, spin: 0.9, taper: 0.3, hold: true });
     },
   },
   'thor.call-of-asgard': {
@@ -537,15 +544,16 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const u = c.owner;
       shock(k, c.p, u.x, u.z, 0.5, 4.5, { life: 0.5, wall: true, width: 1 });
       shock(k, c.p, u.x, u.z, 0.3, 3, { life: 0.4 });
-      const s = k.swarm({ x: u.x, y: u.body.y, z: u.z, mode: 'orbit', main: 0xff5a1e, hot: 0xffd08a, range: 0.9, spread: 2.8, size: 0.13, life: 5, count: 0.55 });
+      const s = k.swarm({ x: u.x, y: u.body.y, z: u.z, mode: 'orbit', main: 0xff5a1e, hot: 0xffd08a, range: 1.1, spread: 2.9, size: 0.2, life: 5, count: 0.7 });
       k.attach(s, u, 0, 5, (x, y, z) => s.move(x, y, z));
+      wrap(k, c.p, u, 5, { radius: u.radius + 0.6, height: 0.5, turns: 1, width: 0.22, sweep: 0.2, spin: -0.7, hold: true });
     },
   },
   'thor.storm-chain': {
-    shot: { tether: 0.16, orb: 0.55, crackle: true },
+    shot: { tether: 0.26, orb: 0.55, crackle: true },
     hit: (k, h) => {
       // the chain coils round the god's legs while they are held
-      k.crackle(h.p, h.target, 1.2, 0.85, 0.7, 0.07);
+      k.crackle(h.p, h.target, 1.2, 0.85, 0.7, 0.07, 0.14);
       zap(k, h.p, h.target, 3);
     },
   },
@@ -604,8 +612,9 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const u = c.owner;
       k.strike(c.p, u.x, u.z, { width: 0.9, height: 26, forks: 5, spread: 0.4, life: 0.3 });
       shock(k, c.p, u.x, u.z, 0.5, 6, { life: 0.55, width: 1.3 });
-      k.crackle(c.p, u, 8, 1.0, 2.7, 0.07);
-      const s = k.swarm({ x: u.x, y: u.body.y, z: u.z, mode: 'orbit', main: 0x6aa8ff, hot: 0xffffff, range: 1.1, spread: 3, size: 0.1, life: 8, count: 0.6 });
+      k.crackle(c.p, u, 8, 1.0, 2.7, 0.06, 0.15);
+      wrap(k, c.p, u, 8, { radius: u.radius + 0.7, height: 3, turns: 2, width: 0.18, sweep: 0.35, spin: 1.1, taper: 0.25, hold: true });
+      const s = k.swarm({ x: u.x, y: u.body.y, z: u.z, mode: 'orbit', main: 0x6aa8ff, hot: 0xffffff, range: 1.3, spread: 3.2, size: 0.17, life: 8, count: 0.7 });
       k.attach(s, u, 0, 8, (x, y, z) => s.move(x, y, z));
     },
   },
@@ -621,14 +630,20 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const gy = k.ground(s.x, s.z);
       P1.set(s.x, gy + 1.3, s.z);
       P2.set(end.x, k.ground(end.x, end.z) + 1.2, end.z);
-      k.beam({ from: P1, to: P2, width: 0.26, main: f.p.vfx, hot: f.p.core, reach: 0.09, chase: 0.07, hold: 0.04, fadeOut: 0.22, flow: 24 });
-      k.fly('spearhead', f.p.vfx, 1.6, P1, P2, 0.1);
+      k.beam({ from: P1, to: P2, width: 0.42, main: f.p.vfx, hot: f.p.core, reach: 0.09, chase: 0.12, hold: 0.1, fadeOut: 0.3, flow: 24 });
+      k.fly('spearhead', f.p.vfx, 1.8, P1, P2, 0.1);
+      // a short twist of air where the spear leaves the hand
+      slash(k, f.p, s.x, s.z, s.yaw, { radius: 1.1, angle: 70, width: 0.45, y: 1.25, sweep: 0.08, life: 0.3 });
       k.burst(f.p, end.x, P2.y, end.z, 0.7);
     },
   },
   'odin.ravens': {
     shot: { prop: 'raven', count: 3, size: 1.25, orb: 0.3, trail: 0.5 },
     burst: 0.5,
+    cast: (k, c) => {
+      const u = c.owner;
+      k.swarm({ x: u.x, y: u.body.y + 1.6, z: u.z, mode: 'scatter', main: 0x18161e, hot: 0x6a5a90, range: 1.2, spread: 0, size: 0.17, life: 1.2, count: 0.3 });
+    },
     hit: (k, h) => {
       const t = h.target;
       k.swarm({ x: t.x, y: t.body.y + 1, z: t.z, mode: 'scatter', main: 0x18161e, hot: 0x6a5a90, range: 1.6, spread: 0, size: 0.16, life: 1.3, count: 0.35 });
@@ -694,7 +709,10 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       if (s.type !== 'circle') return;
       k.sigil({ x: s.x, y: k.ground(s.x, s.z) + 0.15, z: s.z, glyph: 'tiwaz', size: 4, main: f.p.vfx, hot: f.p.core, life: 1.6, flat: true, open: 0.3 });
       basis(yawOf(s) || f.owner.body.yaw);
-      for (const side of [-1, 1]) k.pillar(f.p, s.x + RIGHT.x * side * 0.9, s.z + RIGHT.z * side * 0.9, 0.3, 0.55);
+      for (const side of [-1, 1]) k.pillar(f.p, s.x + RIGHT.x * side * 0.9, s.z + RIGHT.z * side * 0.9, 0.45, 0.55);
+      shock(k, f.p, s.x, s.z, 0.3, s.radius + 0.8, { life: 0.5, wall: true, width: 0.9 });
+      // the fallen rise: motes of rune light climbing out of the circle
+      k.swarm({ x: s.x, y: k.ground(s.x, s.z), z: s.z, mode: 'orbit', main: f.p.vfx, hot: f.p.core, range: s.radius, spread: 3.2, size: 0.2, life: 1.8, count: 0.6 });
     },
   },
   'odin.ring-of-spears': {
@@ -717,7 +735,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'circle') return;
-      k.pillar(f.p, s.x, s.z, 0.85, 1.6);
+      k.pillar(f.p, s.x, s.z, 0.75, 0.6);
       shock(k, f.p, s.x, s.z, 1, s.radius, { life: 0.9, wall: true, width: 1.4 });
       shock(k, f.p, s.x, s.z, 0.5, s.radius * 0.6, { life: 0.7, width: 1 });
       for (const a of k.near(s.x, s.z, s.radius, f.owner.team)) if (a !== f.owner) k.pillar(f.p, a.x, a.z, 0.45, 0.55);
@@ -751,8 +769,8 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
         const yaw = s.yaw + ((i - 2) / 2) * (s.angle / 2) * DEG;
         P1.set(s.x - Math.sin(yaw) * 0.6, gy + 1.35, s.z - Math.cos(yaw) * 0.6);
         ahead(P2, o, yaw, s.range * 0.95, 1.25);
-        k.fly('dagger', f.p.vfx, 1.5, P1, P2, 0.17 + i * 0.008);
-        k.beam({ from: P1, to: P2, width: 0.05, main: f.p.vfx, hot: f.p.core, reach: 0.17, chase: 0.07, hold: 0, fadeOut: 0.12, flow: 30 });
+        k.fly('dagger', f.p.vfx, 2, P1, P2, 0.17 + i * 0.008);
+        k.beam({ from: P1, to: P2, width: 0.08, main: f.p.vfx, hot: f.p.core, reach: 0.17, chase: 0.09, hold: 0, fadeOut: 0.16, flow: 30 });
       }
     },
   },
@@ -892,7 +910,13 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'cone') return;
-      k.swarm({ x: s.x, y: k.ground(s.x, s.z), z: s.z, yaw: s.yaw, mode: 'stream', main: 0x2a2010, hot: 0xffb040, range: s.range, spread: Math.tan((s.angle / 2) * DEG), size: 0.22, life: 2.6, bugs: true });
+      k.swarm({ x: s.x, y: k.ground(s.x, s.z), z: s.z, yaw: s.yaw, mode: 'stream', main: 0x2a2010, hot: 0xffb040, range: s.range, spread: Math.tan((s.angle / 2) * DEG), size: 0.36, life: 2.6, bugs: true });
+      // the dust they raise, drifting down the cone
+      const g = k.ground(s.x, s.z);
+      for (let i = 1; i <= 3; i++) {
+        const d = (s.range * i) / 4;
+        k.cloud(0xc8a060, s.x - Math.sin(s.yaw) * d, g + 0.4, s.z - Math.cos(s.yaw) * d, 0.55 + i * 0.15, 0.4);
+      }
     },
   },
   'anubis.mummify': {
@@ -904,7 +928,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const end = along(s, 1);
       P1.set(s.x, k.ground(s.x, s.z) + 1.4, s.z);
       P2.set(end.x, k.ground(end.x, end.z) + 1.3, end.z);
-      k.beam({ from: P1, to: P2, width: 0.3, main: f.p.vfx, hot: 0xffc23a, reach: 0.18, chase: 0.16, hold: 0.06, fadeOut: 0.25, flow: 6, wraps: true });
+      k.beam({ from: P1, to: P2, width: 0.6, main: f.p.vfx, hot: 0xffc23a, reach: 0.18, chase: 0.16, hold: 0.12, fadeOut: 0.3, flow: 6, wraps: true });
     },
     hit: (k, h) => wrap(k, { vfx: LINEN.vfx, core: 0xffc23a }, h.target, 1.3, { turns: 4, width: 0.42, sweep: 0.3 }),
   },
@@ -921,7 +945,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   },
   'anubis.grave-grasp': {
     colors: { vfx: 0xffa040, core: 0xfff0d0 },
-    shot: { prop: 'claw', size: 1.7, orb: 0.4, trail: 0.8, tether: 0.18 },
+    shot: { prop: 'claw', size: 2.1, orb: 0.4, trail: 0.8, tether: 0.22 },
     hit: (k, h) => k.cloud(0xd9b072, h.target.x, h.target.body.y + 0.5, h.target.z, 1, 1),
   },
   'anubis.sand-step': {
@@ -953,8 +977,8 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     cast: (k, c) => {
       const u = c.owner;
       const a = godAt(k, c.x, c.z, u.team) ?? u;
-      wrap(k, { vfx: LINEN.vfx, core: 0xffc23a }, a, 1.6, { turns: 3, width: 0.36, sweep: 0.5 });
-      const s = k.swarm({ x: a.x, y: a.body.y, z: a.z, mode: 'orbit', main: 0xffd060, hot: 0xffffff, range: 0.9, spread: 2.6, size: 0.1, life: 4, count: 0.4 });
+      wrap(k, { vfx: LINEN.vfx, core: 0xffc23a }, a, 1.8, { turns: 3, width: 0.5, sweep: 0.5, hold: true });
+      const s = k.swarm({ x: a.x, y: a.body.y, z: a.z, mode: 'orbit', main: 0xffc23a, hot: 0xfff0c0, range: 1, spread: 2.6, size: 0.16, life: 4, count: 0.5 });
       k.attach(s, a, 0, 4, (x, y, z) => s.move(x, y, z));
     },
   },

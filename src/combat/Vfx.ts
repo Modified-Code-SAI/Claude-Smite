@@ -14,6 +14,7 @@ import { hypot } from '../core/math';
 import { lookFor, type ShotLook, type ZoneLook } from './skillLooks';
 import { Pool } from './skillFx/pool';
 import { SkillFx } from './skillFx/SkillFx';
+import { settings } from '../settings/store';
 
 type Ground = (x: number, z: number) => number;
 
@@ -303,7 +304,8 @@ class Burst {
     v.age += dt;
     this.puffs.values.age = v.age;
     const k = Math.min(1, v.age / 0.18);
-    this.flash.scale.setScalar((1.0 + k * 1.6) * v.power);
+    // (reduce flashing: impact flashes at half the size)
+    this.flash.scale.setScalar((1.0 + k * 1.6) * v.power * (settings().reduceFlashes ? 0.5 : 1));
     const r = 1 - (1 - Math.min(1, v.age / 0.45)) ** 3;
     this.ring.scale.setScalar(0.3 + r * 2.6 * v.power);
     return v.age < this.life;
@@ -664,6 +666,17 @@ export class CombatVfx {
       comet: (p, u, life, size, crackle) => this.comet(p, u, life, size, crackle),
     });
     this.skills.camera = camera;
+  }
+
+  /** Ends every one-shot effect at once (the dev stage, between shots); shots and zones go with the sim's. */
+  reset(): void {
+    this.skills.reset();
+    for (const b of this.bursts) this.burstPool.release(b);
+    this.bursts.length = 0;
+    for (const p of this.pillars) this.pillarPool.release(p);
+    this.pillars.length = 0;
+    for (const c of this.comets) this.projectilePool.release(c.view);
+    this.comets.length = 0;
   }
 
   /** Who the viewer can see (stealthed enemies hide the looks on them). */

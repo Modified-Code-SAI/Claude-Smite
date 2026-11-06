@@ -5,6 +5,16 @@ import type { GodModel } from '../actors/GodModel';
 import type { CollisionWorld } from '../scene/Collision';
 import { hypot, turnToward } from '../core/math';
 
+/** Speed share for moving `f` forward and `r` right of the facing (see update). */
+export function movePenalty(f: number, r: number): number {
+  if (f === 0 && r === 0) return 1;
+  const deg = (Math.atan2(Math.abs(r), f) * 180) / Math.PI;
+  if (deg <= 45) return 1;
+  if (deg <= 90) return 1 - ((deg - 45) / 45) * 0.2;
+  if (deg <= 135) return 0.8 - ((deg - 90) / 45) * 0.2;
+  return 0.6;
+}
+
 /**
  * Smite-style movement: the god always faces where the camera aims (mouse
  * turns the god), WASD moves relative to that facing, strafing and backpedal
@@ -39,6 +49,8 @@ export class PlayerController implements Updatable {
   private readonly localDir = new THREE.Vector2();
   private verticalSpeed = 0;
   mouseSensitivity = 0.0022;
+  /** Mouse up looks down (Settings > Controls). */
+  invertY = false;
 
   constructor(
     private readonly input: Input,
@@ -65,23 +77,27 @@ export class PlayerController implements Updatable {
     return { x: x / d, z: z / d };
   }
 
-  /** Mouse look is applied every frame (not fixed step) so aiming feels immediate. */
+  /** Mouse (and right stick) look is applied every frame (not fixed step) so aiming feels immediate. */
   look(): void {
     const d = this.input.consumeMouseDelta();
-    this.yaw -= d.x * this.mouseSensitivity;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + d.y * this.mouseSensitivity, -0.35, 1.05);
+    const p = this.input.padLook();
+    this.yaw -= d.x * this.mouseSensitivity + p.yaw;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + (this.invertY ? -d.y : d.y) * this.mouseSensitivity + p.pitch, -0.35, 1.05);
   }
 
   update(dt: number): void {
     const i = this.input;
     const free = this.movement?.canMove ?? true;
-    const f = free ? (i.isDown('KeyW') ? 1 : 0) - (i.isDown('KeyS') ? 1 : 0) : 0;
-    const r = free ? (i.isDown('KeyD') ? 1 : 0) - (i.isDown('KeyA') ? 1 : 0) : 0;
+    const axes = i.moveAxes();
+    const f = free ? axes.forward : 0;
+    const r = free ? axes.right : 0;
     this.localDir.set(r, f);
     if (this.localDir.lengthSq() > 1) this.localDir.normalize();
 
-    // backpedal and strafe penalties, like Smite
-    const penalty = f < 0 ? 0.6 : f === 0 && r !== 0 ? 0.8 : 1;
+    // backpedal and strafe penalties, like Smite: full speed up to 45° off
+    // forward, 80% straight sideways, 60% from 135° back; a stick's angles
+    // in between blend, so the keys' eight ways come out exactly as before
+    const penalty = movePenalty(this.localDir.y, this.localDir.x);
     const speed = (this.movement?.speed ?? this.moveSpeed) * penalty;
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
@@ -93,7 +109,7 @@ export class PlayerController implements Updatable {
     this.velocity.x += (wx - this.velocity.x) * k;
     this.velocity.z += (wz - this.velocity.z) * k;
 
-    if (free && (this.movement?.canJump ?? true) && this.grounded && i.wasPressed('Space')) {
+    if (free && (this.movement?.canJump ?? true) && this.grounded && i.actionPressed('jump')) {
       this.verticalSpeed = 5.2;
       this.grounded = false;
     }

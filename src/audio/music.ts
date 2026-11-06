@@ -8,6 +8,7 @@
 import type { AudioEngine } from './AudioEngine';
 import { ahr, Biquad, buf, fill, Osc, perc, pink, pluck, RATE, tail, wander, white, type Rand } from './dsp';
 import { choir, clang, filter, layer, thump } from './gestures';
+import type { Orchestra } from './orchestra';
 import type { Recipe } from './sounds';
 
 // ---------------------------------------------------------------------------
@@ -642,6 +643,9 @@ interface Playing {
   stopped: boolean;
 }
 
+/** How long the first song waits for the recorded orchestra before starting on the synthesized instruments. */
+const ORCHESTRA_WAIT_MS = 3000;
+
 export class Music {
   private playing: Playing | null = null;
   private timer = 0;
@@ -649,9 +653,31 @@ export class Music {
   /** How far the music has stepped back (0 to 1) for a sound that carries the moment itself. */
   private hush = 0;
   private want: SongName | null = null;
+  /** While audio is fresh and the orchestra is still decoding, songs hold until this time (performance.now). */
+  private holdUntil = 0;
 
-  constructor(private readonly engine: AudioEngine) {
+  /**
+   * `orchestra`, when given, replaces the synthesized instruments with
+   * recorded ones once its samples are in; until then (or if they fail) the
+   * score plays the synthesized set.
+   */
+  constructor(
+    private readonly engine: AudioEngine,
+    private readonly orchestra?: Orchestra,
+  ) {
+    // download early (after the game's own first loads) so the samples are ready by the first click
+    if (orchestra) window.setTimeout(() => void orchestra.prefetch(), 1500);
     engine.onUnlock(() => {
+      const ctx = engine.ctx;
+      if (orchestra && ctx && !orchestra.loaded) {
+        this.holdUntil = performance.now() + ORCHESTRA_WAIT_MS;
+        const go = () => {
+          this.holdUntil = 0;
+          if (this.want) this.play(this.want);
+        };
+        void orchestra.load(ctx).then(go);
+        window.setTimeout(go, ORCHESTRA_WAIT_MS);
+      }
       if (this.want) this.play(this.want);
     });
   }
@@ -662,6 +688,8 @@ export class Music {
     const ctx = this.engine.ctx;
     const bus = this.engine.bus('music');
     if (!ctx || !bus || !this.engine.ready) return;
+    // the first song starts on the recorded orchestra rather than switching to it a few bars in
+    if (this.holdUntil && performance.now() < this.holdUntil) return;
     const song = SONGS[name];
     if (this.playing?.song === song && !this.playing.stopped) return;
     this.fadeOut(2.5);
@@ -778,11 +806,16 @@ export class Music {
   private note(inst: string, midi: number | undefined, when: number, dur: number, gain: number, dest: AudioNode, pan?: number): void {
     const ctx = this.engine.ctx!;
     const meta = INST[inst];
-    const buffer = this.engine.buffer(inst);
-    if (!meta || !buffer) return;
+    if (!meta) return;
+    const rec = this.orchestra?.note(inst, midi) ?? null;
+    const buffer = rec?.buffer ?? this.engine.buffer(inst);
+    if (!buffer) return;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    if (midi !== undefined && meta.ref) src.playbackRate.value = Math.pow(2, (midi - meta.ref) / 12);
+    if (rec) {
+      src.playbackRate.value = rec.rate;
+      gain *= rec.gain;
+    } else if (midi !== undefined && meta.ref) src.playbackRate.value = Math.pow(2, (midi - meta.ref) / 12);
     const g = ctx.createGain();
     let node: AudioNode = src.connect(g);
     if (pan) {
@@ -792,8 +825,11 @@ export class Music {
     }
     node.connect(dest);
     if (meta.sustain) {
-      const attack = inst.startsWith('mus.horn') ? 0.06 : inst === 'mus.bass' ? 0.02 : 0.45;
-      const release = inst.startsWith('mus.horn') ? 0.25 : inst === 'mus.bass' ? 0.15 : 1.4;
+      const horn = inst.startsWith('mus.horn');
+      const bass = inst === 'mus.bass';
+      // a recording brings its own attack, so it needs only a short ramp (pads keep some swell)
+      const attack = rec ? (horn || bass ? 0.01 : 0.2) : horn ? 0.06 : bass ? 0.02 : 0.45;
+      const release = horn ? 0.25 : bass ? 0.15 : 1.4;
       const hold = Math.max(attack, dur);
       g.gain.setValueAtTime(0, when);
       g.gain.linearRampToValueAtTime(gain, when + attack);
@@ -801,7 +837,12 @@ export class Music {
       g.gain.setTargetAtTime(0, when + hold, release / 3);
       const end = hold + release * 1.5;
       src.loop = true;
-      src.start(when, Math.random() * buffer.duration * 0.5);
+      if (rec?.loop) {
+        // play the recorded attack, then hold on the sample's seamless loop
+        src.loopStart = rec.loop[0];
+        src.loopEnd = rec.loop[1];
+        src.start(when, 0);
+      } else src.start(when, Math.random() * buffer.duration * 0.5);
       src.stop(when + end);
     } else {
       g.gain.value = gain;

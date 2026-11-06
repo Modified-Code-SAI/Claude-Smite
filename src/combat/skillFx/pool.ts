@@ -66,6 +66,12 @@ export class Running<T extends Live> {
     return t;
   }
 
+  /** Ends every effect at once and puts them back. */
+  clear(): void {
+    for (const fx of this.list) this.pool.release(fx);
+    this.list.length = 0;
+  }
+
   update(dt: number, t: number): void {
     const l = this.list;
     for (let i = l.length - 1; i >= 0; i--) {

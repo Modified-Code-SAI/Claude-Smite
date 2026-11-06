@@ -71,8 +71,9 @@ const settle = (sim: Sim, run: Descent) => {
 
 const walkOut = (sim: Sim, run: Descent, u: Unit) => {
   const door = exitSpot(run.layout);
+  const fall = run.plunging ? DESCENT.plungeTime : DESCENT.fadeTime;
   sim.teleport(u, door.x, door.z);
-  step(sim, run, DESCENT.fadeTime + 0.2);
+  step(sim, run, fall + 0.2);
 };
 
 describe('Underworld Descent: the map', () => {
@@ -597,6 +598,30 @@ describe('Underworld Descent: the run', () => {
     expect(guest.fall).toBeLessThan(DESCENT.bossFall - 0.9);
     guest.applyNet(run.netState());
     expect(guest.fall).toBe(0);
+  });
+
+  it('falls longer out of a master\'s chamber, into the next depth, than between chambers', () => {
+    const { sim, run, team } = setup([zeus], 1);
+    const seen: { from: number; fall: number }[] = [];
+    for (let n = 1; n < DESCENT.chambers && !run.over && seen.length < 2 * DESCENT.bossEvery; n++) {
+      reachReward(sim, run, team[0]!);
+      settle(sim, run);
+      team[0]!.combatant.health = team[0]!.combatant.stats.maxHealth;
+      const from = run.chamber;
+      const door = exitSpot(run.layout);
+      sim.teleport(team[0]!, door.x, door.z);
+      let fall = 0;
+      for (let k = 0; k < 400 && run.chamber === from; k++) {
+        step(sim, run, 1 / 30);
+        if (run.phase === 'descend') fall += 1 / 30;
+      }
+      seen.push({ from, fall });
+    }
+    for (const { from, fall } of seen) {
+      const deep = from % DESCENT.bossEvery === 0;
+      expect(fall, `out of chamber ${from}`).toBeCloseTo(deep ? DESCENT.plungeTime : DESCENT.fadeTime, 1);
+    }
+    expect(seen.some((s) => s.from === DESCENT.bossEvery)).toBe(true);
   });
 
   it('wins the run when the last boss falls', () => {

@@ -288,6 +288,7 @@ export const SOUNDS: Record<string, Recipe> = {
   'amb.toll': { variants: 2, peak: 0.55, make: (r) => drownedToll(r) },
   'amb.hollow': { loop: true, peak: 0.5, make: (r) => hollowBed(r, 14) },
   'amb.whisper': { variants: 4, peak: 0.3, make: (r) => whisper(r) },
+  'amb.plunge': { peak: 0.75, make: (r) => plunge(r) },
   // a soul reaching you: an airy rush drawn in, a ghostly glint and a breath of a choir
   // the dead climbing out of the floor: rock cracking open, grit falling away and a low moan from below
   // a boss's entrance: a deep blow under the floor, a dark brass call and a low choir swelling behind it
@@ -690,6 +691,37 @@ function anvil(r: Rand): Float32Array {
   const lp = new Biquad('lowpass', 2300, 0.7);
   for (let i = 0; i < out.length; i++) out[i] = lp.run(out[i]!);
   return tail(out, 1, 0.55, 1700);
+}
+
+/**
+ * Falling down into the next depth: air rushing past, rising in pitch and
+ * buffeting harder the further the team drops, over a deep rumble, cut off
+ * just before the landing (its thump plays as the team lands).
+ */
+function plunge(r: Rand): Float32Array {
+  const len = 2.15;
+  const out = buf(len + 0.35);
+  const n = pink(r);
+  const bp = new Biquad('bandpass', 300, 0.8);
+  const hi = new Biquad('bandpass', 1800, 1.2);
+  // (the rumble sits in the low mids, where small speakers still carry it)
+  const rumble = new Biquad('bandpass', 150, 0.9);
+  const buffet = wander(r, 9);
+  const gust = wander(r, 2.5);
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    const k = Math.min(1, t / len);
+    if ((i & 63) === 0) {
+      bp.set(300 + 900 * k * k, 0.8);
+      hi.set(1600 + 1400 * k, 1.2);
+    }
+    // swelling as the fall speeds up, then gone at the bottom
+    const env = ahr(t, len * 0.85, len * 0.1, 0.3) * (0.35 + 0.65 * k);
+    const x = n();
+    const air = bp.run(x) * 0.9 + hi.run(x) * 0.25 * k;
+    out[i] = (air * (0.75 + 0.25 * buffet() + 0.15 * gust()) + rumble.run(x) * 0.55 * (1 - 0.4 * k)) * env;
+  }
+  return tail(out, 0.9, 0.2, 2500);
 }
 
 /** Steam venting from a crack in the hot rock: a sudden hiss that sputters and sighs away. */

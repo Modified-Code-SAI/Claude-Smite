@@ -54,8 +54,8 @@ export interface JotunnDeps {
   giantPower?: number;
   /** Online: up to five friends, bots filling the rest; each takes a turn as the giant. */
   net?: NetSession;
-  /** A moment of the giant's that has its own sound ('step': a footfall, k how hard). */
-  cue?: (name: 'step', at: THREE.Vector3, k: number) => void;
+  /** A moment of the giant's that has its own sound ('step': a footfall, k how hard; 'land': a god it threw coming down, k how high it flew). */
+  cue?: (name: 'step' | 'land', at: THREE.Vector3, k: number) => void;
   /** Lays a shot of the giant over the follow camera (see JotunnCine); null hands it back. */
   cameraShot?: (shot: CameraShot | null) => void;
   /** The map's columns and walls, which a shot's camera keeps clear of. */
@@ -180,6 +180,7 @@ export class JotunnMode {
       },
       burst: (at, power) => deps.burst(FROST, at.x, at.y, at.z, power),
       footfall: (at, k) => deps.cue?.('step', at, k),
+      landing: (at, k) => deps.cue?.('land', at, k),
     });
     deps.vfx.add(this.view.group);
     this.weather = new JotunnWeather(deps.environment);
@@ -223,9 +224,8 @@ export class JotunnMode {
     if (mine) {
       this.deps.ctrl.spawn(g.x, g.z, g.body.yaw);
       this.deps.ctrl.pitch = GIANT_CAMERA.pitch;
-      this.deps.toast('You are the Jötunn. Smash three of the four braziers on the temple. Stand in an ice shrine to claim a new ultimate. Your knees, back rune, wrists and crown are where the gods break you.');
     } else {
-      this.deps.toast(`${p.name} is the Jötunn. Keep it from the braziers: break both knees to bring it down, then strike its crown. After a slam, break the planted wrist.`);
+      // (who the giant is and the round's aim are on the waking card, the rest on the rules card: no toast says it again over them)
       // (a guest's points are the host's to spend, as their menu's are)
       const spent = this.guest ? null : this.deps.startPoints?.(this.deps.player);
       if (spent) this.deps.toast(startingPointsLine(spent));
@@ -284,8 +284,7 @@ export class JotunnMode {
   /** Where the keys point (relative to the camera), and the camera's heading. */
   private intent(): { move: Point | null; yaw: number } {
     const { input, ctrl } = this.deps;
-    const f = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
-    const r = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
+    const { forward: f, right: r } = input.moveAxes();
     if (!f && !r) return { move: null, yaw: ctrl.yaw };
     const sin = Math.sin(ctrl.yaw);
     const cos = Math.cos(ctrl.yaw);
@@ -327,6 +326,11 @@ export class JotunnMode {
     this.view.onEvent(e);
     this.hud.onEvent(e);
     this.marks?.onEvent(e);
+  }
+
+  /** Toasts wait while the giant wakes on camera, so none prints over its card (see CombatHud.holdToasts). */
+  get holdsToasts(): boolean {
+    return this.cine?.kind === 'wake';
   }
 
   frame(dt: number, time: number): void {

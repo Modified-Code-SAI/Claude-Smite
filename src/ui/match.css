@@ -1,7 +1,7 @@
 /* Conquest match HUD: score and clock, minimap, kill feed, scoreboard, end screen. */
 .match-hud { position: fixed; inset: 0; pointer-events: none; font-family: 'Cinzel', Georgia, serif; color: var(--ink, #f4ead8); z-index: 6; }
-.mh-ally { color: #46d7c4; }
-.mh-enemy { color: #ff5a4a; }
+.mh-ally { color: var(--ally); }
+.mh-enemy { color: var(--enemy); }
 
 .mh-top { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 0; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.6)); }
 .mh-side { display: flex; align-items: center; gap: 10px; padding: 6px 14px; background: linear-gradient(180deg, rgba(20, 16, 12, 0.85), rgba(8, 6, 5, 0.9)); border: 1px solid rgba(231, 194, 122, 0.4); }

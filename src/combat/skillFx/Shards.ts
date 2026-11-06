@@ -147,6 +147,12 @@ export class Shards {
     this.live.push(p);
   }
 
+  /** Ends every piece at once. */
+  clear(): void {
+    while (this.live.length) this.spare.push(this.live.pop()!);
+    this.update(0);
+  }
+
   /** Shown at full size where `prime` puts it, so loading builds its shader. */
   prime(): () => void {
     (this.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount = 1;

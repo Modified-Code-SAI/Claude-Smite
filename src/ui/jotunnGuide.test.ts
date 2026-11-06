@@ -36,3 +36,14 @@ describe('Jötunn rules card', () => {
     expect(html).toContain('<ol><li>');
   });
 });
+
+describe("the waking card's aim", () => {
+  it('says what each side must do in a line, with the mode\'s own numbers', async () => {
+    const { objective } = await import('./JotunnHud');
+    expect(JOTUNN.braziersToWin).toBe(3);
+    expect(JOTUNN.braziers.length).toBe(4);
+    expect(objective(true)).toBe('Smash three of the four braziers');
+    expect(objective(false)).toBe('Guard the braziers: break its knees, then strike its crown');
+    for (const giant of [true, false]) expect(objective(giant).length).toBeLessThan(64);
+  });
+});

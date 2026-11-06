@@ -1,0 +1,1090 @@
+{
+ "$comment": "Built by tools/music/build.py. Zones: ref = the sample's measured MIDI pitch, loop = seconds.",
+ "version": 1,
+ "map": {
+  "mus.pad.lo": "strings",
+  "mus.pad.hi": "strings",
+  "mus.choir": "choir",
+  "mus.choir.hi": "choir",
+  "mus.horn": "horns",
+  "mus.horn.lo": "horns",
+  "mus.bass": "basses",
+  "mus.harp": "harp",
+  "mus.harp.hi": "harp",
+  "mus.stac": "spiccato",
+  "mus.stac.hi": "spiccato",
+  "mus.bell": "celeste",
+  "mus.taiko": "drum",
+  "mus.taiko.hi": "tenor",
+  "mus.frame": "hand",
+  "mus.shaker": "shaker",
+  "mus.swell": "swell",
+  "mus.crash": "crash"
+ },
+ "gain": {
+  "mus.pad.lo": 1.694,
+  "mus.pad.hi": 1.51,
+  "mus.choir": 2.496,
+  "mus.choir.hi": 4.595,
+  "mus.horn": 1.346,
+  "mus.horn.lo": 1.172,
+  "mus.bass": 3.042,
+  "mus.harp": 1.243,
+  "mus.harp.hi": 1.258,
+  "mus.stac": 1.57,
+  "mus.stac.hi": 1.432,
+  "mus.bell": 0.96,
+  "mus.taiko": 4.171,
+  "mus.taiko.hi": 5.087,
+  "mus.frame": 1.604,
+  "mus.shaker": 2.679,
+  "mus.swell": 1.069,
+  "mus.crash": 2.116
+ },
+ "sets": {
+  "strings": {
+   "kind": "sustain",
+   "zones": [
+    {
+     "ref": 35.99,
+     "files": [
+      "strings-00.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Cello Section/susvib/susvib_C1_v1_1.wav"
+    },
+    {
+     "ref": 39.96,
+     "files": [
+      "strings-01.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Cello Section/susvib/susvib_E1_v1_1.wav"
+    },
+    {
+     "ref": 42.98,
+     "files": [
+      "strings-02.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Cello Section/susvib/susvib_G1_v1_1.wav"
+    },
+    {
+     "ref": 47.01,
+     "files": [
+      "strings-03.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Cello Section/susvib/susvib_B1_v1_1.wav"
+    },
+    {
+     "ref": 50.03,
+     "files": [
+      "strings-04.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Cello Section/susvib/susvib_D2_v1_1.wav"
+    },
+    {
+     "ref": 55.0,
+     "files": [
+      "strings-05.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Viola Section/susvib/ViolaEns_susvib_G2_v1_1.wav"
+    },
+    {
+     "ref": 59.01,
+     "files": [
+      "strings-06.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Viola Section/susvib/ViolaEns_susvib_B2_v1_1.wav"
+    },
+    {
+     "ref": 62.01,
+     "files": [
+      "strings-07.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Viola Section/susvib/ViolaEns_susvib_D3_v1_1.wav"
+    },
+    {
+     "ref": 66.0,
+     "files": [
+      "strings-08.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Violin Section/susVib/VlnEns_susVib_F#3_v1.wav"
+    },
+    {
+     "ref": 69.0,
+     "files": [
+      "strings-09.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Violin Section/susVib/VlnEns_susVib_A3_v1.wav"
+    },
+    {
+     "ref": 72.01,
+     "files": [
+      "strings-10.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Violin Section/susVib/VlnEns_susVib_C4_v1.wav"
+    },
+    {
+     "ref": 75.99,
+     "files": [
+      "strings-11.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Violin Section/susVib/VlnEns_susVib_E4_v1.wav"
+    },
+    {
+     "ref": 79.02,
+     "files": [
+      "strings-12.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Violin Section/susVib/VlnEns_susVib_G4_v1.wav"
+    },
+    {
+     "ref": 83.01,
+     "files": [
+      "strings-13.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Violin Section/susVib/VlnEns_susVib_B4_v1.wav"
+    },
+    {
+     "ref": 86.02,
+     "files": [
+      "strings-14.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.6
+     ],
+     "from": "vsco/Strings/Violin Section/susVib/VlnEns_susVib_D5_v1.wav"
+    }
+   ]
+  },
+  "choir": {
+   "kind": "sustain",
+   "zones": [
+    {
+     "ref": 43.03,
+     "files": [
+      "choir-00.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-g2.wav"
+    },
+    {
+     "ref": 45.01,
+     "files": [
+      "choir-01.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-a2.wav"
+    },
+    {
+     "ref": 47.11,
+     "files": [
+      "choir-02.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-b2.wav"
+    },
+    {
+     "ref": 49.16,
+     "files": [
+      "choir-03.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-c#3.wav"
+    },
+    {
+     "ref": 51.03,
+     "files": [
+      "choir-04.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-d#3.wav"
+    },
+    {
+     "ref": 52.94,
+     "files": [
+      "choir-05.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-f3.wav"
+    },
+    {
+     "ref": 54.91,
+     "files": [
+      "choir-06.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-g3.wav"
+    },
+    {
+     "ref": 56.9,
+     "files": [
+      "choir-07.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-a3.wav"
+    },
+    {
+     "ref": 59.0,
+     "files": [
+      "choir-08.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-b3.wav"
+    },
+    {
+     "ref": 61.06,
+     "files": [
+      "choir-09.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-c#4.wav"
+    },
+    {
+     "ref": 63.05,
+     "files": [
+      "choir-10.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-male-d#4.wav"
+    },
+    {
+     "ref": 66.83,
+     "files": [
+      "choir-11.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-g4.wav"
+    },
+    {
+     "ref": 68.96,
+     "files": [
+      "choir-12.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-a4.wav"
+    },
+    {
+     "ref": 71.05,
+     "files": [
+      "choir-13.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-b4.wav"
+    },
+    {
+     "ref": 73.12,
+     "files": [
+      "choir-14.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-c#5.wav"
+    },
+    {
+     "ref": 75.03,
+     "files": [
+      "choir-15.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-d#5.wav"
+    },
+    {
+     "ref": 76.96,
+     "files": [
+      "choir-16.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-f5.wav"
+    },
+    {
+     "ref": 78.89,
+     "files": [
+      "choir-17.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-g5.wav"
+    },
+    {
+     "ref": 80.9,
+     "files": [
+      "choir-18.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-a5.wav"
+    },
+    {
+     "ref": 82.9,
+     "files": [
+      "choir-19.ogg"
+     ],
+     "loop": [
+      1.4,
+      4.4
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples-looped/Chorus/chorus-female-b5.wav"
+    }
+   ]
+  },
+  "horns": {
+   "kind": "sustain",
+   "zones": [
+    {
+     "ref": 40.01,
+     "files": [
+      "horns-00.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-e2-PB-loop.wav"
+    },
+    {
+     "ref": 42.98,
+     "files": [
+      "horns-01.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-g2-PB-loop.wav"
+    },
+    {
+     "ref": 46.01,
+     "files": [
+      "horns-02.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-a#2-PB-loop.wav"
+    },
+    {
+     "ref": 49.0,
+     "files": [
+      "horns-03.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-c#3-PB-loop.wav"
+    },
+    {
+     "ref": 51.99,
+     "files": [
+      "horns-04.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-e3-PB-loop.wav"
+    },
+    {
+     "ref": 54.99,
+     "files": [
+      "horns-05.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-g3-PB-loop.wav"
+    },
+    {
+     "ref": 58.01,
+     "files": [
+      "horns-06.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-a#3-PB-loop.wav"
+    },
+    {
+     "ref": 61.0,
+     "files": [
+      "horns-07.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-c#4-PB-loop.wav"
+    },
+    {
+     "ref": 64.0,
+     "files": [
+      "horns-08.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-e4-PB-loop.wav"
+    },
+    {
+     "ref": 67.0,
+     "files": [
+      "horns-09.ogg"
+     ],
+     "loop": [
+      1.0,
+      2.9908
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-g4-PB-loop.wav"
+    },
+    {
+     "ref": 69.99,
+     "files": [
+      "horns-10.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-a#4-PB-loop.wav"
+    },
+    {
+     "ref": 73.02,
+     "files": [
+      "horns-11.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.3
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-c#5-PB-loop.wav"
+    },
+    {
+     "ref": 76.01,
+     "files": [
+      "horns-12.ogg"
+     ],
+     "loop": [
+      1.0,
+      3.2677
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Horns/horns-sus-mp-e5-PB-loop.wav"
+    }
+   ]
+  },
+  "basses": {
+   "kind": "sustain",
+   "zones": [
+    {
+     "ref": 23.94,
+     "files": [
+      "basses-00.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-c1.wav"
+    },
+    {
+     "ref": 26.95,
+     "files": [
+      "basses-01.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-d#1.wav"
+    },
+    {
+     "ref": 29.99,
+     "files": [
+      "basses-02.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-f#1.wav"
+    },
+    {
+     "ref": 32.99,
+     "files": [
+      "basses-03.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-a1.wav"
+    },
+    {
+     "ref": 35.95,
+     "files": [
+      "basses-04.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-c2.wav"
+    },
+    {
+     "ref": 38.97,
+     "files": [
+      "basses-05.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-d#2.wav"
+    },
+    {
+     "ref": 41.96,
+     "files": [
+      "basses-06.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-f#2.wav"
+    },
+    {
+     "ref": 44.97,
+     "files": [
+      "basses-07.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-a2.wav"
+    },
+    {
+     "ref": 47.99,
+     "files": [
+      "basses-08.ogg"
+     ],
+     "loop": [
+      1.2,
+      3.8
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Basses/basses-sus-c3.wav"
+    }
+   ]
+  },
+  "harp": {
+   "kind": "decay",
+   "zones": [
+    {
+     "ref": 44.96,
+     "files": [
+      "harp-00.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_A2_mf.wav"
+    },
+    {
+     "ref": 47.98,
+     "files": [
+      "harp-01.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_C3_mf.wav"
+    },
+    {
+     "ref": 51.95,
+     "files": [
+      "harp-02.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_E3_mf.wav"
+    },
+    {
+     "ref": 54.92,
+     "files": [
+      "harp-03.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_G3_mf.wav"
+    },
+    {
+     "ref": 58.86,
+     "files": [
+      "harp-04.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_B3_mf.wav"
+    },
+    {
+     "ref": 61.87,
+     "files": [
+      "harp-05.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_D4_mf.wav"
+    },
+    {
+     "ref": 64.99,
+     "files": [
+      "harp-06.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_F4_mf.wav"
+    },
+    {
+     "ref": 68.9,
+     "files": [
+      "harp-07.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_A4_mf.wav"
+    },
+    {
+     "ref": 71.89,
+     "files": [
+      "harp-08.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_C5_mf.wav"
+    },
+    {
+     "ref": 75.89,
+     "files": [
+      "harp-09.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_E5_mf.wav"
+    },
+    {
+     "ref": 78.94,
+     "files": [
+      "harp-10.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_G5_mf.wav"
+    },
+    {
+     "ref": 82.92,
+     "files": [
+      "harp-11.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_B5_mf.wav"
+    },
+    {
+     "ref": 85.93,
+     "files": [
+      "harp-12.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_D6_mf.wav"
+    },
+    {
+     "ref": 88.95,
+     "files": [
+      "harp-13.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_F6_mf.wav"
+    },
+    {
+     "ref": 92.84,
+     "files": [
+      "harp-14.ogg"
+     ],
+     "from": "vsco/Strings/Harp/KSHarp_A6_mf.wav"
+    }
+   ]
+  },
+  "spiccato": {
+   "kind": "decay",
+   "zones": [
+    {
+     "ref": 35.89,
+     "files": [
+      "spiccato-00.ogg"
+     ],
+     "from": "vsco/Strings/Cello Section/spic/spic_C1_v2_RR1.wav"
+    },
+    {
+     "ref": 40.11,
+     "files": [
+      "spiccato-01.ogg"
+     ],
+     "from": "vsco/Strings/Cello Section/spic/spic_E1_v2_RR1.wav"
+    },
+    {
+     "ref": 43.01,
+     "files": [
+      "spiccato-02.ogg"
+     ],
+     "from": "vsco/Strings/Cello Section/spic/spic_G1_v2_RR1.wav"
+    },
+    {
+     "ref": 46.96,
+     "files": [
+      "spiccato-03.ogg"
+     ],
+     "from": "vsco/Strings/Cello Section/spic/spic_B1_v2_RR1.wav"
+    },
+    {
+     "ref": 49.98,
+     "files": [
+      "spiccato-04.ogg"
+     ],
+     "from": "vsco/Strings/Cello Section/spic/spic_D2_v2_RR1.wav"
+    },
+    {
+     "ref": 55.01,
+     "files": [
+      "spiccato-05.ogg"
+     ],
+     "from": "vsco/Strings/Viola Section/spic/Violas_spic_G2_v2_rr1.wav"
+    },
+    {
+     "ref": 59.01,
+     "files": [
+      "spiccato-06.ogg"
+     ],
+     "from": "vsco/Strings/Viola Section/spic/Violas_spic_B2_v2_rr1.wav"
+    },
+    {
+     "ref": 62.02,
+     "files": [
+      "spiccato-07.ogg"
+     ],
+     "from": "vsco/Strings/Viola Section/spic/Violas_spic_D3_v2_rr1.wav"
+    },
+    {
+     "ref": 66.05,
+     "files": [
+      "spiccato-08.ogg"
+     ],
+     "from": "vsco/Strings/Violin Section/Spic/VlnEns_Spic_F#3_v2_rr1.wav"
+    },
+    {
+     "ref": 69.03,
+     "files": [
+      "spiccato-09.ogg"
+     ],
+     "from": "vsco/Strings/Violin Section/Spic/VlnEns_Spic_A3_v2_rr1.wav"
+    },
+    {
+     "ref": 72.01,
+     "files": [
+      "spiccato-10.ogg"
+     ],
+     "from": "vsco/Strings/Violin Section/Spic/VlnEns_Spic_C4_v2_rr1.wav"
+    },
+    {
+     "ref": 76.0,
+     "files": [
+      "spiccato-11.ogg"
+     ],
+     "from": "vsco/Strings/Violin Section/Spic/VlnEns_Spic_E4_v2_rr1.wav"
+    },
+    {
+     "ref": 79.03,
+     "files": [
+      "spiccato-12.ogg"
+     ],
+     "from": "vsco/Strings/Violin Section/Spic/VlnEns_Spic_G4_v2_rr1.wav"
+    }
+   ]
+  },
+  "celeste": {
+   "kind": "decay",
+   "zones": [
+    {
+     "ref": 60.11,
+     "files": [
+      "celeste-00.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-c4-soft.flac"
+    },
+    {
+     "ref": 63.98,
+     "files": [
+      "celeste-01.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-e4-soft.flac"
+    },
+    {
+     "ref": 67.99,
+     "files": [
+      "celeste-02.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-g#4-soft.flac"
+    },
+    {
+     "ref": 72.04,
+     "files": [
+      "celeste-03.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-c5-soft.flac"
+    },
+    {
+     "ref": 76.07,
+     "files": [
+      "celeste-04.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-e5-soft.flac"
+    },
+    {
+     "ref": 80.04,
+     "files": [
+      "celeste-05.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-g#5-soft.flac"
+    },
+    {
+     "ref": 84.05,
+     "files": [
+      "celeste-06.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-c6-soft.flac"
+    },
+    {
+     "ref": 88.06,
+     "files": [
+      "celeste-07.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-e6-soft.flac"
+    },
+    {
+     "ref": 92.29,
+     "files": [
+      "celeste-08.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-g#6-soft.flac"
+    },
+    {
+     "ref": 96.26,
+     "files": [
+      "celeste-09.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-c7-soft.flac"
+    },
+    {
+     "ref": 100.41,
+     "files": [
+      "celeste-10.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-e7-soft.flac"
+    },
+    {
+     "ref": 104.0,
+     "files": [
+      "celeste-11.ogg"
+     ],
+     "from": "sso/Sonatina Symphonic Orchestra/Samples/Celeste/celeste-g#7-soft.flac"
+    }
+   ]
+  },
+  "drum": {
+   "kind": "hit",
+   "zones": [
+    {
+     "ref": null,
+     "files": [
+      "drum-00.ogg",
+      "drum-01.ogg",
+      "drum-02.ogg"
+     ],
+     "from": [
+      "vsco/VSCO 1 Percussion/drums/bass/bdrum_muted_ff_1.wav",
+      "vsco/VSCO 1 Percussion/drums/bass/bdrum_muted_fff_1.wav",
+      "vsco/VSCO 1 Percussion/drums/bass/bdrum_muted_fff_2.wav"
+     ]
+    }
+   ]
+  },
+  "tenor": {
+   "kind": "hit",
+   "zones": [
+    {
+     "ref": null,
+     "files": [
+      "tenor-00.ogg",
+      "tenor-01.ogg",
+      "tenor-02.ogg"
+     ],
+     "from": [
+      "vsco/VSCO 1 Percussion/drums/tenor/tenor_lower/tenor_ff_1.wav",
+      "vsco/VSCO 1 Percussion/drums/tenor/tenor_lower/tenor_ff_2.wav",
+      "vsco/VSCO 1 Percussion/drums/tenor/tenor_lower/tenor_fff_1.wav"
+     ]
+    }
+   ]
+  },
+  "hand": {
+   "kind": "hit",
+   "zones": [
+    {
+     "ref": null,
+     "files": [
+      "hand-00.ogg",
+      "hand-01.ogg"
+     ],
+     "from": [
+      "vcsl/Membranophones/Struck Membranophones/Frame Drum/HDrumL_Hit_v3_rr1_Sum.wav",
+      "vcsl/Membranophones/Struck Membranophones/Frame Drum/HDrumL_Hit_v3_rr2_Sum.wav"
+     ]
+    }
+   ]
+  },
+  "shaker": {
+   "kind": "hit",
+   "zones": [
+    {
+     "ref": null,
+     "files": [
+      "shaker-00.ogg",
+      "shaker-01.ogg",
+      "shaker-02.ogg",
+      "shaker-03.ogg"
+     ],
+     "from": [
+      "vsco/VSCO 1 Percussion/varWood/Camo's Shaker/shake1.wav",
+      "vsco/VSCO 1 Percussion/varWood/Camo's Shaker/shake2.wav",
+      "vsco/VSCO 1 Percussion/varWood/Camo's Shaker/shake3.wav",
+      "vsco/VSCO 1 Percussion/varWood/Camo's Shaker/shake4.wav"
+     ]
+    }
+   ]
+  },
+  "crash": {
+   "kind": "hit",
+   "zones": [
+    {
+     "ref": null,
+     "files": [
+      "crash-00.ogg",
+      "crash-01.ogg"
+     ],
+     "from": [
+      "vsco/Percussion/cymbal-crash1_ff_rr1.wav",
+      "vsco/Percussion/cymbal-crash1_ff_rr2.wav"
+     ]
+    }
+   ]
+  },
+  "swell": {
+   "kind": "swell",
+   "zones": [
+    {
+     "ref": null,
+     "files": [
+      "swell-00.ogg"
+     ],
+     "from": [
+      "vsco/Percussion/susCymb1-cresc-Short_v1.wav"
+     ]
+    }
+   ]
+  }
+ }
+}

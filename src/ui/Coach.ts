@@ -1,5 +1,6 @@
 import { ULTIMATE_SLOT } from '../game/loadout';
 import type { Unit } from '../sim/Unit';
+import { boundKeys } from '../settings/controls';
 import './coach.css';
 
 const SEEN_KEY = 'ascendant.coachSeen';
@@ -110,7 +111,7 @@ export class Coach {
     } catch {
       /* storage unavailable: tips may show again next time */
     }
-    this.el.innerHTML = tip.text;
+    this.el.innerHTML = boundKeys(tip.text);
     this.el.classList.add('show');
     this.showing = 6;
     this.gap = 4;

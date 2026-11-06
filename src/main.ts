@@ -36,31 +36,39 @@ import { GodVoice } from './audio/GodVoice';
 import { bakeAll } from './audio/bank';
 import { GameAudio } from './audio/GameAudio';
 import { Music } from './audio/music';
+import { Orchestra } from './audio/orchestra';
 import { installUiSounds, mountAudioPanel } from './ui/AudioPanel';
 import { slice } from './core/slices';
+import { applyPageSettings } from './settings/apply';
+import { actionForCode, keyGate, onSettings, settings } from './settings/store';
+import { closeSettings, mountSettings, openSettings, setGraphicsHooks, settingsOpen, typing } from './ui/SettingsMenu';
+import { escapeKey, mountPadCursor, padCursor } from './ui/PadCursor';
+import { pad } from './core/Gamepad';
+import { mountSubtitles } from './ui/Subtitles';
 
 async function main(): Promise<void> {
   installErrorHandlers();
   const perf = new PerfStats();
   let applyQuality: (q: QualityName) => Promise<void> = async () => {};
   let autoQuality: AutoQuality | null = null;
-  let sensitivity = 1;
-  let applySensitivity = (v: number): void => {
-    sensitivity = v;
-  };
   const hud = new Hud((q) => {
     autoQuality?.stop();
     void applyQuality(q);
-  }, (v) => applySensitivity(v));
+  });
   hud.progress(0.05, 'Starting renderer…');
 
   const params = new URLSearchParams(location.search);
   // Sound starts with the first click or key press (browsers require a gesture);
   // the bank renders in small slices while everything else loads.
   const audio = new AudioEngine();
-  const music = new Music(audio);
+  const music = new Music(audio, new Orchestra(`${import.meta.env.BASE_URL}music/`));
   const herald = new Announcer(audio);
+  // the player's settings reach the page first (team colors, HUD size, keys), then the menus
+  applyPageSettings(audio);
   mountAudioPanel(audio);
+  mountSettings(audio);
+  mountSubtitles();
+  mountPadCursor();
   installUiSounds(audio);
   const baked = bakeAll(audio);
   (window as unknown as { __audio: unknown }).__audio = { audio, music, herald, baked };
@@ -103,11 +111,27 @@ async function main(): Promise<void> {
   await preloadGodAssets((f) => hud.progress(0.55 + f * 0.05, 'Summoning the gods…'));
 
   let quality = QUALITY_PRESETS[initialQuality(isWebGPU, slowGpu !== null)];
+  // before the match, a pick in Settings only takes the new preset (the map is built with it, or
+  // brought up to it once Play is pressed)
+  applyQuality = async (name: QualityName) => {
+    quality = QUALITY_PRESETS[name];
+    saveQuality(name);
+    hud.setQuality(name);
+  };
+  setGraphicsHooks({
+    quality: () => quality.name,
+    setQuality: (q) => {
+      autoQuality?.stop();
+      void applyQuality(q);
+    },
+    webgpu: isWebGPU,
+  });
   /** Lowered by AutoQuality when the frame rate stays low. */
   let renderScale = 1;
   let autoDrops = 0;
   const resize = () => {
-    const pr = Math.min(window.devicePixelRatio * quality.resolutionScale, quality.maxPixelRatio) * renderScale;
+    // (Settings > Graphics > Render resolution scales on top of the preset and the automatic drops)
+    const pr = Math.min(window.devicePixelRatio * quality.resolutionScale, quality.maxPixelRatio) * renderScale * settings().resolution;
     renderer.setPixelRatio(pr);
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -180,7 +204,7 @@ async function main(): Promise<void> {
     if (mode === 'jotunn') await loadGodAsset('jotunn');
     world.actors.add(models);
     await prepareShaders(world, post, 0.85, 0.86);
-    return { world, post, models };
+    return { world, post, models, builtWith: quality };
   };
   // Start on the mode the title screen opens with (the last one played) while
   // the player picks a god; a different pick builds its own map after Play.
@@ -219,17 +243,19 @@ async function main(): Promise<void> {
     choice = { ...started, god: picked.god, rival: picked.rival, seed: started.net ? undefined : seed };
     saveChoice({ god: picked.god, rival: picked.rival });
   }
-  const { world, post, models } = await loading;
+  const { world, post, models, builtWith } = await loading;
+  // a quality picked in Settings on the home page, after the map was built
+  if (builtWith !== quality) {
+    resize();
+    await world.applyQuality(renderer, quality);
+    post.build(quality);
+  }
 
   const input = new Input(renderer.domElement);
   const god = new GodModel();
   world.actors.add(god.root);
   const player = new PlayerController(input, world.collision, god);
   const baseSensitivity = player.mouseSensitivity;
-  applySensitivity = (v) => {
-    player.mouseSensitivity = baseSensitivity * v;
-  };
-  applySensitivity(sensitivity);
   player.spawn(world.spawn.x, world.spawn.z, world.spawn.yaw);
   const follow = new ThirdPersonCamera(camera, player, world.collision);
   // models only one mode uses (the Jötunn) load on demand
@@ -245,6 +271,8 @@ async function main(): Promise<void> {
 
   applyQuality = async (name: QualityName) => {
     quality = QUALITY_PRESETS[name];
+    autoStopped = true;
+    autoQuality = null;
     renderScale = 1;
     saveQuality(name);
     hud.setQuality(name);
@@ -255,20 +283,51 @@ async function main(): Promise<void> {
   hud.setQuality(quality.name);
   hud.setInfo(`${isWebGPU ? 'WebGPU' : 'WebGL 2'}${gpu ? ` · ${gpu}` : ''}`);
   const advice = params.has('capture') ? null : slowGpu;
-  // a quality forced in the URL (tests, shared links) stays put
-  if (!params.has('quality')) {
+  // a quality forced in the URL (tests, shared links) stays put, and so does one the player picked
+  let autoStopped = params.has('quality');
+  const startAuto = () => {
     autoQuality = new AutoQuality((scale) => {
       renderScale = scale;
       autoDrops++;
       resize();
-      hud.notice(`Lowered the render resolution to ${Math.round(scale * 100)}% for a smoother frame rate. Picking a quality at the bottom right resets it.`);
+      hud.notice(`Lowered the render resolution to ${Math.round(scale * 100)}% for a smoother frame rate. Picking a quality, or turning off Automatic resolution in Settings, resets it.`);
     }, () => perf.gpuAverage(4));
-  }
+  };
+  const stopAuto = () => {
+    autoQuality?.stop();
+    autoQuality = null;
+    if (renderScale !== 1) {
+      renderScale = 1;
+      resize();
+    }
+  };
+
+  // the settings that need the camera, the player and the renderer
+  const fixedCamera = !!(showcase || giant || params.has('stage'));
+  const baseExposure = grading.exposure.value;
+  onSettings((s, changed) => {
+    player.mouseSensitivity = baseSensitivity * s.sensitivity;
+    player.invertY = s.invertY;
+    if (changed.has('fov') && !fixedCamera) {
+      camera.fov = s.fov;
+      camera.updateProjectionMatrix();
+    }
+    grading.exposure.value = baseExposure * s.brightness;
+    if (changed.has('resolution')) resize();
+    if (changed.has('autoResolution')) {
+      if (!s.autoResolution) stopAuto();
+      else if (!autoStopped && !autoQuality) startAuto();
+    }
+    if (autoQuality) autoQuality.minFps = s.frameCap ? Math.min(45, s.frameCap * 0.85) : 45;
+  });
 
   const loop = new Loop();
   loop.addFixed(player);
   // Conquest plays a full match against bots; the arena is the training ground
-  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, seed: choice.seed, shake: (a) => follow.addShake(a), cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
+  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, seed: choice.seed, shake: (a) => {
+    follow.addShake(a * settings().shake);
+    pad.rumble(a * 1.6);
+  }, cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
   void baked;
   // `?stage`: the trailer's film set (tools/trailer)
@@ -312,12 +371,34 @@ async function main(): Promise<void> {
   combat.netReady();
 
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyH' && !e.repeat) hud.toggleHelp();
+    if (!e.repeat && !keyGate.blocked && !typing(e) && actionForCode(e.code) === 'menu') hud.toggleHelp();
   });
-  document.addEventListener('pointerlockchange', () => hud.setLocked(input.locked));
+  document.addEventListener('pointerlockchange', () => hud.setLocked(input.engaged));
+  pad.onChange(() => hud.setLocked(input.engaged));
+  // a controller runs the menus with its cursor, and plays when none is up
+  padCursor.wanted = () => settingsOpen() || hud.helpOpen || combat.menuUp;
+  padCursor.back = () => {
+    if (settingsOpen()) closeSettings();
+    else if (hud.helpOpen) hud.toggleHelp(false);
+    else escapeKey();
+  };
 
+  /** When the next frame is due under Settings > Graphics > Frame rate cap. */
+  let nextFrame = 0;
   const frame = (now: number) => {
+    const cap = captureMode ? 0 : settings().frameCap;
+    if (cap) {
+      // a frame the cap holds back draws nothing: the screen keeps the last one
+      if (now < nextFrame - 1) return;
+      const interval = 1000 / cap;
+      nextFrame = Math.max(nextFrame + interval, now - interval);
+    }
     perf.begin(now);
+    input.beginFrame();
+    // the controller's interface buttons (the keyboard's go through keydown)
+    if (input.padActionPressed('menu')) hud.toggleHelp();
+    if (input.padActionPressed('settings')) openSettings();
+    if (input.padActionPressed('mute')) audio.setSettings({ muted: !audio.settings.muted });
     player.look();
     const wheel = input.consumeWheel();
     if (wheel) follow.zoom(wheel);
