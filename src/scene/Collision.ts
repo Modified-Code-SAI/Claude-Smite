@@ -215,24 +215,28 @@ export class CollisionWorld {
   /**
    * Distance along a ray (XZ only, plus a height check) to the first collider,
    * used by the camera to avoid clipping into columns and walls. Without
-   * `solids` only the ground stops it.
+   * `solids` only the ground stops it. The probe is `radius` wide at the
+   * origin, widening to `farRadius` at `maxDist` (the camera keeps clear of a
+   * column beside it, while its god can still brush past one).
    */
-  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxDist: number, radius = 0.3, solids = true): number {
+  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxDist: number, radius = 0.3, solids = true, farRadius = radius): number {
     const best = maxDist;
+    const wide = Math.max(radius, farRadius);
     // Units can walk through camera-only blockers; when the ray starts inside
     // one (the player is in a tower), ignore it rather than pin the camera there.
     const blockers = solids ? this.cameraBlockers.filter((c) => !hitsAny([c], ox, oy, oz, 0)) : [];
     const steps = Math.ceil(maxDist / 0.25);
     const ex = ox + dx * maxDist;
     const ez = oz + dz * maxDist;
-    const count = solids ? this.gather(Math.min(ox, ex) - radius, Math.min(oz, ez) - radius, Math.max(ox, ex) + radius, Math.max(oz, ez) + radius) : 0;
+    const count = solids ? this.gather(Math.min(ox, ex) - wide, Math.min(oz, ez) - wide, Math.max(ox, ex) + wide, Math.max(oz, ez) + wide) : 0;
     for (let i = 1; i <= steps; i++) {
       const t = (i / steps) * maxDist;
       const x = ox + dx * t;
       const y = oy + dy * t;
       const z = oz + dz * t;
       if (y < this.groundAt(x, z) + 0.25) return Math.max(0, t - 0.25);
-      if (hitsAny(this.near, x, y, z, radius, count) || hitsAny(blockers, x, y, z, radius)) return Math.max(0, t - 0.25);
+      const r = radius + (farRadius - radius) * (t / maxDist);
+      if (hitsAny(this.near, x, y, z, r, count) || hitsAny(blockers, x, y, z, r)) return Math.max(0, t - 0.25);
     }
     return best;
   }
