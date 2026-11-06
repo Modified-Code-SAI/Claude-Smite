@@ -7,7 +7,7 @@ import { reachOf, skillRole } from './Bot';
 import type { Nav } from './Nav';
 import { clampToPitch, FUMBLE_CC, inGate, Rush, RUSH } from './Rush';
 import type { Sim } from './Sim';
-import { WORLD_SCALE, type Brain, type Point, type Unit } from './Unit';
+import { WORLD_SCALE, type Brain, type FlashShape, type Point, type Unit } from './Unit';
 
 const SLOTS = Array.from({ length: SLOT_COUNT }, (_, i) => i);
 
@@ -91,6 +91,7 @@ export interface RushBotOptions {
 export class RushBot implements Brain {
   private decide = 0;
   private passCheck = 0;
+  private jukeCheck = 0;
   private callCheck = 0;
   private lastCall = -99;
   /** The order this bot spends tree points, chosen once the line-up is known (see plan). */
@@ -264,6 +265,11 @@ export class RushBot implements Brain {
       this.passCheck = 0.2;
       if (this.tryShot(gate, toGate) || this.answerCall() || this.tryPass(gate, toGate)) return;
     }
+    this.jukeCheck -= dt;
+    if (this.jukeCheck <= 0) {
+      this.jukeCheck = 0.12;
+      if (this.tryJuke(gate)) return;
+    }
     // run at the gate's mouth, steering around defenders in the way
     const aim = this.mouth(gate);
     let dx = aim.x - u.x;
@@ -290,6 +296,73 @@ export class RushBot implements Brain {
     const k = toGate < 5 ? 0.2 : 1;
     const step = clampToPitch(u.x + (dx + ax * k) * 3, u.z + (dz + az * k) * 3, 1.5);
     this.walkTo(step, 0.1, true);
+  }
+
+  /**
+   * Juke a tackle about to land: an enemy's crowd control winding up over
+   * the carrier, a stunning shot about to arrive, or (less often, as it's a
+   * guess) an enemy in reach with crowd control ready. Sidesteps away from
+   * them, still toward the gate.
+   */
+  private tryJuke(gate: Point): boolean {
+    const { u, rush, sim } = this;
+    if (rush.jukeLeft(u) > 0) return false;
+    const threat = this.incoming();
+    let foe: Unit | null = threat;
+    if (!foe) {
+      for (const e of this.enemies()) if (dist(e, u) < 2.4 && !e.forced && this.hasReadyCC(e)) foe = e;
+      if (!foe || sim.rng() > 0.2) return false;
+    } else if (sim.rng() > 0.75) return false;
+    let gx = gate.x - u.x;
+    let gz = gate.z - u.z;
+    const g = hypot(gx, gz) || 1;
+    gx /= g;
+    gz /= g;
+    // sideways, away from the tackler's side of the run, and a little on toward the gate
+    const ex = foe.x - u.x;
+    const ez = foe.z - u.z;
+    const side = ex * gz - ez * gx > 0 ? -1 : 1;
+    return rush.juke(u, { x: -gz * side + gx * 0.5, z: gx * side + gz * 0.5 });
+  }
+
+  /** The enemy whose crowd control is about to hit this bot: a wind-up over it, or a shot on its way in. */
+  private incoming(): Unit | null {
+    const { u, sim } = this;
+    const soon = RUSH.juke.guard * 0.9;
+    for (const f of sim.flashes) {
+      if (!f.warn || f.owner.team === u.team || f.life - f.age > soon || f.act === 'basic') continue;
+      if (inShape(f.shape, u.x, u.z, u.radius + 0.4) && this.stuns(f.owner)) return f.owner;
+    }
+    // a ground blast's warning circle, about to land
+    for (const z of sim.zones) {
+      if (z.ticks !== 0 || z.timer <= 0 || z.timer > soon || z.owner.team === u.team) continue;
+      if (hypot(u.x - z.x, u.z - z.z) > z.radius + u.radius + 0.3) continue;
+      if (z.cast.hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) return z.owner.owner ?? z.owner;
+    }
+    for (const p of sim.projectiles) {
+      if (!p.alive || !p.cast || p.owner.team === u.team || p.hit.has(u)) continue;
+      if (!p.cast.hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc))) continue;
+      // closest approach along its flight, and how soon
+      const rx = u.x - p.x;
+      const rz = u.z - p.z;
+      const along = rx * p.dx + rz * p.dz;
+      if (along < 0 || along > p.range - p.traveled || along / p.speed > soon) continue;
+      if (Math.abs(rx * p.dz - rz * p.dx) < p.radius + u.radius + 0.3) return p.owner.owner ?? p.owner;
+    }
+    return null;
+  }
+
+  /** Whether a god's wound-up skill knocks the relic loose. */
+  private stuns(e: Unit): boolean {
+    const f = this.sim.flashes.find((x) => x.owner === e && x.warn);
+    const id = f?.act;
+    if (!id) return false;
+    const c = e.combatant;
+    for (const s of SLOTS) {
+      const r = c.resolve(s);
+      if (r.skill.id === id) return r.hits.some((h) => h.kind === 'cc' && FUMBLE_CC.has(h.cc));
+    }
+    return true;
   }
 
   /** The point to run at to pass through the gate: its center, from whichever side the carrier is on. */
@@ -562,4 +635,20 @@ export class RushBot implements Brain {
 /** For tests and tuning: whether a god stands in the scoring mouth of the gate it attacks. */
 export function inEnemyGate(u: Unit): boolean {
   return inGate(other(u.team as Side), u.x, u.z);
+}
+
+/** Whether (x, z) lies within a struck shape, grown by `pad` meters. */
+function inShape(s: FlashShape, x: number, z: number, pad: number): boolean {
+  const dx = x - s.x;
+  const dz = z - s.z;
+  if (s.type === 'circle') return hypot(dx, dz) <= s.radius + pad;
+  // shapes face along yaw: forward is (-sin, -cos)
+  const fx = -Math.sin(s.yaw);
+  const fz = -Math.cos(s.yaw);
+  const along = dx * fx + dz * fz;
+  const across = Math.abs(dx * fz - dz * fx);
+  if (s.type === 'line') return along >= -pad && along <= s.length + pad && across <= s.width / 2 + pad;
+  const d = hypot(dx, dz);
+  if (d > s.range + pad) return false;
+  return d < pad + 0.5 || Math.acos(Math.max(-1, Math.min(1, along / (d || 1)))) <= (s.angle * Math.PI) / 360 + pad / Math.max(1, d);
 }

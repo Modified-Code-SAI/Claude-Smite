@@ -93,7 +93,7 @@ export class RushMode {
   private readonly view: RushView;
   private readonly hud: RushHud;
   /** The beats already shown, so each catch, fumble and goal flashes once. */
-  private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, goals: 0, phase: '' as string };
+  private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, juke: 0, goals: 0, phase: '' as string };
   private readonly v = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
   private readonly toHead = new THREE.Vector3();
@@ -142,6 +142,7 @@ export class RushMode {
         host.onAct = (u, msg) => {
           const a = msg.a as [number, number] | undefined;
           if (msg.k === 'throw' && a) rush.throwRelic(u, { x: a[0], z: a[1] });
+          else if (msg.k === 'juke') rush.juke(u, a ? { x: a[0], z: a[1] } : null);
           else if (msg.k === 'call') rush.call(u);
         };
         host.bind(rush, roster);
@@ -153,7 +154,7 @@ export class RushMode {
     this.view.camera = deps.camera;
     deps.vfx.add(this.view.group);
     this.hud = new RushHud(rush, player, this.gods, !!net);
-    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, shrug: rush.beats.shrug, save: rush.beats.save, goals: rush.goalCount, phase: rush.phase };
+    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, shrug: rush.beats.shrug, save: rush.beats.save, juke: rush.beats.juke, goals: rush.goalCount, phase: rush.phase };
   }
 
   /** Whether the local player has the relic (their skills and basic attack give way to throwing). */
@@ -172,6 +173,16 @@ export class RushMode {
     const at = this.rush.assistAim(me, me.aim);
     if (this.guest) this.guest.act({ k: 'throw', a: [at.x, at.z] });
     else this.rush.throwRelic(me, at);
+  }
+
+  /** The local carrier jukes (Space) the way WASD points (a guest sends that way to the host). */
+  juke(): void {
+    const me = this.deps.player;
+    const dir = this.deps.ctrl.wish;
+    if (this.guest) {
+      // (not while it's cooling down: the host would only refuse it)
+      if (this.rush.jukeLeft(me) <= 0) this.guest.act(dir ? { k: 'juke', a: [dir.x, dir.z] } : { k: 'juke' });
+    } else this.rush.juke(me, dir);
   }
 
   /** The local player calls for the pass (F): shown to teammates, and a bot carrier throws it to them. */
@@ -312,6 +323,12 @@ export class RushMode {
       burst(GOLD, at.x, at.y, at.z, 0.65);
       if (r.lastBeat?.unit === me) this.deps.shake?.(0.12);
     }
+    const juker = r.lastJuke;
+    if (r.beats.juke !== seen.juke && juker?.alive) {
+      // a juke kicks off: a scuff of gold at the feet, felt by the juker
+      burst(GOLD, juker.x, this.deps.groundAt(juker.x, juker.z) + 0.25, juker.z, 0.3);
+      if (juker === me) this.deps.shake?.(0.05);
+    }
     if (r.goalCount !== seen.goals && r.lastGoal) {
       const g = r.lastGoal;
       const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
@@ -329,7 +346,7 @@ export class RushMode {
     const cheer = r.phase === 'goal' && r.lastGoal ? RUSH.celebrate - r.timer : -1;
     if (r.lastGoal && this.cheerAt >= 0 && this.cheerAt < RUSH.cheer.again && cheer >= RUSH.cheer.again) this.deps.swing?.(r.lastGoal.scorer, 'ult');
     this.cheerAt = cheer;
-    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, save: r.beats.save, goals: r.goalCount, phase: r.phase };
+    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, save: r.beats.save, juke: r.beats.juke, goals: r.goalCount, phase: r.phase };
   }
 
   /**

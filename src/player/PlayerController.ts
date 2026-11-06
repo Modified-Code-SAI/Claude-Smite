@@ -21,10 +21,11 @@ export class PlayerController implements Updatable {
 
   moveSpeed = 6.6;
   /**
-   * Set by gameplay each step: the god's current speed (slows, buffs) and
-   * whether input may move it at all (crowd control, dashes, death).
+   * Set by gameplay each step: the god's current speed (slows, buffs),
+   * whether input may move it at all (crowd control, dashes, death), and
+   * whether Space jumps (a Relic Rush carrier's Space jukes instead).
    */
-  movement: { speed: number; canMove: boolean } | null = null;
+  movement: { speed: number; canMove: boolean; canJump?: boolean } | null = null;
   readonly radius = 0.55;
   /** Replaces plain terrain collision while walking; the combat sim adds its structures. */
   resolve: ((x: number, z: number, radius: number, feetY: number, from: { x: number; z: number }) => { x: number; z: number }) | null = null;
@@ -43,6 +44,19 @@ export class PlayerController implements Updatable {
     this.position.set(x, this.collision.groundAt(x, z), z);
     this.prevPosition.copy(this.position);
     this.yaw = yaw;
+  }
+
+  /** The way WASD asks to go, on the ground (unit length), or null with no keys down. */
+  get wish(): { x: number; z: number } | null {
+    const f = this.localDir.y;
+    const r = this.localDir.x;
+    if (f === 0 && r === 0) return null;
+    const sin = Math.sin(this.yaw);
+    const cos = Math.cos(this.yaw);
+    const x = -sin * f + cos * r;
+    const z = -cos * f - sin * r;
+    const d = Math.hypot(x, z) || 1;
+    return { x: x / d, z: z / d };
   }
 
   /** Mouse look is applied every frame (not fixed step) so aiming feels immediate. */
@@ -73,7 +87,7 @@ export class PlayerController implements Updatable {
     this.velocity.x += (wx - this.velocity.x) * k;
     this.velocity.z += (wz - this.velocity.z) * k;
 
-    if (free && this.grounded && i.wasPressed('Space')) {
+    if (free && (this.movement?.canJump ?? true) && this.grounded && i.wasPressed('Space')) {
       this.verticalSpeed = 5.2;
       this.grounded = false;
     }

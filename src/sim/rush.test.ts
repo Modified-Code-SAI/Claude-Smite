@@ -101,6 +101,60 @@ describe('Relic Rush', () => {
     expect(rush.holder).not.toBe(a);
   });
 
+  it('a juke sidesteps the carrier, beats a stun in its guard, keeps the relic, and waits out its cooldown', () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    const t = god(sim, thor, 'chaos', 0);
+    const mate = god(sim, odin, 'order', 1);
+    rush.begin([a, t, mate]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    // only the carrier can juke
+    expect(rush.juke(mate, { x: 1, z: 0 })).toBe(false);
+    sim.teleport(a, 0, 1.6);
+    run(sim, rush, 0.2);
+    expect(rush.holder).toBe(a);
+    sim.teleport(t, 0, 3.6, 0);
+    t.aim.x = a.x;
+    t.aim.z = a.z;
+    const slot = t.combatant.loadout.indexOf('thor.mjolnir-slam');
+    const x0 = a.x;
+    const beats = rush.beats.juke;
+    // a juke as the slam lands: it moves the carrier, and the stun can't land in its guard
+    expect(rush.juke(a, { x: 1, z: 0 })).toBe(true);
+    expect(rush.beats.juke).toBe(beats + 1);
+    expect(rush.lastJuke).toBe(a);
+    expect(sim.cast(t, slot)).toBeNull();
+    run(sim, rush, RUSH.juke.time + 0.05);
+    expect(a.x - x0).toBeCloseTo(RUSH.juke.distance, 0);
+    expect(rush.holder).toBe(a);
+    expect(rush.lines.get(t)!.tackles).toBe(0);
+    // the guard ends on time
+    run(sim, rush, RUSH.juke.guard);
+    expect(rush.isJuking(a)).toBe(false);
+    expect(a.combatant.ccImmune).toBe(false);
+    // and the juke waits out its cooldown
+    expect(rush.jukeLeft(a)).toBeGreaterThan(RUSH.juke.cooldown - 1);
+    expect(rush.juke(a, { x: -1, z: 0 })).toBe(false);
+    // a guest sees how long until it's ready, and who juked
+    const guest = match();
+    const gods = [god(guest.sim, zeus, 'order', 0), god(guest.sim, thor, 'chaos', 0), god(guest.sim, odin, 'order', 1)];
+    guest.rush.join(gods);
+    guest.rush.applyNet(JSON.parse(JSON.stringify(rush.netState())));
+    expect(guest.rush.jukeLeft(gods[0]!)).toBeCloseTo(rush.jukeLeft(a), 1);
+    expect(guest.rush.lastJuke).toBe(gods[0]);
+    expect(guest.rush.beats.juke).toBe(rush.beats.juke);
+    // without a juke, the same slam knocks it loose
+    const left = rush.jukeLeft(a);
+    run(sim, rush, left + 0.1);
+    t.combatant.resetCooldowns();
+    sim.teleport(t, a.x, a.z + 2, 0);
+    t.aim.x = a.x;
+    t.aim.z = a.z;
+    expect(sim.cast(t, slot)).toBeNull();
+    run(sim, rush, 0.05);
+    expect(rush.holder).toBeNull();
+  });
+
   it('a daze is short, drops the relic, and stands the god up at their gate', () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);
