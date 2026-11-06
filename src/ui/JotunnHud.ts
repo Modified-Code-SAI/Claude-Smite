@@ -3,6 +3,7 @@ import { JOTUNN, lastStand, PART_IDS, PARTS, type Jotunn, type PartId } from '..
 import type { SimEvent, Unit } from '../sim/Unit';
 import { awardLine } from './ascension';
 import { clockText, jotunnAwards, mightText, type JotunnAwardKey } from './jotunnAwards';
+import { JotunnRadar } from './JotunnRadar';
 import { KillTally } from './killTally';
 import { addResult } from './records';
 import './match.css';
@@ -45,6 +46,8 @@ export class JotunnHud {
   private bannerTime = 0;
   /** The giant's name card, while its waking shot runs. */
   private readonly card: HTMLElement;
+  /** The valley at a glance, top right: the giant, the braziers, the shrines and the gods. */
+  readonly radar: JotunnRadar;
   private readonly dipEl: HTMLElement;
   /** Takedowns this round: kept per round, so a streak never carries over to the next giant. */
   private tally: KillTally;
@@ -94,6 +97,8 @@ export class JotunnHud {
     this.banner = q('.mh-banner');
     this.card = q('.jt-card');
     this.dipEl = q('.jt-dip');
+    this.radar = new JotunnRadar(mode, me);
+    this.root.insertBefore(this.radar.el, this.wins);
     this.tally = this.newTally();
     this.parts.innerHTML = PART_IDS.map((id) => `<i class="jt-part ${PART_GROUP[id]}" data-id="${id}" title="${PARTS[id].name}"><b>${PART_GLYPH[id]}</b></i>`).join('');
     this.braziers.innerHTML = JOTUNN.braziers.map(() => '<i class="jt-brazier"></i>').join('');
@@ -186,6 +191,7 @@ export class JotunnHud {
     this.set('round', `${m.round}/${m.rounds}`, () => (this.round.textContent = `ROUND ${m.round} / ${m.rounds}`));
     this.set('who', `${mine}:${m.giantPlayer.name}`, () => (this.who.textContent = mine ? 'You are the Jötunn' : `${m.giantPlayer.name} is the Jötunn`));
     this.root.classList.toggle('as-giant', mine);
+    this.radar.frame(dt);
     // the last stand: the Might bar pulses with a cold light for the rest of the round
     if (lastStand(m)) this.standRound = m.round;
     const stand = this.standRound === m.round && m.phase === 'fight';

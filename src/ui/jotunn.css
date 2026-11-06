@@ -45,7 +45,10 @@
 .jt-big.show { display: block; animation: clash-in-mid 0.35s ease-out; }
 /* takedown banners sit below the state line */
 .jotunn .mh-banner { top: max(17%, 112px); }
-.jt-wins { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; font: 12px system-ui, sans-serif; color: #f2e6cc; background: rgba(8, 6, 5, 0.6); border-radius: 5px; }
+/* the radar, top right (JotunnRadar: the other side always at the top), with the round's wins under it */
+.jt-radar { position: absolute; top: 12px; right: 12px; width: clamp(120px, 15vw, 176px); height: clamp(120px, 15vw, 176px); border-radius: 50%; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(143, 228, 255, 0.3); transition: opacity 0.3s; }
+.jotunn:has(.clash-end.show) .jt-radar { display: none; }
+.jt-wins { position: absolute; top: calc(clamp(120px, 15vw, 176px) + 22px); right: 14px; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; font: 12px system-ui, sans-serif; color: #f2e6cc; background: rgba(8, 6, 5, 0.6); border-radius: 5px; }
 .jt-wins span { display: flex; justify-content: space-between; gap: 14px; }
 .jt-wins span.me { color: #ffe08a; font-weight: 600; }
 .jt-wins span.giant::before { content: '❄ '; color: var(--frost); }
@@ -77,7 +80,7 @@ body:has(.jotunn) .ch-ob[data-tag='jotunn'], body:has(.jotunn) .ch-ob-weakpoint:
 /* the giant has no skill trees to grow */
 body:has(.jotunn.as-giant) .ch-points { visibility: hidden; }
 /* the giant's moments on camera (JotunnCine): the play readout goes with the cut, the rules' toast stays; the card sits in the sky over the giant's head */
-body.jotunn-cine .combat-hud > :not(.ch-toasts), body.jotunn-cine .hud-hint, body.jotunn-cine .coach, body.jotunn-cine .hud-crosshair, body.jotunn-cine .jotunn .jt-top, body.jotunn-cine .jotunn .jt-wins, body.jotunn-cine .jotunn .mh-banner { opacity: 0; }
+body.jotunn-cine .combat-hud > :not(.ch-toasts), body.jotunn-cine .hud-hint, body.jotunn-cine .coach, body.jotunn-cine .hud-crosshair, body.jotunn-cine .jotunn .jt-top, body.jotunn-cine .jotunn .jt-wins, body.jotunn-cine .jotunn .jt-radar, body.jotunn-cine .jotunn .mh-banner { opacity: 0; }
 .jotunn[data-cine='wake'] .jt-big, .jotunn[data-cine='wake'] .clash-state { opacity: 0; }
 .jt-card { position: absolute; top: 17%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; pointer-events: none; text-align: center; transition: opacity 0.5s; text-shadow: 0 4px 22px rgba(0, 0, 0, 0.95), 0 0 2px #000; }
 .jt-card.show { opacity: 1; animation: jt-card-in 1.3s ease-out; }

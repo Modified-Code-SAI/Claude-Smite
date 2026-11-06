@@ -62,6 +62,8 @@ export interface JotunnDeps {
   collision?: CollisionWorld;
   /** The player's camera, for the objective marks (JotunnMarks); none, no marks. */
   camera?: THREE.Camera;
+  /** The team's pings, for the radar (PingMode.mapMarks). */
+  pings?: readonly { x: number; z: number; color: number; age: number }[];
   /** Toward the sun, which a shot of the giant never looks into. */
   sun?: { x: number; z: number };
   /** The map's light and haze, which the giant's winter cools (see JotunnWeather). */
@@ -183,6 +185,7 @@ export class JotunnMode {
     this.weather = new JotunnWeather(deps.environment);
     deps.vfx.add(this.weather.group);
     this.hud = new JotunnHud(mode, player);
+    if (deps.pings) this.hud.radar.pings = deps.pings;
     this.marks = deps.camera ? new JotunnMarks(mode, deps.camera, deps.groundAt) : null;
     const set = deps.cameraShot;
     const view = this.view;
