@@ -1290,8 +1290,11 @@ export class GameAudio {
       }
       if (r.phase === 'draft' && r.drafts.has(this.me)) this.herald.say('A forgotten rite. Learn a new power.', 'good', 2);
       if (r.phase === 'exit') this.engine.play('god.respawn', { gain: 0.5, rate: 0.7 }, 2);
-      // the ground gives way beneath the team as it goes down
+      // the ground gives way beneath the team as it goes down; out of a
+      // master's chamber they fall a long way, and land hard at the bottom
       if (r.phase === 'descend') this.engine.play('amb.groan', { gain: 0.9 }, 3);
+      if (r.phase === 'descend' && r.plunging) this.engine.play('amb.plunge', { gain: 0.85 }, 3);
+      if (r.phase === 'enter' && seen.phase === 'descend' && r.chamber % DESCENT.bossEvery === 1) this.engine.play('land', { gain: 0.9, rate: 0.75 }, 3);
       if (r.over) this.music.sting(r.phase === 'won' && (!r.versus || r.winner === this.me.team) ? 'victory' : 'defeat');
       if (r.phase === 'won' && r.versus) this.herald.say(r.winner === 'draw' ? 'A dead heat. The underworld keeps you both.' : r.winner === this.me.team ? 'Victory! Your team rules the underworld.' : 'The rivals rule the underworld.', r.winner === this.me.team ? 'epic' : 'bad', 9);
       else if (r.phase === 'won') this.herald.say('You rise again! The underworld could not hold you.', 'epic', 9);
