@@ -95,3 +95,29 @@ export function goalCamSpot(ux: number, uz: number, gate: { x: number; z: number
   }
   return { x: best.x, z: best.z };
 }
+
+/** The match's last shot: how far it drifts round the winners (radians), settling over about `settle` seconds. */
+export const WIN_CAM = { drift: 0.5, settle: 5 } as const;
+
+/**
+ * Which way the match's last shot drifts round a subject at (ux, uz) from a
+ * camera at (cx, cz): toward whichever side keeps the temple's columns out of
+ * the frame once it has pushed in (see GOAL_CAM.near), or not at all when
+ * both would spoil it.
+ */
+export function winDrift(cx: number, cz: number, ux: number, uz: number): number {
+  const ox = cx - ux;
+  const oz = cz - uz;
+  const d = Math.hypot(ox, oz) || 1;
+  const r = GOAL_CAM.near + 0.5;
+  const cost = (a: number) => {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    return framingCost(ux + ((ox * c - oz * s) / d) * r, uz + ((ox * s + oz * c) / d) * r, ux, uz);
+  };
+  const still = cost(0);
+  const left = cost(WIN_CAM.drift);
+  const right = cost(-WIN_CAM.drift);
+  if (Math.min(left, right) > still + 1.5) return 0;
+  return left <= right ? WIN_CAM.drift : -WIN_CAM.drift;
+}

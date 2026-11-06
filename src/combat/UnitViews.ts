@@ -9,7 +9,7 @@ import { createMonsterView, monsterViewKey, type MonsterView } from './MonsterVi
 import { createStructureModel, type StructureModel } from './structures';
 import { MUZZLE_HEIGHT } from './Vfx';
 import { castStaticAsOne } from '../scene/merge';
-import { hypot } from '../core/math';
+import { hypot, turnToward } from '../core/math';
 
 /** Which pool of spare models a summon's look draws from. */
 const summonKey = (look: SummonLook): string => `${look.god}|${look.variant}`;
@@ -217,6 +217,8 @@ export class UnitViews {
   dazes = false;
   /** Underworld Descent: the dead claw their way up out of the floor instead of appearing on it. */
   emergeMonsters = false;
+  /** Turns laid over how gods face (see `turn`), by god. */
+  private readonly turns = new Map<Unit, { yaw: number; weight: number }>();
   private readonly prev = new Map<Unit, THREE.Vector3>();
   private readonly cur = new Map<Unit, THREE.Vector3>();
   /** When set, gods off screen or far away animate at a reduced rate. */
@@ -445,6 +447,22 @@ export class UnitViews {
 
   /** Hit-stop on a god's pose (the player's included); other units just wobble. */
   /** A move of the arms without an attack: Relic Rush's throw (a basic swing) and a scorer's cheer (the ultimate's arms to the sky). */
+  /**
+   * Turns a god's model `weight` (0 to 1) of the way toward facing `yaw`,
+   * over whatever its sim facing is: a scorer turning to the camera. Weight 0
+   * hands it back. The player's own model is turned by its controller.
+   */
+  turn(u: Unit, yaw: number, weight: number): void {
+    if (weight <= 0) this.turns.delete(u);
+    else {
+      const t = this.turns.get(u);
+      if (t) {
+        t.yaw = yaw;
+        t.weight = weight;
+      } else this.turns.set(u, { yaw, weight });
+    }
+  }
+
   swing(u: Unit, kind: CastKind = 'basic'): void {
     (u === this.player ? this.playerModel : this.views.get(u)?.model)?.startCast(kind);
   }
@@ -606,7 +624,8 @@ export class UnitViews {
     if (p && c) v.root.position.lerpVectors(p, c, alpha);
     else v.root.position.set(u.x, u.body.y, u.z);
     v.root.position.y += v.lift;
-    v.root.rotation.y = u.body.yaw + Math.PI;
+    const turn = this.turns.get(u);
+    v.root.rotation.y = (turn ? turnToward(u.body.yaw, turn.yaw, turn.weight) : u.body.yaw) + Math.PI;
     if (v.emerge >= 0) {
       // up out of the ground fast, slowing as it stands
       const k = Math.min(1, (v.emerge += dt) / EMERGE_TIME);

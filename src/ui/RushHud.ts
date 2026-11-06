@@ -61,6 +61,8 @@ export class RushHud {
   private lastState = '';
   private lastBig = '';
   private shownEnd = false;
+  /** Seconds since the match was won (-1 before), until the result comes up (see RUSH.result). */
+  private wonFor = -1;
   private goalSeen = 0;
   /** Seconds left on the current goal banner, and on the "Rush!" call after a kickoff. */
   private goalShow = 0;
@@ -312,6 +314,7 @@ export class RushHud {
     const r = this.rush;
     // the first countdown and its "Rush!" are on the match card
     if (this.introLeft > 0) return { html: '', side: '' };
+    if (r.phase === 'over') return this.shownEnd ? { html: '', side: '' } : this.finalCall();
     if (r.phase === 'kickoff') return { html: String(Math.max(1, Math.ceil(r.timer))), side: '' };
     const g = r.lastGoal;
     if (this.goalShow > 0 && g) {
@@ -336,6 +339,26 @@ export class RushHud {
     }
     if (this.rushShow > 0) return { html: r.overtime ? 'Golden relic!' : 'Rush!', side: '' };
     return { html: '', side: '' };
+  }
+
+  /**
+   * The call over the winning moment: the winning goal as the goal it was
+   * (a golden-relic one called as such), or the final horn at full time,
+   * with the final score the winners' way round.
+   */
+  private finalCall(): { html: string; side: string } {
+    const r = this.rush;
+    const w = r.winner!;
+    const ours = w === this.mine;
+    const side = ours ? 'ally' : 'foe';
+    const score = `${r.score[w]}–${r.score[w === 'order' ? 'chaos' : 'order']}`;
+    const g = r.lastGoal;
+    if (!r.wonOnGoal || !g) return { html: `Full time<small>${ours ? 'you win' : 'they win'} ${score}</small>`, side };
+    const you = g.scorer === this.me;
+    const how = g.kind === 'shot' ? `${this.who(g.scorer)} ${you ? 'score' : 'scores'} from range` : `${this.who(g.scorer)} ${you ? 'carry' : 'carries'} it in`;
+    const sub = [how, g.assist ? `assist ${this.who(g.assist)}` : '', ours ? `the winner, ${score}` : `they win ${score}`].filter(Boolean).join(' · ');
+    const title = r.overtime ? 'Golden goal!' : r.hatTrick ? 'Hat trick!' : ours ? 'Goal!' : 'They score';
+    return { html: `${title}<small>${esc(sub)}</small>`, side };
   }
 
   /** `read` and `aim`: what the local carrier's throw would do, and where it would go (see RushView). */
@@ -403,7 +426,11 @@ export class RushHud {
       this.big.classList.toggle('show', b.html !== '');
       this.big.dataset.side = b.side;
     }
-    if (r.winner && !this.shownEnd) this.showEnd();
+    // the winning moment plays out before the result comes up over it
+    if (r.winner && !this.shownEnd) {
+      this.wonFor = this.wonFor < 0 ? 0 : this.wonFor + dt;
+      if (this.wonFor >= RUSH.result) this.showEnd();
+    }
   }
 
   /**

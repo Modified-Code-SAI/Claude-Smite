@@ -939,7 +939,20 @@ export class GameAudio {
       const won = r.winner === mine;
       // (unless the winning goal already set the crowd off)
       if (!roared) this.crowdRoar(r.winner as 'order' | 'chaos', won);
-      this.herald.say(won ? 'Victory! The Sun Relic is yours.' : 'Defeat. The enemy takes the Sun Relic.', won ? 'epic' : 'bad', 5);
+      // the winning goal is called as the goal that won it; at full time, the horn blows
+      const g = r.lastGoal;
+      let line: string;
+      if (r.wonOnGoal && g) {
+        const golden = r.overtime ? (won ? 'The golden relic! ' : 'The golden relic falls to them. ') : '';
+        const who = g.scorer === this.me ? 'You win it' : `${g.scorer.name} wins it`;
+        line = won ? `${golden}${who}! Victory, the Sun Relic is yours!` : `${golden}${g.scorer.name} wins it for the enemy. Defeat.`;
+      } else {
+        this.engine.play('wave.horn', { gain: 0.75, rate: 0.85 }, 5);
+        line = won ? 'Full time! Victory, the Sun Relic is yours.' : 'Full time. Defeat, the enemy takes the Sun Relic.';
+      }
+      this.herald.say(line, won ? 'epic' : 'bad', 5);
+      // and the fanfare lands as the result comes up
+      setTimeout(() => this.music.sting(won ? 'victory' : 'defeat'), Math.max(0, RUSH.result - 0.4) * 1000);
     }
   }
 
