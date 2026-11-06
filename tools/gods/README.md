@@ -2,6 +2,8 @@
 
 Builds every god's character model in code: `python3 tools/gods/build.py [god ...|clips]`
 writes `public/models/gods/<god>.glb` (and `clips.glb`, the shared animations).
+Commit these plain files: `vite build` meshopt-compresses the copies in `dist/` losslessly
+(`scripts/meshopt.mjs`, about half the download), and the game decodes either kind.
 
 Inputs (fetched by `npm run fetch:assets`, never committed): MakeHuman CC0 base mesh,
 morph targets, skeleton and weights; the Quaternius Universal Animation Library rig and clips (CC0).

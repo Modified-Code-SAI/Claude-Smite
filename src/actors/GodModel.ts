@@ -76,6 +76,12 @@ const CAST_ACCENTS: Record<string, { bone: string; axis: [number, number, number
     { bone: 'DEF-head', axis: [1, 0, 0], angle: -0.12 },
     { bone: 'DEF-upper_arm.R', axis: [1, 0, 0], angle: -1.1 },
   ],
+  // Cthulhu hunches over his prey and reaches with both clawed hands
+  cthulhu: [
+    { bone: 'DEF-spine003', axis: [1, 0, 0], angle: 0.2 },
+    { bone: 'DEF-upper_arm.R', axis: [1, 0, 0], angle: -0.7 },
+    { bone: 'DEF-upper_arm.L', axis: [1, 0, 0], angle: -0.7 },
+  ],
 };
 
 /**
@@ -117,6 +123,11 @@ const IDLE_STANCE: Record<string, { bone: string; axis: [number, number, number]
   kukulkan: [
     { bone: 'DEF-spine003', axis: [1, 0, 0], angle: -0.05 },
     { bone: 'DEF-head', axis: [1, 0, 0], angle: -0.2 },
+  ],
+  // Cthulhu: hunched and heavy, the great head thrust forward, arms hanging
+  cthulhu: [
+    { bone: 'DEF-spine003', axis: [1, 0, 0], angle: 0.36 },
+    { bone: 'DEF-neck', axis: [1, 0, 0], angle: -0.2 },
   ],
 };
 

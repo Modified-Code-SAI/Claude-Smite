@@ -944,7 +944,7 @@ export class Sim {
       if (this.time < until) t.stealth = 0;
       else this.revealed.delete(t);
     }
-    this.passives.step();
+    this.passives.step(dt);
     this.auraTimer -= dt;
     if (this.auraTimer <= 0) {
       this.auraTimer = 0.5;

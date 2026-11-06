@@ -1,10 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeSkinned } from '../../scene/merge';
 import { buildLods } from '../../scene/lod';
 
 /** Gods with a built model in public/models/gods (see tools/gods/build.py). */
-export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan'] as const;
+export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan', 'cthulhu'] as const;
 export type GodId = (typeof GOD_IDS)[number];
 
 export interface GodAsset {
@@ -50,7 +51,8 @@ const assets = new Map<string, GodAsset>();
 let loading: Promise<void> | null = null;
 let clipsGltf: Promise<{ animations: THREE.AnimationClip[] }> | null = null;
 const extra = new Map<string, Promise<void>>();
-const loader = new GLTFLoader();
+// the built game ships the models meshopt-compressed (scripts/meshopt.mjs)
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const base = () => `${import.meta.env.BASE_URL}models/gods/`;
 
 function sharedClips(): Promise<{ animations: THREE.AnimationClip[] }> {

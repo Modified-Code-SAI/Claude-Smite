@@ -34,6 +34,9 @@ const SHED_HEAL = 0.12;
 const SHED_SPEED = 0.25;
 const SHED_SPEED_DURATION = 2;
 const SHED_COOLDOWN = 60;
+/** Cthulhu's flesh flows back together: a share of each hit he takes heals back over a few seconds. */
+const MEND_SHARE = 0.2;
+const MEND_TIME = 4;
 
 /**
  * The gods' passives. Damage passives plug into the combatant's
@@ -43,6 +46,8 @@ export class Passives {
   private readonly thorCount = new Map<Unit, number>();
   private readonly anubisReady = new Map<Unit, number>();
   private readonly shedReady = new Map<Unit, number>();
+  /** Cthulhu's mending: health per second and seconds left, per hit taken. */
+  private readonly mending = new Map<Unit, { rate: number; left: number }[]>();
   private proc = false;
 
   constructor(private readonly sim: Sim) {
@@ -80,8 +85,24 @@ export class Passives {
     }
   }
 
-  /** Odin's ravens strip stealth from enemies close to him. */
-  step(): void {
+  /** Odin's ravens strip stealth from enemies close to him; Cthulhu's wounds close. */
+  step(dt: number): void {
+    for (const [u, list] of this.mending) {
+      if (!u.alive) {
+        this.mending.delete(u);
+        continue;
+      }
+      let amount = 0;
+      let open = 0;
+      for (const m of list) {
+        amount += m.rate * Math.min(dt, m.left);
+        m.left -= dt;
+        if (m.left > 0) list[open++] = m;
+      }
+      list.length = open;
+      if (amount > 0) u.combatant.heal(amount);
+      if (!open) this.mending.delete(u);
+    }
     for (const o of this.sim.units) {
       if (o.kind !== 'god' || !o.alive || o.combatant.god.id !== 'odin') continue;
       for (const t of this.sim.enemiesOf(o)) {
@@ -109,6 +130,11 @@ export class Passives {
     if (src && god === 'thanatos' && e.target.alive) this.drowse(src, e.target);
     this.anubisWard(e.target);
     this.shedSkin(e.target);
+    if (e.target.kind === 'god' && e.target.alive && e.amount > 0 && e.target.combatant.god.id === 'cthulhu') {
+      const list = this.mending.get(e.target) ?? [];
+      list.push({ rate: (e.amount * MEND_SHARE) / MEND_TIME, left: MEND_TIME });
+      this.mending.set(e.target, list);
+    }
   }
 
   /** Kukulkan's Shed Skin: below 30% health, once a minute. */
