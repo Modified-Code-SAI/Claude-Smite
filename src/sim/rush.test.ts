@@ -1440,4 +1440,32 @@ describe('Relic Rush: bots among the temple’s stones', () => {
     }
     expect(turns).toBeLessThanOrEqual(1);
   });
+
+  it('a carrier bot pinned in a pocket of stone by two defenders who block passes out to an open teammate', () => {
+    const { sim, rush } = match(rushTestField());
+    const coach = new RushCoach(sim, rush);
+    const carrier = god(sim, loki, 'order', 0);
+    const mate = god(sim, cthulhu, 'order', 1);
+    const a = god(sim, zeus, 'chaos', 0);
+    const b = god(sim, odin, 'chaos', 1);
+    carrier.brain = new RushBot(sim, carrier, rush, coach, null);
+    rush.begin([carrier, mate, a, b]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(carrier, 0, 1.6);
+    run(sim, rush, 0.4, () => rush.holder === carrier);
+    expect(rush.holder).toBe(carrier);
+    expect(rush.juke(carrier, { x: 1, z: 0 })).toBe(true);
+    run(sim, rush, 0.3);
+    // as a bot match left them: behind the chaos gate in the corner of a pillar and the wall behind it, two defenders sealing the way out
+    // (since gods block each other the carrier stood there, steering into the stone, until a tackle came)
+    sim.teleport(carrier, 5.53, -28.15);
+    for (let i = 0; i < 90 && rush.holder === carrier; i++) {
+      sim.teleport(a, 6.38, -27.16);
+      sim.teleport(b, 6.83, -28.4);
+      sim.teleport(mate, 9.5, -21);
+      run(sim, rush, 1 / 60);
+    }
+    expect(rush.holder).not.toBe(carrier);
+    expect(rush.relic.phase).toBe('flying');
+  });
 });
