@@ -54,7 +54,7 @@ export class Stage {
     return dummyUnit(godById('zeus')!, 'chaos', { x, z, yaw: Math.PI });
   }
 
-  /** Casts a skill slot (0-3, 4 the ultimate) at a ground point, ignoring cooldown and mana. */
+  /** Casts a skill slot (0-2, 3 the ultimate) at a ground point, ignoring cooldown and mana. */
   cast(u: Unit, slot: number, x: number, z: number): string | null {
     u.aim.x = x;
     u.aim.z = z;

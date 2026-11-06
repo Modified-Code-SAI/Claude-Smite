@@ -1,6 +1,6 @@
 import type { Side } from '../game/combatant';
 import { RUSH, type Rush } from '../sim/Rush';
-import type { Unit } from '../sim/Unit';
+import type { Point, Unit } from '../sim/Unit';
 import type { RushCall, RushCatch } from '../combat/RushMode';
 import { addResult } from './records';
 import { awardLine } from './ascension';
@@ -8,6 +8,9 @@ import { RushRadar } from './RushRadar';
 import { rushAwards, type RushAwardKey } from './rushAwards';
 import './clash.css';
 import './rush.css';
+
+/** What a throw would do (see Rush.passRead). */
+type PassRead = ReturnType<Rush['passRead']>;
 
 /** A raised open hand: the call for the pass. */
 const HAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 58 V30 Q18 26 22 26 Q26 26 26 30 V14 Q26 10 30 10 Q34 10 34 14 V28 V12 Q34 8 38 8 Q42 8 42 12 V30 V18 Q42 14 46 14 Q50 14 50 18 V40 Q50 52 40 58 Z"/></svg>';
@@ -23,6 +26,8 @@ const AWARD_ICON: Record<RushAwardKey, string> = {
 const RUSH_CUT = { in: 0.3, out: 0.55 };
 /** Seconds the match card takes to fade once play starts. */
 const RUSH_INTRO_FADE = 0.7;
+/** Seconds a save's banner shows. */
+const SAVE_SHOW = 1.5;
 /**
  * Pops played through the Web Animations API: restarting a CSS animation
  * means reading layout between dropping and re-adding its class, and that
@@ -59,6 +64,11 @@ export class RushHud {
   private goalShow = 0;
   private rushShow = 0;
   private wasKickoff = true;
+  /** A save's banner: seconds left, and who made it. */
+  private saveShow = 0;
+  private saveSeen = 0;
+  private saver: Unit | null = null;
+  private lastPoint = '';
   private readonly arrow: HTMLElement;
   private arrowTone = '';
   /** The dip to dark that hides the kickoff reset after a goal, and how far it has faded back out. */
@@ -86,6 +96,8 @@ export class RushHud {
   ) {
     this.mine = me.team as Side;
     this.foe = this.mine === 'order' ? 'chaos' : 'order';
+    // (a guest joining mid-match doesn't see an old save's banner)
+    this.saveSeen = rush.beats.save;
     this.root.className = 'clash duel rush';
     this.root.innerHTML = `
       <div class="rush-cut"></div>
@@ -230,8 +242,8 @@ export class RushHud {
     return u === this.me ? 'You' : u.name;
   }
 
-  /** The line under the score: where the relic is and what this player should do about it. */
-  private stateText(): { text: string; tone: string } {
+  /** The line under the score: where the relic is and what this player should do about it (`read`: what their throw at `aim` would do). */
+  private stateText(read: PassRead | null, aim: Point | null): { text: string; tone: string } {
     const r = this.rush;
     const relic = r.relic;
     const me = this.me;
@@ -241,11 +253,10 @@ export class RushHud {
     if (r.phase === 'kickoff') return { text: r.overtime ? 'Golden relic: the next goal wins' : 'Kickoff: the Sun Relic waits on the pedestal', tone: r.overtime ? 'contested' : '' };
     const h = relic.holder;
     if (h === me) {
-      const read = r.passRead(me, me.aim);
-      if (read.goal) return { text: 'On target! Left click to shoot it through their gate', tone: 'contested' };
-      const by = read.catcher;
+      if (read?.goal) return { text: 'On target! Left click to shoot it through their gate', tone: 'contested' };
+      const by = read?.catcher;
       if (by && by.team === me.team) return { text: `Left click to pass to ${by.name}`, tone: 'order' };
-      if (by) return { text: r.shotOnTarget(me, me.aim) ? `${by.name} would save that shot` : `${by.name} would cut that pass off`, tone: 'chaos' };
+      if (by) return { text: r.shotOnTarget(me, aim ?? me.aim) ? `${by.name} would save that shot` : `${by.name} would cut that pass off`, tone: 'chaos' };
       return { text: 'You have the relic! Run it through their gate, or left click to pass where you aim', tone: 'order' };
     }
     if (h && h.team === me.team) return { text: `${h.name} has the relic: get open, and press F to call for the pass`, tone: 'order' };
@@ -270,11 +281,16 @@ export class RushHud {
       const sub = g.assist ? `${how} · assist ${this.who(g.assist)}` : how;
       return { html: `${ours ? 'Goal!' : 'They score'}<small>${esc(sub)}</small>`, side: ours ? 'ally' : 'foe' };
     }
+    if (this.saveShow > 0 && this.saver && r.phase === 'play') {
+      const u = this.saver;
+      return { html: `Saved!<small>${esc(this.who(u))} ${u === this.me ? 'keep' : 'keeps'} it out</small>`, side: u.team === this.mine ? 'ally' : 'foe' };
+    }
     if (this.rushShow > 0) return { html: r.overtime ? 'Golden relic!' : 'Rush!', side: '' };
     return { html: '', side: '' };
   }
 
-  frame(dt = 0): void {
+  /** `read` and `aim`: what the local carrier's throw would do, and where it would go (see RushView). */
+  frame(dt = 0, read: PassRead | null = null, aim: Point | null = null): void {
     const r = this.rush;
     if (r.goalCount !== this.goalSeen) {
       this.goalSeen = r.goalCount;
@@ -285,6 +301,18 @@ export class RushHud {
     if (this.wasKickoff && r.phase === 'play') this.rushShow = this.introLeft > 0 ? 0 : 0.9;
     this.wasKickoff = r.phase === 'kickoff';
     this.rushShow = Math.max(0, this.rushShow - dt);
+    if (r.beats.save !== this.saveSeen) {
+      this.saveSeen = r.beats.save;
+      const b = r.lastBeat;
+      if (b?.kind === 'save') [this.saveShow, this.saver] = [SAVE_SHOW, b.unit];
+    }
+    this.saveShow = Math.max(0, this.saveShow - dt);
+    // one goal from the win: that side's last empty pip pulses gold
+    const point = r.matchPoint ?? '';
+    if (point !== this.lastPoint) {
+      this.lastPoint = point;
+      for (const side of ['order', 'chaos'] as const) this.pips[side].parentElement!.classList.toggle('point', point === side || point === 'both');
+    }
     this.dip(dt);
     this.introFrame(dt);
     this.time += dt;
@@ -307,7 +335,7 @@ export class RushHud {
       this.clock.classList.toggle('gold', r.overtime);
       this.clock.classList.toggle('late', !r.overtime && r.clock <= 30);
     }
-    const s = this.stateText();
+    const s = this.stateText(read, aim);
     const key = `${s.text}|${s.tone}`;
     if (key !== this.lastState) {
       this.lastState = key;

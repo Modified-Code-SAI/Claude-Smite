@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { abs, color, float, fract, mix, sin, smoothstep, sqrt, time, uv, vec4 } from '../render/tsl';
 import { objectUniforms, useUniforms } from '../render/shared';
 import { Rush, RUSH } from '../sim/Rush';
-import type { Unit } from '../sim/Unit';
+import type { Point, Unit } from '../sim/Unit';
 import { GroundDecal } from './GroundDecal';
 import { PitchLines } from './PitchLines';
 import { RushCrowd } from './RushCrowd';
@@ -248,6 +248,8 @@ export class RushView {
   private previewTone: 'pass' | 'shot' | 'cut' = 'pass';
   /** What the local carrier's throw would do (see Rush.passRead), or null when they aren't carrying. */
   read: { goal: boolean; catcher: Unit | null } | null = null;
+  /** Where the local carrier's throw would go: their aim, or a teammate's run the pass assist leads (see Rush.assistAim). */
+  aim: Point | null = null;
   private readonly head = new THREE.Vector3();
   private readonly side = new THREE.Vector3();
   /** Where the relic was drawn last frame, so a catch glides instead of snapping. */
@@ -418,7 +420,8 @@ export class RushView {
 
     // the local carrier sees where a throw would land and who would catch it: blue when it would go in as a shot, red when an enemy would cut it off
     const carrying = r.phase === 'held' && r.holder === me && rush.phase === 'play';
-    const read = (this.read = carrying ? rush.passRead(me, me.aim) : null);
+    const aim = (this.aim = carrying ? rush.assistAim(me, me.aim) : null);
+    const read = (this.read = aim ? rush.passRead(me, aim) : null);
     const shot = !!read?.goal;
     // a gate glows harder while the relic is coming at it, and flares when your shot is lined up on it
     for (const v of this.veils) {
@@ -439,7 +442,7 @@ export class RushView {
         const c = tone === 'shot' ? ALLY : tone === 'cut' ? FOE : GOLD;
         this.preview.setColors(c.main, c.core);
       }
-      const to = rush.throwTarget(me, me.aim);
+      const to = rush.throwTarget(me, aim!);
       const key = `${to.x.toFixed(1)},${to.z.toFixed(1)}`;
       if (key !== this.previewAt) {
         this.previewAt = key;

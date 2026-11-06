@@ -4,11 +4,11 @@
 // Served by Vite so it can import the game's modules.
 
 import { GODS } from '../../src/game/gods';
-import type { GodDef, SkillDef } from '../../src/game/types';
+import type { SkillDef } from '../../src/game/types';
 import { skillIcon, talentIcon } from '../../src/ui/icons';
 import { paletteFor } from '../../src/combat/palette';
 // @ts-expect-error plain JS module shared with score.ts
-import { FINALE, HEROES, LENGTH, TITLE, VOICE } from './timeline.mjs';
+import { FINALE, FRIENDS, HEROES, LENGTH, MODES, SKILLS, TITLE, TREES, VOICE } from './timeline.mjs';
 import script from './script.json';
 
 const W = 1920;
@@ -145,73 +145,49 @@ async function drawClip(c: Clip, t: number, alpha: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// The edit
+// The edit: title, the five gods, the kit, the modes, friends, the end card
 
-const H0 = HEROES[0].at;
-const CONQ = VOICE.conquest - 0.4;
+type Hero = { god: string; at: number };
+type Mode = { shot: string; name: string; sub: string; at: number };
+const heroEnd = (i: number) => (i < HEROES.length - 1 ? HEROES[i + 1].at : SKILLS);
+const modeEnd = (i: number) => (i < MODES.length - 1 ? MODES[i + 1].at : FRIENDS);
 const clips: Clip[] = [
-  { shot: 'cqVista', start: 0.7, end: 5.25, speed: 0.6, zoom: [1.12, 1.02] },
-  { shot: 'brawlA', start: 5.25, end: 5.95, speed: 1, from: 0.4, zoom: [1.08, 1.0] },
-  { shot: 'heroThor', start: 5.95, end: 6.65, speed: 1, from: 0.2, zoom: [1.0, 1.1] },
-  { shot: 'brawlB', start: 6.65, end: TITLE, speed: 1, from: 1.0, zoom: [1.1, 1.0] },
-  ...HEROES.map((h: { god: string; at: number }, i: number) => ({ shot: `hero${h.god[0]!.toUpperCase()}${h.god.slice(1)}`, start: h.at, end: i < 4 ? HEROES[i + 1].at : VOICE.skills1 - 0.4, speed: 0.78, zoom: [1.0, 1.06] as [number, number] })),
-  { shot: 'brawlA', start: VOICE.skills1 - 0.4, end: VOICE.skills2 - 0.4, speed: 0.55, from: 0.3, zoom: [1.0, 1.08], dim: 0.5 },
-  { shot: 'heroZeus', start: VOICE.skills2 - 0.4, end: VOICE.trees - 0.4, speed: 0.2, from: 0.3, zoom: [1.1, 1.0], dim: 0.38, blur: 3 },
-  { shot: 'brawlB', start: VOICE.trees - 0.4, end: CONQ, speed: 0.25, from: 0.2, zoom: [1.0, 1.1], dim: 0.36, blur: 3 },
-  { shot: 'cqClash', start: CONQ, end: word('conquest', 'Break') - 0.2, speed: 0.75, zoom: [1.08, 1.0] },
-  { shot: 'cqTower', start: word('conquest', 'Break') - 0.2, end: word('conquest', 'burn') - 0.15, speed: 0.8, zoom: [1.0, 1.08] },
-  { shot: 'cqPhoenix', start: word('conquest', 'burn') - 0.15, end: word('conquest', 'topple') - 0.15, speed: 0.8, from: 0.7, zoom: [1.06, 1.0] },
-  { shot: 'cqTitan', start: word('conquest', 'topple') - 0.15, end: VOICE.jungle - 0.4, speed: 0.6, from: 0.45, zoom: [1.0, 1.08] },
-  { shot: 'cqJungle', start: VOICE.jungle - 0.4, end: VOICE.bosses - 0.4, speed: 0.7, zoom: [1.0, 1.06] },
-  { shot: 'cqWyrm', start: VOICE.bosses - 0.4, end: word('bosses', 'and the') , speed: 0.7, zoom: [1.06, 1.0] },
-  { shot: 'cqColossus', start: word('bosses', 'and the'), end: VOICE.multi - 0.4, speed: 0.7, zoom: [1.0, 1.07] },
-  { shot: 'cqFight', start: VOICE.multi - 0.4, end: VOICE.close1 - 0.3, speed: 0.75, zoom: [1.0, 1.08] },
-  { shot: 'heroZeus', start: VOICE.close1 - 0.3, end: FINALE, speed: 0.4, from: 0.5, zoom: [1.0, 1.15], dim: 0.75 },
+  ...HEROES.map((h: Hero, i: number) => ({ shot: `hero${h.god[0]!.toUpperCase()}${h.god.slice(1)}`, start: h.at, end: heroEnd(i), speed: 1, from: 0.25, zoom: [1.0, 1.06] as [number, number] })),
+  { shot: 'brawlB', start: SKILLS, end: VOICE.modes - 0.3, speed: 0.3, from: 0.2, zoom: [1.0, 1.1], dim: 0.36, blur: 3 },
+  ...MODES.map((m: Mode, i: number) => ({ shot: m.shot, start: m.at, end: modeEnd(i), speed: 0.9, from: i === 0 ? 0.2 : 0.3, zoom: (i % 2 ? [1.0, 1.06] : [1.06, 1.0]) as [number, number] })),
+  { shot: 'cqFight', start: FRIENDS, end: FINALE, speed: 0.75, zoom: [1.0, 1.08] },
 ];
 /** Crossfade length at each cut (0 = hard cut). */
-const XF = 0.12;
+const XF = 0.1;
 
 // Title
 const title = el('title gold', 'ASCENDANT');
 const subtitle = el('subtitle', 'A WAR OF GODS');
 
-// Choose your god: the title screen's face cards
-const faces = el('faces', GODS.map((g) => `<div class="face"><img src="/portraits/${g.id}.jpg"><b>${g.name}</b></div>`).join(''));
-const faceEls = [...faces.children] as HTMLElement[];
-
 // Hero name cards
-const ROLE: Record<string, string> = { solo: 'Solo', jungle: 'Jungle', mid: 'Mid', carry: 'Carry', support: 'Support' };
-const cards = HEROES.map((h: { god: string }) => {
+const cards = HEROES.map((h: Hero) => {
   const g = GODS.find((d) => d.id === h.god)!;
-  return el('card', `<div class="name gold">${g.name.toUpperCase()}</div><div class="rule"></div><div class="sub">${g.title.toUpperCase()} &nbsp;·&nbsp; ${ROLE[g.role] ?? g.role}</div>`);
+  return el('card', `<div class="name gold">${g.name.toUpperCase()}</div><div class="rule"></div><div class="sub">${g.title.toUpperCase()}</div>`);
 });
 
-// Five skills: Zeus's loadout
+// Your skills: Zeus's loadout, three skills and the ultimate
 const zeus = GODS.find((g) => g.id === 'zeus')!;
-const skillOf = (g: GodDef, id: string) => g.skills.find((s) => s.id === id)!;
-const loadout = zeus.defaultLoadout.map((id) => skillOf(zeus, id));
-const KEYS = ['1', '2', '3', '4', 'R'];
-const slotHtml = (s: SkillDef, i: number) => `<div class="slot${i === 4 ? ' ult' : ''}"><div class="key">${KEYS[i]}</div><div class="ico">${skillIcon(zeus.id, s)}</div><div class="sn">${s.name}</div></div>`;
+const loadout = zeus.defaultLoadout.map((id) => zeus.skills.find((s) => s.id === id)!);
+const ULT = loadout.length - 1;
+const slotHtml = (s: SkillDef, i: number) => `<div class="slot${i === ULT ? ' ult' : ''}"><div class="key">${i + 1}</div><div class="ico">${skillIcon(zeus.id, s)}</div><div class="sn">${s.name}</div></div>`;
 const bar = el('bar', loadout.map(slotHtml).join(''));
 const slots = [...bar.children] as HTMLElement[];
-const skillsHeading = el('heading gold', 'FIVE SKILLS');
-
-// The pool: every skill Zeus knows, and a swap into the ultimate slot
-const pool = el('pool', zeus.skills.map((s) => `<div class="p${s.kind === 'ultimate' ? ' ult' : ''}"><div class="ico">${skillIcon(zeus.id, s)}</div><div class="sn">${s.name}</div></div>`).join(''));
-const poolEls = [...pool.children] as HTMLElement[];
-const poolHeading = el('heading gold', 'ELEVEN SKILLS · YOUR CHOICE');
-const swapIn = zeus.skills.find((s) => s.kind === 'ultimate' && s.id !== zeus.defaultLoadout[4])!;
-const swapBar = el('bar', loadout.map((s, i) => slotHtml(i === 4 ? swapIn : s, i)).join(''));
-swapBar.style.top = '700px';
-const swapSlots = [...swapBar.children] as HTMLElement[];
-const swapIdx = zeus.skills.indexOf(swapIn);
+const skillsHeading = el('heading gold', 'YOUR SKILLS');
+const skillsSub = el('points gold', `${zeus.skills.length} TO CHOOSE FROM  ·  SWAP ANY, EVEN THE ULTIMATE`);
+skillsSub.style.top = '680px';
+skillsSub.style.fontSize = '40px';
 
 // Trees
 const accent = '#' + paletteFor(zeus.id).vfx.toString(16).padStart(6, '0');
 const trees = el('trees', zeus.trees.map((tr) => `<div class="tree"><h4>${tr.name.toUpperCase()}</h4><div class="theme">${tr.theme}</div>${[1, 2, 3, 4].map((tier) => `<div class="tier">${tr.nodes.filter((n) => n.tier === tier).map((n) => `<div class="node" data-max="${n.maxRank}">${talentIcon(zeus.id, n, zeus.skills, accent)}<span class="rk"></span></div>`).join('')}</div>`).join('')}</div>`).join(''));
 const treeEls = [...trees.children] as HTMLElement[];
 const nodeEls = treeEls.map((t) => [...t.querySelectorAll<HTMLElement>('.node')]);
-const treesHeading = el('heading gold', 'THREE SKILL TREES');
+const treesHeading = el('heading gold', 'YOUR PLAYSTYLE');
 const points = el('points gold', '');
 
 // Chips over the game footage
@@ -222,10 +198,11 @@ function setChips(items: [string, number][], t: number): void {
     chips.innerHTML = html;
     chips.dataset.html = html;
   }
-  [...chips.children].forEach((c, i) => show(c as HTMLElement, easeOut((t - items[i]![1]) / 0.3), `translateY(${(1 - easeOut((t - items[i]![1]) / 0.3)) * 30}px)`));
+  [...chips.children].forEach((c, i) => show(c as HTMLElement, easeOut((t - items[i]![1]) / 0.25), `translateY(${(1 - easeOut((t - items[i]![1]) / 0.25)) * 30}px)`));
   show(chips, items.length ? 1 : 0);
 }
-const bossCard = el('card', '<div class="name gold"></div><div class="rule"></div><div class="sub"></div>');
+const modeCard = el('card', '<div class="name gold"></div><div class="rule"></div><div class="sub"></div>');
+const modesHeading = el('heading gold', 'SEVEN MODES');
 
 const vignette = el('bars');
 const caption = el('caption');
@@ -269,32 +246,8 @@ function backdrop(t: number, alpha: number): void {
   drawEmbers(t, alpha);
 }
 
-/** Captions: each line cut into sentences (and long ones at commas), timed by their share of the line. */
-const phrases = script.lines.flatMap((l) => {
-  const at = VOICE[l.id as keyof typeof VOICE];
-  const len = lengths[l.id] ?? 2;
-  const parts: string[] = [];
-  for (const sentence of l.text.match(/[^.]+\.?/g) ?? [l.text]) {
-    const s = sentence.trim();
-    if (s.length <= 64) parts.push(s);
-    else {
-      let cur = '';
-      for (const bit of s.split(/(?<=,) /)) {
-        if (cur && (cur + ' ' + bit).length > 64) {
-          parts.push(cur);
-          cur = bit;
-        } else cur = cur ? cur + ' ' + bit : bit;
-      }
-      if (cur) parts.push(cur);
-    }
-  }
-  let c = 0;
-  return parts.map((text) => {
-    const start = at + (len * c) / l.text.length;
-    c += text.length + 1;
-    return { text, at: start, end: at + (len * Math.min(c, l.text.length)) / l.text.length };
-  });
-});
+/** Captions: one per line, shown while it is spoken. */
+const phrases = script.lines.map((l) => ({ text: l.text, at: VOICE[l.id as keyof typeof VOICE], end: VOICE[l.id as keyof typeof VOICE] + (lengths[l.id] ?? 2) }));
 
 // ---------------------------------------------------------------------------
 
@@ -310,14 +263,9 @@ async function renderAt(t: number): Promise<void> {
     const a = clamp((t - (c.start - XF)) / XF);
     await drawClip(c, t, a);
   }
-  // fade up from black at the start, and the title and end cards' sky
-  if (t < 1.4) {
-    ctx.fillStyle = `rgba(0,0,0,${1 - clamp((t - 0.7) / 0.7)})`;
-    ctx.fillRect(0, 0, W, H);
-  }
-  const titleA = window01(t, TITLE, H0 - 2.0, 0.05, 0.5);
-  const chooseA = window01(t, H0 - 2.0, H0, 0.3, 0.12);
-  backdrop(t, Math.max(titleA, chooseA));
+  const H0 = HEROES[0].at;
+  const titleA = window01(t, TITLE, H0, 0.05, 0.3);
+  backdrop(t, titleA);
   const endA = clamp((t - FINALE) / 0.08);
   backdrop(t, endA);
 
@@ -330,81 +278,45 @@ async function renderAt(t: number): Promise<void> {
 
   // title
   const tt = t - TITLE;
-  show(title, titleA, `scale(${1.18 - 0.18 * easeOut(tt / 2.6)})`);
-  show(subtitle, window01(t, TITLE + 0.9, H0 - 2.0, 0.6, 0.5), `translateY(${(1 - easeOut((tt - 0.9) / 0.6)) * 16}px)`);
+  show(title, titleA, `scale(${1.18 - 0.18 * easeOut(tt / 2.0)})`);
+  show(subtitle, window01(t, TITLE + 0.6, H0, 0.5, 0.3), `translateY(${(1 - easeOut((tt - 0.6) / 0.5)) * 16}px)`);
   // end card
   if (t >= FINALE) {
-    show(title, endA, `scale(${1.12 - 0.12 * easeOut((t - FINALE) / 3)})`);
-    show(subtitle, clamp((t - FINALE - 1.2) / 0.8));
-    subtitle.textContent = 'ENTER THE BATTLE';
+    show(title, endA, `scale(${1.12 - 0.12 * easeOut((t - FINALE) / 1.5)})`);
+    show(subtitle, clamp((t - FINALE - 0.5) / 0.5));
+    subtitle.textContent = 'PLAY NOW';
   } else subtitle.textContent = 'A WAR OF GODS';
-
-  // choose your god
-  faceEls.forEach((f, i) => show(f, chooseA * easeOut((t - (H0 - 2.0) - i * 0.12) / 0.4), `translateY(${(1 - easeOut((t - (H0 - 2.0) - i * 0.12) / 0.5)) * 60}px)`));
-  show(faces, chooseA);
 
   // hero name cards
   cards.forEach((c: HTMLElement, i: number) => {
-    const at = HEROES[i].at + 0.25;
-    const end = i < 4 ? HEROES[i + 1].at : VOICE.skills1 - 0.4;
-    show(c, window01(t, at, end, 0.3, 0.25), `translateX(${(1 - easeOut((t - at) / 0.45)) * -60}px)`);
+    const at = HEROES[i].at + 0.08;
+    show(c, window01(t, at, heroEnd(i), 0.15, 0.12), `translateX(${(1 - easeOut((t - at) / 0.3)) * -50}px)`);
   });
 
-  // five skills
-  const s1 = window01(t, VOICE.skills1 - 0.2, VOICE.skills2 - 0.4, 0.3, 0.3);
+  // your skills: the bar drops in, each tile glinting in turn
+  const s1 = window01(t, SKILLS, TREES, 0.25, 0.25);
   show(skillsHeading, s1);
   show(bar, s1);
-  const four = word('skills1', 'Four');
-  const ult = word('skills1', 'one ultimate');
+  show(skillsSub, s1 * clamp((t - SKILLS - 0.9) / 0.3));
   slots.forEach((s, i) => {
-    const at = VOICE.skills1 + 0.3 + i * 0.22;
-    const lit = i < 4 ? window01(t, four, ult, 0.15, 0.2) : clamp((t - ult) / 0.2);
+    const at = SKILLS + 0.15 + i * 0.18;
+    const lit = window01(t, at + 0.2, at + 1.1, 0.12, 0.4);
     s.style.filter = lit > 0 ? `drop-shadow(0 0 ${18 * lit}px rgba(255, 210, 120, ${0.9 * lit}))` : '';
-    show(s, easeOut((t - at) / 0.35), `translateY(${(1 - easeOut((t - at) / 0.35)) * 40}px) scale(${1 + 0.06 * lit})`);
+    show(s, easeOut((t - at) / 0.3), `translateY(${(1 - easeOut((t - at) / 0.3)) * 40}px) scale(${1 + 0.06 * lit})`);
   });
 
-  // eleven skills and the swap
-  const s2 = window01(t, VOICE.skills2 - 0.2, VOICE.trees - 0.4, 0.3, 0.3);
-  show(pool, s2);
-  show(poolHeading, s2);
-  show(swapBar, s2);
-  const swapAt = word('skills2', 'Swap');
-  const evenAt = word('skills2', 'even your');
-  poolEls.forEach((p, i) => {
-    const at = VOICE.skills2 + 0.4 + i * 0.12;
-    const hl = i === swapIdx ? window01(t, swapAt, evenAt + 1.6, 0.2, 0.3) : 0;
-    p.style.filter = hl > 0 ? `drop-shadow(0 0 ${20 * hl}px rgba(255, 210, 120, ${hl}))` : '';
-    show(p, easeOut((t - at) / 0.3), `translateY(${(1 - easeOut((t - at) / 0.3)) * 30}px) scale(${1 + 0.1 * hl})`);
-  });
-  swapSlots.forEach((s, i) => {
-    const at = VOICE.skills2 + 1.6 + i * 0.1;
-    if (i < 4) return show(s, easeOut((t - at) / 0.3));
-    // the ultimate slot: the default ultimate first, then the swapped one drops in
-    const k = easeOut((t - evenAt) / 0.45);
-    s.querySelector('.ico')!.innerHTML = skillIcon(zeus.id, t < evenAt ? loadout[4]! : swapIn);
-    s.querySelector('.sn')!.textContent = t < evenAt ? loadout[4]!.name : swapIn.name;
-    const glow = window01(t, evenAt, evenAt + 2.2, 0.1, 0.6);
-    s.style.filter = glow > 0 ? `drop-shadow(0 0 ${26 * glow}px rgba(255, 200, 100, ${glow}))` : '';
-    show(s, easeOut((t - at) / 0.3), t >= evenAt ? `translateY(${(1 - k) * -90}px) scale(${1 + 0.12 * (1 - k) + 0.05 * glow})` : '');
-  });
-
-  // trees: points flow into the nodes until all 35 are spent
-  const s3 = window01(t, VOICE.trees - 0.2, CONQ, 0.3, 0.3);
+  // your playstyle: points flow into the three trees until all 35 are spent
+  const s3 = window01(t, TREES, VOICE.modes - 0.3, 0.25, 0.25);
   show(trees, s3);
   show(treesHeading, s3);
   show(points, s3);
-  const spendStart = VOICE.trees + 1.0;
-  const spendEnd = word('trees', 'Mix');
+  const spendStart = TREES + 0.4;
+  const spendEnd = VOICE.modes - 0.8;
   const spent = Math.round(35 * clamp((t - spendStart) / (spendEnd - spendStart)));
-  points.textContent = `POINTS SPENT  ${spent} / 35`;
-  // a fixed spending order across the three trees (mix and match)
+  points.textContent = `THREE TREES  ·  ${spent} / 35 POINTS`;
+  // one tree filled up to its keystone, the rest into a second: mix and match
   const order: [number, number][] = [];
-  const plan = [[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2], [2, 1], [1, 2], [0, 3], [2, 2], [1, 3], [2, 3], [0, 4], [1, 4], [2, 4]];
-  for (const [tr, n] of plan) {
-    const node = nodeEls[tr]?.[n];
-    if (!node) continue;
-    for (let r = 0; r < Number(node.dataset.max); r++) order.push([tr, n]);
-  }
+  for (const tr of [0, 1, 2]) nodeEls[tr]!.forEach((node, n) => { for (let r = 0; r < Number(node.dataset.max); r++) order.push([tr, n]); });
   const ranks = nodeEls.map((ns) => ns.map(() => 0));
   for (let k = 0; k < Math.min(spent, order.length); k++) ranks[order[k]![0]]![order[k]![1]]!++;
   nodeEls.forEach((ns, tr) => ns.forEach((n, i) => {
@@ -414,48 +326,45 @@ async function renderAt(t: number): Promise<void> {
     n.style.boxShadow = r ? '0 0 18px rgba(255, 200, 100, 0.55)' : 'none';
     n.querySelector('.rk')!.textContent = r ? `${r}/${n.dataset.max}` : '';
   }));
-  treeEls.forEach((e, i) => show(e, s3 * easeOut((t - VOICE.trees - i * 0.2) / 0.4), `translateY(${(1 - easeOut((t - VOICE.trees - i * 0.2) / 0.4)) * 40}px)`));
+  treeEls.forEach((e, i) => show(e, s3 * easeOut((t - TREES - i * 0.12) / 0.3), `translateY(${(1 - easeOut((t - TREES - i * 0.12) / 0.3)) * 40}px)`));
 
-  // chips over the game
-  const C = (s: string, id: keyof typeof VOICE, w: string): [string, number] => [s, word(id, w)];
-  if (t >= CONQ && t < VOICE.jungle - 0.4) setChips([C('5 V 5', 'conquest', 'Five'), C('3 LANES', 'conquest', 'three lanes'), C('TOWERS', 'conquest', 'towers'), C('PHOENIXES', 'conquest', 'Phoenixes'), C('TITAN', 'conquest', 'Titan')], t);
-  else if (t >= VOICE.jungle - 0.4 && t < VOICE.bosses - 0.4) setChips([C('MIGHT', 'jungle', 'camps'), ['WISDOM', word('jungle', 'camps') + 0.15], ['SWIFTNESS', word('jungle', 'camps') + 0.3], ['INSIGHT', word('jungle', 'camps') + 0.45]], t);
-  else if (t >= VOICE.multi - 0.4 && t < VOICE.close1 - 0.3) setChips([C('CO-OP', 'multi', 'beside'), C('VERSUS', 'multi', 'against'), C('PLAY WITH FRIENDS', 'multi', 'in co-op')], t);
+  // the modes: a name card on each cut, and the count over them all
+  let shown = false;
+  MODES.forEach((m: Mode, i: number) => {
+    if (t < m.at || t >= modeEnd(i)) return;
+    shown = true;
+    modeCard.querySelector('.name')!.textContent = m.name;
+    modeCard.querySelector('.sub')!.textContent = m.sub;
+    show(modeCard, window01(t, m.at + 0.05, modeEnd(i), 0.15, 0.1), `translateX(${(1 - easeOut((t - m.at) / 0.3)) * -50}px)`);
+  });
+  if (!shown) show(modeCard, 0);
+  show(modesHeading, window01(t, MODES[0].at + 0.2, FRIENDS, 0.3, 0.25));
+
+  // friends
+  const fA = window01(t, FRIENDS, FINALE, 0.2, 0.2);
+  if (t >= FRIENDS && t < FINALE) setChips([['SOLO', VOICE.friends + 0.05], ['CO-OP', VOICE.friends + 0.9], ['VERSUS', VOICE.friends + 1.15], ['ONLINE WITH FRIENDS', VOICE.friends + 1.4]], t);
   else setChips([], t);
-  const chipsFade = Math.min(window01(t, CONQ, VOICE.jungle - 0.4, 0.2, 0.25), 1) || window01(t, VOICE.jungle - 0.4, VOICE.bosses - 0.4, 0.2, 0.25) || window01(t, VOICE.multi - 0.4, VOICE.close1 - 0.3, 0.2, 0.25);
-  chips.style.opacity = String(chipsFade);
-
-  // boss and section name cards
-  const cardFor = (a: number, b: number, name: string, sub: string) => {
-    if (t < a || t >= b) return false;
-    bossCard.querySelector('.name')!.textContent = name;
-    bossCard.querySelector('.sub')!.textContent = sub;
-    show(bossCard, window01(t, a, b, 0.3, 0.25), `translateX(${(1 - easeOut((t - a) / 0.45)) * -60}px)`);
-    return true;
-  };
-  const wyrmAt = VOICE.bosses - 0.1;
-  const colAt = word('bosses', 'and the');
-  if (!cardFor(VOICE.jungle - 0.1, VOICE.bosses - 0.4, 'THE JUNGLE', 'HUNT CAMPS FOR BUFFS') && !cardFor(wyrmAt, colAt - 0.05, 'TREASURE WYRM', 'BOSS · GOLD AND GLORY') && !cardFor(colAt + 0.15, VOICE.multi - 0.4, 'MOLTEN COLOSSUS', "BOSS · THE COLOSSUS'S FURY") && !cardFor(CONQ + 0.1, word('conquest', 'Break') - 0.3, 'CONQUEST', 'THE MAIN EVENT')) show(bossCard, 0);
+  chips.style.opacity = String(fA);
 
   // letterbox bars while the game is on screen, gone for the title and the menus
-  const ui = Math.max(titleA, chooseA, s1, s2, s3, endA);
+  const ui = Math.max(titleA, s1, s3, endA);
   show(vignette, 1 - ui);
 
-  // captions: the phrase being spoken, one line at a time
+  // captions: the line being spoken
   let cap = '';
-  for (const c of phrases) if (t >= c.at - 0.1 && t < c.end + 0.25) cap = c.text;
+  for (const c of phrases) if (t >= c.at - 0.1 && t < c.end + 0.2) cap = c.text;
   caption.textContent = cap;
   show(caption, cap ? 1 : 0);
 
-  // white flashes: the first lightning, the title hit, the montage cuts, the last hit
-  const flashAt = [0.55, TITLE, 5.25, 5.95, 6.65, FINALE];
+  // white flashes: the title hit, the mode cuts, the last hit
+  const flashAt = [TITLE, ...MODES.map((m: Mode) => m.at), FINALE];
   let f = 0;
-  for (const a of flashAt) if (t >= a) f = Math.max(f, (a === TITLE || a === FINALE || a === 0.55 ? 0.95 : 0.45) * Math.exp(-(t - a) * (a === 0.55 ? 6 : 8)));
+  for (const a of flashAt) if (t >= a) f = Math.max(f, (a === TITLE || a === FINALE ? 0.95 : 0.35) * Math.exp(-(t - a) * 8));
   show(flash, f);
   // fade to black at the very end
-  if (t > LENGTH - 1.2) {
+  if (t > LENGTH - 0.6) {
     flash.style.background = '#000';
-    show(flash, clamp((t - (LENGTH - 1.2)) / 1.0));
+    show(flash, clamp((t - (LENGTH - 0.6)) / 0.5));
   } else flash.style.background = '#fff';
 }
 

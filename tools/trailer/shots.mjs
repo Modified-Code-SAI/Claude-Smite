@@ -7,7 +7,7 @@
  * god, the camera swinging from behind the hero's shoulder round to its side.
  */
 function hero(god, foe, opts = {}) {
-  const cfg = JSON.stringify({ god, foe, slots: opts.slots ?? [[0.15, 4], [1.25, 0]], a0: opts.a0 ?? 1.2, a1: opts.a1 ?? 1.6 });
+  const cfg = JSON.stringify({ god, foe, slots: opts.slots ?? [[0.15, 3], [1.25, 0]], a0: opts.a0 ?? 1.2, a1: opts.a1 ?? 1.6 });
   return {
     url: `map=arena&god=${god}&quality=high`,
     frames: opts.frames ?? 66,
@@ -54,7 +54,7 @@ function conquest(find, opts = {}) {
     setup: `(s, g) => {
       const find = ${find};
       const gods = () => s.combat.sim.units.filter((u) => u.kind === 'god' && u.alive && u !== s.combat.player);
-      s.park(0, -150);
+      ${opts.park === false ? '' : 's.park(0, -150);'}
       ${opts.before ?? ''}
       s.vars.gy = (x, z) => g.world.collision.groundAt(x, z);
       s.vars.find = () => find(s.combat.sim.units.filter((u) => u.alive), gods());
@@ -126,7 +126,33 @@ function brawl(order, chaos, cam) {
   });
 }
 
+
+/** A fight in one of the other modes (`?map=<map>`), found and circled as in Conquest; the hidden player stays put. */
+function mode(map, find, opts = {}) {
+  return conquest(find, { url: `map=${map}&god=zeus&quality=medium`, park: false, frames: 40, ...opts });
+}
+/** Two enemy gods at blows. */
+const duelFind = (range) => `(us, gods) => {
+  for (const a of gods) for (const b of gods) if (a.team !== b.team && Math.hypot(a.x - b.x, a.z - b.z) < ${range}) return gods.filter((g) => Math.hypot(g.x - a.x, g.z - a.z) < ${range + 4});
+  return null;
+}`;
+/** Gods on monsters. */
+const monsterFind = `(us, gods) => {
+  const m = us.find((u) => u.kind === 'monster' && gods.some((g) => Math.hypot(g.x - u.x, g.z - u.z) < 7));
+  return m ? [m, ...gods.filter((g) => Math.hypot(g.x - m.x, g.z - m.z) < 9), ...us.filter((u) => u.kind === 'monster' && Math.hypot(u.x - m.x, u.z - m.z) < 6)] : null;
+}`;
+
 export const SHOTS = {
+  // the other modes, a second of each for the montage
+  mdClash: mode('clash', duelFind(6), { skip: 8, limit: 60, cam: { r: 10, h: 4.5, a0: 1.0, sweep: 0.35 } }),
+  mdRush: mode('rush', `(us, gods) => (gods.filter((g) => Math.hypot(g.x, g.z) < 14).length >= 4 ? gods.filter((g) => Math.hypot(g.x, g.z) < 14) : null)`, { skip: 7, limit: 60, frames: 34, cam: { r: 12, h: 7.5, a0: -0.6, sweep: 0.3 } }),
+  mdDescent: mode('descent', monsterFind, { skip: 6, limit: 60, cam: { r: 10, h: 5.5, a0: 2.2, sweep: 0.35 } }),
+  mdJotunn: mode('jotunn', `(us, gods) => {
+    const j = us.find((u) => u.name === 'Jötunn');
+    const near = j ? gods.filter((g) => g !== j && Math.hypot(g.x - j.x, g.z - j.z) < 14) : [];
+    return near.length >= 2 ? [j, j, j, ...near] : null;
+  }`, { skip: 15, limit: 90, cam: { r: 20, h: 9, a0: 0.9, sweep: 0.3, fov: 55 } }),
+  mdSiege: mode('siege', monsterFind, { skip: 25, limit: 90, frames: 34, cam: { r: 12, h: 9, a0: -1.4, sweep: 0.3 } }),
   probeArena: {
     url: 'map=arena&god=zeus&quality=high',
     frames: 1,

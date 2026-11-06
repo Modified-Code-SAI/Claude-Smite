@@ -1,6 +1,6 @@
 # Intro trailer
 
-Builds `public/trailer/trailer.mp4` (and `poster.jpg`), which plays after the
+Builds `public/trailer/trailer.mp4` (20 s, and `poster.jpg`), which plays after the
 home page's Play button on every launch (`src/ui/Intro.ts`). Everything in it
 is the game's own: footage filmed from the real game, its synthesized music
 and sound effects, its icons and data. The narration is Kokoro TTS (an
@@ -11,9 +11,9 @@ Apache-2.0 open model), voice `bm_george`.
 | `script.json` | The narration lines, voice and speed |
 | `timeline.mjs` | When each line and cut happens; shared by the edit and the score |
 | `narration.py` | Speaks `script.json` into `out/voice/` |
-| `shots.mjs`, `film.mjs` | The in-game shots, filmed with `?stage` (`src/dev/Stage.ts`) into `out/frames/` |
+| `shots.mjs`, `film.mjs` | The in-game shots (gods, Conquest, and a second of each other mode), filmed with `?stage` (`src/dev/Stage.ts`) into `out/frames/` |
 | `score.ts` | Music, effects and narration mixed into `out/score.wav` |
-| `compose.html`, `compose.ts` | The edit: footage, title cards, skill bar, trees, captions |
+| `compose.html`, `compose.ts` | The edit: footage, title cards, skill bar, trees, mode cards, captions |
 | `render.mjs` | Renders the edit frame by frame and encodes the mp4 |
 
 ## Rebuilding
