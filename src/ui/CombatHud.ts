@@ -147,7 +147,14 @@ export class CombatHud {
   private readonly overlay: HTMLDivElement;
   private readonly bars = new Map<Unit, Bar>();
   /** The big bar under the scoreboard for a boss or Warden the player is near. */
-  private readonly objective: { root: HTMLDivElement; name: HTMLDivElement; hp: HTMLDivElement; lag: HTMLDivElement; pct: HTMLSpanElement; cast: HTMLDivElement; castFill: HTMLDivElement; cc: HTMLSpanElement };
+  private readonly objective: { root: HTMLDivElement; name: HTMLDivElement; bar: HTMLDivElement; hp: HTMLDivElement; lag: HTMLDivElement; phases: HTMLDivElement; pct: HTMLSpanElement; cast: HTMLDivElement; castFill: HTMLDivElement; cc: HTMLSpanElement };
+  /**
+   * Health shares where a boss turns, marked on its bar (Underworld Descent:
+   * where it calls up its adds). A mark it has passed dims, and the bar flares
+   * as it passes.
+   */
+  bossPhases: ((u: Unit) => readonly number[] | null) | null = null;
+  private readonly phaseMarks: { el: HTMLElement; at: number; passed: boolean }[] = [];
   private objectiveCC = '';
   private objectiveUnit: Unit | null = null;
   private target: Unit | null = null;
@@ -223,12 +230,13 @@ export class CombatHud {
     const lag = el('div', 'ch-boss-lag', track);
     const hpFill = el('div', 'ch-boss-hp', track);
     el('div', 'ch-boss-ticks', track);
+    const phases = el('div', 'ch-boss-phases', track);
     const pct = el('span', 'ch-boss-pct', track);
     const cc = el('span', 'ch-ob-cc', obj);
     const cast = el('div', 'ch-boss-cast', obj);
     const castFill = el('div', 'ch-boss-cast-fill', cast);
     el('span', '', cast);
-    this.objective = { root: obj, name, hp: hpFill, lag, pct, cast, castFill, cc };
+    this.objective = { root: obj, name, bar: track, hp: hpFill, lag, phases, pct, cast, castFill, cc };
   }
 
   setPlayer(u: Unit): void {
@@ -515,9 +523,29 @@ export class CombatHud {
       // a notch every thousand health
       o.root.style.setProperty('--tick', `${(100 * 1000) / best.combatant.stats.maxHealth}%`);
       o.cast.querySelector('span')!.textContent = SPECIAL_NAME[kind] ?? '';
+      o.phases.replaceChildren();
+      this.phaseMarks.length = 0;
+      const now = best.combatant.health / best.combatant.stats.maxHealth;
+      for (const at of this.bossPhases?.(best) ?? []) {
+        const mark = el('i', now <= at ? 'passed' : '', o.phases);
+        mark.style.left = percent(at);
+        this.phaseMarks.push({ el: mark, at, passed: now <= at });
+      }
     }
     const c = best.combatant;
     const frac = c.health / c.stats.maxHealth;
+    for (const m of this.phaseMarks) {
+      if (m.passed || frac > m.at) continue;
+      m.passed = true;
+      m.el.classList.add('passed');
+      o.bar.animate(
+        [
+          { filter: 'brightness(2.2) saturate(1.4)', transform: 'scaleY(1.5)' },
+          { filter: 'brightness(1)', transform: 'scaleY(1)' },
+        ],
+        { duration: 900, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
+      );
+    }
     this.objectiveLag = drain(this.objectiveLag, frac, dt);
     setStyle(o.hp, 'width', percent(frac));
     setStyle(o.lag, 'width', percent(this.objectiveLag));

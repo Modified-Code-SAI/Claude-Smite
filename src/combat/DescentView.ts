@@ -41,6 +41,9 @@ const RELIC_FX: Record<RelicId, GodPalette> = {
 /** How long a Chain of Souls bolt crackles, and a Death Knell's ring takes to spread. */
 const LEAP_LIFE = 0.28;
 const KNELL_LIFE = 0.5;
+/** A boss calling up its adds: how long its ring of soul fire takes to run out across the floor, and how far. */
+const CALL_LIFE = 1.1;
+const CALL_REACH = 16;
 
 export interface DescentViewOptions {
   /** The player's team: in a shared descent the rivals' fallen get no ring (only their own team can raise them). */
@@ -51,7 +54,8 @@ export interface DescentViewOptions {
   /**
    * A moment with its own sound: `soul`, a soul reached the player (`k`
    * counts up a run of them, 0, 1, 2, ..., for a rising chime); `emerge`, the
-   * dead climbing out of the floor (`k` 0 to 1 for how big).
+   * dead climbing out of the floor (`k` 0 to 1 for how big); `bossCall`, a
+   * boss calling up its adds (`k` counts its calls this fight, 1, 2, ...).
    */
   cue?: (name: DescentCue, at: { x: number; y: number; z: number }, k: number) => void;
   /** Takes the camera for a boss's entrance (null hands it back); see bossIntro. */
@@ -60,7 +64,7 @@ export interface DescentViewOptions {
   heightOf?: (u: Unit) => number | null;
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'boss' | 'bossFall' | `relic.${RelicId}`;
+export type DescentCue = 'soul' | 'emerge' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -97,6 +101,11 @@ export class DescentView {
   private intro: { fall: boolean; boss: Unit; t: number; subject: IntroSubject; spot: { x: number; z: number }; orbit: number; shot: CameraShot } | null = null;
   /** The last boss whose fall was shown. */
   private fell: Unit | null = null;
+  /** The boss whose calls are being shown, the calls already shown, and the ring of the newest running out from where it stood. */
+  private callBoss: Unit | null = null;
+  private callsSeen = 0;
+  private readonly callRing: GroundDecal;
+  private readonly callAt = { x: 0, z: 0, age: -1 };
   /** The newest soul fire already marked (the Ossuary King's rain sends a bolt into each new one). */
   private lastErupt = 0;
   private clock = 0;
@@ -154,6 +163,10 @@ export class DescentView {
       this.knellRings.push(d);
       world.vfx.add(d.mesh);
     }
+    this.callRing = new GroundDecal(groundAt);
+    this.callRing.setStyle('telegraph');
+    this.callRing.mesh.visible = false;
+    world.vfx.add(this.callRing.mesh);
     this.chainArc.setColors(RELIC_FX.chain.vfx, RELIC_FX.chain.core);
     this.chainArc.group.visible = false;
     world.vfx.add(this.chainArc.group);
@@ -167,6 +180,8 @@ export class DescentView {
       this.shownChamber = r.chamber;
       this.wisps.swarm.clear();
       this.raised.clear();
+      this.callAt.age = -1;
+      this.callRing.mesh.visible = false;
     }
     if (r.current.layout !== this.shownLayout) {
       this.shownLayout = r.current.layout;
@@ -225,12 +240,21 @@ export class DescentView {
         if (d < 10) this.opts.shake(0.22 * (1 - d / 10));
       }
     }
+    // before the adds it calls are marked risen, so its souls can find them
+    const boss = r.boss;
+    if (boss !== this.callBoss || r.calls < this.callsSeen) {
+      this.callBoss = boss;
+      this.callsSeen = r.calls;
+    } else if (boss?.alive && r.calls > this.callsSeen) {
+      this.callsSeen = r.calls;
+      this.call(boss);
+    }
+    this.callFrame(dt);
     for (const m of r.monsters) {
       if (this.risen.has(m)) continue;
       this.risen.add(m);
       if (m.alive) this.emerge(m);
     }
-    const boss = r.boss;
     if (boss && !boss.alive && r.fall > 0 && this.fell !== boss) {
       this.fell = boss;
       this.startFall(boss);
@@ -344,6 +368,49 @@ export class DescentView {
     if (boss && near < 40) this.opts.shake?.(0.45 * (1 - near / 40));
     this.opts.cue?.('emerge', { x: m.x, y: gy, z: m.z }, boss ? 1 : Math.min(0.7, 0.3 + m.radius * 0.15));
     if (boss && this.run.intro > 0) this.startIntro(m, gy);
+  }
+
+  /**
+   * A boss calling up its adds as it weakens (DESCENT.bossAdds): a column of
+   * the depth's fire bursts out of it, a ring of soul fire runs out across the
+   * floor, and souls pour from it into each of its servants as they claw up,
+   * so the adds read as its doing.
+   */
+  private call(boss: Unit): void {
+    const gy = this.groundAt(boss.x, boss.z);
+    const height = this.opts.heightOf?.(boss) ?? 4;
+    this.vfx.pillar(this.burst, boss.x, boss.z, 0.45, 2.2);
+    this.vfx.burst(this.burst, boss.x, gy + height * 0.4, boss.z, 2.2);
+    // paler than the depth's fire, so it reads over the glowing runes on the floor
+    this.callRing.setColors(this.burst.core, 0xffffff);
+    this.callAt.x = boss.x;
+    this.callAt.z = boss.z;
+    this.callAt.age = 0;
+    for (const m of this.run.monsters) {
+      if (m === boss || !m.alive || this.risen.has(m)) continue;
+      for (let i = 0; i < 3; i++) this.wisps.swarm.send(boss.x, gy + height * 0.6, boss.z, m, this.soul, 0.55, 1.2);
+    }
+    const me = this.opts.me;
+    const near = me ? Math.hypot(me.x - boss.x, me.z - boss.z) : 99;
+    if (near < 40) this.opts.shake?.(0.3 * (1 - near / 40));
+    this.opts.cue?.('bossCall', { x: boss.x, y: gy, z: boss.z }, this.run.calls);
+  }
+
+  /** The call's ring of soul fire running out across the floor, thinning as it goes. */
+  private callFrame(dt: number): void {
+    const c = this.callAt;
+    if (c.age < 0) return;
+    const t = (c.age += dt) / CALL_LIFE;
+    const d = this.callRing;
+    if (t >= 1) {
+      c.age = -1;
+      d.mesh.visible = false;
+      return;
+    }
+    d.mesh.visible = true;
+    d.values.fill = 1;
+    d.values.opacity = (1 - t) * 0.95;
+    d.place({ type: 'ring', radius: 1 + (CALL_REACH - 1) * Math.sqrt(t), width: 0.5 + 0.9 * (1 - t) }, c.x, c.z, 0, 0.1);
   }
 
   /** A boss rising while its chamber holds still: the camera turns to it (see bossIntro). */

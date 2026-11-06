@@ -47,7 +47,7 @@ import { pitchTerrain, RUSH, type Rush } from '../sim/Rush';
 import { RushMode } from './RushMode';
 import { rushRoster, type RushSlot } from '../net/rushRoster';
 import { descentRoster, type DescentSlot } from '../net/descentRoster';
-import type { Descent } from '../sim/Descent';
+import { DESCENT, type Descent } from '../sim/Descent';
 import { DescentMode } from './DescentMode';
 import type { DescentCue } from './DescentView';
 import { JOTUNN, type Jotunn } from '../sim/Jotunn';
@@ -607,6 +607,8 @@ export class CombatGame implements Updatable {
     this.descentMode = mode;
     this.descent = mode.run;
     this.views.emergeMonsters = true;
+    // the boss bar marks where the boss calls up its adds
+    this.hud.bossPhases = (u) => (u === mode.run.boss ? DESCENT.bossAdds : null);
     this.netHost = mode.host;
     this.netGuest = mode.guest;
     this.warmup(this.deps.world.actors);

@@ -21,6 +21,7 @@ import { DUEL } from '../sim/Duel';
 import { RUSH } from '../sim/Rush';
 import { DESCENT, DEPTHS, type Descent } from '../sim/Descent';
 import { relicById } from '../sim/Relics';
+import { BOSS_CALL_LINE } from '../ui/bossNames';
 import { JOTUNN, type PartId } from '../sim/Jotunn';
 
 /** A match's music only ever moves forward: dawn, then battle, then the siege. */
@@ -111,6 +112,8 @@ export class GameAudio {
       // a boss's entrance (the camera turns to it): the whole chamber hears it, not just whoever is near
       else if (name === 'boss') this.engine.play('boss.intro', { bus: 'ui', gain: 0.75 }, 3);
       else if (name === 'bossFall') this.engine.play('boss.fall', { bus: 'ui', gain: 0.75 }, 3);
+      // a boss calling up its adds: its roar carries across the chamber, and the herald names what it calls
+      else if (name === 'bossCall') this.bossCall(at, k);
       // a relic going off: bursts and leaps where they happen (a pack's chain of bursts thinned out), a god's own relics at that god
       else if (name.startsWith('relic.')) this.engine.play(name, { at, gain: RELIC_GAIN[name] ?? 0.5, vary: 0.05, ref: 14 }, 2, name === 'relic.knell' ? 0.09 : name === 'relic.chain' ? 0.06 : 0.12);
     };
@@ -1311,6 +1314,17 @@ export class GameAudio {
     if (u.stealth > 0 && u.team !== this.me.team) return;
     const name = `voice.${u.combatant.god.id}.${kind}`;
     if (this.engine.has(name)) this.at(name, u, { gain: u === this.me ? gain : gain * 0.85, vary: 0.04, ref: 7, wet: 0.05 }, priority, gap);
+  }
+
+  /** A Descent boss calling up its adds (its `n`th call this fight): it roars, a little lower than its entrance, and the herald names what rises. */
+  private bossCall(at: { x: number; y: number; z: number }, n: number): void {
+    const boss = this.game.descent?.boss;
+    if (!boss) return;
+    const roar = boss.name === 'Treasure Wyrm' ? 'wyrm.roar' : boss.name === 'Ossuary King' ? 'king.roar' : 'colossus.roar';
+    this.engine.play(roar, { at: { x: at.x, y: at.y + 2, z: at.z }, gain: 1.15, rate: 0.88, ref: 30 }, 5);
+    const key = (boss.brain as { bossKey?: string | null } | null)?.bossKey;
+    const line = key ? BOSS_CALL_LINE[key]?.[Math.min(n, 2) - 1] : undefined;
+    if (line) this.herald.say(line, 'epic', 3);
   }
 
   /**

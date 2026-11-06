@@ -11,3 +11,10 @@ export const BOSS_FALL_LINE: Record<string, string> = {
   moltenColossus: 'The forge goes cold',
   ossuaryKing: 'The Abyss is broken',
 };
+
+/** What the herald calls out as a Descent boss calls up its adds: its first call, then its second. */
+export const BOSS_CALL_LINE: Record<string, readonly [string, string]> = {
+  treasureWyrm: ['The Wyrm calls its brood!', 'More of its brood claw up from the hoard!'],
+  moltenColossus: ['The Colossus calls up the dead of the forge!', 'The forge gives up more of its dead!'],
+  ossuaryKing: ['The King summons his court!', 'His court rises again! Break them!'],
+};
