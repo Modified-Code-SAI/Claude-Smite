@@ -227,6 +227,14 @@ function shown(o: THREE.Object3D | null): boolean {
 export class DustMotes {
   readonly sprite: THREE.Sprite;
   readonly density = uniform(1);
+  /** The motes' color, and how much of it they show without the sun behind them (a glow of their own, for embers and souls). */
+  readonly tint = uniform(new THREE.Color(0xfff1c8));
+  readonly glow = uniform(0);
+  /** Extra rise, meters a second (embers float up), and a size multiplier. */
+  readonly rise = uniform(0);
+  readonly grow = uniform(1);
+  /** Within this many meters of the eye the motes fade out (big glowing ones up close read as blobs). */
+  readonly near = uniform(2);
 
   constructor(count: number, sunDirection: THREE.Vector3) {
     const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -235,21 +243,21 @@ export class DustMotes {
     const seedPos = vec3(hash(id), hash(id.add(17.3)), hash(id.add(91.7)));
     const drift = vec3(
       sin(time.mul(0.11).add(id)).mul(1.5).add(time.mul(0.35)),
-      sin(time.mul(0.07).add(id.mul(1.3))).mul(1.2).add(time.mul(0.05)),
+      sin(time.mul(0.07).add(id.mul(1.3))).mul(1.2).add(time.mul(this.rise.add(0.05))),
       cos(time.mul(0.09).add(id.mul(0.7))).mul(1.5).add(time.mul(0.2)),
     );
     // wrap the particle into a box that follows the camera
     const local = fract(seedPos.add(drift.div(box)).add(cameraPosition.div(box).negate())).sub(0.5).mul(box);
     const world = cameraPosition.add(local).toVar();
     mat.positionNode = world;
-    const size = hash(id.add(5.5)).mul(0.03).add(0.012);
+    const size = hash(id.add(5.5)).mul(0.03).add(0.012).mul(this.grow);
     mat.scaleNode = vec2(size, size);
     const toCam = world.sub(cameraPosition).normalize();
     const sun = uniform(sunDirection);
     const forward = pow(toCam.dot(sun.negate()).negate().max(0), float(2)).mul(3).add(0.35);
-    const fade = smoothstep(18, 6, local.length()).mul(smoothstep(0.6, 2.0, world.sub(cameraPosition).length()));
+    const fade = smoothstep(18, 6, local.length()).mul(smoothstep(this.near.mul(0.3), this.near, world.sub(cameraPosition).length()));
     const twinkle = sin(time.mul(hash(id).mul(3).add(1)).add(id)).mul(0.3).add(0.7);
-    mat.colorNode = vec4(color(0xfff1c8).mul(forward).mul(twinkle).mul(1.4), 1);
+    mat.colorNode = vec4(this.tint.mul(forward.add(this.glow)).mul(twinkle).mul(1.4), 1);
     mat.opacityNode = smoothstep(0.5, 0.1, uv().sub(0.5).length()).mul(fade).mul(this.density);
     this.sprite = new THREE.Sprite(mat);
     (this.sprite as any).count = count;
