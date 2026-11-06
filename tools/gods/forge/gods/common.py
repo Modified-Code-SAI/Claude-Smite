@@ -296,3 +296,29 @@ def add_boot_feet(god, material='leather', pad=0.012, top=0.11):
         god.add(f'bootfoot.{s}', material, m, W)
         hide[idx] = True
     return hide
+
+
+def add_claws(god, hand_len: float = 0.07, toe_len: float = 0.045, material: str = 'steel', hook: float = 0.75, toes: bool = True):
+    """Hooked claws at every fingertip (curling toward the palm) and, optionally, every toe."""
+    from ..geo import merge, tube
+    from ..mathx import normalize
+    J = god.body.J
+    for s in ('L', 'R'):
+        for k, bone in ((1, 'thumb'), (2, 'f_index'), (3, 'f_middle'), (4, 'f_ring'), (5, 'f_pinky')):
+            h, t = J[f'finger{k}-3.{s}____head'], J[f'finger{k}-3.{s}____tail']
+            d = normalize(t - h)
+            down = normalize(np.cross(d, np.array([1.0 if s == 'L' else -1.0, 0, 0])) * -1)
+            L = hand_len * (0.85 if k == 1 else 1.0)
+            path = np.array([t - d * 0.012, t + d * L * 0.5, t + d * L * 0.85 + down * L * 0.3, t + d * L + down * L * hook])
+            god.add(f'claw.{bone}.{s}', material, tube(path, np.array([0.009, 0.007, 0.004, 0.001]) * (hand_len / 0.07) ** 0.5, 6), f'DEF-{bone}.03.{s}')
+        if not toes:
+            continue
+        parts = []
+        for k in range(1, 6):
+            key = f'toe{k}-{2 if k == 1 else 3}.{s}____tail'
+            t, h = J[key], J[key.replace('tail', 'head')]
+            d = normalize(t - h)
+            L = toe_len * (1.3 if k == 1 else 1.0)
+            path = np.array([t - d * 0.01, t + d * L * 0.6, t + d * L + np.array([0, -0.02, 0])])
+            parts.append(tube(path, np.array([0.009, 0.006, 0.001]), 6))
+        god.add(f'toeclaws.{s}', material, merge(parts), f'DEF-toe.{s}')

@@ -47,8 +47,8 @@ interface Tracked {
 const RELIC_GAIN: Record<string, number> = { 'relic.knell': 0.75, 'relic.chain': 0.45, 'relic.echo': 0.5, 'relic.aegis': 0.45, 'relic.harvest': 0.35, 'relic.spite': 0.7 };
 
 /** Which god basic-hit sound each god makes. */
-const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand', thanatos: 'hit.soulblade', jotunn: 'hit.jotunn' };
-const GOD_TRAVEL: Record<string, string> = { zeus: 'travel.zeus', anubis: 'travel.anubis' };
+const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand', thanatos: 'hit.soulblade', kukulkan: 'hit.jade', jotunn: 'hit.jotunn' };
+const GOD_TRAVEL: Record<string, string> = { zeus: 'travel.zeus', anubis: 'travel.anubis', kukulkan: 'travel.kukulkan' };
 const BOSSES = ['Treasure Wyrm', 'Molten Colossus', 'Ossuary King'];
 
 /** Seconds after a hat trick's call that its scorer boasts (the herald's line goes first). */

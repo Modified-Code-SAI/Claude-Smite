@@ -370,7 +370,7 @@ export class Sim {
       case 'line': {
         const len = range(t.range);
         const w = radius(t.width);
-        for (const target of this.unitsInLine(u, u.x, u.z, dir, len, w / 2)) this.hit(u, cast, target);
+        for (const target of this.unitsInLine(u, u.x, u.z, dir, len, w / 2)) this.strikeWith(u, cast, target);
         this.applySelf(u, cast);
         this.flash(u, { type: 'line', x: u.x, z: u.z, yaw, length: len, width: w }, cast.skill.id);
         at = { x: u.x + dir.x * len, z: u.z + dir.z * len };
@@ -383,7 +383,7 @@ export class Sim {
           const dz = target.z - u.z;
           if (hypot(dx, dz) > r + target.radius) continue;
           if (angleBetween(dir, { x: dx, z: dz }) > t.angle / 2) continue;
-          this.hit(u, cast, target);
+          this.strikeWith(u, cast, target);
         }
         this.applySelf(u, cast);
         this.flash(u, { type: 'cone', x: u.x, z: u.z, yaw, range: r, angle: t.angle }, cast.skill.id);
@@ -615,6 +615,13 @@ export class Sim {
       (e) => (e.kind === 'heal' || e.kind === 'shield' || e.kind === 'buff') && e.target !== 'enemies' && e.target !== 'allies',
     );
     if (selfish) this.applyOnce(u, cast, u);
+  }
+
+  /** One target of a line or cone: a skill that sets off a mark only touches enemies carrying it (see detonate). */
+  private strikeWith(owner: Unit, cast: ResolvedSkill, target: Unit): void {
+    const mark = cast.skill.detonates;
+    if (!mark) this.hit(owner, cast, target);
+    else if (target.team !== owner.team) this.detonate(owner, cast, target, mark);
   }
 
   /** Everything in a circle (the engine filters effects by team), then the caster's own buffs. */

@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, attribute, color, float, fract, max, min, mix, mx_fractal_noise_float, mx_noise_float, normalLocal, normalView,
-  positionLocal, positionView, pow, saturate, select, sin, smoothstep, time, uv, vec3,
+  mx_worley_noise_float, positionLocal, positionView, pow, saturate, select, sin, smoothstep, time, uv, vec3,
 } from '../../render/tsl';
 
 /**
@@ -32,6 +32,12 @@ export interface GodPalette {
   furTip?: number;
   /** Frost-rimed skin with icy shading instead of warm flesh (the Jötunn). */
   frost?: boolean;
+  /** A scaly hide instead of warm flesh (Kukulkan, Cthulhu). */
+  scaly?: boolean;
+  /** Scaly hides: the belly and throat scales' color (default: the skin, paler). */
+  belly?: number;
+  /** Scaly hides: a faint glow of the deep at grazing angles (Cthulhu). */
+  deep?: boolean;
 }
 
 const PALETTES: Record<string, GodPalette> = {
@@ -66,6 +72,12 @@ const PALETTES: Record<string, GodPalette> = {
     skin: 0xcdb9b0, skinDeep: 0x5e4450, gold: 0xa8b0bc, steel: 0x6a707c, cloth: 0x1c1826, clothDeep: 0x07060c,
     cloth2: 0x2e2846, leather: 0x1e1a1e, hair: 0x0e0c12, hairTip: 0x2a2632, fur: 0x15131b, glow: 0x74c4ff,
     eye: 0xbfe8ff, gem: 0xc81e2a, furTip: 0x6a6680,
+  },
+  // the feathered serpent: green scales and a gold belly, white cotton, Maya red, jade, gold, quetzal green shading to turquoise
+  kukulkan: {
+    skin: 0x27704a, skinDeep: 0x07261a, gold: 0xf0b848, steel: 0x56d6a2, cloth: 0xeee4cc, clothDeep: 0x8c7c5c,
+    cloth2: 0xb8281e, leather: 0x5a3420, hair: 0x0c0a08, hairTip: 0x221c18, fur: 0x087a46, glow: 0x7affc8,
+    eye: 0xffc030, gem: 0x2fbf86, furTip: 0x3cc890, scaly: true, belly: 0xe0c058,
   },
   // the frost giant: glacier-blue skin, old bronze, black iron, dark bear fur frosted at the tips
   jotunn: {
@@ -171,6 +183,34 @@ function skinMaterial(p: GodPalette): THREE.Material {
   m.roughnessNode = float(0.5).add(crease.mul(0.15)).sub(ridge.mul(0.12)).add(mx_noise_float(positionLocal.mul(90)).mul(0.06)).sub(lips.mul(0.2));
   // a little warm back-scatter at grazing angles
   m.emissiveNode = color(p.skinDeep).mul(rim().mul(0.18));
+  return m;
+}
+
+/**
+ * A scaly hide (Kukulkan's serpent scales, Cthulhu's "scaly, rubbery-looking"
+ * sea hide): small overlapping scales (worley cells, dark in their seams),
+ * darker blotches, paler belly and throat scales, a slick clearcoat and, for
+ * the deep, a faint glow at grazing angles.
+ */
+function scalySkinMaterial(p: GodPalette): THREE.Material {
+  const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.4, clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.12, sheenRoughness: 0.4, sheenColor: new THREE.Color(p.skin).lerp(new THREE.Color(p.glow), 0.3) });
+  const d = data();
+  const crease = d.x;
+  const ridge = d.y;
+  const socket = d.w;
+  const blotch = mx_fractal_noise_float(positionLocal.mul(7), 3).mul(0.5).add(0.5);
+  const cell = mx_worley_noise_float(positionLocal.mul(70));
+  const seam = smoothstep(0.28, 0.62, cell);
+  // belly scales: a band down the front of the torso, and every underside (throat, jaw, inner arms)
+  const front = smoothstep(0.45, 0.85, normalLocal.z).mul(float(1).sub(smoothstep(0.035, 0.075, abs(positionLocal.x))));
+  const under = smoothstep(0.2, 0.7, normalLocal.y.negate());
+  const belly = saturate(max(front, under));
+  const base = mix(color(p.skin), color(p.skinDeep), crease.mul(0.8).add(smoothstep(0.5, 0.8, blotch).mul(0.35)));
+  const pale = mix(base, p.belly !== undefined ? color(p.belly) : color(p.skin).mul(1.35), belly.mul(p.belly !== undefined ? 0.75 : 0.3));
+  const scaled = pale.mul(float(1).sub(seam.mul(0.3))).mul(float(1).add(ridge.mul(0.2)));
+  m.colorNode = mix(scaled, color(p.skinDeep).mul(0.35), socket.mul(0.7));
+  m.roughnessNode = float(0.32).add(seam.mul(0.3)).add(crease.mul(0.15)).sub(ridge.mul(0.08));
+  m.emissiveNode = p.deep ? color(p.glow).mul(rim().mul(0.1)).add(color(p.skinDeep).mul(rim().mul(0.15))) : color(p.skinDeep).mul(rim().mul(0.15));
   return m;
 }
 
@@ -348,7 +388,7 @@ export function godMaterials(id: string, variant?: string): Map<string, THREE.Ma
 function buildMaterials(id: string, variant?: string): Map<string, THREE.Material> {
   const p = paletteOf(id, variant);
   const m = new Map<string, THREE.Material>();
-  m.set('skin', p.frost ? frostSkinMaterial(p) : skinMaterial(p));
+  m.set('skin', p.frost ? frostSkinMaterial(p) : p.scaly ? scalySkinMaterial(p) : skinMaterial(p));
   m.set('gold', metalMaterial(p.gold, 0xffe7a0, { engrave: true }));
   m.set('goldplain', metalMaterial(p.gold, 0xffe7a0));
   m.set('steel', metalMaterial(p.steel, p.gold, { engrave: true }));

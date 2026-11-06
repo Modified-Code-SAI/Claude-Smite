@@ -8,7 +8,7 @@
 
 import { ahr, bell, buf, fill, glide, Osc, perc, type Rand } from './dsp';
 import {
-  buzz, chime, choir, clang, debris, filter, fire, impact, layer, puff, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
+  buzz, chime, choir, clang, debris, filter, fire, impact, knock, layer, puff, rumble, sand, shape, shimmer, thump, thunder, twang, vowel, VOWELS, whoosh, zap,
 } from './gestures';
 import { JOTUNN_SKILL_SOUNDS } from './jotunnSounds';
 import type { Recipe } from './sounds';
@@ -397,6 +397,54 @@ export const SKILL_SOUNDS: Record<string, SkillSound> = {
     cast: (r) => layer([wingFlap(r, 0.8, 1.6), 1], [wingFlap(r, 0.8, 1.4), 0.8, 0.45], [choir(r, 2.6, 196, { vowelName: 'ah', env: (t) => ahr(t, 0.6, 1, 1) }), 0.5, 0.2], [shimmer(r, 2.2, 392, { rise: 1.3, peak: 0.5 }), 0.4, 0.3]),
     impact: (r) => layer([thump(r, 0.5, 120, 45, { click: 0.4, noise: 0.6, drive: 1.5 }), 0.9], [choir(r, 1.8, 261.6, { vowelName: 'oh', env: (t) => ahr(t, 0.1, 0.6, 1) }), 0.5], [shimmer(r, 1.4, 784, { rise: 1.4, peak: 0.2 }), 0.4]),
   },
+  // ===== Kukulkan: rattles and serpent hiss, clay flutes, the slit drum and the conch, jade, rain and feathers
+  'kukulkan.morning-star': {
+    cast: (r) => layer([flute(r, 0.5, 1046.5, 1.25), 0.7], [whoosh(r, 0.35, 900, 4200, { q: 1.4, peak: 0.3, gain: 1.2 }), 0.8], [chime(r, 0.8, 1568), 0.35, 0.05]),
+    travel: (r) => layer([shimmer(r, 1, 1318.5, { rise: 1, peak: 0.5, voices: 4 }), 0.6], [filter(whoosh(r, 1, 1800, 1800, { q: 1, peak: 0.5 }), 'bandpass', 2400, 0.8), 0.5]),
+    impact: (r) => layer([impact(r, 0.8, { tone: 170, snap: 0.8, room: 0.4 }), 0.9], [chime(r, 1.2, 2093), 0.45], [jade(r, 0.6, 1400), 0.4]),
+  },
+  'kukulkan.equinox': {
+    cast: (r) => layer([slitDrum(r, 0.9, 4), 0.8], [hiss(r, 1.1), 0.8, 0.1], [whoosh(r, 1.1, 300, 1600, { q: 0.6, peak: 0.4, gain: 1.1, grit: 1.2 }), 0.7, 0.1], [flute(r, 0.9, 523.3, 0.8), 0.3, 0.25]),
+  },
+  'kukulkan.vision-serpent': {
+    cast: (r) => layer([fire(r, 0.8, { gain: 0.5, roar: 0.4 }), 0.6], [puff(r, 1, { tone: 900 }), 0.7], [conch(r, 1.4, 146.8), 0.6, 0.15], [hiss(r, 1.2), 0.6, 0.3]),
+    zone: (r) => layer([filter(puff(r, 2.5, { tone: 700 }), 'lowpass', 1500), 0.6], [shimmer(r, 2.5, 311.1, { rise: 0.6, peak: 0.5, voices: 4 }), 0.35], [hiss(r, 2.5, 0.5), 0.4]),
+    tick: (r) => layer([hiss(r, 0.35), 0.6], [thump(r, 0.2, 120, 50, { noise: 0.3 }), 0.4]),
+  },
+  'kukulkan.constricting-coils': {
+    cast: (r) => layer([hiss(r, 0.45), 0.9], [whoosh(r, 0.4, 700, 3000, { q: 1.3, peak: 0.25 }), 0.7], [jade(r, 0.4, 1100), 0.3]),
+    travel: (r) => layer([hiss(r, 1, 0.6), 0.7], [filter(whoosh(r, 1, 1200, 1200, { q: 1.2, peak: 0.5 }), 'bandpass', 1500, 0.9), 0.5]),
+    impact: (r) => layer([thump(r, 0.35, 150, 50, { click: 0.6, noise: 0.5 }), 1], [squeeze(r, 0.8), 0.8, 0.05], [rattle(r, 0.5, 26), 0.5, 0.1]),
+  },
+  'kukulkan.quetzal-flight': {
+    cast: (r) => layer([wingFlap(r, 0.6, 1.1), 1], [flute(r, 0.45, 1396.9, 1.4), 0.4], [whoosh(r, 0.8, 300, 2200, { q: 0.8, peak: 0.35, gain: 1.3 }), 0.8, 0.05]),
+    impact: (r) => layer([thump(r, 0.35, 140, 50, { click: 0.6, noise: 0.7 }), 1], [cloth(r, 0.5), 0.7], [wingFlap(r, 0.4, 0.7), 0.5, 0.05]),
+  },
+  'kukulkan.jade-mask': {
+    cast: (r) => layer([jade(r, 1, 880), 0.8], [jade(r, 1, 1318.5), 0.5, 0.12], [shimmer(r, 1.2, 660, { rise: 0.8, peak: 0.3 }), 0.4], [choir(r, 1.2, 220, { vowelName: 'oh', env: (t) => ahr(t, 0.2, 0.4, 0.6) }), 0.35]),
+  },
+  'kukulkan.rain-of-plenty': {
+    cast: (r) => layer([rumble(r, 1.2, { tone: 150, attack: 0.3 }), 0.5], [rain(r, 1.6), 1, 0.2], [flute(r, 1, 659.3, 0.9), 0.3, 0.1]),
+    impact: (r) => layer([rain(r, 1.8), 0.9], [shimmer(r, 1.6, 523.3, { rise: 0.5, peak: 0.3 }), 0.4]),
+    impactDelay: 0.25,
+  },
+  'kukulkan.rattling-plumes': {
+    cast: (r) => layer([rattle(r, 0.9, 30), 1], [cloth(r, 0.6), 0.6], [hiss(r, 0.7), 0.6, 0.15], [thump(r, 0.3, 110, 45, { click: 0.4, noise: 0.5 }), 0.5]),
+  },
+  'kukulkan.descent': {
+    cast: (r) => layer([conch(r, 1.6, 110), 0.9], [wingFlap(r, 1, 1.6), 0.7, 0.2], [rattle(r, 1.2, 24), 0.5, 0.1], [whoosh(r, 1.6, 200, 3200, { q: 0.6, peak: 0.7, gain: 1.6 }), 0.8, 0.2]),
+    impact: (r) => layer([impact(r, 1.4, { tone: 95, snap: 0.9, crunch: 0.5, room: 0.7 }), 1], [slitDrum(r, 0.6, 2), 0.6], [hiss(r, 1), 0.5, 0.05]),
+    impactDelay: 0.45,
+  },
+  'kukulkan.venus-ascendant': {
+    cast: (r) => layer([conch(r, 2, 164.8), 0.7], [flute(r, 1.6, 1046.5, 1.5), 0.45, 0.3], [shimmer(r, 2.4, 1318.5, { rise: 1.6, peak: 0.6, voices: 5 }), 0.6], [choir(r, 2.2, 329.6, { vowelName: 'ah', env: (t) => ahr(t, 0.8, 0.6, 0.8) }), 0.45]),
+  },
+  'kukulkan.sky-coils': {
+    cast: (r) => layer([conch(r, 1.4, 98), 0.7], [whoosh(r, 1.4, 2600, 300, { q: 0.5, peak: 0.6, gain: 1.4 }), 0.7], [hiss(r, 1.4), 0.6, 0.2]),
+    impact: (r) => layer([thump(r, 0.6, 90, 35, { click: 0.4, noise: 0.8, drive: 2 }), 1], [squeeze(r, 1.6), 0.9, 0.1], [rattle(r, 1.4, 22), 0.5, 0.3], [slitDrum(r, 0.6, 2), 0.4, 0.05]),
+    tick: (r) => layer([squeeze(r, 0.4), 0.7], [thump(r, 0.25, 100, 40, { noise: 0.4 }), 0.5]),
+    impactDelay: 0.5,
+  },
   // ===== the Jötunn: ice, stone and a bellowing voice (jotunnSounds.ts)
   ...JOTUNN_SKILL_SOUNDS,
 };
@@ -488,6 +536,70 @@ function lullaby(r: Rand, len: number, f: number): Float32Array {
     [vowel(r, len, (t) => f * (1 + Math.sin(t * 2.2) * 0.012), VOWELS.oo, { voices: 3, detune: 0.02, breath: 0.5, vibrato: 0.01, env: (t) => ahr(t, len * 0.35, len * 0.25, len * 0.4) }), 1],
     [vowel(r, len, (t) => f * 1.5 * (1 + Math.sin(t * 1.7 + 1) * 0.012), VOWELS.oo, { voices: 2, detune: 0.02, breath: 0.6, env: (t) => ahr(t, len * 0.45, len * 0.2, len * 0.35), gain: 0.5 }), 0.6],
   );
+}
+
+/** A rattlesnake's warning: a fast buzz of dry clicks. */
+function rattle(r: Rand, len: number, rate = 26): Float32Array {
+  const out = buf(len);
+  const n = () => r() * 2 - 1;
+  for (let at = 0; at < len - 0.02; at += 1 / rate) {
+    const g = ahr(at, len * 0.15, len * 0.5, len * 0.35);
+    fill(out, (t) => n() * perc(t - at, 0.0008, 0.012) * g * 0.8, at, at + 0.03);
+  }
+  return filter(out, 'highpass', 2400, 0.9);
+}
+
+/** A serpent's long hiss. */
+function hiss(r: Rand, len: number, gain = 1): Float32Array {
+  return shape(filter(puff(r, len, { tone: 5200, gain }), 'highpass', 3200, 0.8), (t) => ahr(t, len * 0.15, len * 0.45, len * 0.4));
+}
+
+/** A clay flute: a breathy whistle with a little vibrato, its pitch bending up by `bend` at the start. */
+function flute(r: Rand, len: number, f: number, bend = 1): Float32Array {
+  const out = buf(len);
+  const o = new Osc(r());
+  const o2 = new Osc(r());
+  fill(out, (t) => {
+    const p = f * (1 + (1 / bend - 1) * Math.exp(-t * 18)) * (1 + Math.sin(t * 34) * 0.008);
+    const env = ahr(t, 0.03, len * 0.5, len * 0.45);
+    return (o.sine(p) + o2.sine(p * 2) * 0.12) * env * 0.4;
+  });
+  return layer([out, 1], [filter(shape(puff(r, len, { tone: f * 2 }), (t) => ahr(t, 0.02, len * 0.5, len * 0.45)), 'bandpass', f, 2), 0.35]);
+}
+
+/** The tunkul, a slit drum: two wooden tongues struck in turn. */
+function slitDrum(r: Rand, len: number, beats: number): Float32Array {
+  const out = buf(len);
+  for (let k = 0; k < beats; k++) {
+    const at = (k / beats) * len * 0.8;
+    const b = knock(r, 0.25, k % 2 ? 330 : 220);
+    const o = Math.round(at * 44100);
+    for (let i = 0; i < b.length && o + i < out.length; i++) out[o + i]! += b[i]! * (1 - k * 0.12);
+  }
+  return out;
+}
+
+/** A conch-shell trumpet: a low, hollow, slightly nasal horn. */
+function conch(r: Rand, len: number, f: number): Float32Array {
+  return layer(
+    [vowel(r, len, (t) => f * (1 + 0.03 * bell(t, len, 0.3)) * (1 + Math.sin(t * 22) * 0.004), VOWELS.oh, { voices: 2, detune: 0.01, breath: 0.35, env: (t) => ahr(t, 0.15, len * 0.5, len * 0.4) }), 1],
+    [warHorn(r, len, f), 0.4],
+  );
+}
+
+/** Polished jade struck: a short, glassy stone ring. */
+function jade(r: Rand, len: number, f: number): Float32Array {
+  return layer([chime(r, len, f), 1], [knock(r, 0.08, f * 2.2), 0.4]);
+}
+
+/** Warm rain: a patter of drops over a soft hiss. */
+function rain(r: Rand, len: number): Float32Array {
+  return layer([waterPour(r, len), 0.8], [shape(filter(puff(r, len, { tone: 3000 }), 'highpass', 1200), (t) => ahr(t, len * 0.2, len * 0.5, len * 0.3)), 0.5]);
+}
+
+/** Coils tightening: a creak of scales and a low strain. */
+function squeeze(r: Rand, len: number): Float32Array {
+  return layer([filter(sand(r, len, { tone: 900, peak: 0.6, grains: 300 }), 'bandpass', 700, 1.5), 0.8], [whoosh(r, len, 400, 160, { q: 1.5, peak: 0.7, grit: 1.5 }), 0.6]);
 }
 
 export function fallbackSkill(element: string | undefined, targeting: string): SkillSound {
