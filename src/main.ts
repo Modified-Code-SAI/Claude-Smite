@@ -37,6 +37,7 @@ import { bakeAll } from './audio/bank';
 import { GameAudio } from './audio/GameAudio';
 import { Music } from './audio/music';
 import { Orchestra } from './audio/orchestra';
+import { loadLayers } from './audio/layers';
 import { installUiSounds, mountAudioPanel } from './ui/AudioPanel';
 import { slice } from './core/slices';
 import { applyPageSettings } from './settings/apply';
@@ -71,6 +72,8 @@ async function main(): Promise<void> {
   mountPadCursor();
   installUiSounds(audio);
   const baked = bakeAll(audio);
+  // the recorded layers under the synthesized sounds, once the first screen is up
+  window.setTimeout(() => void loadLayers(audio, `${import.meta.env.BASE_URL}sfx/`), 1000);
   (window as unknown as { __audio: unknown }).__audio = { audio, music, herald, baked };
   // Links with ?map= (and automated captures) skip the title screen.
   const skipMenu = params.has('map') || params.has('capture') || params.has('showcase') || params.has('giant') || params.has('stage');

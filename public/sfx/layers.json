@@ -1,0 +1,174 @@
+{
+ "version": 1,
+ "layers": {
+  "step.stone": {
+   "mix": 0,
+   "files": [
+    "step-stone-1.ogg",
+    "step-stone-2.ogg",
+    "step-stone-3.ogg",
+    "step-stone-4.ogg",
+    "step-stone-5.ogg",
+    "step-stone-6.ogg"
+   ]
+  },
+  "step.grass": {
+   "mix": -1,
+   "files": [
+    "step-grass-1.ogg",
+    "step-grass-2.ogg",
+    "step-grass-3.ogg",
+    "step-grass-4.ogg",
+    "step-grass-5.ogg",
+    "step-grass-6.ogg"
+   ]
+  },
+  "step.dirt": {
+   "mix": -2,
+   "files": [
+    "step-dirt-1.ogg",
+    "step-dirt-2.ogg",
+    "step-dirt-3.ogg",
+    "step-dirt-4.ogg",
+    "step-dirt-5.ogg",
+    "step-dirt-6.ogg",
+    "step-dirt-7.ogg",
+    "step-dirt-8.ogg"
+   ]
+  },
+  "step.minion": {
+   "mix": -4,
+   "files": [
+    "step-minion-1.ogg",
+    "step-minion-2.ogg",
+    "step-minion-3.ogg",
+    "step-minion-4.ogg",
+    "step-minion-5.ogg",
+    "step-minion-6.ogg",
+    "step-minion-7.ogg",
+    "step-minion-8.ogg"
+   ]
+  },
+  "hit.blade": {
+   "mix": -2,
+   "files": [
+    "hit-blade-1.ogg",
+    "hit-blade-2.ogg",
+    "hit-blade-3.ogg",
+    "hit-blade-4.ogg",
+    "hit-blade-5.ogg",
+    "hit-blade-6.ogg",
+    "hit-blade-7.ogg",
+    "hit-blade-8.ogg",
+    "hit-blade-9.ogg",
+    "hit-blade-10.ogg"
+   ]
+  },
+  "hit.blunt": {
+   "mix": -5,
+   "files": [
+    "hit-blunt-1.ogg",
+    "hit-blunt-2.ogg",
+    "hit-blunt-3.ogg",
+    "hit-blunt-4.ogg",
+    "hit-blunt-5.ogg",
+    "hit-blunt-6.ogg",
+    "hit-blunt-7.ogg",
+    "hit-blunt-8.ogg"
+   ]
+  },
+  "hit.flesh": {
+   "mix": -3,
+   "files": [
+    "hit-flesh-1.ogg",
+    "hit-flesh-2.ogg",
+    "hit-flesh-3.ogg",
+    "hit-flesh-4.ogg",
+    "hit-flesh-5.ogg",
+    "hit-flesh-6.ogg",
+    "hit-flesh-7.ogg",
+    "hit-flesh-8.ogg"
+   ]
+  },
+  "hit.structure": {
+   "mix": -1,
+   "files": [
+    "hit-structure-1.ogg",
+    "hit-structure-2.ogg",
+    "hit-structure-3.ogg",
+    "hit-structure-4.ogg",
+    "hit-structure-5.ogg",
+    "hit-structure-6.ogg",
+    "hit-structure-7.ogg",
+    "hit-structure-8.ogg"
+   ]
+  },
+  "structure.collapse": {
+   "mix": -2,
+   "files": [
+    "structure-collapse-1.ogg"
+   ]
+  },
+  "basic.odin": {
+   "mix": -3,
+   "files": [
+    "basic-odin-1.ogg",
+    "basic-odin-2.ogg",
+    "basic-odin-3.ogg",
+    "basic-odin-4.ogg",
+    "basic-odin-5.ogg",
+    "basic-odin-6.ogg"
+   ]
+  },
+  "basic.loki": {
+   "mix": -3,
+   "files": [
+    "basic-loki-1.ogg",
+    "basic-loki-2.ogg",
+    "basic-loki-3.ogg",
+    "basic-loki-4.ogg",
+    "basic-loki-5.ogg",
+    "basic-loki-6.ogg"
+   ]
+  },
+  "basic.minion.melee": {
+   "mix": -4,
+   "files": [
+    "basic-minion-melee-1.ogg",
+    "basic-minion-melee-2.ogg",
+    "basic-minion-melee-3.ogg",
+    "basic-minion-melee-4.ogg",
+    "basic-minion-melee-5.ogg",
+    "basic-minion-melee-6.ogg"
+   ]
+  },
+  "amb.fire": {
+   "mix": 3,
+   "files": [
+    "amb-fire.ogg"
+   ],
+   "loop": 9.6
+  },
+  "amb.crowd": {
+   "mix": 1,
+   "files": [
+    "amb-crowd.ogg"
+   ],
+   "loop": 17.2
+  },
+  "amb.cheer": {
+   "mix": 0,
+   "files": [
+    "amb-cheer.ogg"
+   ],
+   "loop": 9.2
+  },
+  "crowd.roar": {
+   "mix": -1,
+   "files": [
+    "crowd-roar-1.ogg",
+    "crowd-roar-2.ogg"
+   ]
+  }
+ }
+}
