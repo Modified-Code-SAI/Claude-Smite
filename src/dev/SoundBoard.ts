@@ -7,12 +7,13 @@ import { Announcer } from '../audio/Announcer';
 import { AudioEngine } from '../audio/AudioEngine';
 import { bakeAll, jobs } from '../audio/bank';
 import { Music, type SongName } from '../audio/music';
+import { Orchestra } from '../audio/orchestra';
 import { GODS } from '../game/gods';
 import { mountAudioPanel } from '../ui/AudioPanel';
 import './soundboard.css';
 
 const engine = new AudioEngine();
-const music = new Music(engine);
+const music = new Music(engine, new Orchestra(`${import.meta.env.BASE_URL}music/`));
 const herald = new Announcer(engine);
 mountAudioPanel(engine);
 

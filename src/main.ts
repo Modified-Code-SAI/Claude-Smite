@@ -36,6 +36,7 @@ import { GodVoice } from './audio/GodVoice';
 import { bakeAll } from './audio/bank';
 import { GameAudio } from './audio/GameAudio';
 import { Music } from './audio/music';
+import { Orchestra } from './audio/orchestra';
 import { installUiSounds, mountAudioPanel } from './ui/AudioPanel';
 import { slice } from './core/slices';
 import { applyPageSettings } from './settings/apply';
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
   // Sound starts with the first click or key press (browsers require a gesture);
   // the bank renders in small slices while everything else loads.
   const audio = new AudioEngine();
-  const music = new Music(audio);
+  const music = new Music(audio, new Orchestra(`${import.meta.env.BASE_URL}music/`));
   const herald = new Announcer(audio);
   // the player's settings reach the page first (team colors, HUD size, keys), then the menus
   applyPageSettings(audio);

@@ -12,3 +12,6 @@ __pycache__/
 
 # trailer build scratch (tools/trailer/README.md)
 tools/trailer/out/
+
+# orchestra sample sources (tools/music/build.py --fetch)
+tools/music/src/
