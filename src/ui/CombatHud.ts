@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { SLOT_COUNT, SLOT_KEYS, ULTIMATE_SLOT } from '../game/loadout';
 import { MAX_LEVEL } from '../game/progression';
 import type { CCKind } from '../game/types';
-import { partMult } from '../sim/Jotunn';
+import { isGiant, partMult } from '../sim/Jotunn';
 import { RECALL_TIME } from '../sim/Sim';
 import { isStructure, type SimEvent, type Unit } from '../sim/Unit';
 import { hex, TEAM_COLORS } from '../combat/palette';
@@ -122,6 +122,9 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?:
  * the first boss bar.
  */
 const GROUPED = new Intl.NumberFormat();
+
+/** How near the top of the screen a damage number may rise, in pixels: below the modes' bars and state lines. */
+const FLOATER_TOP = 118;
 
 /**
  * In-match HUD: the player's frame and ability bar (Smite layout, bottom
@@ -337,10 +340,16 @@ export class CombatHud {
           if (e.source && e.source !== this.player) this.markHitFrom(e.source, share, weight);
         }
         if (mine && !onMe) this.markHit(e.crit ? 'crit' : 'hit');
-        if (!mine && !onMe) break;
+        // As the Jötunn, what you feel is your weak points struck: the Might each
+        // blow tears from you, shown where it lands. The body's own chips (a few
+        // points each, a twentieth of what it loses) would only stack up red over
+        // its head, at the top of the screen under the Might bar.
+        const onMyPart = e.target.kind === 'weakpoint' && e.target.owner === this.player;
+        if (onMe && isGiant(this.player)) break;
+        if (!mine && !onMe && !onMyPart) break;
         // on a weak point, what the giant's Might lost: the crown's and the wrists' blows count more, and show gold
         const mult = partMult(e.target);
-        const cls = onMe ? 'taken' : e.crit || mult > 1 ? 'crit' : e.ability ? 'ability' : 'basic';
+        const cls = onMe || onMyPart ? 'taken' : e.crit || mult > 1 ? 'crit' : e.ability ? 'ability' : 'basic';
         this.floater(e.target, `${Math.round(e.amount * mult)}${e.crit ? '!' : ''}`, `ch-num ch-num-${cls}`);
         break;
       }
@@ -705,8 +714,13 @@ export class CombatHud {
       }
       const rise = 30 + f.age * 70;
       const pop = f.age < 0.12 ? 1 + (0.12 - f.age) * 5 : 1;
-      f.el.style.transform = `translate(${at.x + f.drift * f.age}px, ${at.y - rise}px) translate(-50%, -50%) scale(${pop})`;
-      f.el.style.opacity = String(Math.min(1, (1.1 - f.age) / 0.35));
+      // A number never rises into the bars and lines along the top (a blow on the
+      // giant's crown lands high on the screen): it stops below them and fades
+      // there, rather than piling up on the next.
+      const y = at.y - rise;
+      const held = Math.max(0, FLOATER_TOP - y) - Math.max(0, FLOATER_TOP - (at.y - 30));
+      f.el.style.transform = `translate(${at.x + f.drift * f.age}px, ${Math.max(FLOATER_TOP, y)}px) translate(-50%, -50%) scale(${pop})`;
+      f.el.style.opacity = String(Math.max(0, Math.min(1, (1.1 - f.age) / 0.35, 1 - held / 25)));
     }
   }
 

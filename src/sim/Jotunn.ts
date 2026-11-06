@@ -113,6 +113,14 @@ export function partMult(u: Unit): number {
   return u.kind === 'weakpoint' ? (PARTS[u.tag as PartId]?.mult ?? 1) : 1;
 }
 
+/** The giant's tag: every Jötunn wears it, whoever plays it. */
+const GIANT_TAG = 'jotunn';
+
+/** Whether a unit is the Jötunn itself (not one of its weak points). */
+export function isGiant(u: Unit): boolean {
+  return u.tag === GIANT_TAG;
+}
+
 /**
  * How heavy a blow on a weak point feels (hit-stop, camera kick): the Might it
  * takes, as a share of 1,500 health, about a god's. Even a basic attack on the
@@ -695,7 +703,7 @@ function giantUnit(might: number): Unit {
   c.gainXp(XP_TABLE[JOTUNN.giantLevel - 1]!);
   u.respawns = false;
   u.stepOver = JOTUNN.stepOver;
-  u.tag = 'jotunn';
+  u.tag = GIANT_TAG;
   u.origin = { f: 'mode', kind: 'jotunn:giant' };
   return u;
 }
