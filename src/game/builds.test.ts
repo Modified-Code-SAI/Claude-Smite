@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { applyBuild, BuildBook, MAX_SAVED, readyBuilds, snapshotBuild, spendAlong, type Build } from './builds';
+import { applyBuild, BuildBook, fittingBuild, MAX_SAVED, readyBuilds, snapshotBuild, spendAlong, type Build } from './builds';
 import { Combatant } from './combatant';
 import { validateLoadout } from './loadout';
 import { GODS, godById } from './gods';
@@ -72,6 +72,18 @@ describe('ready-made builds', () => {
         // level 20's 19 points: the keystone, the moment its tree opens it
         expect(c.allocation[keystone(def, i).id]).toBe(keystone(def, i).maxRank);
       }
+    }
+  });
+
+  it('picks the one that fits the bar a god carries, the first tree when none fits better', () => {
+    for (const def of GODS) {
+      const builds = readyBuilds(def);
+      for (const b of builds) {
+        const fit = fittingBuild(def, b.loadout);
+        // another tree may bring the very same skills; it never brings more of them
+        expect(fit.loadout.filter((id) => b.loadout.includes(id)).length).toBe(b.loadout.length);
+      }
+      expect(fittingBuild(def, [])).toBe(builds[0]);
     }
   });
 

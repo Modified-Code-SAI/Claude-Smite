@@ -18,7 +18,7 @@ import { angleBetween, MELEE_ARC, Sim, type BaseZone, type SimTerrain } from '..
 import { isStructure, Unit, WORLD_SCALE, type Body, type Point, type SimEvent } from '../sim/Unit';
 import { CombatHud } from '../ui/CombatHud';
 import { LoadoutMenu } from '../ui/LoadoutMenu';
-import { BuildBook } from '../game/builds';
+import { BuildBook, fittingBuild, spendAlong } from '../game/builds';
 import { MatchHud } from '../ui/MatchHud';
 import { GroundDecal, type DecalShape } from './GroundDecal';
 import { paletteFor } from './palette';
@@ -512,6 +512,15 @@ export class CombatGame implements Updatable {
       collision: world.collision,
       sun: world.environment.sunDirection,
       environment: world.environment,
+      startPoints: (u) => {
+        const c = u.combatant;
+        const points = c.unspentPoints;
+        if (points <= 0 || this.builds.active(c.god)) return null;
+        const b = fittingBuild(c.god, c.loadout);
+        if (!spendAlong(c, b)) return null;
+        this.menu.refresh();
+        return { tree: b.name, points: points - c.unspentPoints };
+      },
     });
     this.jotunn = this.jotunnMode.mode;
     this.netHost = this.jotunnMode.host;

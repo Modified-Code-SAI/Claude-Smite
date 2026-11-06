@@ -92,6 +92,18 @@ export function spendOrder(god: GodDef, b: Build): { id: string; cap: number }[]
   return out;
 }
 
+/** The ready-made build whose bar shares the most skills with `bar` (the god's first tree on a tie). */
+export function fittingBuild(god: GodDef, bar: readonly string[]): Build {
+  const all = readyBuilds(god);
+  let best = all[0]!;
+  let most = -1;
+  for (const b of all) {
+    const n = b.loadout.filter((id) => bar.includes(id)).length;
+    if (n > most) [best, most] = [b, n];
+  }
+  return best;
+}
+
 /** Spend every free point along a build: true when any point went in. */
 export function spendAlong(c: Combatant, b: Build): boolean {
   const order = spendOrder(c.god, b);
