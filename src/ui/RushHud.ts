@@ -318,7 +318,10 @@ export class RushHud {
       const ours = g.team === this.mine;
       const you = g.scorer === this.me;
       const how = g.kind === 'shot' ? `${this.who(g.scorer)} ${you ? 'score' : 'scores'} from range` : `${this.who(g.scorer)} ${you ? 'carry' : 'carries'} it in`;
-      const sub = g.assist ? `${how} · assist ${this.who(g.assist)}` : how;
+      // and what it did to the score, as a broadcast would say it
+      const story = r.goalStory;
+      const said = story === 'level' ? `level at ${r.score.order}–${r.score.chaos}` : story === 'lead' ? (ours ? 'into the lead' : 'they lead') : story === 'back' ? 'one back' : '';
+      const sub = [how, g.assist ? `assist ${this.who(g.assist)}` : '', said].filter(Boolean).join(' · ');
       // a god's third goal is called as the hat trick it is, whichever side scored it
       const title = r.hatTrick ? 'Hat trick!' : ours ? 'Goal!' : 'They score';
       return { html: `${title}<small>${esc(sub)}</small>`, side: ours ? 'ally' : 'foe' };

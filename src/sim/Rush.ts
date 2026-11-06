@@ -238,6 +238,18 @@ export class Rush {
   readonly possession: Record<Side, number> = { order: 0, chaos: 0 };
   /** The latest goal, for the herald and the HUD. */
   lastGoal: RushGoal | null = null;
+  /** What the last goal did to the score: opened it, drew level, took or stretched the lead, or pulled one back. */
+  get goalStory(): 'opener' | 'level' | 'lead' | 'extend' | 'back' | null {
+    const g = this.lastGoal;
+    if (!g) return null;
+    const us = this.score[g.team];
+    const them = this.score[g.team === 'order' ? 'chaos' : 'order'];
+    if (us === 1 && them === 0) return 'opener';
+    if (us === them) return 'level';
+    if (us === them + 1) return 'lead';
+    return us > them ? 'extend' : 'back';
+  }
+
   /** Whether the last goal was its scorer's third of the match. */
   get hatTrick(): boolean {
     const g = this.lastGoal;
