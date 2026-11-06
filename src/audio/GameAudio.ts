@@ -794,7 +794,7 @@ export class GameAudio {
   /** Last seen Relic Rush state, so each beat is called once. */
   /** Gods whose current call for the pass has been heard. */
   private readonly rushCalls = new Set<Unit>();
-  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
+  private rushSeen = { phase: '', goals: 0, fumble: 0, steal: 0, catch: 0, shrug: 0, save: 0, flying: false, overtime: false, minute: false, winner: '', tick: 0 };
 
   /** Relic Rush: the horn at each kickoff, goals, steals and fumbles, the golden relic and the result. */
   private watchRush(): void {
@@ -836,6 +836,10 @@ export class GameAudio {
         const ours = g.team === mine;
         const line = g.scorer === this.me ? (g.kind === 'shot' ? 'What a shot! You score!' : 'You score!') : ours ? (g.kind === 'shot' ? 'A shot from range! Goal!' : 'Goal! Your team scores.') : 'The enemy scores.';
         this.herald.say(line, ours ? 'epic' : 'bad', 4);
+        // one goal from the win: said once the goal call is done
+        const point = r.matchPoint;
+        if (point === 'both') this.herald.say('Four apiece! The next goal wins it!', 'epic', 3);
+        else if (point && g.team === point) this.herald.say(point === mine ? 'Match point! One more goal wins it.' : 'Match point for the enemy! Hold them off.', point === mine ? 'good' : 'bad', 3);
       }
     }
     if (r.beats.fumble !== seen.fumble) {
@@ -853,6 +857,18 @@ export class GameAudio {
       const home = b ? RUSH.gates[b.unit.team as 'order' | 'chaos'] : null;
       if (seen.flying && home && Math.hypot(relic.x - home.x, relic.z - home.z) < RUSH.keeper.depth + 4) this.engine.play('crowd.ooh', { gain: 0.75, vary: 0.05 }, 3);
       if (b?.kind === 'steal') this.herald.say(b.unit.team === mine ? 'Stolen! The relic is ours.' : 'The enemy has the relic!', b.unit.team === mine ? 'good' : 'bad', 1);
+    }
+    if (r.beats.save !== seen.save) {
+      seen.save = r.beats.save;
+      // a shot caught on its way in: the catch, and the whole ground gasps
+      this.engine.play('relic.catch', { at, ref: 10, rate: 0.82 }, 3);
+      this.engine.play('crowd.ooh', { gain: 0.95, vary: 0.05 }, 4);
+      const b = r.lastBeat;
+      if (b?.kind === 'save') {
+        const ours = b.unit.team === mine;
+        const line = b.unit === this.me ? 'What a save!' : ours ? `Saved! ${b.unit.name} keeps it out.` : b.by === this.me ? `Saved! ${b.unit.name} stops your shot.` : `Saved by ${b.unit.name}!`;
+        this.herald.say(line, ours ? 'good' : 'bad', 2);
+      }
     }
     if (r.beats.catch !== seen.catch) {
       seen.catch = r.beats.catch;

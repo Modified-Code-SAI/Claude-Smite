@@ -93,7 +93,7 @@ export class RushMode {
   private readonly view: RushView;
   private readonly hud: RushHud;
   /** The beats already shown, so each catch, fumble and goal flashes once. */
-  private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, goals: 0, phase: '' as string };
+  private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, goals: 0, phase: '' as string };
   private readonly v = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
   private readonly toHead = new THREE.Vector3();
@@ -153,7 +153,7 @@ export class RushMode {
     this.view.camera = deps.camera;
     deps.vfx.add(this.view.group);
     this.hud = new RushHud(rush, player, this.gods, !!net);
-    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, shrug: rush.beats.shrug, goals: rush.goalCount, phase: rush.phase };
+    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, shrug: rush.beats.shrug, save: rush.beats.save, goals: rush.goalCount, phase: rush.phase };
   }
 
   /** Whether the local player has the relic (their skills and basic attack give way to throwing). */
@@ -166,11 +166,12 @@ export class RushMode {
     return this.rush.frozen;
   }
 
-  /** The local carrier throws toward their aim point. */
+  /** The local carrier throws toward their aim point, or to the teammate the pass assist picks out (a guest sends where that is). */
   throw(): void {
     const me = this.deps.player;
-    if (this.guest) this.guest.act({ k: 'throw', a: [me.aim.x, me.aim.z] });
-    else this.rush.throwRelic(me, me.aim);
+    const at = this.rush.assistAim(me, me.aim);
+    if (this.guest) this.guest.act({ k: 'throw', a: [at.x, at.z] });
+    else this.rush.throwRelic(me, at);
   }
 
   /** The local player calls for the pass (F): shown to teammates, and a bot carrier throws it to them. */
@@ -282,7 +283,7 @@ export class RushMode {
     this.hud.pointer(this.pointer());
     this.hud.calls(this.callouts());
     this.hud.catcher(this.catchMarker());
-    this.hud.frame(dt);
+    this.hud.frame(dt, this.view.read, this.view.aim);
   }
 
   /** Light and shake for the sport's big moments: a catch, the relic knocked loose, a goal, the relic released at kickoff. */
@@ -293,6 +294,14 @@ export class RushMode {
     const at = this.view.relicAt;
     const burst = (p: GodPalette, x: number, y: number, z: number, power: number) => this.deps.burst(p, x, y, z, power);
     if (at && (r.beats.catch !== seen.catch || r.beats.steal !== seen.steal)) burst(GOLD, at.x, at.y, at.z, 0.45);
+    if (at && r.beats.save !== seen.save) {
+      // a save: a flash in the keeper's colors, felt by anyone close
+      const keeper = r.lastBeat?.kind === 'save' ? r.lastBeat.unit : null;
+      burst(keeper && keeper.team !== me.team ? FOE : ALLY, at.x, at.y, at.z, 1.1);
+      burst(GOLD, at.x, at.y, at.z, 0.6);
+      const near = Math.max(0, 1 - Math.hypot(me.x - at.x, me.z - at.z) / 20);
+      if (near > 0) this.deps.shake?.(0.08 + near * 0.2);
+    }
     if (at && r.beats.fumble !== seen.fumble) {
       burst(GOLD, at.x, at.y, at.z, 0.8);
       const b = r.lastBeat;
@@ -320,7 +329,7 @@ export class RushMode {
     const cheer = r.phase === 'goal' && r.lastGoal ? RUSH.celebrate - r.timer : -1;
     if (r.lastGoal && this.cheerAt >= 0 && this.cheerAt < RUSH.cheer.again && cheer >= RUSH.cheer.again) this.deps.swing?.(r.lastGoal.scorer, 'ult');
     this.cheerAt = cheer;
-    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, goals: r.goalCount, phase: r.phase };
+    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, save: r.beats.save, goals: r.goalCount, phase: r.phase };
   }
 
   /**
@@ -391,7 +400,7 @@ export class RushMode {
     const p = head.project(cam);
     if (Math.abs(p.x) > 1.05 || Math.abs(p.y) > 1.05) return null;
     const ally = by.team === me.team;
-    const label = ally ? 'Pass' : this.rush.shotOnTarget(me, me.aim) ? 'Save' : 'Cut off';
+    const label = ally ? 'Pass' : this.rush.shotOnTarget(me, this.view.aim ?? me.aim) ? 'Save' : 'Cut off';
     return { x: ((p.x + 1) / 2) * window.innerWidth, y: ((1 - p.y) / 2) * window.innerHeight, ally, name: by.name, label, raised: ally && this.rush.calledAgo(by) !== null };
   }
 
