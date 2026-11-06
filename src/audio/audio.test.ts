@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest';
 import { GODS } from '../game/gods';
 import { jotunn } from '../game/gods/jotunn';
 import { hashSeed, RATE } from './dsp';
-import { CHORDS, INST, INSTRUMENTS, SONGS } from './music';
+import { CHORDS, INST, INSTRUMENTS, Music, SONGS } from './music';
+import type { AudioEngine } from './AudioEngine';
 import { SKILL_SOUNDS } from './skillSounds';
 import { renderRecipe, SOUNDS, type Recipe } from './sounds';
 
@@ -76,6 +77,26 @@ describe('sound bank', () => {
         });
       }
     }
+  });
+
+  test('the music steps back, drums first, while something with its own beat carries the moment', () => {
+    const gains = { battle: 0, base: 0 };
+    const layer = (name: keyof typeof gains) => ({ gain: { setTargetAtTime: (v: number) => (gains[name] = v) } });
+    const engine = { ctx: { currentTime: 0 }, onUnlock: () => {} } as unknown as AudioEngine;
+    const music = new Music(engine);
+    (music as unknown as { playing: unknown }).playing = { layers: { battle: layer('battle'), base: layer('base') } };
+    const run = (seconds: number, hush: number) => {
+      for (let i = 0; i < seconds * 60; i++) music.setIntensity(1, 1 / 60, hush);
+    };
+    run(3, 0);
+    expect(gains.battle).toBeGreaterThan(0.95);
+    // a crowd's chant takes over: the drums go, and the rest drops right back
+    run(5, 1);
+    expect(gains.battle).toBeLessThan(0.02);
+    expect(gains.base).toBeLessThan(0.15);
+    // and it comes back quicker than it went
+    run(2.5, 0);
+    expect(gains.battle).toBeGreaterThan(0.95);
   });
 
   test('sounds are deterministic', () => {
