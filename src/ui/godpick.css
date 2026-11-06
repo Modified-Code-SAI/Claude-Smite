@@ -135,10 +135,12 @@
 .gp-strip { display: flex; gap: 12px; }
 .gp-strip { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 2 * clamp(200px, 15vw, 270px) - 80px); }
 /* as many cards as there are gods: narrower the more there are */
-.gp-god { position: relative; width: clamp(64px, calc((100vw - 760px) / var(--n, 5) - 12px), 118px); aspect-ratio: 4 / 5; padding: 0; overflow: hidden; background: radial-gradient(ellipse at 50% 35%, #3a2c1c, #0d0b08); border: 2px solid rgba(231, 194, 122, 0.35); border-radius: 6px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55); transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s, opacity 0.3s; animation: gp-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(0.2s + var(--i) * 0.05s); }
+.gp-god { position: relative; width: clamp(64px, calc((100vw - 2 * clamp(200px, 15vw, 270px) - 80px) / var(--n, 5) - 12px), 118px); aspect-ratio: 4 / 5; padding: 0; overflow: hidden; background: radial-gradient(ellipse at 50% 35%, #3a2c1c, #0d0b08); border: 2px solid rgba(231, 194, 122, 0.35); border-radius: 6px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55); transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s, opacity 0.3s; animation: gp-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(0.2s + var(--i) * 0.05s); }
 @keyframes gp-rise { from { opacity: 0; transform: translateY(18px); } }
 .gp-god img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(0.75) brightness(0.72); transition: filter 0.18s; }
-.gp-god span { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 4px 6px; font-size: 13px; letter-spacing: 0.08em; text-align: center; color: #ffe9bd; background: linear-gradient(180deg, transparent, rgba(6, 5, 4, 0.92) 60%); }
+/* the name shrinks with its card (more gods, narrower cards), so a long name still fits whole */
+.gp-god { container-type: inline-size; }
+.gp-god span { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 2px 6px; font-size: clamp(8px, 14.5cqi, 13px); letter-spacing: min(0.08em, 1.2cqi); white-space: nowrap; text-align: center; color: #ffe9bd; background: linear-gradient(180deg, transparent, rgba(6, 5, 4, 0.92) 60%); }
 .gp-god:hover { transform: translateY(-4px); border-color: rgba(255, 227, 163, 0.8); }
 .gp-god:hover img, .gp-god.on img { filter: none; }
 .gp-god.on { transform: translateY(-8px); border-color: #ffe3a3; box-shadow: 0 0 0 1px rgba(255, 238, 190, 0.6) inset, 0 0 26px rgba(255, 210, 120, 0.55), 0 12px 26px rgba(0, 0, 0, 0.6); }
@@ -232,7 +234,7 @@
   .gp-secs { font-size: 26px; }
   .gp-main { top: 116px; bottom: 150px; }
   .gp-foot { height: 124px; bottom: 16px; }
-  .gp-god { width: clamp(56px, calc((100vw - 700px) / var(--n, 5) - 12px), 80px); }
+  .gp-god { width: clamp(56px, calc((100vw - 2 * clamp(200px, 15vw, 270px) - 80px) / var(--n, 5) - 12px), 80px); }
   .gp-slot { height: 60px; grid-template-columns: 60px minmax(0, 1fr) auto; }
   .gp-face { width: 60px; height: 60px; }
   .gp-foes .gp-slot { grid-template-columns: auto minmax(0, 1fr) 60px; }
