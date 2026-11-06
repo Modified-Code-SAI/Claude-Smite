@@ -1121,7 +1121,9 @@ export class GameAudio {
     const me = this.me;
     const c = me.combatant;
     const low = me.alive ? 1 - c.health / c.stats.maxHealth : 0;
-    if (!this.ended) this.music.setIntensity(Math.min(1, Math.max(this.moodFloor, this.heat + (low > 0.6 ? 0.3 : 0))), dt);
+    // (the music steps back while Relic Rush's crowd chants: their beats would trip over each other)
+    const r = this.game.rush;
+    if (!this.ended) this.music.setIntensity(Math.min(1, Math.max(this.moodFloor, this.heat + (low > 0.6 ? 0.3 : 0))), dt, r && chanting(r) ? 1 : 0);
     const pulse = me.alive && low > 0.72;
     if (pulse && !this.heartbeat) this.heartbeat = this.engine.loop('heartbeat', { gain: 0, bus: 'sfx' });
     if (this.heartbeat) {

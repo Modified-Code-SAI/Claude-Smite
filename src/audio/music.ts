@@ -526,6 +526,8 @@ export class Music {
   private playing: Playing | null = null;
   private timer = 0;
   private intensity = 0;
+  /** How far the music has stepped back (0 to 1) for a sound that carries the moment itself. */
+  private hush = 0;
   private want: SongName | null = null;
 
   constructor(private readonly engine: AudioEngine) {
@@ -575,16 +577,22 @@ export class Music {
     this.playing = null;
   }
 
-  /** 0 = exploring, 1 = all-out fight. Smoothed here. */
-  setIntensity(v: number, dt: number): void {
+  /**
+   * 0 = exploring, 1 = all-out fight. Smoothed here. `hush` (0 to 1) steps
+   * the music back for a sound with a beat of its own (Relic Rush's crowd
+   * chanting), drums first, so the two never trip over each other: it eases
+   * out over a few seconds and comes back quicker.
+   */
+  setIntensity(v: number, dt: number, hush = 0): void {
     const target = Math.max(0, Math.min(1, v));
     const k = target > this.intensity ? 1 - Math.exp(-dt * 2.5) : 1 - Math.exp(-dt * 0.25);
     this.intensity += (target - this.intensity) * k;
+    this.hush += (hush - this.hush) * (1 - Math.exp(-dt * (hush > this.hush ? 0.9 : 1.6)));
     const p = this.playing;
     const ctx = this.engine.ctx;
     if (!p || !ctx) return;
-    p.layers.battle.gain.setTargetAtTime(Math.pow(this.intensity, 0.8), ctx.currentTime, 0.2);
-    p.layers.base.gain.setTargetAtTime(1 - this.intensity * 0.3, ctx.currentTime, 0.2);
+    p.layers.battle.gain.setTargetAtTime(Math.pow(this.intensity, 0.8) * (1 - this.hush), ctx.currentTime, 0.2);
+    p.layers.base.gain.setTargetAtTime((1 - this.intensity * 0.3) * (1 - 0.85 * this.hush), ctx.currentTime, 0.2);
   }
 
   /** A short fanfare over everything (victory, defeat). */
