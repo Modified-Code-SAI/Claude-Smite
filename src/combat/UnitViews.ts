@@ -215,6 +215,8 @@ export class UnitViews {
   private readonly views = new Map<Unit, UnitView>();
   /** Relic Rush: fallen gods are dazed, not dead, and lie where they fell instead of sinking away. */
   dazes = false;
+  /** Relic Rush: the god carrying the relic, who holds it up in their off hand (null: nobody). */
+  carrier: Unit | null = null;
   /** Underworld Descent: the dead claw their way up out of the floor instead of appearing on it. */
   emergeMonsters = false;
   /** Turns laid over how gods face (see `turn`), by god. */
@@ -446,7 +448,7 @@ export class UnitViews {
   }
 
   /** Hit-stop on a god's pose (the player's included); other units just wobble. */
-  /** A move of the arms without an attack: Relic Rush's throw (a basic swing) and a scorer's cheer (the ultimate's arms to the sky). */
+  /** A move of the arms without an attack: Relic Rush's throw (from the off hand that held it up) and a scorer's cheer (the ultimate's arms to the sky). */
   /**
    * Turns a god's model `weight` (0 to 1) of the way toward facing `yaw`,
    * over whatever its sim facing is: a scorer turning to the camera. Weight 0
@@ -503,6 +505,13 @@ export class UnitViews {
   /** A unit's height as drawn (a Champion's grown size included), or null before it has a view. */
   heightOf(u: Unit): number | null {
     return this.views.get(u)?.height ?? null;
+  }
+
+  /** World position of a god's off (left) hand as posed, or null without a model on show. */
+  handOf(u: Unit, out: THREE.Vector3): THREE.Vector3 | null {
+    const v = this.views.get(u);
+    if (!v?.model || !v.root.visible) return null;
+    return v.model.leftHand.getWorldPosition(out);
   }
 
   /** World position just above a unit's head (for health bars). */
@@ -583,6 +592,7 @@ export class UnitViews {
     if (v.model) {
       const target = u.sinceAction < v.model.castHold ? 1 : 0;
       v.model.castWeight += (target - v.model.castWeight) * (1 - Math.exp(-dt * (target ? 22 : 6)));
+      v.model.carrying = u === this.carrier && u.alive;
     }
 
     const liftGoal = u.untargetable > 0 && u.alive ? 5 : 0;
