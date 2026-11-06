@@ -10,8 +10,10 @@ import { RelicView } from './Vfx';
 
 type Ground = (x: number, z: number) => number;
 
-/** How far to the screen's right of the local carrier's head the relic is held (m). */
+/** How far to the screen's right of the local carrier's head the relic is held (m), when there's no hand to hold it. */
 const MINE_SIDE = 0.8;
+/** How far above the carrier's off hand the relic's middle sits (m): another god's, and the local carrier's smaller one. */
+export const HELD = { lift: 0.5, mine: 0.36 };
 /**
  * A thrown relic coming down loose: how far it dips below its hover (m), how
  * fast it springs back (rad/s), how quickly that dies away, and the seconds
@@ -265,6 +267,9 @@ export class RushView {
   /** Where the relic was drawn last frame, so a catch glides instead of snapping. */
   private readonly drawn = new THREE.Vector3();
   private readonly goal = new THREE.Vector3();
+  /** Where the relic was drawn when it reached its holder's hand, from the hand: closes over a catch. */
+  private readonly lag = new THREE.Vector3();
+  private heldBy: Unit | null = null;
   private placed = false;
   /** The relic's phase last frame, and seconds since a throw last came down loose (for the bounce; -1 none). */
   private wasPhase = '';
@@ -378,7 +383,7 @@ export class RushView {
     return this.relic.visible ? this.relic.position : null;
   }
 
-  frame(rush: Rush, me: Unit, headOf: (u: Unit, out: THREE.Vector3) => THREE.Vector3 | null, dt: number, t: number): void {
+  frame(rush: Rush, me: Unit, headOf: (u: Unit, out: THREE.Vector3) => THREE.Vector3 | null, dt: number, t: number, handOf?: (u: Unit, out: THREE.Vector3) => THREE.Vector3 | null): void {
     const r = rush.relic;
     const R = RUSH.relic;
     const shown = r.phase !== 'gone';
@@ -386,9 +391,14 @@ export class RushView {
     let x = r.x;
     let z = r.z;
     let y = this.ground(x, z) + r.h;
-    // the local carrier holds it up beside their head, smaller: over it, it would sit on the crosshair and hide whoever they pass to
+    // the carrier holds it up in their off hand; the local one's is smaller, off to the side of the crosshair so it doesn't hide whoever they pass to
     const mine = r.phase === 'held' && r.holder === me;
-    if (r.phase === 'held' && r.holder) {
+    const hand = r.phase === 'held' && r.holder ? handOf?.(r.holder, this.head) : null;
+    if (hand) {
+      x = hand.x;
+      z = hand.z;
+      y = hand.y + (mine ? HELD.mine : HELD.lift);
+    } else if (r.phase === 'held' && r.holder) {
       const head = headOf(r.holder, this.head);
       if (head) {
         x = head.x;
@@ -403,9 +413,15 @@ export class RushView {
       }
     }
     this.relic.scale.setScalar(mine ? 0.7 : 1);
-    // glide into the hands on a catch rather than jumping a meter
-    if (!this.placed || r.phase === 'center' || r.phase === 'gone') this.drawn.set(x, y, z);
-    else this.drawn.lerp(this.goal.set(x, y, z), Math.min(1, dt * (r.phase === 'held' ? 22 : 40)));
+    this.goal.set(x, y, z);
+    if (!this.placed || r.phase === 'center' || r.phase === 'gone') this.drawn.copy(this.goal);
+    else if (r.phase === 'held') {
+      // glide into the hand on a catch rather than jumping a meter, then stay right in it
+      if (this.heldBy !== r.holder) this.lag.copy(this.drawn).sub(this.goal);
+      this.lag.multiplyScalar(Math.exp(-dt * 22));
+      this.drawn.copy(this.goal).add(this.lag);
+    } else this.drawn.lerp(this.goal, Math.min(1, dt * 40));
+    this.heldBy = r.phase === 'held' ? r.holder : null;
     this.placed = shown;
     // a throw that comes down loose carries on into the ground and bounces back up to hover, then eases into its bob
     if (this.wasPhase === 'flying' && r.phase === 'loose') this.landedFor = 0;

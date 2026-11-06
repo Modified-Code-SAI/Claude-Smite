@@ -42,13 +42,17 @@ export interface RushDeps {
   temple?: THREE.Group;
   groundAt: (x: number, z: number) => number;
   headOf: (u: Unit, out: THREE.Vector3) => THREE.Vector3 | null;
+  /** Where a god's off hand is, as posed (the relic sits in it while they carry it). */
+  handOf?: (u: Unit, out: THREE.Vector3) => THREE.Vector3 | null;
+  /** Who carries the relic, so their off hand holds it up (null: nobody). */
+  carry?: (u: Unit | null) => void;
   toast: (text: string) => void;
   camera: THREE.Camera;
   /** A burst of light and sparks (CombatVfx.burst). */
   burst: (p: GodPalette, x: number, y: number, z: number, power: number) => void;
   shake?: (amount: number) => void;
-  /** Plays a god's throwing arm (the basic-attack swing), or a scorer's cheer ('ult': chest up, a hand to the sky). */
-  swing?: (u: Unit, kind?: 'basic' | 'ult') => void;
+  /** Plays a carrier's throw ('throw': the off hand that held the relic up whips it on), or a scorer's cheer ('ult': chest up, a hand to the sky). */
+  swing?: (u: Unit, kind?: 'throw' | 'ult') => void;
   /** Lays a camera shot over the follow camera (the first kickoff's fly-over); null hands it back. */
   cameraShot?: (shot: CameraShot | null) => void;
   /** Turns a god's model `weight` (0 to 1) of the way toward facing `yaw`, over its own facing; 0 hands it back. */
@@ -372,7 +376,9 @@ export class RushMode {
   frame(dt: number, time: number): void {
     this.flyoverFrame();
     this.goalCamFrame(dt);
-    this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time);
+    const r = this.rush.relic;
+    this.deps.carry?.(r.phase === 'held' ? r.holder : null);
+    this.view.frame(this.rush, this.deps.player, this.deps.headOf, dt, time, this.deps.handOf);
     this.beats();
     this.victory(dt);
     this.throws();
@@ -486,13 +492,13 @@ export class RushMode {
     });
   }
 
-  /** A new throw swings its thrower's arm (on every end: the relic's state says who threw). */
+  /** A new throw whips its thrower's off arm forward (on every end: the relic's state says who threw). */
   private throws(): void {
     const r = this.rush.relic;
     const thrower = r.phase === 'flying' ? r.thrower : null;
     if (thrower && thrower !== this.lastThrower) {
       thrower.sinceAction = 0;
-      this.deps.swing?.(thrower);
+      this.deps.swing?.(thrower, 'throw');
     }
     this.lastThrower = thrower;
   }

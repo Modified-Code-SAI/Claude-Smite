@@ -96,8 +96,8 @@ const IDLE_STANCE: Record<string, { bone: string; axis: [number, number, number]
 };
 
 /** Bones the cast pose overrides (upper body only, so legs keep running). */
-/** Which upper-body overlay an action plays. */
-export type CastKind = 'basic' | 'skill' | 'ult';
+/** Which upper-body overlay an action plays ('throw': Relic Rush's off hand throws what it held up, see ALOFT). */
+export type CastKind = 'basic' | 'skill' | 'ult' | 'throw';
 
 /** Per kind: clip playback rate, accent strength, and how long gameplay holds the pose (s). */
 const CAST_FEEL: Record<CastKind, { rate: number; accent: number; hold: number }> = {
@@ -105,6 +105,30 @@ const CAST_FEEL: Record<CastKind, { rate: number; accent: number; hold: number }
   skill: { rate: 1.6, accent: 1, hold: 0.35 },
   // ultimates play the skill motion slower and hold it twice as long
   ult: { rate: 1.05, accent: 1, hold: 0.7 },
+  // (no clip: the off arm's own reach, see ALOFT)
+  throw: { rate: 1, accent: 0, hold: 0.3 },
+};
+
+/**
+ * Relic Rush: the off hand holds the relic up while its god carries it, and
+ * throws it on from there. Directions are from the shoulder in model space
+ * (+x the god's left, +y up, +z ahead).
+ */
+export const ALOFT = {
+  /** Where the hand reaches while it holds the relic up: high, a little out and ahead. */
+  hold: [0.3, 1, 0.14] as const,
+  /** Where it whips through on a throw: forward, a little up. */
+  release: [0.16, 0.32, 1] as const,
+  /** Which way the elbow bends: out to the side and back. */
+  pole: [1, 0, -0.45] as const,
+  /** How much of the arm's length the hand reaches out (a straight arm looks locked). */
+  reach: 0.93,
+  /** How fast the arm goes up on a catch, and comes down once the relic is gone (1/s). */
+  rise: 12,
+  drop: 7,
+  /** A throw: the arm whips forward over `whip` s, then hands back to the clips by `time`. */
+  whip: 0.11,
+  time: 0.36,
 };
 
 /** Layered on top of the god's accent for ultimates: chest arched back, chin up, the off hand raised to the sky. */
@@ -113,6 +137,14 @@ const ULT_ACCENT: { bone: string; axis: [number, number, number]; angle: number 
   { bone: 'DEF-head', axis: [1, 0, 0], angle: -0.22 },
   { bone: 'DEF-upper_arm.L', axis: [0, 0, 1], angle: 1.7 },
 ];
+
+const aloftDir = new THREE.Vector3();
+const aloftTo = new THREE.Vector3();
+const aloftPole = new THREE.Vector3();
+const aloftS = new THREE.Vector3();
+const aloftE = new THREE.Vector3();
+const aloftW = new THREE.Vector3();
+const identity = new THREE.Quaternion();
 
 const UPPER = /^DEF-(spine00[23]|neck|head|shoulder|upper_arm|forearm|hand|f_|thumb)/;
 
@@ -144,6 +176,12 @@ export class GodModel {
   readonly leftHand: THREE.Object3D;
   /** 0..1 blend toward the cast pose; gameplay sets it every frame. */
   castWeight = 0;
+  /** Relic Rush: whether this god carries the relic (the off hand holds it up; eased in and out here). */
+  carrying = false;
+  private aloft = 0;
+  private throwTime = 1e9;
+  private readonly upperArmL: THREE.Bone;
+  private readonly forearmL: THREE.Bone;
   /** Seconds since this god died, or negative while alive; gameplay sets it every frame. */
   deathTime = -1;
   readonly height: number;
@@ -254,6 +292,8 @@ export class GodModel {
     this.hips = bone('DEF-hips');
     this.rightHand = bone('DEF-hand.R');
     this.leftHand = bone('DEF-hand.L');
+    this.upperArmL = bone('DEF-upper_arm.L');
+    this.forearmL = bone('DEF-forearm.L');
 
     this.mixer = new THREE.AnimationMixer(scene);
     const clip = (n: string) => {
@@ -415,7 +455,8 @@ export class GodModel {
   /** Starts the overlay for a basic attack, skill or ultimate; `castWeight` still blends it in and out. */
   startCast(kind: CastKind): void {
     this.castKind = kind;
-    this.castTime = 0;
+    if (kind === 'throw') this.throwTime = 0;
+    else this.castTime = 0;
   }
 
   /** A short upper-body recoil from a hit; `strength` 0..1. Alternates chest and head hits. */
@@ -467,6 +508,9 @@ export class GodModel {
     this.smoothedSpeed = 0;
     this.prevSpeed = 0;
     this.airWeight = 0;
+    this.carrying = false;
+    this.aloft = 0;
+    this.throwTime = 1e9;
   }
 
   animate(dt: number, s: LocomotionState, clothDt = dt): void {
@@ -549,7 +593,8 @@ export class GodModel {
     if (this.castWeight > 0.5 && this.prevCast <= 0.5) this.castTime = 0;
     this.prevCast = this.castWeight;
     this.castTime += dt;
-    const cw = this.castWeight;
+    // (a throw has no clip: the off arm makes it below)
+    const cw = this.castKind === 'throw' ? 0 : this.castWeight;
     if (cw > 0.01) {
       const feel = CAST_FEEL[this.castKind];
       const o = this.overlays[this.castKind === 'basic' ? 'basic' : 'skill'];
@@ -578,6 +623,7 @@ export class GodModel {
         c.bone.quaternion.slerp(this.tmpQ, fw);
       }
     }
+    this.holdAloft(dt);
     if (this.poseHook) {
       this.root.updateMatrixWorld(true);
       this.poseHook(dt);
@@ -586,6 +632,55 @@ export class GodModel {
     for (const c of this.curl) c.bone.quaternion.multiply(c.q);
     this.root.updateMatrixWorld(true);
     this.physics.update(Math.min(clothDt, 1 / 20));
+  }
+
+  /**
+   * Relic Rush: the off hand up overhead while the god carries the relic,
+   * and on a throw a whip of that arm forward, then back to the clips. Two-bone
+   * IK, so the arm holds still over the stride instead of swinging with it.
+   */
+  private holdAloft(dt: number): void {
+    this.aloft += ((this.carrying ? 1 : 0) - this.aloft) * (1 - Math.exp(-dt * (this.carrying ? ALOFT.rise : ALOFT.drop)));
+    this.throwTime += dt;
+    let w = this.aloft;
+    const to = aloftDir.fromArray(ALOFT.hold);
+    if (this.throwTime < ALOFT.time) {
+      // the throw takes the arm down itself
+      this.aloft = 0;
+      const t = this.throwTime;
+      to.lerp(aloftTo.fromArray(ALOFT.release), THREE.MathUtils.smoothstep(t, 0, ALOFT.whip));
+      w = 1 - THREE.MathUtils.smoothstep(t, ALOFT.whip, ALOFT.time);
+    }
+    if (w < 0.01) return;
+    this.root.updateMatrixWorld(true);
+    this.root.getWorldQuaternion(this.tmpQ);
+    to.normalize().applyQuaternion(this.tmpQ);
+    const pole = aloftPole.fromArray(ALOFT.pole).applyQuaternion(this.tmpQ);
+    const S = this.upperArmL.getWorldPosition(aloftS);
+    const E = this.forearmL.getWorldPosition(aloftE);
+    const W = this.leftHand.getWorldPosition(aloftW);
+    const a = S.distanceTo(E);
+    const b = E.distanceTo(W);
+    const d = (a + b) * ALOFT.reach;
+    // the elbow out of line toward the pole, as far as the reach bends it
+    pole.addScaledVector(to, -pole.dot(to)).normalize();
+    const cosA = THREE.MathUtils.clamp((a * a + d * d - b * b) / (2 * a * d), -1, 1);
+    aloftTo.copy(S).addScaledVector(to, a * cosA).addScaledVector(pole, a * Math.sqrt(1 - cosA * cosA));
+    this.turnBone(this.upperArmL, E.sub(S).normalize(), aloftTo.sub(S).normalize(), w);
+    // then the forearm on to where the hand goes
+    this.forearmL.getWorldPosition(E);
+    this.leftHand.getWorldPosition(W);
+    aloftTo.copy(S).addScaledVector(to, d);
+    this.turnBone(this.forearmL, W.sub(E).normalize(), aloftTo.sub(E).normalize(), w);
+  }
+
+  /** Turns a bone `w` of the way so its world direction `from` points along `to` (parents' world matrices current). */
+  private turnBone(bone: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, w: number): void {
+    this.tmpQ2.setFromUnitVectors(from, to);
+    if (w < 1) this.tmpQ2.slerp(identity, 1 - w);
+    bone.parent!.getWorldQuaternion(this.tmpQ);
+    bone.quaternion.premultiply(this.tmpQ3.copy(this.tmpQ).invert().multiply(this.tmpQ2).multiply(this.tmpQ));
+    bone.updateMatrixWorld(true);
   }
 
   /** A bone by its rig name ('DEF-upper_arm.R'). */
