@@ -67,6 +67,12 @@ const CAST_ACCENTS: Record<string, { bone: string; axis: [number, number, number
     { bone: 'DEF-head', axis: [1, 0, 0], angle: 0.1 },
     { bone: 'DEF-upper_arm.L', axis: [1, 0, 0], angle: 0.9 },
   ],
+  // Kukulkan rears back like a striking serpent and thrusts the staff out at the sky
+  kukulkan: [
+    { bone: 'DEF-spine003', axis: [1, 0, 0], angle: -0.14 },
+    { bone: 'DEF-head', axis: [1, 0, 0], angle: -0.12 },
+    { bone: 'DEF-upper_arm.R', axis: [1, 0, 0], angle: -1.1 },
+  ],
 };
 
 /**
@@ -103,6 +109,11 @@ const IDLE_STANCE: Record<string, { bone: string; axis: [number, number, number]
   thanatos: [
     { bone: 'DEF-head', axis: [1, 0, 0], angle: 0.14 },
     { bone: 'DEF-head', axis: [0, 0, 1], angle: 0.07 },
+  ],
+  // Kukulkan: a priest-king, chest out and chin raised under the serpent's jaws
+  kukulkan: [
+    { bone: 'DEF-spine003', axis: [1, 0, 0], angle: -0.05 },
+    { bone: 'DEF-head', axis: [1, 0, 0], angle: -0.2 },
   ],
 };
 

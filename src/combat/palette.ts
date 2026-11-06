@@ -24,6 +24,7 @@ const PALETTES: Record<string, GodPalette> = {
   loki: { cloth: 0x1f5a2a, trim: 0xb8b04a, glow: 0x7dff6a, vfx: 0x3dff7a, core: 0xdcffe2, element: 'smoke' },
   anubis: { cloth: 0x18130e, trim: 0xe0b04a, glow: 0xffa040, vfx: 0xff7a1a, core: 0xffe3a6, element: 'sand' },
   thanatos: { cloth: 0x1c1826, trim: 0xa8b0bc, glow: 0x74c4ff, vfx: 0x5a9cff, core: 0xe4f4ff },
+  kukulkan: { cloth: 0xeee4cc, trim: 0xf0b848, glow: 0x7affc8, vfx: 0x2fd890, core: 0xf2ffe0 },
   // the frost giant of the Jötunn mode
   jotunn: { cloth: 0x4e3c30, trim: 0x9a7444, glow: 0x66e0ff, vfx: 0x4fcfff, core: 0xeafcff, element: 'frost' },
 };

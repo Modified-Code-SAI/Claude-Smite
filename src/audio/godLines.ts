@@ -81,6 +81,17 @@ export const GOD_LINES: Record<string, Record<LineKind, readonly string[]>> = {
     taunt: ['Do not fight it. Nobody ever wins.', 'I have met kings and beggars. You are not special.', 'You are tired. I can tell.'],
     omw: ['I am coming, softly.', 'On black wings. Wait for me.'],
   },
+  kukulkan: {
+    select: ['The serpent rises with the morning star.'],
+    start: ['Feathers and scales. Sky and earth. I am both.', 'At the equinox my shadow walks the stairs. Today it walks the field.'],
+    kill: ['Shed your skin, if you can.', 'Swallowed whole.', 'The coils close.'],
+    streak: ['The jungle grows quiet.', 'Another offering for the sky.'],
+    ult: ['I descend!', 'See me, and tremble.'],
+    death: ['I will shed... this skin...', 'The star... sets...'],
+    respawn: ['A new skin. The same serpent.', 'The morning star rises again.'],
+    taunt: ['Hear the rattle? That is your warning.', 'You are prey that has not noticed yet.', 'I have watched empires fall into the jungle. You are smaller.'],
+    omw: ['On green wings. I am coming.', 'Hold on. The serpent strikes from above.'],
+  },
 };
 
 /** Moments only the Jötunn speaks to, besides its waking, its kills and its fall. */

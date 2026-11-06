@@ -28,6 +28,12 @@ const DROWSE_MAX = 3;
 const DROWSE_DURATION = 5;
 const DROWSE_SLOW = 0.06;
 const DROWSE_BONUS = 0.04;
+/** Kukulkan sheds his skin when he drops low: crowd control falls away, he heals and slips off faster. */
+const SHED_BELOW = 0.3;
+const SHED_HEAL = 0.12;
+const SHED_SPEED = 0.25;
+const SHED_SPEED_DURATION = 2;
+const SHED_COOLDOWN = 60;
 
 /**
  * The gods' passives. Damage passives plug into the combatant's
@@ -36,6 +42,7 @@ const DROWSE_BONUS = 0.04;
 export class Passives {
   private readonly thorCount = new Map<Unit, number>();
   private readonly anubisReady = new Map<Unit, number>();
+  private readonly shedReady = new Map<Unit, number>();
   private proc = false;
 
   constructor(private readonly sim: Sim) {
@@ -101,6 +108,20 @@ export class Passives {
     }
     if (src && god === 'thanatos' && e.target.alive) this.drowse(src, e.target);
     this.anubisWard(e.target);
+    this.shedSkin(e.target);
+  }
+
+  /** Kukulkan's Shed Skin: below 30% health, once a minute. */
+  private shedSkin(v: Unit): void {
+    if (v.kind !== 'god' || !v.alive || v.combatant.god.id !== 'kukulkan') return;
+    const c = v.combatant;
+    if (c.health / c.stats.maxHealth >= SHED_BELOW) return;
+    if ((this.shedReady.get(v) ?? 0) > this.sim.time) return;
+    c.cc.cleanse();
+    c.heal(c.stats.maxHealth * SHED_HEAL);
+    c.addTimedMod('bonusMoveSpeed', SHED_SPEED, SHED_SPEED_DURATION);
+    this.shedReady.set(v, this.sim.time + SHED_COOLDOWN);
+    this.sim.flashAt(v, { type: 'circle', x: v.x, z: v.z, radius: 1.6 });
   }
 
   /** Thanatos's Drowse: a stack per hit, up to 3, each slowing a little more (one slow, refreshed and deepened). */

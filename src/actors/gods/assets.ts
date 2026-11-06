@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeSkinned } from '../../scene/merge';
 
 /** Gods with a built model in public/models/gods (see tools/gods/build.py). */
-export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos'] as const;
+export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan'] as const;
 export type GodId = (typeof GOD_IDS)[number];
 
 export interface GodAsset {

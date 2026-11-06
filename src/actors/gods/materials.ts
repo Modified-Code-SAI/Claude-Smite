@@ -67,6 +67,12 @@ const PALETTES: Record<string, GodPalette> = {
     cloth2: 0x2e2846, leather: 0x1e1a1e, hair: 0x0e0c12, hairTip: 0x2a2632, fur: 0x15131b, glow: 0x74c4ff,
     eye: 0xbfe8ff, gem: 0xc81e2a, furTip: 0x6a6680,
   },
+  // the feathered serpent: warm brown skin, white cotton, Maya red, jade, gold, quetzal green shading to turquoise
+  kukulkan: {
+    skin: 0xa8704e, skinDeep: 0x5a2a1c, gold: 0xf0b848, steel: 0x56d6a2, cloth: 0xeee4cc, clothDeep: 0x8c7c5c,
+    cloth2: 0xb8281e, leather: 0x5a3420, hair: 0x0c0a08, hairTip: 0x221c18, fur: 0x087a46, glow: 0x7affc8,
+    eye: 0xffd060, gem: 0x2fbf86, furTip: 0x52d878,
+  },
   // the frost giant: glacier-blue skin, old bronze, black iron, dark bear fur frosted at the tips
   jotunn: {
     skin: 0x6c90c2, skinDeep: 0x16295a, gold: 0x9a7444, steel: 0x4e5560, cloth: 0x4a3a2e, clothDeep: 0x1e1610,

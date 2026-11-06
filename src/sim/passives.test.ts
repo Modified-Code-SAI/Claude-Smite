@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anubis, loki, odin, thanatos, thor, zeus } from '../game/gods';
+import { anubis, kukulkan, loki, odin, thanatos, thor, zeus } from '../game/gods';
 import type { GodDef } from '../game/types';
 import { godUnit } from './factory';
 import { conquestBases } from './Match';
@@ -112,5 +112,61 @@ describe('god passives', () => {
     for (let i = 0; i < 6 * 60; i++) sim.step(1 / 60);
     expect(t.marks.get('drowse')?.stacks ?? 0).toBe(0);
     expect(t.combatant.moveSpeed).toBeCloseTo(speed, 5);
+  });
+
+  it('Thanatos: Final Rest spends Drowse, harder per stack, and only sleeps a target at full stacks', () => {
+    const sim = setup();
+    const a = place(sim, thanatos, 'order', 0, 0);
+    const bare = place(sim, thor, 'chaos', -1, -2.5);
+    const full = place(sim, thor, 'chaos', 1, -2.5);
+    for (const t of [a, bare, full]) t.brain = null;
+    full.marks.set('drowse', { stacks: 3, remaining: 5 });
+    const c = a.combatant;
+    c.inBase = true;
+    expect(c.swap(0, 'thanatos.final-rest')).toBeNull();
+    c.inBase = false;
+    a.aim.x = 0;
+    a.aim.z = -6;
+    const hb = bare.combatant.health;
+    const hf = full.combatant.health;
+    expect(sim.cast(a, 0)).toBeNull();
+    sim.step(1 / 60);
+    // no Drowse: untouched; three stacks: hit and put to sleep, and the stacks are spent
+    expect(bare.combatant.health).toBe(hb);
+    expect(bare.combatant.cc.has('mesmerize')).toBe(false);
+    expect(full.combatant.health).toBeLessThan(hf);
+    expect(full.combatant.cc.has('mesmerize')).toBe(true);
+    expect(full.marks.has('drowse')).toBe(false);
+  });
+
+  it('Kukulkan: dropping below 30% sheds his skin (cleanse, heal, speed), once a minute', () => {
+    const sim = setup();
+    const k = place(sim, kukulkan, 'order', 0, 0);
+    const t = place(sim, thor, 'chaos', 0, -2);
+    k.brain = null;
+    t.brain = null;
+    const c = k.combatant;
+    const max = c.stats.maxHealth;
+    const speed = c.moveSpeed;
+    c.receiveCC('stun', 3);
+    // a hit that leaves him at 40% does nothing
+    c.health = max * 0.45;
+    sim.strike(t, k, max * 0.05, 'true');
+    expect(c.cc.has('stun')).toBe(true);
+    // one that takes him under 30% sheds the skin
+    sim.strike(t, k, max * 0.2, 'true');
+    expect(c.cc.has('stun')).toBe(false);
+    expect(c.health / max).toBeGreaterThan(0.3);
+    expect(c.moveSpeed).toBeGreaterThan(speed * 1.2);
+    // not again until a minute has passed
+    c.receiveCC('stun', 3);
+    c.health = max * 0.25;
+    sim.strike(t, k, 1, 'true');
+    expect(c.cc.has('stun')).toBe(true);
+    for (let i = 0; i < 61 * 60; i++) sim.step(1 / 60);
+    c.health = max * 0.25;
+    c.receiveCC('stun', 3);
+    sim.strike(t, k, 1, 'true');
+    expect(c.cc.has('stun')).toBe(false);
   });
 });
