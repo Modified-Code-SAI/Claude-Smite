@@ -23,6 +23,14 @@ const AWARD_ICON: Record<RushAwardKey, string> = {
 const RUSH_CUT = { in: 0.3, out: 0.55 };
 /** Seconds the match card takes to fade once play starts. */
 const RUSH_INTRO_FADE = 0.7;
+/**
+ * Pops played through the Web Animations API: restarting a CSS animation
+ * means reading layout between dropping and re-adding its class, and that
+ * forced layout cost milliseconds a frame while the catch marker hopped
+ * between gods.
+ */
+const CATCH_POP: Keyframe[] = [{ transform: 'scale(0.2)' }, { transform: 'none' }];
+const COUNT_POP: Keyframe[] = [{ transform: 'scale(1.7)', opacity: 0.2 }, { transform: 'none', opacity: 1 }];
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
@@ -105,6 +113,7 @@ export class RushHud {
     this.arrow = this.root.querySelector('.rush-pointer')!;
     this.catchEl = this.root.querySelector('.rush-catch')!;
     this.catchLabel = this.catchEl.querySelector('b')!;
+    this.catchPop = this.catchEl.querySelector('span')!;
     this.cut = this.root.querySelector('.rush-cut')!;
     this.intro = this.root.querySelector('.rush-intro')!;
     this.introCount = this.root.querySelector('.rush-intro-count')!;
@@ -153,6 +162,7 @@ export class RushHud {
 
   private readonly catchEl: HTMLElement;
   private readonly catchLabel: HTMLElement;
+  private readonly catchPop: HTMLElement;
   private catchKey = '';
 
   /** The marker over whoever would catch the carrier's throw (null hides it). */
@@ -166,9 +176,7 @@ export class RushHud {
         this.catchEl.classList.toggle('raised', c.raised);
         this.catchLabel.textContent = c.label;
         // re-pop when it lands on somebody new or changes its call
-        this.catchEl.classList.remove('pop');
-        void this.catchEl.offsetWidth;
-        this.catchEl.classList.add('pop');
+        this.catchPop.animate(CATCH_POP, { duration: 350, easing: 'cubic-bezier(0.3, 1.6, 0.5, 1)' });
       }
     }
     if (c) this.catchEl.style.transform = `translate(${c.x.toFixed(0)}px, ${c.y.toFixed(0)}px)`;
@@ -209,9 +217,7 @@ export class RushHud {
       this.introCount.textContent = count;
       this.introCount.classList.toggle('go', !kickoff);
       // each new number pops in
-      this.introCount.classList.remove('pop');
-      void this.introCount.offsetWidth;
-      this.introCount.classList.add('pop');
+      this.introCount.animate(COUNT_POP, { duration: 450, easing: 'cubic-bezier(0.3, 1.5, 0.5, 1)' });
     }
     const v = this.introLeft.toFixed(2);
     if (v === this.lastIntro) return;
