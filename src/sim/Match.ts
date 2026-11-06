@@ -80,6 +80,8 @@ export class Match {
     // structures stand in the way like walls, so routes go around them
     this.nav = new Nav({ groundAt: (x, z) => sim.terrain.groundAt(x, z), resolve: (x, z, r, y) => sim.solid(x, z, r, y) }, L.halfExtent);
     this.objectives = new Objectives(this.jungle, this.gods);
+    // neither team always moves first (see Sim.alternateOrder)
+    sim.alternateOrder = true;
     sim.listeners.push((e) => this.onEvent(e));
   }
 

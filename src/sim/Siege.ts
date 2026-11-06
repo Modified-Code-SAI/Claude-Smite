@@ -265,6 +265,8 @@ export class Siege {
     private readonly sim: Sim,
     private readonly base: GodDef,
   ) {
+    // the gods and the horde take turns moving first (see Sim.alternateOrder); waves held stayed the same
+    sim.alternateOrder = true;
     sim.listeners.push((e) => this.on(e));
   }
 
