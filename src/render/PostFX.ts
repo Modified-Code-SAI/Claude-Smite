@@ -10,6 +10,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import type { QualitySettings } from './Quality';
+import { pulse, updatePulse } from './screenPulse';
 
 /** Artist controls for the final image. Values are live uniforms. */
 export const grading = {
@@ -130,12 +131,15 @@ export class PostFX {
     }
 
     const graded = Fn(() => {
-      const exposed = vec4(hdr.rgb.mul(grading.exposure), 1);
+      // (a pulse lifts the frame a touch and richens its color: screenPulse.ts)
+      const exposed = vec4(hdr.rgb.mul(grading.exposure.mul(pulse.amount.mul(0.06).add(1))), 1);
       const display = renderOutput(exposed, this.renderer.toneMapping, THREE.SRGBColorSpace);
-      const c = cdl(display, grading.slope, grading.offset, grading.power, grading.saturation).rgb.toVar();
+      const c = cdl(display, grading.slope, grading.offset, grading.power, grading.saturation.add(pulse.amount.mul(0.18))).rgb.toVar();
       // Vignette: darkens corners to frame the action.
       const d = screenUV.sub(0.5).mul(vec3(1.0, 0.75, 0).xy).length();
       c.mulAssign(float(1).sub(smoothstep(0.35, 0.95, d).mul(grading.vignette)));
+      // a pulse glows in from the edges, leaving the middle of the screen clear
+      c.addAssign(pulse.color.mul(smoothstep(0.25, 0.8, d).mul(pulse.amount).mul(0.42)));
       // Fine film grain, also dithers away banding in the sky.
       const n = hash(screenUV.mul(vec3(1931.7, 1137.3, 0).xy).add(time.mul(13.1)).dot(vec3(1, 57, 0).xy)).sub(0.5);
       c.addAssign(n.mul(grading.grain));
@@ -151,6 +155,7 @@ export class PostFX {
   }
 
   render(): void {
+    updatePulse();
     if (this.bloomNode) {
       this.bloomNode.strength.value = grading.bloomStrength.value;
       this.bloomNode.radius.value = grading.bloomRadius.value;

@@ -12,6 +12,8 @@ import { castStaticAsOne } from '../scene/merge';
 import { hypot, turnToward } from '../core/math';
 import type { Billows } from '../scene/Billows';
 import { TEAM_STYLE } from '../scene/structures/common';
+import { paletteOf } from './palette';
+import { settings } from '../settings/store';
 
 const _cloudAt = new THREE.Vector3();
 /**
@@ -569,6 +571,13 @@ export class UnitViews {
       if (v && !v.structure) {
         v.wobbleVel += Math.min(6, 1.5 + e.amount / 40);
         v.model?.flinch(0.35 + e.amount / 150);
+        if (v.model && e.amount > 0) {
+          // the blow lands in light, as bright as it is heavy (a burn's tick a glint, a crit or a big chunk white-hot),
+          // gentler on your own god and with reduced flashing
+          const chunk = e.amount / Math.max(1, e.target.combatant.stats.maxHealth);
+          const k = (e.target === this.player ? 0.6 : 1) * (settings().reduceFlashes ? 0.45 : 1);
+          v.model.flash(Math.min(1, (e.crit ? 0.85 : 0.35) + chunk * 4) * k, e.source ? paletteOf(e.source).core : 0xffffff);
+        }
       }
       if (e.target.kind === 'minion') this.minions.hit(e.target, e.amount);
     } else if (e.type === 'basic') {
