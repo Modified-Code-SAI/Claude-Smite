@@ -1,9 +1,11 @@
-"""Kukulkan: the Feathered Serpent of the Maya, as his priests wore him. A tall
-ruler-priest whose face looks out from the open jaws of a jade serpent
-headdress, crowned with a fountain of long quetzal plumes; a wide jade
-collar, a short cape of green feathers, a white cotton loincloth with long
-front and back flaps over a red sash, jade cuffs, high-backed sandals, and a
-staff with a jade serpent coiled up its head."""
+"""Kukulkan: the Feathered Serpent of the Maya, in his own form. A tall
+serpent who walks upright: a long, flat-snouted serpent head with an upturned
+nose scroll, heavy brow plates, gold eyes and hooked fangs; green scales with
+a gold belly; a crest of long quetzal plumes and a ruff of feathers at the
+throat; great green feathered wings; a long serpent tail plumed at its end;
+clawed hands and feet. He still wears a king's jade: a beaded collar, cuffs
+and anklets, a red sash and a white loincloth, and carries a staff with a
+jade serpent coiled around its head."""
 from __future__ import annotations
 
 import numpy as np
@@ -13,7 +15,8 @@ from ..geo import Mesh, extrude, merge, look_rotation, sphere, tube
 from ..god import God
 from ..mathx import normalize
 from ..regions import smooth
-from .common import add_hair_head, add_skirt, face_fields, head_weights, heroic, heroic_face
+from .common import add_claws, add_skirt, head_weights, heroic
+from .thanatos import feather
 
 
 def plume(length: float, width: float, rng, droop: float = 0.25, sides: int = 11) -> Mesh:
@@ -39,15 +42,13 @@ def plume(length: float, width: float, rng, droop: float = 0.25, sides: int = 11
 
 class Kukulkan(God):
     name = 'kukulkan'
-    height = 2.24
+    height = 2.36
     definition = 0.55
     bulk = {'DEF-upper_arm': 1.08, 'DEF-forearm': 1.05, 'DEF-spine.003': (1.04, 1.0, 1.0)}
-    shape = mh.Shape(gender=1, muscle=0.7, weight=0.4, height=1.0, proportions=1.0, extra={
-        **heroic(0.6, hands=0.3), **heroic_face(0.5),
-        'head/head-oval': 0.3, 'nose/nose-hump-incr': 0.6, 'nose/nose-scale-vert-incr': 0.3, 'chin/chin-prominent-incr': 0.2,
-        'cheek/l-cheek-bones-incr': 0.5, 'cheek/r-cheek-bones-incr': 0.5,
-        'eyebrows/eyebrows-angle-down': 0.3,
+    shape = mh.Shape(gender=1, muscle=0.75, weight=0.35, height=1.0, proportions=1.0, extra={
+        **heroic(0.6, hands=0.35), 'torso/torso-vshape-incr': 0.3,
     })
+    stretch = {'forearm': 1.06}
 
     def make(self):
         F, b = self.F, self.body
@@ -86,22 +87,15 @@ class Kukulkan(God):
             fld = np.minimum(F.bones(f'shin.{s}'), np.minimum(smooth(t, 0.72, 0.76), smooth(-t, -0.84, -0.8)))
             anklet, W = shell.plate(b, fld, offset=0.012, thickness=0.01, rim=0.005, smooth=4)
             self.add(f'anklet.{s}', 'steel', anklet, W)
-            fo = F.bones(f'foot.{s}', f'toe.{s}')
-            sandal, W = shell.plate(b, np.minimum(fo, smooth(-y, -0.075, -0.055)), offset=0.007, thickness=0.007, rim=0.003, smooth=2)
-            self.add(f'sandal.{s}', 'leather', sandal, W)
-            heel = np.minimum.reduce([F.bones(f'foot.{s}', f'shin.{s}'), smooth(-y, -0.15, -0.12), smooth(-(F.v[:, 2] - ft[2]), 0.0, 0.03)])
-            back, W = shell.plate(b, heel, offset=0.009, thickness=0.006, rim=0.003, smooth=2)
-            self.add(f'heel.{s}', 'leather', back, W)
 
-        # ---- head: black hair tied back under the headdress, the serpent jaws, the quetzal plumes
-        H = F.joint('DEF-head') + np.array([0, 0.1, 0.0])
-        add_hair_head(self, hair=False, beard=False, mustache=False, seed=21)  # brows; the helmet and its fringe cover the head
-        self.serpent_crown()
-        self.feather_cape(neck)
+        # ---- the serpent: head, crest and throat ruff, feathered wings, tail, claws
+        self.serpent_head()
+        self.wings(neck)
+        self.tail(hips)
+        add_claws(self, hand_len=0.06, toe_len=0.04)
         self.staff()
 
-        self.add_body(hide=skirt.hide)  # (bare feet in open sandals)
-        self.eyes()
+        self.add_body(hide=skirt.hide | (F.bones('DEF-head') > 0.25))
         self.meta['grip'] = ['R']
         self.meta['curl'] = kit.grip_curl(self.body, 'R')
 
@@ -137,150 +131,179 @@ class Kukulkan(God):
         self.add('collar_gold', 'gold', bm, 'DEF-spine.003')
         self.add('collar_jade', 'gem', sphere(0.03, 14, 10).transformed(s=[1, 1, 0.5], t=disc_c + [0, 0, 0.004]), 'DEF-spine.003')
 
-    def serpent_crown(self):
-        """A jade serpent head worn as a helmet: its long upper jaw juts over the brow with a gold lip and a
-        row of teeth, its fangs hang at the temples, and the wearer's face looks out of its open mouth.
-        A fountain of long quetzal plumes rises from the back, over a fringe of feathers at the nape."""
-        lm = face_fields(self)
-        H = self.F.joint('DEF-head') + np.array([0, 0.1, 0.0])  # skull center
-        eye = lm['eye']
-        ez = eye[2]
-        brow = eye[1] + 0.035
-        z0 = ez - 0.07  # the mouth opens in front of this
+    def serpent_head(self):
+        """A long, flat serpent head with an upturned nose scroll on its snout, heavy brow plates over gold
+        eyes, hooked fangs over a closed mouth, a crest of quetzal plumes, and a ruff of feathers at the throat."""
+        F = self.F
+        H = F.joint('DEF-head') + np.array([0, 0.1, 0.0])  # skull center
+        nk = F.joint('DEF-neck')
+        S = 1.36
+        fwd = np.array([0, 0, 1.0])
 
-        def fn(p):
-            # the cranium of the serpent, sitting over the skull
-            d = sdf.ellipsoid(p, H + [0, 0.035, 0.012], np.array([0.138, 0.125, 0.158]))
-            # its upper jaw: long, broad and flat, pushed out over the brow
-            d = sdf.smin(d, sdf.capsule(p, H + [0, 0.03, 0.05], H + [0, 0.0, 0.29], 0.095, 0.058, squash=(np.array([0, 1.0, 0]), 1.75)), 0.05)
-            # a blunt, squared muzzle and a small upturned nose scroll on its tip
-            d = sdf.smin(d, sdf.ellipsoid(p, H + [0, 0.005, 0.29], np.array([0.06, 0.034, 0.05])), 0.03)
-            d = sdf.smin(d, sdf.capsule(p, H + [0, 0.02, 0.305], H + [0, 0.07, 0.325], 0.026, 0.02), 0.02)
-            d = sdf.smin(d, sdf.capsule(p, H + [0, 0.07, 0.325], H + [0, 0.085, 0.29], 0.02, 0.014), 0.012)
-            for sx in (-1, 1):  # nostrils
-                d = sdf.smax(d, -sdf.sphere(p, H + [sx * 0.03, 0.018, 0.335], 0.013), 0.005)
-            # heavy brow plates over its great eyes, swept back
+        def fn0(p):
+            d = sdf.ellipsoid(p, H + [0, 0.0, 0.0], np.array([0.085, 0.075, 0.1]))
+            # the upper jaw: long, wide and flat
+            d = sdf.smin(d, sdf.capsule(p, H + [0, -0.005, 0.05], H + [0, -0.02, 0.25], 0.07, 0.036, squash=(np.array([0, 1.0, 0]), 1.55)), 0.05)
+            # the lower jaw, a little narrower, under it
+            d = sdf.smin(d, sdf.capsule(p, H + [0, -0.055, 0.02], H + [0, -0.06, 0.22], 0.055, 0.026, squash=(np.array([0, 1.0, 0]), 1.6)), 0.03)
+            # the mouth line, grooved along both sides from the corner to the tip
             for sx in (-1, 1):
-                d = sdf.smin(d, sdf.ellipsoid(p, H + [sx * 0.095, 0.085, 0.115], np.array([0.04, 0.02, 0.075])), 0.025)
-            # open the mouth: carve out everything below the upper jaw in front of the face
-            mouth = np.minimum(brow + 0.005 - p[:, 1], p[:, 2] - z0)  # > 0 inside the open mouth
-            d = sdf.smax(d, mouth, 0.012)
-            # hollow it so it sits on the head
-            d = sdf.smax(d, -sdf.ellipsoid(p, H + [0, 0.01, 0.03], np.array([0.112, 0.105, 0.14])), 0.01)
-            # the jaw's lip comes down to the cheekbones at the sides, and the nape is cut short
-            d = sdf.smax(d, (H[1] - 0.075) - p[:, 1], 0.01)
+                d = sdf.smax(d, -sdf.capsule(p, H + [sx * 0.062, -0.042, 0.04], H + [sx * 0.03, -0.045, 0.24], 0.009, 0.006), 0.006)
+            # heavy brow plates, swept back over the eyes
+            for sx in (-1, 1):
+                d = sdf.smin(d, sdf.ellipsoid(p, H + [sx * 0.056, 0.036, 0.09], np.array([0.032, 0.013, 0.07])), 0.02)
+            # the nose scroll: a small curl rising from the tip of the snout
+            d = sdf.smin(d, sdf.capsule(p, H + [0, 0.0, 0.245], H + [0, 0.045, 0.262], 0.022, 0.017), 0.015)
+            d = sdf.smin(d, sdf.capsule(p, H + [0, 0.045, 0.262], H + [0, 0.055, 0.232], 0.017, 0.011), 0.01)
+            for sx in (-1, 1):  # nostrils
+                d = sdf.smax(d, -sdf.sphere(p, H + [sx * 0.022, -0.008, 0.27], 0.009), 0.004)
+            # eye sockets
+            for sx in (-1, 1):
+                d = sdf.smax(d, -sdf.sphere(p, H + [sx * 0.064, 0.022, 0.105], 0.016), 0.006)
+            # a long neck down into the collar
+            d = sdf.smin(d, sdf.capsule(p, H + [0, -0.04, -0.03], H + (nk + [0, -0.07, 0.0] - H) / S, 0.062 / S, 0.075 / S), 0.05)
             return d
 
-        lo = H + np.array([-0.2, -0.12, -0.2])
-        hi = H + np.array([0.2, 0.22, 0.4])
-        m = sdf.mesh(fn, lo, hi, step=0.0055, smooth=3)
+        def fn(p):
+            return fn0(H + (p - H) / S) * S
+
+        lo = np.array([-0.17, nk[1] - 0.12, H[2] - 0.17])
+        hi = np.array([0.17, H[1] + 0.17, H[2] + 0.4])
+        m = sdf.mesh(fn, lo, hi, step=0.0055, smooth=4)
         m.col = np.zeros((len(m.v), 4))
-        self.add('serpent_head', 'steel', m, head_weights(self, m.v))
-        V = m.v
+        self.add('serpent_head', 'skin', m, head_weights(self, m.v, fall=0.12))
 
-        gold, glow, bone = [], [], []
-        # the lip: trace the edge of the jaw's flat underside, from cheek round the muzzle to cheek
-        lip_y = brow + 0.005
-        rim = V[(np.abs(V[:, 1] - lip_y) < 0.004) & (V[:, 2] > z0 + 0.01)]
-        cz = z0 + 0.09
-        ang = np.arctan2(rim[:, 0], rim[:, 2] - cz)
-        pts = []
-        for a in np.linspace(-1.75, 1.75, 40):
-            sel = np.abs(ang - a) < 0.06
-            if not sel.any():
-                continue
-            q = rim[sel]
-            r = np.hypot(q[:, 0], q[:, 2] - cz)
-            pts.append(q[np.argmax(r)] + np.array([0, -0.004, 0]))
-        lip = np.array(pts)
-        gold.append(tube(lip, np.full(len(lip), 0.0075), 6))
-        # teeth hang from the lip along the snout (not in front of the eyes)
-        cum = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(lip, axis=0), axis=1))])
-        for at in np.arange(0.02, cum[-1] - 0.01, 0.026):
-            q = lip[np.searchsorted(cum, at)]
-            if abs(q[0]) < 0.06 and q[2] < H[2] + 0.31:
-                continue  # leave the view out of the mouth clear
-            L = 0.024 if abs(q[0]) > 0.03 else 0.018
-            tooth = np.array([q, q + [0, -L * 0.6, 0.002], q + [0, -L, 0]])
-            bone.append(tube(tooth, np.array([0.0065, 0.004, 0.001]), 6))
-        # a ridge of gold studs down the top of the head and snout
-        top = V[np.abs(V[:, 0]) < 0.008]
-        for zz in np.linspace(H[2] - 0.05, H[2] + 0.27, 10):
-            q = top[np.abs(top[:, 2] - zz) < 0.006]
-            if len(q):
-                gold.append(sphere(0.012, 10, 8).transformed(s=[1, 0.6, 1.2], t=q[np.argmax(q[:, 1])] + [0, 0.002, 0]))
-        # great round eyes in gold rings on the sides of the head, under the brow plates
+        at = lambda q: H + np.asarray(q) * S  # noqa: E731
+        glow, gold, bone = [], [], []
         for sx in (-1, 1):
-            c = H + np.array([sx * 0.128, 0.06, 0.12])
-            out = normalize(np.array([sx * 1.0, 0.1, 0.45]))
-            gold.append(kit.ring_around(c, out, 0.03, 0.008, seg=24, sides=6))
-            glow.append(sphere(0.024, 14, 10).transformed(s=[1, 1, 0.6], R=look_rotation(out), t=c - out * 0.004))
-            # fangs: long and curved, hanging from the jaw's corners beside the face
-            root = np.array([sx * 0.088, brow - 0.003, ez - 0.005])
-            path = np.array([root, root + [sx * 0.004, -0.045, 0.014], root + [-sx * 0.004, -0.085, 0.006]])
-            bone.append(tube(path, np.array([0.015, 0.011, 0.002]), 8))
-        gm, wm, fm = merge(gold), merge(glow), merge(bone)
-        self.add('serpent_gold', 'gold', gm, head_weights(self, gm.v))
-        self.add('serpent_eyes', 'glow', wm, head_weights(self, wm.v))
-        self.add('serpent_fangs', 'clothplain', fm, head_weights(self, fm.v))
+            out = normalize(np.array([sx * 1.0, 0.15, 0.5]))
+            e = sphere(0.016 * S, 16, 12)
+            # all iris, with a vertical slit pupil facing out
+            col = np.zeros((len(e.v), 4))
+            col[:, 0] = np.where((np.abs(e.v[:, 0]) < 0.0035 * S) & (e.v[:, 2] > 0.008 * S), 1.0, 0.9)
+            e.col = col
+            glow.append(e.transformed(s=[1, 0.8, 1.3], R=look_rotation(out), t=at([sx * 0.064, 0.022, 0.105]) - out * 0.002))
+            gold.append(kit.ring_around(at([sx * 0.064, 0.022, 0.105]) + out * 0.004, out, 0.019 * S, 0.0045, seg=20, sides=6))
+            # hooked fangs at the front of the upper jaw, hanging past the lower lip
+            root = at([sx * 0.028, -0.04, 0.2])
+            path = np.array([root, root + [0, -0.025, 0.004], root + [0, -0.045, -0.006]])
+            bone.append(tube(path, np.array([0.008, 0.006, 0.0012]) * S, 8))
+            # a gold ear spool on each side of the head, as the carvings show
+            gold.append(kit.ring_around(at([sx * 0.088, -0.005, -0.01]), np.array([sx * 1.0, 0, 0]), 0.026 * S, 0.008, seg=24, sides=6))
+        self.add('serpent_eyes', 'eye', merge(glow), 'DEF-head')
+        self.add('serpent_gold', 'gold', merge(gold), 'DEF-head')
+        self.add('serpent_fangs', 'clothplain', merge(bone), 'DEF-head')
+        self.add('spool_jade', 'gem', merge([sphere(0.013 * S, 12, 8).transformed(s=[0.6, 1, 1], t=at([sx * 0.095, -0.005, -0.01])) for sx in (-1, 1)]), 'DEF-head')
 
-        # quetzal plumes: a fountain rising from the back of the crown, arching back and falling
         rng = np.random.default_rng(11)
         plumes = []
-        base = H + np.array([0, 0.13, -0.06])
-        n = 19
+        # the crest: long quetzal plumes rising from the back of the head and arching back
+        base = at([0, 0.07, -0.05])
+        n = 17
         for i in range(n):
             k = i / (n - 1)
-            spread = (k - 0.5) * 2  # -1 .. 1 across
-            # a tall fountain that reads above the head from the game camera, arching back only at the tips
-            up = normalize(np.array([spread * 0.65, 1.0, -0.3 - 0.25 * (1 - abs(spread))]))
+            spread = (k - 0.5) * 2
+            up = normalize(np.array([spread * 0.7, 1.0, -0.5 - 0.3 * (1 - abs(spread))]))
             face = normalize(np.cross(up, [1.0, 0, 0]) * -1 + np.array([spread * 0.3, 0, 0]))
-            L = 0.85 + 0.55 * (1 - abs(spread)) ** 1.5 + rng.uniform(-0.07, 0.07)
-            f = plume(L, 0.042, rng, droop=0.45 + 0.25 * abs(spread))
-            at = base + np.array([spread * 0.07, -0.015 * abs(spread), 0.01 * (1 - abs(spread))])
-            plumes.append(f.transformed(R=look_rotation(face, up), t=at))
-        # a crest of short, broad feathers standing up around the crown
-        for a in np.linspace(-2.9, 2.9, 18):
-            if np.cos(a) > -0.15:  # only behind the crown, so none stand up like ears
-                continue
-            at = H + np.array([np.sin(a) * 0.11, 0.05, np.cos(a) * 0.13 - 0.01])
-            up = normalize(np.array([np.sin(a) * 0.7, 0.6, np.cos(a) * 0.7]))
-            face = normalize(np.array([np.sin(a), 0, np.cos(a)]))
-            face = normalize(face - up * (face @ up))
-            plumes.append(plume(0.17 + rng.uniform(0, 0.04), 0.034, rng, droop=0.4).transformed(R=look_rotation(face, up), t=at))
-        # a fringe of feathers falling from the helmet's rim over the nape and behind the ears
+            L = 0.85 + 0.6 * (1 - abs(spread)) ** 1.5 + rng.uniform(-0.06, 0.06)
+            plumes.append(plume(L, 0.046, rng, droop=0.5 + 0.25 * abs(spread)).transformed(R=look_rotation(face, up), t=base + np.array([spread * 0.05, 0, 0])))
+        # a row of short feathers standing along the top of the head, from the brow back
+        for i, zz in enumerate(np.linspace(0.12, -0.06, 6)):
+            up = normalize(np.array([0, 1.0, -0.6]))
+            plumes.append(plume(0.1 + 0.03 * i, 0.03, rng, droop=0.3).transformed(R=look_rotation(np.array([1.0, 0, 0]), up), t=at([0, 0.07 + 0.01 * (1 - abs(zz) * 5), zz])))
+        hm = merge(plumes)
+        self.add('crest', 'fur', hm, head_weights(self, hm.v))
+        # the ruff: two rows of feathers fanning out and down from the base of the throat over the collar
+        ruff = []
         for row in range(2):
-            for a in np.linspace(-2.0, 2.0, 15 - row * 2):
-                at = H + np.array([np.sin(a) * (0.12 + row * 0.01), -0.07 + row * 0.03, -np.cos(a) * 0.13 + 0.02])
-                if abs(a) > 1.6:  # the fringe ends behind the ears
-                    continue
-                down = normalize(np.array([np.sin(a) * 0.3, -1.0, -np.cos(a) * 0.35]))
-                face = normalize(np.array([np.sin(a), 0, -np.cos(a)]))
-                face = normalize(face - down * (face @ down))
-                L = 0.13 + 0.04 * row + rng.uniform(-0.015, 0.015)
-                plumes.append(plume(L, 0.04, rng, droop=-0.12).transformed(R=look_rotation(face, down), t=at))
-        pm = merge(plumes)
-        self.add('plumes', 'fur', pm, head_weights(self, pm.v))
-
-    def feather_cape(self, neck):
-        """A short cape of overlapping green feathers over the shoulder blades."""
-        b = self.body
-        rng = np.random.default_rng(5)
-        pieces = []
-        for row in range(4):
-            yy = neck[1] - 0.04 - row * 0.09
-            n = 9 + row
+            n = 22 - row * 4
             for i in range(n):
-                xx = (i / (n - 1) - 0.5) * (0.3 + row * 0.04)
-                zz = shell_back(b, xx, yy)
-                if zz is None:
-                    continue
-                at = np.array([xx, yy, zz - 0.02 - 0.006 * row])
-                down = normalize(np.array([xx * 0.4, -1.0, -0.12]))
-                face = np.array([0, 0.05, -1.0])
+                a = (i / n) * 2 * np.pi
+                c = nk + np.array([np.sin(a) * (0.1 + 0.02 * row), 0.05 - 0.04 * row, np.cos(a) * (0.09 + 0.02 * row)])
+                down = normalize(np.array([np.sin(a) * 0.9, -0.55, np.cos(a) * 0.9]))
+                face = normalize(np.array([np.sin(a), 0.6, np.cos(a)]))
                 face = normalize(face - down * (face @ down))
-                pieces.append(plume(0.24 + 0.03 * row + rng.uniform(-0.02, 0.02), 0.045, rng, droop=0.08).transformed(R=look_rotation(face, down), t=at))
-        self.add('cape', 'fur', merge(pieces), 'DEF-spine.003')
+                ruff.append(plume(0.16 + 0.07 * row + rng.uniform(-0.02, 0.02), 0.045, rng, droop=-0.15).transformed(R=look_rotation(face, down), t=c))
+        rm = merge(ruff)
+        self.add('ruff', 'fur', rm, head_weights(self, rm.v, fall=0.3))
+        del fwd
+
+    def wings(self, neck):
+        """Great green feathered wings, half open, rising from the shoulder blades."""
+        b = self.body
+        P = b.verts[b.used]
+        rng = np.random.default_rng(7)
+        pieces = []
+        yy = neck[1] - 0.17
+        for sx in (-1, 1):
+            band = (np.abs(P[:, 1] - yy) < 0.03) & (np.abs(P[:, 0] - sx * 0.1) < 0.03)
+            root = np.array([sx * 0.09, yy, P[band, 2].min() - 0.015])
+            ctrl = np.array([[0, 0, 0], [0.15, 0.14, -0.08], [0.38, 0.46, -0.18], [0.6, 0.56, -0.26], [0.82, 0.46, -0.32]])
+            ctrl[:, 0] *= sx
+            ctrl += root
+            seg = np.linspace(0, len(ctrl) - 1, 48)
+            k0 = np.minimum(seg.astype(int), len(ctrl) - 2)
+            edge = ctrl[k0] + (ctrl[k0 + 1] - ctrl[k0]) * (seg - k0)[:, None]
+            for _ in range(3):
+                edge[1:-1] = (edge[:-2] + edge[1:-1] * 2 + edge[2:]) / 4
+            u = np.linspace(0, 1, 48)
+            pieces.append(tube(edge, 0.02 * (1 - 0.6 * u) + 0.01, 8))
+            normal = normalize(np.array([sx * 0.15, 0.05, -1.0]))
+
+            def lay(at, direction, length, width, depth, curve=0.06):
+                d = normalize(direction - normal * (direction @ normal))
+                pieces.append(feather(length, width, rng, curve).transformed(R=look_rotation(normal, d), t=at + normal * depth))
+
+            for i in range(12):  # secondaries
+                k = i / 11
+                lay(edge[int(4 + k * 20)], normalize(np.array([sx * (0.1 + 0.5 * k), -1.0, -0.15])), 0.46 + 0.26 * k + rng.uniform(-0.03, 0.03), 0.07, 0.0)
+            for i in range(10):  # primaries
+                k = i / 9
+                ang = np.radians(-70 + 95 * k)
+                lay(edge[int(24 + k * 23)], normalize(np.array([sx * np.cos(ang) + sx * 0.25, np.sin(ang), -0.2])), 0.78 + 0.16 * np.sin(k * np.pi) - 0.12 * k + rng.uniform(-0.03, 0.03), 0.08, -0.012 - 0.002 * i)
+            for row, (n, L, w, dep) in enumerate(((20, 0.26, 0.06, -0.03), (24, 0.14, 0.045, -0.045))):  # coverts
+                for i in range(n):
+                    k = i / (n - 1)
+                    lay(edge[int(2 + k * 44)], normalize(np.array([sx * (0.15 + 0.7 * k), -1.0, -0.1])), L * (0.8 + 0.4 * np.sin(k * np.pi)), w, dep)
+        self.add('wings', 'fur', merge(pieces), 'DEF-spine.003')
+
+    def tail(self, hips):
+        """A long serpent tail from the small of the back, sweeping behind and to one side, its end plumed
+        with a fan of quetzal tail feathers."""
+        b = self.body
+        P = b.verts[b.used]
+        y0 = hips[1] + 0.02
+        band = (np.abs(P[:, 1] - y0) < 0.03) & (np.abs(P[:, 0]) < 0.04)
+        root = np.array([0, y0, P[band, 2].min() + 0.04])
+        ctrl = [root, root + [0, -0.12, -0.25], root + [0.04, -0.36, -0.62], root + [0.16, -0.5, -1.0], root + [0.32, -0.48, -1.32], root + [0.42, -0.36, -1.52]]
+        path = curve(ctrl, 40)
+        path[:, 1] = np.maximum(path[:, 1], 0.12)
+        t = np.linspace(0, 1, len(path))
+        r = 0.1 * (1 - t) ** 0.9 + 0.012
+        m = tube(path, r, 12)
+        m.col = np.zeros((len(m.v), 4))
+        self.add('tail', 'skin', m, 'DEF-hips')
+        rng = np.random.default_rng(13)
+        fe = []
+        # a row of feathers along the top of the tail
+        for k in np.linspace(0.15, 0.85, 14):
+            i = int(k * (len(path) - 1))
+            d = normalize(path[min(i + 1, len(path) - 1)] - path[i])
+            up = normalize(np.array([0, 1.0, 0]) - d * d[1])
+            at = path[i] + up * r[i] * 0.8
+            dirv = normalize(d * 0.8 + up * 0.6)
+            side = normalize(np.cross(dirv, up))
+            fe.append(plume(0.12 + 0.06 * np.sin(k * np.pi), 0.035, rng, droop=0.2).transformed(R=look_rotation(side, dirv), t=at))
+        # the plumed end: long tail streamers fanning out from the tip
+        tip, d = path[-1], normalize(path[-1] - path[-4])
+        up = normalize(np.array([0, 1.0, 0]) - d * d[1])
+        side = normalize(np.cross(d, up))
+        for i in range(7):
+            k = (i / 6 - 0.5) * 2
+            dirv = normalize(d + side * k * 0.45 + up * 0.25)
+            face = normalize(np.cross(dirv, side))
+            fe.append(plume(0.55 + 0.35 * (1 - abs(k)) + rng.uniform(-0.05, 0.05), 0.045, rng, droop=0.3).transformed(R=look_rotation(face, dirv), t=tip - d * 0.03))
+        self.add('tail_plumes', 'fur', merge(fe), 'DEF-hips')
 
     def staff(self):
         center, along, across, palm = kit.hand_frame(self.body, 'R')
@@ -319,6 +342,16 @@ class Kukulkan(God):
         self.add('staff_plumes', 'fur', T(merge(tuft)), 'DEF-hand.R')
 
 
-def shell_back(body, x, y):
-    from ..physics import back_surface
-    return back_surface(body, x, y)
+def curve(points, n: int) -> np.ndarray:
+    """A smooth polyline through control points (Catmull-Rom), n samples."""
+    P = np.asarray(points, dtype=float)
+    P = np.concatenate([P[:1] * 2 - P[1:2], P, P[-1:] * 2 - P[-2:-1]])
+    segs = len(P) - 3
+    out = []
+    for i in range(n):
+        u = i / (n - 1) * segs
+        k = min(int(u), segs - 1)
+        t = u - k
+        p0, p1, p2, p3 = P[k], P[k + 1], P[k + 2], P[k + 3]
+        out.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3))
+    return np.array(out)
