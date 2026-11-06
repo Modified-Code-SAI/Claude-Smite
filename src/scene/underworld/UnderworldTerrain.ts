@@ -43,6 +43,28 @@ function segment(p: any, a: any, b: any): any {
 
 const hash1 = (x: any) => fract(sin(x.mul(12.9898)).mul(43758.5453));
 
+/** How wide (m) the forge's basalt columns are, and the Abyss's facets of glass. */
+const COLUMN = 0.95;
+const FACET = 1.4;
+
+/**
+ * The cell of a hex lattice (centers 1 apart) that p falls in: p's offset
+ * from the cell's middle, a hash of the cell, and how far p is inside its
+ * edge (0.5 at the middle, 0 at the edge).
+ */
+function hexCell(p: any): { q: any; h: any; edge: any } {
+  const s = vec2(1, Math.sqrt(3));
+  const half = s.mul(0.5);
+  const a = p.sub(s.mul(floor(p.div(s)))).sub(half);
+  const b = p.sub(half).sub(s.mul(floor(p.sub(half).div(s)))).sub(half);
+  const q = select(dot(a, a).lessThan(dot(b, b)), a, b);
+  const id = p.sub(q);
+  // (the hash takes whole numbers and no negatives: the middles fall on halves of 1 and of sqrt 3)
+  const key = floor(id.x.mul(2).add(1024.5)).mul(4096).add(floor(id.y.mul(2 / Math.sqrt(3)).add(1024.5)));
+  const qa = abs(q);
+  return { q, h: hash(key), edge: float(0.5).sub(max(dot(qa, vec2(0.5, Math.sqrt(3) / 2)), qa.x)) };
+}
+
 /**
  * Distance (m) from a floor point to the nearest stroke of one rune ring: two
  * thin guide rings with a script of glyphs between them, each glyph a stem and
@@ -180,17 +202,61 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   // glass, polished to a mirror between their scratches
   let rough: any = mix(flag.roughness.mul(mix(float(0.5), float(0.32), abyss)).add(mix(float(0.08), float(0.04), abyss)), float(0.95), ashW);
 
-  // rock: dark and faintly banded, steep faces and everything above the floor
+  // rock: the steep faces and everything above the floor, each depth's walls
+  // their own stone
   const rockNrm = rock.normal.add(fine.normal).normalize();
   const raw = rock.color.mul(fine.color.mul(1.7));
-  const strata = sin(positionWorld.y.mul(1.1).add(rock.color.r.mul(5))).mul(0.5).add(0.5);
-  // the Drowned Halls: water running down the rock in dark, glossy streaks
+  const wy = positionWorld.y;
+  // level and along the wall, for shading across its columns and beds
+  const along = vec3(n.z.negate(), 0, n.x).div(max(length(n.xz), 0.05));
+  const sheer = smoothstep(0.93, 0.6, n.y);
+  // one hex lattice serves two depths: upright in the forge, where its cells
+  // are the columns the basalt has split into, and skewed and tipped in the
+  // Abyss, where they are the facets of volcanic glass
+  const hex = hexCell(mix(vec2(xz.x.mul(0.62).add(wy.mul(0.45)), xz.y.mul(0.62).sub(wy.mul(0.38))).div(FACET), xz.div(COLUMN), ember));
+
+  // the Ashen Depths: columns of basalt, each its own shade, rounded across
+  // the wall, split into drums at joints of their own heights
+  const drumH = mix(float(1.5), float(3.2), fract(hex.h.mul(7.31)));
+  const drumV = wy.div(drumH).add(fract(hex.h.mul(3.17)));
+  const drum = fract(drumV);
+  const colJoint = smoothstep(0.075, 0.0, hex.edge.mul(COLUMN));
+  const drumJoint = smoothstep(0.065, 0.0, min(drum, float(1).sub(drum)).mul(drumH)).mul(sheer);
+  const colTone = mix(float(0.72), float(1.22), hex.h).mul(mix(float(0.9), float(1.08), hash(floor(drumV).add(floor(hex.h.mul(4096))).add(512))));
+  const colNrm = rockNrm.add(along.mul(dot(hex.q, along.xz).mul(sheer).mul(1.2))).normalize();
+
+  // the Drowned Halls: limestone laid down in beds, each its own shade, the
+  // lip of each catching the light from above and its underside in shadow;
+  // the water that stood here left the stone darker below its line, and water
+  // still runs down it in dark, glossy streaks
+  // (some beds thick, some thin)
+  const bedV = wy.mul(0.9).add(wornN.mul(0.3)).add(sin(wy.mul(0.37)).mul(0.4)).add(sin(wy.mul(1.7).add(1.3)).mul(0.12));
+  const bed = fract(bedV);
+  const bedJoint = smoothstep(0.06, 0.0, min(bed, float(1).sub(bed)).div(0.9));
+  const bedTone = mix(float(0.8), float(1.16), hash(floor(bedV).add(64)));
+  const bedNrm = rockNrm.add(vec3(0, smoothstep(0.72, 1, bed).sub(smoothstep(0.28, 0, bed)).mul(0.7).mul(sheer), 0)).normalize();
+  const tideY = wy.add(wornN.mul(0.12)).sub(2.7);
+  const below = smoothstep(0.06, -0.06, tideY);
+  const tideLine = smoothstep(0.13, 0.0, abs(tideY.sub(0.05)));
   const streak = smoothstep(0.45, 0.85, sin(xz.x.mul(1.9).add(xz.y.mul(1.6)).add(fine.color.r.mul(5))).mul(0.5).add(0.5)).mul(soul);
-  const rockCol = vec3(lum(raw)).mul(depthTint(vec3(0.24, 0.26, 0.25), vec3(0.33, 0.25, 0.215), vec3(0.24, 0.27, 0.28))).mul(mix(float(0.8), float(1.12), strata)).mul(float(1).sub(streak.mul(0.35)));
-  const rockW = max(smoothstep(0.82, 0.6, n.y), smoothstep(0.25, 1.2, positionWorld.y));
+  const bedShade = bedTone.mul(float(1).sub(below.mul(0.28))).add(tideLine.mul(0.35)).mul(float(1).sub(streak.mul(0.35)));
+
+  // the Abyss: black volcanic glass broken into facets, each tipped its own
+  // way (more of them down than up, so few mirror the sky), polished, rippled
+  // in the curved ribs glass breaks in, a pale bevel where two meet
+  const tip = vec3(fract(hex.h.mul(13.7)).sub(0.5), fract(hex.h.mul(5.3)).mul(0.75).sub(0.6), fract(hex.h.mul(9.1)).sub(0.5)).mul(sheer);
+  const facetNrm = mix(rockNrm, n, 0.7).add(tip).normalize();
+  const bevel = smoothstep(0.06, 0.0, hex.edge.mul(FACET));
+  const ribs = sin(length(hex.q.sub(vec2(fract(hex.h.mul(6.1)), fract(hex.h.mul(8.3))).sub(0.5).mul(0.6))).mul(34)).mul(0.5).add(0.5);
+  const glassTone = mix(float(0.3), float(0.55), fract(hex.h.mul(2.9))).mul(float(1).sub(ribs.mul(0.12))).add(bevel.mul(0.9));
+
+  const joints = depthTint(float(0), max(colJoint, drumJoint), bedJoint);
+  const rockCol = vec3(lum(raw)).mul(depthTint(vec3(0.24, 0.26, 0.25), vec3(0.33, 0.25, 0.215), vec3(0.24, 0.27, 0.28))).mul(depthTint(glassTone, colTone, bedShade)).mul(float(1).sub(joints.mul(0.68)));
+  const rockW = max(smoothstep(0.82, 0.6, n.y), smoothstep(0.25, 1.2, wy));
   col = mix(col, rockCol, rockW);
-  nrm = mix(nrm, rockNrm, rockW);
-  rough = mix(rough, mix(mix(float(0.7), float(0.92), strata), float(0.3), streak), rockW);
+  nrm = mix(nrm, depthTint(facetNrm, colNrm, bedNrm), rockW);
+  const rockRough = depthTint(mix(mix(float(0.2), float(0.36), fract(hex.h.mul(4.3))).add(ribs.mul(0.08)), float(0.55), bevel), float(0.62), mix(mix(float(0.75), float(0.42), below), float(0.3), streak));
+  rough = mix(rough, mix(rockRough, float(0.95), joints), rockW);
   col = col.mul(float(1).sub(scorch.mul(0.35)));
   // the runes are cut into the slabs: a dark groove around each glowing line
   const floorW = float(1).sub(rockW);
@@ -256,6 +322,9 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const fleckD = length(fract(xz.mul(3.5)).sub(0.5));
   const fleckBeat = sin(time.mul(cellHash.mul(3).add(1.5)).add(cellHash.mul(40))).mul(0.5).add(0.5);
   const fleck = smoothstep(0.93, 0.96, cellHash).mul(smoothstep(0.24, 0.05, fleckD)).mul(fleckBeat).mul(max(ashW, patch.mul(0.6)));
+  // and molten light up the joints between some of the columns at the walls' foot
+  const lavaUp = smoothstep(1.8, 0.1, wy);
+  const lavaJoint = colJoint.mul(lavaUp.mul(lavaUp)).mul(smoothstep(0.45, 0.75, hex.h)).mul(rockW).mul(ember);
   const seep = joint.mul(1.25).add(crustCracks.mul(2.4)).add(rimHeat.mul(0.3)).add(warmth.mul(0.045)).add(fleck.mul(3.5)).mul(forgeFloor);
   col = col.mul(float(1).sub(joint.add(rimHeat.mul(0.45)).mul(forgeFloor).mul(0.6)));
   // the Drowned Halls: the slabs are wet, moss grows in their joints, and
@@ -288,6 +357,6 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   mat.normalNode = transformNormalToView(nrm.normalize());
   mat.roughnessNode = rough;
   mat.metalnessNode = float(0);
-  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).add(seep).add(fissure).mul(breathe)).add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)));
+  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).add(seep).add(lavaJoint.mul(2.2)).add(fissure).mul(breathe)).add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)));
   return mat;
 }
