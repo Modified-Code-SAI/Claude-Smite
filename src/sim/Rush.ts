@@ -61,6 +61,8 @@ export const RUSH = {
   gateDepth: 1.2,
   /** A throw must pass through the middle of the mouth to score. */
   shotHalfWidth: 3,
+  /** A throw that comes down loose within this far of the gate it went at is a near miss (the crowd gasps). */
+  nearMiss: 7,
   /** A defender near their own gate catches like a keeper: farther and higher. */
   keeper: { halfWidth: 5.5, depth: 4.5, reach: 1.5, height: 3.8 },
   /** Lined up on each side of the relic for a kickoff. */
@@ -183,7 +185,7 @@ export interface RushNet {
   w: Side | null;
   g: number;
   lg: [Side, number, number, 'dunk' | 'shot', number] | null;
-  b: [number, number, number, number, number, number, number, number];
+  b: [number, number, number, number, number, number, number, number, number];
   lb: [RushBeat, number, number] | null;
   r: [RelicPhase, number, number, number, number, number, number, number, number, number, number, number, number, number, Side | null, number];
   l: [number, number, number, number, number, number][];
@@ -195,8 +197,12 @@ export interface RushNet {
   lj: number;
 }
 
-/** A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the relic through a hit, `dodge` a juke that slipped a tackle. */
-export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug' | 'save' | 'dodge';
+/**
+ * A moment the HUD, sounds and effects mark: `shrug` is a Captain keeping the
+ * relic through a hit, `dodge` a juke that slipped a tackle, `miss` a throw
+ * that came down loose by the gate it went at.
+ */
+export type RushBeat = 'fumble' | 'steal' | 'catch' | 'shrug' | 'save' | 'dodge' | 'miss';
 
 const other = (t: Side): Side => (t === 'order' ? 'chaos' : 'order');
 
@@ -272,8 +278,8 @@ export class Rush {
   }
   /** Counts every goal, so watchers can tell a new one from the last. */
   goalCount = 0;
-  /** Bumped on each fumble, interception, catch, Captain's shrug, save (a shot caught on its way in) and juke, for sounds and banners. */
-  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0, juke: 0, dodge: 0 };
+  /** Bumped on each fumble, interception, catch, Captain's shrug, save (a shot caught on its way in), juke, dodge and near miss, for sounds and banners. */
+  readonly beats = { fumble: 0, steal: 0, catch: 0, kickoff: 0, shrug: 0, save: 0, juke: 0, dodge: 0, miss: 0 };
   /** Who juked last (see `beats.juke`), for the streak and the whoosh. */
   lastJuke: Unit | null = null;
   /** The latest of those beats, with who did it. */
@@ -664,6 +670,13 @@ export class Rush {
       if (p >= 1) {
         r.phase = 'loose';
         r.h = R.looseHeight;
+        // a throw that comes down loose by the gate it went at: wide, short, or over the top
+        const t = r.thrower;
+        const gate = t ? RUSH.gates[other(t.team as Side)] : null;
+        if (t && gate && hypot(r.x - gate.x, r.z - gate.z) <= RUSH.nearMiss) {
+          this.beats.miss++;
+          this.lastBeat = { kind: 'miss', unit: t, by: null };
+        }
       }
       return;
     }
@@ -892,7 +905,7 @@ export class Rush {
       w: this.winner,
       g: this.goalCount,
       lg: g ? [g.team, at(g.scorer), at(g.assist), g.kind, n(g.at)] : null,
-      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge],
+      b: [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge, this.beats.miss],
       lb: b ? [b.kind, at(b.unit), at(b.by)] : null,
       r: [r.phase, at(r.holder), n(r.x), n(r.z), n(r.h), n(r.fx), n(r.fz), n(r.tx), n(r.tz), n(r.t), n(r.duration), n(r.arc), n(r.h0), at(r.thrower), r.team, n(r.since)],
       l: this.squad.map((u) => {
@@ -922,7 +935,7 @@ export class Rush {
     const lg = s.lg;
     const scorer = lg && god(lg[1]);
     this.lastGoal = lg && scorer ? { team: lg[0], scorer, assist: god(lg[2]), kind: lg[3], at: lg[4] } : null;
-    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge] = s.b;
+    [this.beats.fumble, this.beats.steal, this.beats.catch, this.beats.kickoff, this.beats.shrug, this.beats.save, this.beats.juke, this.beats.dodge, this.beats.miss] = s.b;
     this.lastJuke = god(s.lj);
     const lb = s.lb;
     const unit = lb && god(lb[1]);

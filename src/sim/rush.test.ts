@@ -76,6 +76,45 @@ describe('Relic Rush', () => {
     expect(rush.lines.get(a)!.passes).toBe(1);
   });
 
+  it('a throw that comes down loose by the gate it went at is a near miss; one in midfield is not', () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    const c = god(sim, thor, 'chaos', 0);
+    rush.begin([a, c]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(c, 20, 20);
+    const pickUp = () => {
+      sim.teleport(a, rush.relic.x, rush.relic.z);
+      run(sim, rush, 0.6, () => rush.holder === a);
+      expect(rush.holder).toBe(a);
+      run(sim, rush, RUSH.relic.holdMin + 0.05);
+    };
+    // midfield: just loose
+    pickUp();
+    sim.teleport(a, 0, -4);
+    expect(rush.throwRelic(a, { x: 8, z: -4 })).toBe(true);
+    run(sim, rush, 3, () => rush.relic.phase === 'loose');
+    expect(rush.relic.phase).toBe('loose');
+    expect(rush.beats.miss).toBe(0);
+    // wide of the chaos gate (order attacks it), out past the mouth a shot must go through
+    pickUp();
+    sim.teleport(a, 7, -14);
+    const gate = RUSH.gates.chaos;
+    expect(rush.throwRelic(a, { x: gate.x + 6, z: gate.z + 1.5 })).toBe(true);
+    run(sim, rush, 3, () => rush.relic.phase === 'loose');
+    expect(rush.relic.phase).toBe('loose');
+    expect(rush.score.order).toBe(0);
+    expect(Math.hypot(rush.relic.x - gate.x, rush.relic.z - gate.z)).toBeLessThanOrEqual(RUSH.nearMiss);
+    expect(rush.beats.miss).toBe(1);
+    expect(rush.lastBeat?.kind).toBe('miss');
+    expect(rush.lastBeat?.unit).toBe(a);
+    const guest = match();
+    guest.rush.join([god(guest.sim, zeus, 'order', 0), god(guest.sim, thor, 'chaos', 0)]);
+    guest.rush.applyNet(JSON.parse(JSON.stringify(rush.netState())));
+    expect(guest.rush.beats.miss).toBe(1);
+    expect(guest.rush.lastBeat?.kind).toBe('miss');
+  });
+
   it('a stun knocks the relic loose, and the tackler is credited', () => {
     const { sim, rush } = match();
     const a = god(sim, zeus, 'order', 0);

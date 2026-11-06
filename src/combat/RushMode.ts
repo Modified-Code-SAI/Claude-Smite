@@ -97,7 +97,7 @@ export class RushMode {
   private readonly view: RushView;
   private readonly hud: RushHud;
   /** The beats already shown, so each catch, fumble and goal flashes once. */
-  private seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, juke: 0, dodge: 0, goals: 0, phase: '' as string };
+  private readonly seen = { catch: 0, steal: 0, fumble: 0, shrug: 0, save: 0, juke: 0, dodge: 0, goals: 0, phase: '' as string, relic: '' as string };
   private readonly v = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
   private readonly toHead = new THREE.Vector3();
@@ -158,7 +158,7 @@ export class RushMode {
     this.view.camera = deps.camera;
     deps.vfx.add(this.view.group);
     this.hud = new RushHud(rush, player, this.gods, !!net);
-    this.seen = { catch: rush.beats.catch, steal: rush.beats.steal, fumble: rush.beats.fumble, shrug: rush.beats.shrug, save: rush.beats.save, juke: rush.beats.juke, dodge: rush.beats.dodge, goals: rush.goalCount, phase: rush.phase };
+    this.see();
   }
 
   /** Whether the local player has the relic (their skills and basic attack give way to throwing). */
@@ -439,11 +439,30 @@ export class RushMode {
       this.deps.shake?.(0.15 + near * 0.35);
     }
     if (r.phase === 'play' && seen.phase === 'kickoff' && at) burst(GOLD, at.x, at.y, at.z, 0.9);
+    // a throw coming down loose kicks up a puff of gold where it lands
+    if (seen.relic === 'flying' && r.relic.phase === 'loose') burst(GOLD, r.relic.x, this.deps.groundAt(r.relic.x, r.relic.z) + 0.2, r.relic.z, 0.3);
     // and again a moment later
     const cheer = r.phase === 'goal' && r.lastGoal ? RUSH.celebrate - r.timer : -1;
     if (r.lastGoal && this.cheerAt >= 0 && this.cheerAt < RUSH.cheer.again && cheer >= RUSH.cheer.again) this.deps.swing?.(r.lastGoal.scorer, 'ult');
     this.cheerAt = cheer;
-    this.seen = { catch: r.beats.catch, steal: r.beats.steal, fumble: r.beats.fumble, shrug: r.beats.shrug, save: r.beats.save, juke: r.beats.juke, dodge: r.beats.dodge, goals: r.goalCount, phase: r.phase };
+    this.see();
+  }
+
+  /** Notes where the sport's counts stand, so the next frame can tell what's new. */
+  private see(): void {
+    const r = this.rush;
+    const b = r.beats;
+    const s = this.seen;
+    s.catch = b.catch;
+    s.steal = b.steal;
+    s.fumble = b.fumble;
+    s.shrug = b.shrug;
+    s.save = b.save;
+    s.juke = b.juke;
+    s.dodge = b.dodge;
+    s.goals = r.goalCount;
+    s.phase = r.phase;
+    s.relic = r.relic.phase;
   }
 
   /**
