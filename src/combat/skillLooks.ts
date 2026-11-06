@@ -189,13 +189,13 @@ function along(s: FlashShape, k: number): { x: number; z: number } {
 const yawOf = (s: FlashShape) => (s.type === 'circle' ? 0 : s.yaw);
 
 /** A blade's slash: a crescent sweeping across `angle` degrees in front, at chest height. */
-function slash(k: FxKit, c: Colors, x: number, z: number, yaw: number, o: { radius: number; width: number; angle: number; y?: number; sweep?: number; life?: number; reverse?: boolean; tail?: number }): Ribbon {
+function slash(k: FxKit, c: Colors, x: number, z: number, yaw: number, o: { radius: number; width: number; angle: number; y?: number; sweep?: number; life?: number; reverse?: boolean; tail?: number; delay?: number }): Ribbon {
   basis(yaw);
   const half = (o.angle * DEG) / 2;
   return k.ribbon({
     x, y: k.ground(x, z) + (o.y ?? 1.2), z, main: c.vfx, hot: c.core, ax: FWD, ay: RIGHT, an: UP,
     radius: o.radius, a0: o.reverse ? half : -half, span: o.reverse ? -2 * half : 2 * half, width: o.width,
-    sweep: o.sweep ?? 0.13, tail: o.tail ?? 0.75, taper: 0.2, life: o.life ?? 0.42,
+    sweep: o.sweep ?? 0.13, tail: o.tail ?? 0.75, taper: 0.2, life: o.life ?? 0.42, delay: o.delay,
   });
 }
 
@@ -256,11 +256,14 @@ function zap(k: FxKit, c: Colors, u: Unit, n = 3, width = 0.08): void {
   }
 }
 
+/** Glyphs that read upright only (an eye, a sleeping moon, a heart). */
+const STILL = new Set<Glyph>(['eye', 'moon', 'heart']);
+
 /** A glyph floating over a god while `life` lasts (or while `keep` holds). */
 function brand(k: FxKit, c: Colors, u: Unit, glyph: Glyph, life: number, size = 0.85, keep?: (u: Unit) => boolean): void {
   const dy = u.radius * 3.6 + 0.75;
   // a touch larger than asked: a brand has to read over a god from across a fight
-  const s = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph, size: size * 1.25, main: c.vfx, hot: c.core, life, spin: glyph === 'eye' ? 0 : 0.15 });
+  const s = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph, size: size * 1.25, main: c.vfx, hot: c.core, life, spin: STILL.has(glyph) ? 0 : 0.15 });
   k.attach(s, u, dy, life, (x, y, z) => s.follow(x, y, z), keep);
 }
 
@@ -284,6 +287,59 @@ function ahead(out: THREE.Vector3, u: Unit, yaw: number, d: number, h: number): 
   return out.set(u.x - Math.sin(yaw) * d, u.body.y + h, u.z - Math.cos(yaw) * d);
 }
 
+const LEFT = new THREE.Vector3();
+
+/**
+ * One beat of a pair of great wings at a god's shoulders: a feathered fan on
+ * each side sweeping down from over the head, riding with the god. Seen from
+ * behind (the camera's view of a dash) they spread across the screen.
+ */
+function wings(k: FxKit, c: Colors, u: Unit, yaw: number, o: WingOpts & { dy?: number }): void {
+  basis(yaw);
+  const dy = o.dy ?? 1.75;
+  // a little behind the shoulders (numbers, not FWD: the follower runs after other looks reuse it)
+  const bx = -FWD.x * 0.3;
+  const bz = -FWD.z * 0.3;
+  for (const r of wingsAt(k, c, u.x + bx, u.body.y + dy, u.z + bz, yaw, o)) k.attach(r, u, dy, o.life + (o.delay ?? 0), (x, y, z) => r.follow(x + bx, y, z + bz));
+}
+
+interface WingOpts {
+  span: number;
+  sweep?: number;
+  life: number;
+  delay?: number;
+  hold?: boolean;
+  /** Angle the beat starts from over the horizontal, and how far down it sweeps (degrees). */
+  from?: number;
+  arc?: number;
+}
+
+const WINGS: [Ribbon, Ribbon] = [null!, null!];
+
+/** A pair of wing fans spreading left and right from a point, in the upright plane across `yaw`. */
+function wingsAt(k: FxKit, c: Colors, x: number, y: number, z: number, yaw: number, o: WingOpts): readonly Ribbon[] {
+  basis(yaw);
+  LEFT.copy(RIGHT).negate();
+  for (let i = 0; i < 2; i++) {
+    WINGS[i] = k.ribbon({
+      x, y, z, main: c.vfx, hot: c.core, ax: i === 0 ? RIGHT : LEFT, ay: UP, an: FWD,
+      radius: 0.2 + o.span / 2, a0: (o.from ?? 80) * DEG, span: -(o.arc ?? 105) * DEG, width: o.span, sweep: o.sweep ?? 0.16, tail: 1, taper: 0.6,
+      life: o.life, hold: o.hold, delay: o.delay,
+    });
+  }
+  return WINGS;
+}
+
+/** Black feathers thrown off and drifting down. */
+function feathers(k: FxKit, x: number, y: number, z: number, range: number, o: { size?: number; life?: number; count?: number } = {}): Swarm {
+  return k.swarm({ x, y, z, mode: 'scatter', main: 0x14111c, hot: 0x5a7cc8, range, spread: 0, size: o.size ?? 0.22, life: o.life ?? 1.5, count: o.count ?? 0.45 });
+}
+
+/** A crescent and a Z over a god for as long as they sleep. */
+function asleep(k: FxKit, u: Unit, life: number): void {
+  if (u.combatant.cc.has('mesmerize')) brand(k, MOON, u, 'moon', life, 0.85, (t) => t.combatant.cc.has('mesmerize'));
+}
+
 // ---------------------------------------------------------------------------
 // Colors a skill burns in when its god's own would not tell it apart
 
@@ -303,6 +359,18 @@ const GAZE = { vfx: 0xff5418, core: 0xfff0b0 };
 const MAAT = { vfx: 0xffc23a, core: 0xfff6d4 };
 
 const SMOKE = 0x3a4a3e;
+
+// Thanatos: black wings, the cold fire of an upturned torch, night, poppies, an iron heart and sleep
+const WING = { vfx: 0x1a1628, core: 0x4f7cc8 };
+const BLADE = { vfx: 0x2a66ff, core: 0xd6eaff };
+const COLD_FIRE = { vfx: 0x1ab4ff, core: 0xeafcff };
+const NIGHT = { vfx: 0x4c3cc0, core: 0xd2caff };
+const POPPY = { vfx: 0xe8243a, core: 0xffd4c4 };
+const IRON = { vfx: 0x2c3646, core: 0x9cb6dc };
+const HEART = { vfx: 0xff2414, core: 0xff9a6a };
+const REST = { vfx: 0x6a3cff, core: 0xeee6ff };
+const MOON = { vfx: 0x7a8aff, core: 0xeef0ff };
+const LIFE = { vfx: 0x2ad8ff, core: 0xffffff };
 
 // ---------------------------------------------------------------------------
 // The looks
@@ -1034,6 +1102,198 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       for (const a of k.near(s.x, s.z, s.radius, o.team)) {
         k.pillar(SPIRIT_PALETTE(f.p), a.x, a.z, 0.45, 0.55);
         brand(k, f.p, a, 'ankh', 5, 0.75, (t) => t.combatant.shieldTotal > 0.5);
+      }
+    },
+  },
+
+  // ----- Thanatos: the gentle death; black wings, cold fire, poppies and sleep -----
+
+  'thanatos.pitiless-edge': {
+    decal: 0.35,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'cone') return;
+      // two sweeps of the leaf blade, the second back the other way as the second hit lands
+      for (let i = 0; i < 2; i++) {
+        const o = { angle: s.angle + 10, sweep: 0.1, life: 0.34, reverse: i === 1, y: 1.3 - i * 0.25, delay: i * 0.3 };
+        slash(k, BLADE, s.x, s.z, s.yaw, { ...o, radius: s.range * 0.5, width: s.range * 0.55 });
+        slash(k, { vfx: BLADE.core, core: 0xffffff }, s.x, s.z, s.yaw, { ...o, radius: s.range * 0.8, width: 0.26, y: o.y + 0.05 });
+      }
+    },
+    hit: (k, h) => k.burst({ ...h.p, ...BLADE }, h.target.x, h.target.body.y + 1.2, h.target.z, 0.45),
+  },
+  'thanatos.snuff-out': {
+    colors: COLD_FIRE,
+    decal: 0.7,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'line') return;
+      const end = along(s, 1);
+      const gy = k.ground(s.x, s.z);
+      // the torch driven down, and its cold fire running out along the ground
+      P1.set(s.x - Math.sin(s.yaw) * 0.9, gy + 0.25, s.z - Math.cos(s.yaw) * 0.9);
+      P2.set(end.x, k.ground(end.x, end.z) + 0.25, end.z);
+      k.beam({ from: P1, to: P2, width: 1.1, main: f.p.vfx, hot: f.p.core, reach: 0.3, hold: 0.4, fadeOut: 0.5, flow: 16 });
+      k.beam({ from: P1, to: P2, width: 0.36, main: 0xbaf0ff, hot: 0xffffff, reach: 0.3, hold: 0.3, fadeOut: 0.4, flow: 24 });
+      k.swarm({ x: P1.x, y: P1.y - 0.4, z: P1.z, yaw: s.yaw, mode: 'stream', main: f.p.vfx, hot: f.p.core, range: s.length, spread: 0.08, size: 0.42, life: 1.1, count: 1 });
+      shock(k, f.p, P1.x, P1.z, 0.3, 1.6, { life: 0.3, width: 0.5 });
+      k.burst(f.p, end.x, P2.y + 0.4, end.z, 0.6);
+    },
+    hit: (k, h) => {
+      // cold flames licking round the silenced god while it lasts
+      const t = h.target;
+      const s = k.swarm({ x: t.x, y: t.body.y, z: t.z, mode: 'orbit', main: h.p.vfx, hot: h.p.core, range: 0.6, spread: 2.3, size: 0.2, life: 1.1, count: 0.55 });
+      k.attach(s, t, 0, 1.1, (x, y, z) => s.move(x, y, z));
+    },
+  },
+  'thanatos.wingbeat': {
+    cast: (k, c) => {
+      const u = c.owner;
+      wings(k, WING, u, c.yaw, { span: 2.1, sweep: 0.14, life: 0.55 });
+      k.comet(c.p, u, 0.45, 0.45);
+      feathers(k, u.x, u.body.y + 1.6, u.z, 1.8, { count: 0.4 });
+      // the gust of the beat, rushing ahead along the path
+      P1.set(u.x, u.body.y + 1.1, u.z);
+      ahead(P2, u, c.yaw, 12.25, 1.1);
+      k.beam({ from: P1, to: P2, width: 0.3, main: 0x8eb8ff, hot: 0xffffff, reach: 0.42, hold: 0.04, fadeOut: 0.3, flow: 26 });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      feathers(k, t.x, t.body.y + 1.2, t.z, 1.2, { count: 0.25, life: 1.1, size: 0.18 });
+      k.burst(h.p, t.x, t.body.y + 1.2, t.z, 0.45);
+    },
+  },
+  'thanatos.claim': {
+    colors: NIGHT,
+    shot: { tether: 0.28, orb: 0.55, trail: 0.9 },
+    hit: (k, h) => {
+      const t = h.target;
+      const o = h.owner;
+      // the ribbon winds round them and reels them in to his side
+      wrap(k, h.p, t, 0.8, { turns: 2.5, width: 0.34, sweep: 0.2 });
+      const b = k.beam({ from: P1.set(o.x, o.body.y + 1.4, o.z), to: P2.set(t.x, t.body.y + 1.2, t.z), width: 0.24, main: h.p.vfx, hot: h.p.core, reach: 0, hold: 0.4, fadeOut: 0.25, flow: -14 });
+      k.attach(b, t, 0, 0.65, (x, y, z) => b.place(P1.set(o.x, o.body.y + 1.4, o.z), P2.set(x, y + 1.2, z)));
+    },
+  },
+  'thanatos.veil-of-night': {
+    colors: NIGHT,
+    cast: (k, c) => {
+      const u = c.owner;
+      // the wings fold round him and he is gone into his mother's dark
+      k.cloud(0x1a1630, u.x, u.body.y + 0.8, u.z, 1.7, 0.6);
+      wrap(k, WING, u, 0.8, { radius: u.radius + 0.4, height: 2.5, turns: 1.2, width: 0.95, sweep: 0.28, taper: 0.5 });
+      feathers(k, u.x, u.body.y + 1.3, u.z, 2.2, { count: 0.5 });
+      k.swarm({ x: u.x, y: u.body.y + 1.2, z: u.z, mode: 'scatter', main: c.p.vfx, hot: 0xffffff, range: 2.6, spread: 0, size: 0.1, life: 1.2, count: 0.35 });
+    },
+  },
+  'thanatos.poppy-haze': {
+    colors: POPPY,
+    zone: {
+      puff: 0xc05064,
+      decal: 0.6,
+      motes: false,
+      extra: (k, z) => {
+        const gy = k.ground(z.x, z.z);
+        // the poppies scattered as it lands, then petals drifting round the haze
+        k.swarm({ x: z.x, y: gy + 2.2, z: z.z, mode: 'scatter', main: 0xd81428, hot: 0xffa08a, range: z.radius * 0.8, spread: 0, size: 0.3, life: 1.6, count: 0.8 });
+        const s = k.swarm({ x: z.x, y: gy, z: z.z, mode: 'orbit', main: 0xd01830, hot: 0xff9a7a, range: z.radius * 0.95, spread: 1.8, size: 0.3, life: z.duration + 0.3, count: 0.9, rate: 0.18 });
+        z.keep(s, (x, y, zz) => s.move(x, y, zz));
+      },
+    },
+  },
+  'thanatos.iron-heart': {
+    colors: IRON,
+    cast: (k, c) => {
+      const u = c.owner;
+      shock(k, c.p, u.x, u.z, 0.4, 2.4, { life: 0.35, wall: true, width: 0.8 });
+      // two iron hoops turning opposite ways about the chest, and the heart over him while the shield holds
+      for (let i = 0; i < 2; i++) {
+        const dy = 0.95 + i * 0.6;
+        const r = k.ribbon({
+          x: u.x, y: u.body.y + dy, z: u.z, main: c.p.vfx, hot: c.p.core, ax: NORTH, ay: EAST, an: UP,
+          radius: u.radius + 0.5 - i * 0.08, a0: i * 2, span: 1.6 * Math.PI, width: 0.3, wall: 1, sweep: 0.2, tail: 1, taper: 0.3, spin: i === 0 ? 0.7 : -0.9, life: 4, hold: true,
+        });
+        k.attach(r, u, dy, 4, (x, y, z) => r.follow(x, y, z), (t) => t.combatant.shieldTotal > 0.5);
+      }
+      brand(k, HEART, u, 'heart', 4, 0.9, (t) => t.combatant.shieldTotal > 0.5);
+      k.burst({ ...c.p, ...HEART }, u.x, u.body.y + 1.4, u.z, 0.6);
+    },
+  },
+  'thanatos.final-rest': {
+    colors: REST,
+    decal: 0.35,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'cone') return;
+      // one slow, merciful cut
+      slash(k, f.p, s.x, s.z, s.yaw, { radius: s.range * 0.5, width: s.range * 0.6, angle: s.angle + 12, sweep: 0.26, life: 0.65, y: 1.25, tail: 0.9 });
+      slash(k, { vfx: f.p.core, core: 0xffffff }, s.x, s.z, s.yaw, { radius: s.range * 0.82, width: 0.28, angle: s.angle + 12, sweep: 0.26, life: 0.65, y: 1.3, tail: 0.9 });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1.3, t.z, 0.6);
+      asleep(k, t, 2);
+    },
+  },
+  'thanatos.long-sleep': {
+    colors: NIGHT,
+    decal: 0.5,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'circle') return;
+      const gy = k.ground(s.x, s.z);
+      // great wings spreading over the field from beyond it (behind the sleepers, as he sees them),
+      // feathers falling, and the seal of sleep on the ground
+      const yaw = Math.atan2(f.owner.x - s.x, f.owner.z - s.z);
+      const back = s.radius * 0.75;
+      wingsAt(k, WING, s.x - Math.sin(yaw) * back, gy + 0.6, s.z - Math.cos(yaw) * back, yaw, { span: s.radius * 0.9, sweep: 0.4, life: 1.8, hold: true, from: 88, arc: 80 });
+      feathers(k, s.x, gy + 2.6, s.z, s.radius * 0.85, { size: 0.34, life: 2.2, count: 0.8 });
+      k.sigil({ x: s.x, y: gy + 0.15, z: s.z, glyph: 'moon', size: s.radius * 1.5, main: f.p.vfx, hot: f.p.core, life: 2.2, flat: true, open: 0.4 });
+      shock(k, f.p, s.x, s.z, 0.6, s.radius * 1.05, { life: 0.6, wall: true, width: 1.2 });
+    },
+    hit: (k, h) => asleep(k, h.target, 3),
+  },
+  'thanatos.kiss-of-death': {
+    cast: (k, c) => {
+      const u = c.owner;
+      wings(k, WING, u, c.yaw, { span: 2.8, sweep: 0.12, life: 0.75, hold: true });
+      k.comet(c.p, u, 0.65, 0.7);
+      feathers(k, u.x, u.body.y + 1.6, u.z, 2.4, { count: 0.6, size: 0.26 });
+      P1.set(u.x, u.body.y + 1.3, u.z);
+      ahead(P2, u, c.yaw, 17.5, 1.3);
+      k.beam({ from: P1, to: P2, width: 0.5, main: 0x2a2250, hot: c.p.vfx, reach: 0.6, hold: 0.06, fadeOut: 0.4, flow: 30 });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      const o = h.owner;
+      // a cut as he passes, and their life drawn out of them into him
+      slash(k, h.p, t.x, t.z, o.body.yaw + Math.PI, { radius: 1, width: 1, angle: 150, sweep: 0.09, life: 0.32, y: 1.4 });
+      const b = k.beam({ from: P1.set(t.x, t.body.y + 1.3, t.z), to: P2.set(o.x, o.body.y + 1.3, o.z), width: 0.18, main: LIFE.vfx, hot: LIFE.core, reach: 0.2, hold: 0.35, fadeOut: 0.35, flow: 18 });
+      k.attach(b, t, 0, 0.9, (x, y, z) => b.place(P1.set(x, y + 1.3, z), P2.set(o.x, o.body.y + 1.3, o.z)));
+      feathers(k, t.x, t.body.y + 1.3, t.z, 1.4, { count: 0.3, life: 1.2 });
+      k.burst(h.p, t.x, t.body.y + 1.3, t.z, 1.1);
+    },
+  },
+  'thanatos.carried-home': {
+    decal: 0.5,
+    burst: 0.5,
+    cast: (k, c) => {
+      const u = c.owner;
+      // two slow beats of the wings through the flight
+      wings(k, WING, u, c.yaw, { span: 2.6, sweep: 0.22, life: 0.5 });
+      wings(k, WING, u, c.yaw, { span: 2.6, sweep: 0.22, life: 0.55, delay: 0.45 });
+      k.comet(c.p, u, 1, 0.5);
+    },
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'circle') return;
+      const o = f.owner;
+      const gy = k.ground(s.x, s.z);
+      shock(k, f.p, s.x, s.z, 0.6, s.radius, { life: 0.6, wall: true, width: 1.2 });
+      feathers(k, s.x, gy + 3.5, s.z, s.radius * 0.55, { size: 0.28, life: 1.9, count: 0.7 });
+      for (const a of k.near(s.x, s.z, s.radius, o.team)) {
+        k.pillar(f.p, a.x, a.z, 0.45, 0.55);
+        wrap(k, f.p, a, 2.5, { radius: a.radius + 0.5, height: 2.2, turns: 1.5, width: 0.16, sweep: 0.3, spin: 0.8, taper: 0.3, hold: true });
       }
     },
   },

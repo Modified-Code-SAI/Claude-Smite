@@ -103,6 +103,8 @@ export interface SwarmOpts {
   bugs?: boolean;
   /** Share of the swarm shown (0..1). */
   count?: number;
+  /** How fast it moves (1 as is): petals drifting slowly round a haze. */
+  rate?: number;
 }
 
 /** Many small things moving together on the GPU: locusts, whirling debris, feathers, drips. One draw. */
@@ -110,6 +112,8 @@ export class Swarm implements Live {
   readonly group: THREE.Sprite;
   private readonly values = swarmUniforms();
   private o!: SwarmOpts;
+  /** Seconds since it started (its motion's clock runs at `rate`). */
+  private age = 0;
   /** 0..1 an owner (a zone, an aura) sets to fade it with itself. */
   strength = 1;
 
@@ -129,6 +133,7 @@ export class Swarm implements Live {
     v.hot.setHex(o.hot);
     v.mode = SWARM_MODES[o.mode];
     v.age = 0;
+    this.age = 0;
     v.range = o.range;
     v.spread = o.spread;
     v.size = o.size;
@@ -146,12 +151,13 @@ export class Swarm implements Live {
   }
 
   stop(): void {
-    this.o.life = Math.min(this.o.life, this.values.age + 0.4);
+    this.o.life = Math.min(this.o.life, this.age + 0.4);
   }
 
   update(dt: number): boolean {
     const v = this.values;
-    const k = (v.age += dt);
+    v.age += dt * (this.o.rate ?? 1);
+    const k = (this.age += dt);
     const left = this.o.life - k;
     v.fade = Math.min(1, k / 0.15, left / 0.4) * this.strength;
     return k < this.o.life;

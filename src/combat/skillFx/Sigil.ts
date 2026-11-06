@@ -4,7 +4,7 @@ import { objectUniforms, useUniforms } from '../../render/shared';
 import type { Live } from './pool';
 
 /** The glyphs a sigil can draw (one shader draws them all). */
-export const GLYPHS = { bolt: 0, eye: 1, ankh: 2, algiz: 3, scales: 4, tiwaz: 5 } as const;
+export const GLYPHS = { bolt: 0, eye: 1, ankh: 2, algiz: 3, scales: 4, tiwaz: 5, moon: 6, heart: 7 } as const;
 export type Glyph = keyof typeof GLYPHS;
 
 const sigilUniforms = () => ({
@@ -28,8 +28,9 @@ function seg(p: any, ax: number, ay: number, bx: number, by: number): any {
 }
 
 const ring = (p: any, cx: number, cy: number, r: number) => abs(p.sub(vec2(cx, cy)).length().sub(r));
-/** The lower half of a ring (a balance's pan). */
+/** The lower half of a ring (a balance's pan), and the upper half (a heart's lobe). */
 const bowl = (p: any, cx: number, cy: number, r: number) => max(ring(p, cx, cy, r), p.y.sub(cy));
+const dome = (p: any, cx: number, cy: number, r: number) => max(ring(p, cx, cy, r), float(cy).sub(p.y));
 const lines = (...d: any[]) => d.reduce((a, b) => min(a, b));
 
 let material: THREE.MeshBasicNodeMaterial | null = null;
@@ -61,9 +62,14 @@ function makeMaterial(): THREE.MeshBasicNodeMaterial {
     seg(p, 0.62, 0.5, 0.42, 0.02), seg(p, 0.62, 0.5, 0.82, 0.02), bowl(p, 0.62, 0.02, 0.22),
   );
   const tiwaz = lines(frame, seg(p, 0, -0.72, 0, 0.74), seg(p, 0, 0.74, -0.42, 0.3), seg(p, 0, 0.74, 0.42, 0.3));
+  // sleep: a crescent moon with a Z in its hollow
+  const crescent = abs(max(p.sub(vec2(-0.14, -0.08)).length().sub(0.64), float(0.5).sub(p.sub(vec2(0.16, 0.14)).length())));
+  const moon = lines(crescent, seg(p, 0.36, 0.76, 0.7, 0.76), seg(p, 0.7, 0.76, 0.36, 0.42), seg(p, 0.36, 0.42, 0.7, 0.42));
+  // a heart in an iron ring
+  const heart = lines(frame, dome(p, -0.3, 0.2, 0.3), dome(p, 0.3, 0.2, 0.3), seg(p, -0.6, 0.2, 0, -0.62), seg(p, 0.6, 0.2, 0, -0.62));
 
   const pick = (k: number) => step(abs(u.glyph.sub(k)), 0.5);
-  const d = bolt.mul(pick(0)).add(eye.mul(pick(1))).add(ankh.mul(pick(2))).add(algiz.mul(pick(3))).add(scales.mul(pick(4))).add(tiwaz.mul(pick(5)));
+  const d = bolt.mul(pick(0)).add(eye.mul(pick(1))).add(ankh.mul(pick(2))).add(algiz.mul(pick(3))).add(scales.mul(pick(4))).add(tiwaz.mul(pick(5))).add(moon.mul(pick(6))).add(heart.mul(pick(7)));
   const core = smoothstep(0.05, 0.015, d);
   const halo = exp(d.mul(-11)).mul(0.55);
   // drawn on from the middle outward (the eye opens instead)
