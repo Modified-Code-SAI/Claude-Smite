@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GODS, godById } from '../game/gods';
+import { godById } from '../game/gods';
 import { Jotunn, JOTUNN } from '../sim/Jotunn';
 import { jotunnBots } from '../sim/JotunnBots';
 import { Sim, type SimTerrain } from '../sim/Sim';
@@ -37,7 +37,7 @@ describe('online Jötunn', () => {
   it('fills the match to five with bots, the same on every end', () => {
     const slots = jotunnRoster(players);
     expect(slots.map((s) => s.player)).toEqual(['h', 'g', null, null, null]);
-    expect(new Set(slots.map((s) => s.god)).size).toBe(GODS.length);
+    expect(new Set(slots.map((s) => s.god)).size).toBe(slots.length);
     expect(jotunnRoster(players)).toEqual(slots);
     const crowd = [...players, ...['c', 'd', 'e', 'f'].map((id) => ({ ...players[0]!, id }))];
     expect(jotunnRoster(crowd).every((s) => s.player)).toBe(true);

@@ -349,8 +349,10 @@ export class CombatGame implements Updatable {
       if (net && slots) this.addRoster(net, slots);
       else {
         this.match.addGod(this.player);
-        this.addTeam('order', GODS.filter((g) => g.id !== mine.id), ['solo', 'duo', 'duo', 'roam'], [0, 2, 3, 4]);
-        this.addTeam('chaos', GODS, ROLES, [0, 1, 2, 3, 4]);
+        // more gods than seats: a random four join you, and a random five line up against you
+        const shuffle = <T,>(xs: readonly T[]): T[] => [...xs].sort(() => Math.random() - 0.5);
+        this.addTeam('order', shuffle(GODS.filter((g) => g.id !== mine.id)).slice(0, 4), ['solo', 'duo', 'duo', 'roam'], [0, 2, 3, 4]);
+        this.addTeam('chaos', shuffle(GODS).slice(0, 5), ROLES, [0, 1, 2, 3, 4]);
       }
       this.matchHud = new MatchHud(this.match, this.player);
       this.matchHud.pings = this.pings.mapMarks;

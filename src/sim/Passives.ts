@@ -22,9 +22,14 @@ const ANUBIS_RANGE = 9 * WORLD_SCALE;
 const ANUBIS_THRESHOLD = 0.3;
 const ANUBIS_SHIELD = 0.12;
 const ANUBIS_COOLDOWN = 30;
+/** Amaterasu: each landed basic adds attack speed, stacking, and restarts the timer. */
+const DAWN_KEY = 'unbroken-dawn';
+const DAWN_STACK = 0.06;
+const DAWN_MAX = 5;
+const DAWN_DURATION = 3;
 
 /**
- * The five gods' passives. Damage passives plug into the combatant's
+ * The gods' passives. Damage passives plug into the combatant's
  * damage multiplier; the rest listen to simulation events.
  */
 export class Passives {
@@ -91,6 +96,7 @@ export class Passives {
       this.thorCount.set(src, n % THOR_EVERY);
       if (n >= THOR_EVERY) this.shockwave(src, e.target);
     }
+    if (src && god === 'amaterasu' && !e.ability) src.combatant.stackTimedMod(DAWN_KEY, 'bonusAttackSpeed', DAWN_STACK, DAWN_MAX, DAWN_DURATION);
     this.anubisWard(e.target);
   }
 

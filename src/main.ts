@@ -338,7 +338,7 @@ async function main(): Promise<void> {
   };
 
   // Hooks for automated screenshots and for gameplay code during development.
-  const debug = { giant, stage, perf, pipelines, grading, combat, audio, music, herald, world, player, camera, follow, renderer, post, setQuality: applyQuality, isWebGPU, capture, resume: () => renderer.setAnimationLoop(frame) };
+  const debug = { giant, showcase, stage, perf, pipelines, grading, combat, audio, music, herald, world, player, camera, follow, renderer, post, setQuality: applyQuality, isWebGPU, capture, resume: () => renderer.setAnimationLoop(frame) };
   (window as unknown as { __game: typeof debug }).__game = debug;
 }
 

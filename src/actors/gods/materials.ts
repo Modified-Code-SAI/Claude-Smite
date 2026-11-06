@@ -60,6 +60,12 @@ const PALETTES: Record<string, GodPalette> = {
     cloth2: 0x1c3f9a, leather: 0x3a2412, hair: 0x14100c, hairTip: 0x2a2018, fur: 0x1e1712, glow: 0xffa040,
     eye: 0xffb050, gem: 0x2fd0c0,
   },
+  // the sun sovereign: white silk, vermilion hakama, bright sun-gold, black lacquer, amber eyes
+  amaterasu: {
+    skin: 0xe6bc9c, skinDeep: 0x9a4a3a, gold: 0xffc94a, steel: 0xe8e0d4, cloth: 0xc4202c, clothDeep: 0x4e0810,
+    cloth2: 0xf2ede4, leather: 0x1e1412, hair: 0x0a080c, hairTip: 0x1e1a24, fur: 0x2a2224, glow: 0xffd27a,
+    eye: 0xffb648, gem: 0xff8a2a,
+  },
   // the frost giant: glacier-blue skin, old bronze, black iron, dark bear fur frosted at the tips
   jotunn: {
     skin: 0x6c90c2, skinDeep: 0x16295a, gold: 0x9a7444, steel: 0x4e5560, cloth: 0x4a3a2e, clothDeep: 0x1e1610,

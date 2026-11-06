@@ -17,7 +17,7 @@ const newSim = () => new Sim(flat, { order: { ...JOTUNN.bases.order }, chaos: { 
 /** Five players (the first is you), no bots, so tests drive everything. */
 function setup(order?: number[]) {
   const sim = newSim();
-  const players = GODS.map((g, i) => ({ name: g.name, id: i === 0 ? '' : null, god: g }));
+  const players = GODS.slice(0, 5).map((g, i) => ({ name: g.name, id: i === 0 ? '' : null, god: g }));
   const mode = new Jotunn(sim, players, { order });
   mode.begin();
   const run = (s: number) => {
@@ -353,21 +353,21 @@ describe('Jötunn', () => {
     run(0.1);
     expect(mode.lastRound).toBe('gods');
     // an online guest's end screen shows the same
-    const guest = new Jotunn(newSim(), GODS.map((x, i) => ({ name: x.name, id: i === 0 ? '' : null, god: x })));
+    const guest = new Jotunn(newSim(), GODS.slice(0, 5).map((x, i) => ({ name: x.name, id: i === 0 ? '' : null, god: x })));
     guest.applyNet(JSON.parse(JSON.stringify(mode.netState())));
     guest.players.forEach((p, i) => expect(p.tally).toEqual({ ...mode.players[i]!.tally, might: Math.round(mode.players[i]!.tally.might) }));
   });
 
   it('online, each person takes a turn as the giant', () => {
     const sim = newSim();
-    const players = GODS.map((g, i) => ({ name: g.name, id: i < 3 ? `peer${i}` : null, god: g }));
+    const players = GODS.slice(0, 5).map((g, i) => ({ name: g.name, id: i < 3 ? `peer${i}` : null, god: g }));
     const mode = new Jotunn(sim, players);
     expect(mode.order).toEqual([0, 1, 2]);
   });
 
   it('bots play a whole round to an end, both sides', () => {
     const sim = new Sim(flat, { order: { ...JOTUNN.bases.order }, chaos: { ...JOTUNN.bases.chaos } });
-    const players = GODS.map((g) => ({ name: g.name, id: null, god: g }));
+    const players = GODS.slice(0, 5).map((g) => ({ name: g.name, id: null, god: g }));
     const mode = new Jotunn(sim, players, { order: [2], brains: jotunnBots(sim) });
     mode.begin();
     let swings = 0;
