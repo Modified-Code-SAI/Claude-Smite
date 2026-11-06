@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { GODS, thor, zeus } from '../game/gods';
 import { jotunn } from '../game/gods/jotunn';
 import { basicAttackRaw, computeDamage } from '../game/combat';
-import { ULTIMATE_SLOT } from '../game/loadout';
+import { ULTIMATE_SLOT, validateLoadout } from '../game/loadout';
 import { XP_TABLE } from '../game/progression';
 import { godUnit } from './factory';
-import { isGiant, Jotunn, JOTUNN, lastStand, PARTS, partMult, SHRINES, weakHeft } from './Jotunn';
+import { isGiant, Jotunn, JOTUNN, jotunnBar, lastStand, PARTS, partMult, SHRINES, weakHeft } from './Jotunn';
 import { escape, jotunnBots } from './JotunnBots';
 import { Sim, type SimTerrain } from './Sim';
 import type { Flash, Unit } from './Unit';
@@ -125,6 +125,20 @@ describe('Jötunn', () => {
     expect(g.combatant.stats.maxHealth).toBe(JOTUNN.might.base + JOTUNN.might.perGod * 4);
     expect(g.combatant.ccImmune).toBe(true);
     expect(mode.phase).toBe('countdown');
+  });
+
+  it("bot gods bring skills that hurt the giant (it shrugs off crowd control); a person keeps their own bar", () => {
+    for (const g of GODS) expect(validateLoadout(g, jotunnBar(g))).toBeNull();
+    const kukulkan = GODS.find((g) => g.id === 'kukulkan')!;
+    // no bar of a bot's is left with a skill that only roots, pulls, fears or taunts on the giant
+    for (const id of ['kukulkan.constricting-coils', 'cthulhu.reaching-feelers', 'thanatos.claim']) {
+      for (const g of GODS) expect(jotunnBar(g)).not.toContain(id);
+    }
+    const sim = newSim();
+    const players = [kukulkan, kukulkan, ...GODS.filter((g) => g !== kukulkan).slice(0, 3)].map((g, i) => ({ name: g.name, id: i === 0 ? 'me' : null, god: g }));
+    const mode = new Jotunn(sim, players, {});
+    expect(mode.players[0]!.god.combatant.loadout).toEqual(kukulkan.defaultLoadout);
+    expect(mode.players[1]!.god.combatant.loadout).toEqual(jotunnBar(kukulkan));
   });
 
   it('passes weak point damage on to the giant; its hide takes a small share', () => {

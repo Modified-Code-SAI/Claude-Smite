@@ -14,12 +14,22 @@ export interface JotunnSlot {
 
 /**
  * Who plays, the same on every end of a networked match: the humans in lobby
- * order, then bots with gods no human picked, until there are five.
+ * order, then bots with gods no human picked, until there are five. Alone,
+ * `shuffle` (the god pick's seeded dice) draws the bots from every god, so the
+ * newer gods turn up as often as the first five.
  */
-export function jotunnRoster(players: readonly NetPlayer[]): JotunnSlot[] {
+export function jotunnRoster(players: readonly NetPlayer[], shuffle?: () => number): JotunnSlot[] {
   const humans = players.slice(0, JOTUNN_PLAYERS);
   const used = new Set(humans.map((p) => p.god));
-  const free = GODS.filter((g) => !used.has(g.id));
+  // every god dealt once, whoever you pick, so trying another god on the pick screen only swaps out the bot that had it
+  const deck = [...GODS];
+  if (shuffle) {
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(shuffle() * (i + 1));
+      [deck[i], deck[j]] = [deck[j]!, deck[i]!];
+    }
+  }
+  const free = deck.filter((g) => !used.has(g.id));
   const slots: JotunnSlot[] = humans.map((p) => ({ name: p.name, god: p.god, player: p.id }));
   for (let k = 0; slots.length < JOTUNN_PLAYERS; k++) {
     const g = free[k % Math.max(1, free.length)] ?? GODS[k % GODS.length]!;

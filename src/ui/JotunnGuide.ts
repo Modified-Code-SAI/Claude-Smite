@@ -54,7 +54,8 @@ export function guideLines(role: GuideRole): { title: string; steps: string[]; f
       `<i class="gold">2</i> Strike the <b>crown</b> while it kneels: ×${crown} damage`,
       `<i>!</i> After a slam its fist is planted: break the <b>wrist</b>`,
     ],
-    foot: `Keep it from the braziers: it needs ${win} of the ${of}. Its back rune breaks too.`,
+    // it is immune to crowd control (Combatant.ccImmune): a bar of pulls and roots does next to nothing to it
+    foot: `Keep it from the braziers: it needs ${win} of the ${of}. Its back rune breaks too. Stuns and pulls slide off it: bring damage.`,
   };
 }
 

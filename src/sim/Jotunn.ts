@@ -1,5 +1,6 @@
 import { Combatant, type Side } from '../game/combatant';
 import { jotunn } from '../game/gods/jotunn';
+import { normalizeLoadout } from '../game/loadout';
 import { XP_TABLE } from '../game/progression';
 import type { GodDef, StatKey } from '../game/types';
 import { hypot } from '../core/math';
@@ -176,6 +177,27 @@ export interface ShrineState {
   dormant: number;
 }
 
+/**
+ * The skills a bot god brings against the giant, where its own bar would waste
+ * slots: the giant and its weak points shrug off crowd control, so a pull, a
+ * root or a fear lands next to nothing on them. In bot matches with all eight
+ * gods the giant won 73% with the new three on their own bars (85% with
+ * Kukulkan defending, 81% with Cthulhu, 75% with Thanatos) and 46% with
+ * these (69%, 66%, 66%), close to the first five gods alone (48%). The
+ * strongest picks overshot: Sky Coils, Dream Plague's weakened armor and
+ * Wingbeat for Snuff Out took the giant down to 39%.
+ * Gods missing here bring their own bar; a person brings their own always.
+ */
+const JOTUNN_BARS: Readonly<Record<string, readonly string[]>> = {
+  kukulkan: ['kukulkan.morning-star', 'kukulkan.equinox', 'kukulkan.vision-serpent', 'kukulkan.descent'],
+  cthulhu: ['cthulhu.prodigious-claws', 'cthulhu.wrong-angles', 'cthulhu.green-ooze', 'cthulhu.rlyeh-rises'],
+  thanatos: ['thanatos.pitiless-edge', 'thanatos.snuff-out', 'thanatos.poppy-haze', 'thanatos.kiss-of-death'],
+};
+
+export function jotunnBar(god: GodDef): readonly string[] {
+  return JOTUNN_BARS[god.id] ?? god.defaultLoadout;
+}
+
 /** What a player did over the match, for its end screen. */
 export interface JotunnTally {
   /** Might torn from the giant as a god: its weak points' hits, and the shattering of those they broke. */
@@ -289,6 +311,7 @@ export class Jotunn {
     this.players = players.map((p, i) => {
       const spawn = JOTUNN.godSpawns[i % JOTUNN.godSpawns.length]!;
       const god = p.god instanceof Unit ? p.god : godUnit(p.god, 'order', { ...spawn });
+      if (p.id === null && !(p.god instanceof Unit)) god.combatant.loadout = normalizeLoadout(p.god, jotunnBar(p.god));
       god.home.x = spawn.x;
       god.home.z = spawn.z;
       god.home.yaw = spawn.yaw;

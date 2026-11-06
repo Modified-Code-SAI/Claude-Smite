@@ -220,14 +220,14 @@ function shock(k: FxKit, c: Colors, x: number, z: number, from: number, to: numb
 }
 
 /** Bands wound round a god and climbing (burial wraps, a swirl of smoke). */
-function wrap(k: FxKit, c: Colors, u: Unit, life: number, o: { radius?: number; height?: number; turns?: number; width?: number; sweep?: number; spin?: number; taper?: number; hold?: boolean } = {}): void {
+function wrap(k: FxKit, c: Colors, u: Unit, life: number, o: { radius?: number; height?: number; turns?: number; width?: number; sweep?: number; spin?: number; taper?: number; hold?: boolean; keep?: (u: Unit) => boolean } = {}): void {
   const turns = o.turns ?? 3;
   const r = k.ribbon({
     x: u.x, y: u.body.y + 0.15, z: u.z, main: c.vfx, hot: c.core, ax: NORTH, ay: EAST, an: UP,
     radius: o.radius ?? u.radius + 0.25, a0: Math.random() * 6, span: turns * Math.PI * 2, width: o.width ?? 0.32, wall: 1,
     sweep: o.sweep ?? 0.3, tail: 1, taper: o.taper, lift: o.height ?? 2.1, life, spin: o.spin, hold: o.hold,
   });
-  k.attach(r, u, 0.15, life, (x, y, z) => r.follow(x, y, z));
+  k.attach(r, u, 0.15, life, (x, y, z) => r.follow(x, y, z), o.keep);
 }
 
 /** A spinning band round a god at `dy` (a hammer whirled at arm's length). */
@@ -260,7 +260,7 @@ function zap(k: FxKit, c: Colors, u: Unit, n = 3, width = 0.08): void {
 }
 
 /** Glyphs that read upright only (an eye, a sleeping moon, a heart). */
-const STILL = new Set<Glyph>(['eye', 'moon', 'heart']);
+const STILL = new Set<Glyph>(['eye', 'moon', 'heart', 'mask']);
 
 /** A glyph floating over a god while `life` lasts (or while `keep` holds). */
 function brand(k: FxKit, c: Colors, u: Unit, glyph: Glyph, life: number, size = 0.85, keep?: (u: Unit) => boolean): void {
@@ -374,6 +374,94 @@ const HEART = { vfx: 0xff2414, core: 0xff9a6a };
 const REST = { vfx: 0x6a3cff, core: 0xeee6ff };
 const MOON = { vfx: 0x7a8aff, core: 0xeef0ff };
 const LIFE = { vfx: 0x2ad8ff, core: 0xffffff };
+
+// Kukulkan: Venus light, the equinox serpent of light and shadow, offering smoke, jade, rain and quetzal plumes
+const VENUS = { vfx: 0xffc640, core: 0xfffbe6 };
+const SUNLIT = { vfx: 0xffaa1c, core: 0xfff0b8 };
+const UMBRA = { vfx: 0x0c3426, core: 0x22b874 };
+const QUETZAL = { vfx: 0x0cb070, core: 0xa8ffd8 };
+const JADE = { vfx: 0x14c27a, core: 0xe0fff0 };
+const VISION = { vfx: 0x7a3cff, core: 0xeee2ff };
+const RAIN = { vfx: 0x3cbcff, core: 0xeefaff };
+const COPAL = 0xdcd6ca;
+
+// Cthulhu: wet flesh and feelers, green ooze, the wrong angles of R'lyeh, black seawater, the stars and the dream
+const ABYSS = { vfx: 0x1fb090, core: 0xd8fff4 };
+const GLOWING = { vfx: 0x2affc0, core: 0xeafff8 };
+const OOZE = { vfx: 0x86ff1a, core: 0xf2ffc4 };
+const BRINE = { vfx: 0x1878a8, core: 0xd2f4ff };
+const BLACKWATER = { vfx: 0x052030, core: 0x1688b4 };
+const FOAM = { vfx: 0xb8ecf4, core: 0xffffff };
+const DREAM = { vfx: 0x5a2ad8, core: 0xd2ffec };
+const BATWING = { vfx: 0x10302a, core: 0x2ab89a };
+const SPRAY = 0xcfe6e6;
+
+const taunted = new WeakMap<Unit, number>();
+
+/** Sea spray: droplets thrown up and falling back. */
+function spray(k: FxKit, x: number, y: number, z: number, range: number, o: { size?: number; life?: number; count?: number } = {}): Swarm {
+  return k.swarm({ x, y, z, mode: 'scatter', main: BRINE.vfx, hot: FOAM.core, range, spread: 0, size: o.size ?? 0.2, life: o.life ?? 1.2, count: o.count ?? 0.6 });
+}
+
+/** A clawed hand's rake: three parallel cuts across the cone. */
+function rake(k: FxKit, c: Colors, x: number, z: number, yaw: number, range: number, angle: number, o: { reverse?: boolean; delay?: number; y?: number }): void {
+  for (let i = 0; i < 3; i++) {
+    slash(k, c, x, z, yaw, { radius: range * (0.5 + i * 0.17), width: 0.28, angle: angle + 6, sweep: 0.09, life: 0.32, reverse: o.reverse, y: (o.y ?? 1.2) - i * 0.12, delay: (o.delay ?? 0) + i * 0.015, tail: 0.85 });
+  }
+}
+
+/**
+ * A serpent's body laid along the ground from (x, z) toward `yaw`: half-loops
+ * bending side to side (`mirror` bends the other way first: a shadow twin), or
+ * `upright`, humps breaking the surface. Each loop lights a beat after the one
+ * before, so the serpent slithers out.
+ */
+function serpent(k: FxKit, c: Colors, x: number, z: number, yaw: number, length: number, o: { r: number; width: number; upright?: boolean; mirror?: boolean; y?: number; beat?: number; life?: number; delay?: number }): void {
+  const n = Math.max(1, Math.round(length / (2 * o.r)));
+  const r = length / (2 * n);
+  const beat = o.beat ?? 0.045;
+  for (let i = 0; i < n; i++) {
+    basis(yaw);
+    const d = r * (1 + 2 * i);
+    const cx = x + FWD.x * d;
+    const cz = z + FWD.z * d;
+    const left = (i % 2 === 1) !== !!o.mirror;
+    const loop = {
+      x: cx, y: k.ground(cx, cz) + (o.y ?? 0.15), z: cz, main: c.vfx, hot: c.core,
+      ax: FWD, ay: o.upright ? UP : RIGHT, an: o.upright ? RIGHT : UP,
+      radius: r, a0: Math.PI, span: o.upright || !left ? -Math.PI : Math.PI, width: o.width, wall: o.upright ? 1 : 0,
+      sweep: beat, tail: 1, taper: i === n - 1 ? 0.3 : 1, life: o.life ?? 0.7, delay: (o.delay ?? 0) + i * beat, hold: true,
+    };
+    k.ribbon(loop);
+    // a hump is a band across the path seen from behind, and a thick arch seen from the side
+    if (o.upright) k.ribbon({ ...loop, width: o.width * 0.55, wall: 0 });
+  }
+}
+
+/** Quetzal plumes thrown off and drifting down. */
+function plumes(k: FxKit, x: number, y: number, z: number, range: number, o: { size?: number; life?: number; count?: number } = {}): Swarm {
+  return k.swarm({ x, y, z, mode: 'scatter', main: QUETZAL.vfx, hot: QUETZAL.core, range, spread: 0, size: o.size ?? 0.26, life: o.life ?? 1.5, count: o.count ?? 0.5 });
+}
+
+/** True at most once every `gap` seconds for a unit in `seen` (an area's ticks would stack the same coils). */
+function once(seen: WeakMap<Unit, number>, k: FxKit, u: Unit, gap: number): boolean {
+  const t = seen.get(u);
+  if (t !== undefined && k.t - t < gap) return false;
+  seen.set(u, k.t);
+  return true;
+}
+
+const coiled = new WeakMap<Unit, number>();
+const dazed = new WeakMap<Unit, number>();
+const rooted = (u: Unit) => u.combatant.cc.has('root');
+
+/** A coil of the serpent's body round a held god, jade over a gold belly, for as long as they are held. */
+function coils(k: FxKit, u: Unit, life: number, o: { radius?: number; turns?: number } = {}): void {
+  if (!once(coiled, k, u, life)) return;
+  const radius = o.radius ?? u.radius + 0.3;
+  wrap(k, JADE, u, life, { radius, height: 1.9, turns: o.turns ?? 3, width: 0.36, sweep: 0.22, taper: 0.5, hold: true, keep: rooted });
+  wrap(k, SUNLIT, u, life, { radius: radius + 0.04, height: 1.7, turns: o.turns ?? 3, width: 0.12, sweep: 0.22, taper: 0.5, hold: true, keep: rooted });
+}
 
 // ---------------------------------------------------------------------------
 // The looks
@@ -1305,6 +1393,485 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
         k.pillar(f.p, a.x, a.z, 0.45, 0.55);
         wrap(k, f.p, a, 2.5, { radius: a.radius + 0.5, height: 2.2, turns: 1.5, width: 0.16, sweep: 0.3, spin: 0.8, taper: 0.3, hold: true });
       }
+    },
+  },
+  // ----- Kukulkan: the Feathered Serpent; Venus light, the equinox serpent, offering smoke, jade and rain -----
+
+  'kukulkan.morning-star': {
+    colors: VENUS,
+    shot: { sigil: 'star', orb: 1.1, trail: 1.5, size: 0.9 },
+    cast: (k, c) => {
+      const u = c.owner;
+      // the star kindles at the head of his staff
+      ahead(P1, u, c.yaw, 0.8, 2.1);
+      k.sigil({ x: P1.x, y: P1.y, z: P1.z, glyph: 'star', size: 1.1, main: c.p.vfx, hot: c.p.core, life: 0.35, spin: 0.6, open: 0.08 });
+      k.burst(c.p, P1.x, P1.y, P1.z, 0.5);
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.sigil({ x: t.x, y: t.body.y + 1.4, z: t.z, glyph: 'star', size: 1.6, main: h.p.vfx, hot: h.p.core, life: 0.45, spin: 0.8, open: 0.06 });
+      k.burst(h.p, t.x, t.body.y + 1.3, t.z, 0.6);
+    },
+  },
+  'kukulkan.equinox': {
+    colors: SUNLIT,
+    decal: 0.4,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'line') return;
+      const end = along(s, 1);
+      // the serpent of light slides out along the ground over its own shadow, as down the pyramid's stairs
+      serpent(k, UMBRA, s.x, s.z, s.yaw, s.length, { r: 1, width: 1.25, beat: 0.035, life: 1, y: 0.1 });
+      serpent(k, SUNLIT, s.x, s.z, s.yaw, s.length, { r: 1, width: 0.7, beat: 0.035, life: 1, y: 0.14 });
+      const gy = k.ground(s.x, s.z);
+      P1.set(s.x, gy + 0.2, s.z);
+      P2.set(end.x, k.ground(end.x, end.z) + 0.2, end.z);
+      k.beam({ from: P1, to: P2, width: 0.3, main: f.p.vfx, hot: f.p.core, reach: 0.38, hold: 0.15, fadeOut: 0.4, flow: 14 });
+      k.burst(f.p, end.x, P2.y + 0.5, end.z, 0.7);
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 0.6, t.z, 0.45);
+      k.billow('dust', t.x, t.body.y + 0.4, t.z, 2.4, { duration: 1, tint: 0xd8cbb0 });
+    },
+  },
+  'kukulkan.vision-serpent': {
+    colors: JADE,
+    zone: {
+      puff: COPAL,
+      decal: 0.55,
+      motes: false,
+      extra: (k, z) => {
+        const gy = k.ground(z.x, z.z);
+        // the offering burns, and the Vision Serpent rears coiling out of its smoke
+        k.billow('smoke', z.x, gy + 1.4, z.z, 6, { duration: z.duration + 0.6, tint: COPAL, rise: 1.1 });
+        const body = k.ribbon({
+          x: z.x, y: gy + 0.1, z: z.z, main: JADE.vfx, hot: SUNLIT.core, ax: NORTH, ay: EAST, an: UP,
+          radius: 0.8, a0: Math.random() * 6, span: 2.25 * Math.PI * 2, width: 0.6, wall: 1, sweep: 0.55, tail: 1, taper: 0.3, lift: 4.4, life: z.duration, hold: true,
+        });
+        z.keep(body, (x, y, zz) => body.follow(x, y + 0.1, zz));
+        const eye = k.sigil({ x: z.x, y: gy + 5.2, z: z.z, glyph: 'spiral', size: 1.5, main: VISION.vfx, hot: VISION.core, life: z.duration, spin: -0.35, open: 0.6 });
+        z.keep(eye, (x, y, zz) => eye.follow(x, y + 5.2, zz));
+        const wisps = k.swarm({ x: z.x, y: gy, z: z.z, mode: 'orbit', main: 0x8a6cc8, hot: 0xe8ddff, range: z.radius * 0.85, spread: 2.6, size: 0.3, life: z.duration + 0.3, count: 0.7, rate: 0.3 });
+        z.keep(wisps, (x, y, zz) => wisps.move(x, y, zz));
+      },
+    },
+    hit: (k, h) => {
+      // what they see: a spiral turning over a reeling god
+      const t = h.target;
+      if (t.combatant.cc.has('intoxicate') && once(dazed, k, t, 1.2)) brand(k, VISION, t, 'spiral', 1.2, 0.8, (u) => u.combatant.cc.has('intoxicate'));
+    },
+  },
+  'kukulkan.constricting-coils': {
+    colors: JADE,
+    shot: { orb: 0.75, trail: 1.8 },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1.1, t.z, 0.55);
+      coils(k, t, 1.6);
+    },
+  },
+  'kukulkan.quetzal-flight': {
+    colors: QUETZAL,
+    decal: 0.5,
+    burst: 0.6,
+    cast: (k, c) => {
+      const u = c.owner;
+      wings(k, QUETZAL, u, c.yaw, { span: 2.4, sweep: 0.14, life: 0.6 });
+      k.comet(c.p, u, 0.55, 0.5);
+      plumes(k, u.x, u.body.y + 1.5, u.z, 2, { count: 0.55 });
+    },
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'circle') return;
+      const gy = k.ground(s.x, s.z);
+      shock(k, f.p, s.x, s.z, 0.5, s.radius * 1.1, { life: 0.5, wall: true, width: 1 });
+      plumes(k, s.x, gy + 2.6, s.z, s.radius * 0.8, { size: 0.32, life: 1.8, count: 0.75 });
+      k.billow('dust', s.x, gy + 0.6, s.z, 5, { duration: 1.3, tint: 0xd8cfc0 });
+    },
+  },
+  'kukulkan.jade-mask': {
+    colors: JADE,
+    cast: (k, c) => {
+      const o = c.owner;
+      const a = godAt(k, c.x, c.z, o.team) ?? o;
+      const held = (t: Unit) => t.combatant.shieldTotal > 0.5;
+      brand(k, JADE, a, 'mask', 4, 1, held);
+      // two jade hoops turning about the chest while the mask's protection holds
+      for (let i = 0; i < 2; i++) {
+        const dy = 0.9 + i * 0.7;
+        const r = k.ribbon({
+          x: a.x, y: a.body.y + dy, z: a.z, main: JADE.vfx, hot: i ? SUNLIT.core : JADE.core, ax: NORTH, ay: EAST, an: UP,
+          radius: a.radius + 0.5 - i * 0.1, a0: i * 2, span: 1.5 * Math.PI, width: 0.28, wall: 1, sweep: 0.2, tail: 1, taper: 0.3, spin: i === 0 ? 0.6 : -0.8, life: 4, hold: true,
+        });
+        k.attach(r, a, dy, 4, (x, y, z) => r.follow(x, y, z), held);
+      }
+      shock(k, JADE, a.x, a.z, 0.4, 2.2, { life: 0.35, wall: true, width: 0.8 });
+      k.burst(c.p, a.x, a.body.y + 1.4, a.z, 0.6);
+      if (a !== o) k.beam({ from: P1.set(o.x, o.body.y + 1.8, o.z), to: P2.set(a.x, a.body.y + 1.4, a.z), width: 0.22, main: JADE.vfx, hot: JADE.core, reach: 0.12, hold: 0.1, fadeOut: 0.3, flow: 16 });
+    },
+  },
+  'kukulkan.rain-of-plenty': {
+    colors: RAIN,
+    decal: 0.45,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'circle') return;
+      const gy = k.ground(s.x, s.z);
+      // a warm cloud bursts overhead and the rain comes down; the healed glow green and gold
+      k.billow('smoke', s.x, gy + 5.4, s.z, 6.5, { duration: 2, tint: 0xd2dee6, rise: 0.15 });
+      k.swarm({ x: s.x, y: gy, z: s.z, mode: 'rain', main: RAIN.vfx, hot: RAIN.core, range: s.radius * 0.95, spread: 5.2, size: 0.34, life: 2, count: 1 });
+      shock(k, RAIN, s.x, s.z, 0.5, s.radius, { life: 0.8, width: 1 });
+      for (const a of k.near(s.x, s.z, s.radius, f.owner.team)) {
+        k.pillar({ ...f.p, ...JADE }, a.x, a.z, 0.3, 0.45);
+        k.swarm({ x: a.x, y: a.body.y + 0.2, z: a.z, mode: 'orbit', main: SUNLIT.vfx, hot: SUNLIT.core, range: 0.8, spread: 2.2, size: 0.14, life: 1.2, count: 0.5 });
+      }
+    },
+  },
+  'kukulkan.rattling-plumes': {
+    colors: QUETZAL,
+    decal: 0.4,
+    cast: (k, c) => {
+      const u = c.owner;
+      // the plumes flare out all round him like a serpent rearing, and the rattle's wave goes out
+      for (let i = 0; i < 4; i++) wingsAt(k, QUETZAL, u.x, u.body.y + 1.7, u.z, c.yaw + (i * Math.PI) / 4, { span: 2.3, sweep: 0.1, life: 0.7, hold: true, from: 75, arc: 150 });
+      shock(k, c.p, u.x, u.z, 0.5, 3.8, { life: 0.4, wall: true, width: 0.9 });
+      shock(k, SUNLIT, u.x, u.z, 0.4, 3.4, { life: 0.5, width: 0.5 });
+      plumes(k, u.x, u.body.y + 1.6, u.z, 3, { count: 0.6 });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1.3, t.z, 0.45);
+      if (t.combatant.cc.has('fear') && once(dazed, k, t, 1)) brand(k, VENUS, t, 'eye', 1.1, 0.8, (u) => u.combatant.cc.has('fear'));
+    },
+  },
+  'kukulkan.descent': {
+    colors: JADE,
+    decal: 0.35,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'line') return;
+      const end = along(s, 1);
+      const gy = k.ground(s.x, s.z);
+      // the Feathered Serpent dives out of the sky ahead of him and runs the length of the path, coils breaking the ground
+      const sky = along(s, 0.45);
+      const fall = along(s, 0.08);
+      P1.set(sky.x, gy + 18, sky.z);
+      P2.set(fall.x, k.ground(fall.x, fall.z) + 0.4, fall.z);
+      k.beam({ from: P1, to: P2, width: 0.9, main: JADE.vfx, hot: JADE.core, reach: 0.12, hold: 0.12, fadeOut: 0.35, flow: 30 });
+      k.beam({ from: P1, to: P2, width: 0.3, main: SUNLIT.vfx, hot: SUNLIT.core, reach: 0.12, hold: 0.08, fadeOut: 0.3, flow: 36 });
+      serpent(k, JADE, s.x, s.z, s.yaw, s.length, { r: 1.35, width: 1.3, upright: true, beat: 0.04, life: 1, delay: 0.1, y: 0 });
+      serpent(k, SUNLIT, s.x, s.z, s.yaw, s.length, { r: 1.35, width: 0.55, beat: 0.04, life: 1, delay: 0.1 });
+      for (let i = 1; i <= 3; i++) {
+        const p = along(s, i / 3.2);
+        k.billow('dust', p.x, k.ground(p.x, p.z) + 0.6, p.z, 5, { duration: 1.4, tint: 0xd8cfc0, delay: 0.1 + i * 0.12 });
+      }
+      plumes(k, P2.x, gy + 3, P2.z, 3, { size: 0.34, count: 0.7, life: 1.8 });
+      k.burst(f.p, end.x, k.ground(end.x, end.z) + 0.8, end.z, 1.2);
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1, t.z, 0.8);
+      plumes(k, t.x, t.body.y + 1.2, t.z, 1.2, { count: 0.3, life: 1.1, size: 0.22 });
+    },
+  },
+  'kukulkan.venus-ascendant': {
+    colors: VENUS,
+    cast: (k, c) => {
+      const u = c.owner;
+      const gy = k.ground(u.x, u.z);
+      // he rises as the morning star: a shaft of starlight climbs from him and the star of Venus hangs over him
+      k.beam({ from: P1.set(u.x, gy + 0.3, u.z), to: P2.set(u.x, gy + 24, u.z), width: 0.42, main: c.p.vfx, hot: c.p.core, reach: 0.18, hold: 0.15, fadeOut: 0.6, flow: -30 });
+      shock(k, c.p, u.x, u.z, 0.5, 5, { life: 0.6, width: 1.2 });
+      const dy = u.radius * 3.6 + 1.1;
+      const star = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph: 'star', size: 1.5, main: c.p.vfx, hot: c.p.core, life: 8, spin: 0.25, open: 0.3 });
+      k.attach(star, u, dy, 8, (x, y, z) => star.follow(x, y, z));
+      wrap(k, c.p, u, 8, { radius: u.radius + 0.65, height: 2.6, turns: 1.5, width: 0.16, sweep: 0.35, spin: 0.9, taper: 0.3, hold: true });
+      const s = k.swarm({ x: u.x, y: u.body.y, z: u.z, mode: 'orbit', main: c.p.vfx, hot: c.p.core, range: 1.2, spread: 3, size: 0.15, life: 8, count: 0.6 });
+      k.attach(s, u, 0, 8, (x, y, z) => s.move(x, y, z));
+    },
+  },
+  'kukulkan.sky-coils': {
+    colors: JADE,
+    zone: {
+      decal: 0.5,
+      motes: false,
+      puff: null,
+      extra: (k, z) => {
+        const gy = k.ground(z.x, z.z);
+        const R = z.radius;
+        // the sky serpent drops out of the clouds and lays its body in a ring that tightens
+        P1.set(z.x + R * 0.4, gy + 22, z.z - R * 0.4);
+        P2.set(z.x + R * 0.7, gy + 0.4, z.z - R * 0.7);
+        k.beam({ from: P1, to: P2, width: 1.4, main: JADE.vfx, hot: JADE.core, reach: 0.12, hold: 0.1, fadeOut: 0.35, flow: 30 });
+        const life = z.duration + 0.3;
+        const band = k.ribbon({
+          x: z.x, y: gy + 0.1, z: z.z, main: JADE.vfx, hot: JADE.core, ax: NORTH, ay: EAST, an: UP,
+          radius: R, radiusTo: R * 0.85, a0: 0, span: Math.PI * 2, width: 1.1, wall: 1, sweep: 0.3, tail: 1, life, hold: true,
+        });
+        const belly = k.ribbon({
+          x: z.x, y: gy + 0.15, z: z.z, main: SUNLIT.vfx, hot: SUNLIT.core, ax: NORTH, ay: EAST, an: UP,
+          radius: R * 0.98, radiusTo: R * 0.83, a0: 0, span: Math.PI * 2, width: 0.55, sweep: 0.3, tail: 1, life, hold: true,
+        });
+        z.keep(band, (x, y, zz) => band.follow(x, y + 0.1, zz));
+        z.keep(belly, (x, y, zz) => belly.follow(x, y + 0.15, zz));
+        // coils arching up out of the ring
+        for (let i = 0; i < 7; i++) {
+          const a = (i / 7) * Math.PI * 2;
+          const cx = z.x + Math.sin(a) * R * 0.9;
+          const cz = z.z + Math.cos(a) * R * 0.9;
+          TILT.set(Math.cos(a), 0, -Math.sin(a));
+          RIGHT.set(Math.sin(a), 0, Math.cos(a));
+          k.ribbon({
+            x: cx, y: k.ground(cx, cz), z: cz, main: JADE.vfx, hot: SUNLIT.core, ax: TILT, ay: UP, an: RIGHT,
+            radius: 0.8, a0: Math.PI, span: -Math.PI, width: 0.9, wall: 1, sweep: 0.14, tail: 1, taper: 0.6, life, hold: true, delay: 0.15 + i * 0.04,
+          });
+        }
+        k.billow('dust', z.x, gy + 0.6, z.z, 7, { duration: 1.4, tint: 0xd8cfc0 });
+      },
+    },
+    hit: (k, h) => coils(k, h.target, 2.2, { turns: 2.5 }),
+  },
+  // ----- Cthulhu: the Dreamer in R'lyeh; feelers, ooze, wrong angles, black seawater, the stars and the dream -----
+
+  'cthulhu.prodigious-claws': {
+    colors: ABYSS,
+    decal: 0.35,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'cone') return;
+      // one clawed hand rakes across, then the other back the other way as the second hit lands
+      rake(k, f.p, s.x, s.z, s.yaw, s.range, s.angle, { y: 1.3 });
+      rake(k, GLOWING, s.x, s.z, s.yaw, s.range, s.angle, { reverse: true, delay: 0.35, y: 1 });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1.2, t.z, 0.45);
+      k.swarm({ x: t.x, y: t.body.y + 1.3, z: t.z, mode: 'drip', main: OOZE.vfx, hot: OOZE.core, range: 0.35, spread: 0, size: 0.12, life: 0.6, count: 0.35 });
+    },
+  },
+  'cthulhu.reaching-feelers': {
+    colors: ABYSS,
+    shot: { tether: 0.3, orb: 0.5, trail: 0.9 },
+    hit: (k, h) => {
+      const t = h.target;
+      const o = h.owner;
+      // the feelers wrap round them and drag them in to his face
+      wrap(k, h.p, t, 0.75, { turns: 2, width: 0.3, sweep: 0.15, taper: 0.4 });
+      for (let i = 0; i < 3; i++) {
+        const side = (i - 1) * 0.28;
+        const lift = 2.05 - Math.abs(i - 1) * 0.15;
+        const b = k.beam({ from: P1.set(o.x, o.body.y + lift, o.z), to: P2.set(t.x, t.body.y + 1.3, t.z), width: 0.16, main: i === 1 ? GLOWING.vfx : h.p.vfx, hot: h.p.core, reach: 0.05, hold: 0.35, fadeOut: 0.25, flow: -16 });
+        k.attach(b, t, 0, 0.6, (x, y, z) => b.place(P1.set(o.x + side * Math.cos(o.body.yaw), o.body.y + lift, o.z - side * Math.sin(o.body.yaw)), P2.set(x, y + 1.3, z)));
+      }
+      k.burst(h.p, t.x, t.body.y + 1.3, t.z, 0.6);
+    },
+  },
+  'cthulhu.the-call': {
+    colors: DREAM,
+    decal: 0.4,
+    cast: (k, c) => {
+      const u = c.owner;
+      // the call goes out in slow rings, the way it reaches sleepers in their dreams
+      for (let i = 0; i < 3; i++) {
+        k.ribbon({
+          x: u.x, y: k.ground(u.x, u.z) + 0.6, z: u.z, main: c.p.vfx, hot: GLOWING.core, ax: NORTH, ay: EAST, an: UP,
+          radius: 0.6, radiusTo: 4.3, a0: 0, span: Math.PI * 2, width: 1.1 - i * 0.2, wall: 1, sweep: 0, life: 0.7, delay: i * 0.16,
+        });
+      }
+      wrap(k, GLOWING, u, 3, { radius: u.radius + 0.55, height: 2.8, turns: 1.5, width: 0.14, sweep: 0.3, spin: 0.7, taper: 0.3, hold: true });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1.3, t.z, 0.45);
+      if (t.combatant.cc.has('taunt') && once(taunted, k, t, 1)) brand(k, DREAM, t, 'eye', 1.2, 0.85, (u) => u.combatant.cc.has('taunt'));
+    },
+  },
+  'cthulhu.wrong-angles': {
+    colors: GLOWING,
+    decal: 0.5,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'circle') return;
+      const gy = k.ground(s.x, s.z);
+      // the ground buckles into green stone that leans every wrong way, and a frame of impossible angles hangs over it
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + Math.random() * 0.5;
+        const rr = s.radius * (0.35 + Math.random() * 0.6);
+        k.shard('rock', s.x + Math.sin(a) * rr, s.z + Math.cos(a) * rr, Math.random() * Math.PI * 2, 0.8 + Math.random() * 0.5, Math.random() * 0.08, 0.9, GLOWING.vfx);
+      }
+      const r = s.radius * 0.8;
+      const y0 = gy + 0.3;
+      const y1 = gy + 2.6;
+      const turn = Math.random() * Math.PI;
+      for (let i = 0; i < 3; i++) {
+        const a = turn + (i / 3) * Math.PI * 2;
+        const b = turn + ((i + 1) / 3) * Math.PI * 2;
+        const lean = 0.9 + 0.5 * i;
+        // a triangle on the ground, another skewed and turned above it, and the struts between them meeting wrong
+        k.beam({ from: P1.set(s.x + Math.sin(a) * r, y0, s.z + Math.cos(a) * r), to: P2.set(s.x + Math.sin(b) * r, y0, s.z + Math.cos(b) * r), width: 0.2, main: GLOWING.vfx, hot: GLOWING.core, reach: 0.12, hold: 0.9, fadeOut: 0.4 });
+        k.beam({ from: P1.set(s.x + Math.sin(a + 1) * r * 0.6, y1 + i * 0.3, s.z + Math.cos(a + 1) * r * 0.6), to: P2.set(s.x + Math.sin(b + 1) * r * 0.6, y1 + ((i + 1) % 3) * 0.3, s.z + Math.cos(b + 1) * r * 0.6), width: 0.18, main: DREAM.vfx, hot: GLOWING.core, reach: 0.15, hold: 0.85, fadeOut: 0.4 });
+        k.beam({ from: P1.set(s.x + Math.sin(a) * r, y0, s.z + Math.cos(a) * r), to: P2.set(s.x + Math.sin(a + lean) * r * 0.6, y1 + i * 0.3, s.z + Math.cos(a + lean) * r * 0.6), width: 0.15, main: GLOWING.vfx, hot: GLOWING.core, reach: 0.18, hold: 0.8, fadeOut: 0.4 });
+      }
+      k.billow('dust', s.x, gy + 0.5, s.z, 5, { duration: 1.2, tint: 0xb8c8be });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1.2, t.z, 0.5);
+      if (t.combatant.cc.has('disorient') && once(dazed, k, t, 1)) brand(k, GLOWING, t, 'spiral', 1.1, 0.8, (u) => u.combatant.cc.has('disorient'));
+    },
+  },
+  'cthulhu.narrow-wings': {
+    colors: BRINE,
+    decal: 0.5,
+    burst: 0.6,
+    cast: (k, c) => {
+      const u = c.owner;
+      wings(k, BATWING, u, c.yaw, { span: 2.6, sweep: 0.16, life: 0.6 });
+      k.comet(c.p, u, 0.55, 0.45);
+    },
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'circle') return;
+      const gy = k.ground(s.x, s.z);
+      // he comes down in a spray of brine
+      shock(k, f.p, s.x, s.z, 0.5, s.radius * 1.1, { life: 0.5, wall: true, width: 1.1 });
+      shock(k, FOAM, s.x, s.z, 0.4, s.radius, { life: 0.6, width: 0.5 });
+      spray(k, s.x, gy + 0.6, s.z, s.radius, { size: 0.24, count: 0.8 });
+      k.billow('dust', s.x, gy + 0.5, s.z, 5, { duration: 1.2, tint: SPRAY });
+    },
+    hit: (k, h) => spray(k, h.target.x, h.target.body.y + 1, h.target.z, 0.8, { count: 0.25, size: 0.16 }),
+  },
+  'cthulhu.green-ooze': {
+    colors: OOZE,
+    zone: {
+      puff: null,
+      decal: 0.9,
+      motes: false,
+      extra: (k, z) => {
+        const gy = k.ground(z.x, z.z);
+        // the ooze spreads and bubbles, a sickly reek rising off it
+        k.billow('smoke', z.x, gy + 0.6, z.z, 5, { duration: z.duration + 0.5, tint: 0xd4f0a8, rise: 0.25 });
+        const bubbles = k.swarm({ x: z.x, y: gy, z: z.z, mode: 'orbit', main: OOZE.vfx, hot: OOZE.core, range: z.radius * 0.9, spread: 0.5, size: 0.24, life: z.duration + 0.3, count: 0.9, rate: 0.25 });
+        z.keep(bubbles, (x, y, zz) => bubbles.move(x, y, zz));
+        k.swarm({ x: z.x, y: gy + 1.6, z: z.z, mode: 'scatter', main: OOZE.vfx, hot: OOZE.core, range: z.radius * 0.7, spread: 0, size: 0.22, life: 1.1, count: 0.6 });
+      },
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      if (!once(dazed, k, t, 0.69)) return;
+      const d = k.swarm({ x: t.x, y: t.body.y + 1.1, z: t.z, mode: 'drip', main: OOZE.vfx, hot: OOZE.core, range: 0.45, spread: 0, size: 0.16, life: 0.9, count: 0.5 });
+      k.attach(d, t, 1.1, 0.9, (x, y, z) => d.move(x, y, z));
+    },
+  },
+  'cthulhu.rubbery-hide': {
+    colors: GLOWING,
+    cast: (k, c) => {
+      const u = c.owner;
+      const held = (t: Unit) => t.combatant.shieldTotal > 0.5;
+      // the hide goes slick and hard: slime running off it, glowing bands drawn tight round the body
+      shock(k, c.p, u.x, u.z, 0.4, 2.6, { life: 0.35, wall: true, width: 0.9 });
+      for (let i = 0; i < 2; i++) {
+        const dy = 0.8 + i * 0.75;
+        const r = k.ribbon({
+          x: u.x, y: u.body.y + dy, z: u.z, main: ABYSS.vfx, hot: GLOWING.core, ax: NORTH, ay: EAST, an: UP,
+          radius: u.radius + 0.45 - i * 0.08, a0: i * 2.4, span: 1.7 * Math.PI, width: 0.32, wall: 1, sweep: 0.2, tail: 1, taper: 0.4, spin: i === 0 ? 0.5 : -0.65, life: 4, hold: true,
+        });
+        k.attach(r, u, dy, 4, (x, y, z) => r.follow(x, y, z), held);
+      }
+      const d = k.swarm({ x: u.x, y: u.body.y + 1.8, z: u.z, mode: 'drip', main: OOZE.vfx, hot: OOZE.core, range: 0.6, spread: 0, size: 0.14, life: 4, count: 0.4 });
+      k.attach(d, u, 1.8, 4, (x, y, z) => d.move(x, y, z), held);
+      k.burst(c.p, u.x, u.body.y + 1.4, u.z, 0.6);
+    },
+  },
+  'cthulhu.the-swell': {
+    colors: BRINE,
+    decal: 0.35,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'line') return;
+      basis(s.yaw);
+      const gy = k.ground(s.x, s.z);
+      // a wall of black seawater rolls out ahead of him, white water breaking along its crest
+      const half = Math.atan2(s.width * 0.75, s.length) + 0.25;
+      // (a long tail lights the whole front at once)
+      const wave = { x: s.x, z: s.z, ax: FWD, ay: RIGHT, an: UP, a0: -half, span: 2 * half, sweep: 0, tail: 3, life: 0.65, radius: 0.8, radiusTo: s.length };
+      k.ribbon({ ...wave, y: gy + 1.2, main: BLACKWATER.vfx, hot: BLACKWATER.core, width: 2.4, wall: 1 });
+      k.ribbon({ ...wave, y: gy + 2.4, main: FOAM.vfx, hot: FOAM.core, width: 0.5, wall: 1, life: 0.6 });
+      k.ribbon({ ...wave, y: gy + 0.15, main: BRINE.vfx, hot: FOAM.core, width: 1.4, life: 0.75 });
+      const end = along(s, 0.8);
+      k.billow('dust', end.x, k.ground(end.x, end.z) + 0.8, end.z, 5, { duration: 1.2, tint: SPRAY, delay: 0.35 });
+      spray(k, end.x, k.ground(end.x, end.z) + 1, end.z, 2.2, { count: 0.7 });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1, t.z, 0.5);
+      spray(k, t.x, t.body.y + 1.2, t.z, 1, { count: 0.3, size: 0.18 });
+    },
+  },
+  'cthulhu.stars-are-right': {
+    colors: DREAM,
+    decal: 0.35,
+    cast: (k, c) => {
+      const u = c.owner;
+      const gy = k.ground(u.x, u.z);
+      // the stars wheel into place over him, the sleeper's eye opens, and the madness breaks out in a wave
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        k.sigil({ x: u.x + Math.sin(a) * 3.2, y: gy + 6.5 + (i % 2) * 0.6, z: u.z + Math.cos(a) * 3.2, glyph: 'star', size: 1.1, main: GLOWING.vfx, hot: GLOWING.core, life: 1.4, spin: 0.4, open: 0.2 + i * 0.05 });
+      }
+      const eye = k.sigil({ x: u.x, y: gy + 5.2, z: u.z, glyph: 'eye', size: 3.2, main: c.p.vfx, hot: GLOWING.core, life: 1.8, open: 0.55 });
+      k.attach(eye, u, 5.2, 1.8, (x, y, z) => eye.follow(x, y, z));
+      shock(k, c.p, u.x, u.z, 0.8, 6.8, { life: 0.7, wall: true, width: 1.8 });
+      shock(k, GLOWING, u.x, u.z, 0.6, 6.5, { life: 0.85, width: 1 });
+      wrap(k, GLOWING, u, 6, { radius: u.radius + 0.7, height: 3, turns: 2, width: 0.16, sweep: 0.35, spin: 0.9, taper: 0.25, hold: true });
+      const s = k.swarm({ x: u.x, y: u.body.y, z: u.z, mode: 'orbit', main: DREAM.vfx, hot: GLOWING.core, range: 1.4, spread: 3.2, size: 0.17, life: 6, count: 0.7 });
+      k.attach(s, u, 0, 6, (x, y, z) => s.move(x, y, z));
+    },
+    hit: (k, h) => k.burst(h.p, h.target.x, h.target.body.y + 1.3, h.target.z, 0.7),
+  },
+  'cthulhu.rlyeh-rises': {
+    colors: GLOWING,
+    decal: 0.25,
+    flash: (k, f) => {
+      const s = f.shape;
+      if (s.type !== 'circle') return;
+      const gy = k.ground(s.x, s.z);
+      const R = s.radius;
+      // the green stone city heaves up out of the sea: great slabs bursting through, glowing in their seams, brine pouring off them
+      k.shard('rock', s.x, s.z, Math.random() * 6, 2.4, 0.04, 1.4, GLOWING.vfx);
+      rockRing(k, s.x, s.z, R * 0.45, 5, GLOWING.vfx, { size: 1.9, hold: 1.25, delay: 0.08 });
+      rockRing(k, s.x, s.z, R * 0.85, 9, GLOWING.vfx, { size: 1.3, hold: 1.1, delay: 0.14 });
+      shock(k, BRINE, s.x, s.z, 0.8, R * 1.05, { life: 0.7, wall: true, width: 1.6 });
+      k.billow('dust', s.x, gy + 0.8, s.z, 7, { duration: 1.6, tint: 0xa8c0b4 });
+      spray(k, s.x, gy + 1.5, s.z, R * 0.8, { size: 0.28, count: 0.9, life: 1.6 });
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1, t.z, 0.8);
+      spray(k, t.x, t.body.y + 1, t.z, 1, { count: 0.3, size: 0.18 });
+    },
+  },
+  'cthulhu.dream-plague': {
+    colors: DREAM,
+    zone: {
+      puff: 0x6a5aa8,
+      decal: 0.6,
+      motes: false,
+      extra: (k, z) => {
+        const gy = k.ground(z.x, z.z);
+        // his dream lies over the field: a slow spiral turning on the ground, a haze, and things drifting in it
+        const sp = k.sigil({ x: z.x, y: gy + 0.2, z: z.z, glyph: 'spiral', size: z.radius * 1.7, main: DREAM.vfx, hot: GLOWING.core, life: z.duration + 0.3, flat: true, spin: -0.12, open: 0.8 });
+        z.keep(sp, (x, y, zz) => sp.follow(x, y + 0.2, zz));
+        k.billow('smoke', z.x, gy + 1.2, z.z, 7, { duration: z.duration + 0.6, tint: 0xc4b8e0, rise: 0.3 });
+        const motes = k.swarm({ x: z.x, y: gy, z: z.z, mode: 'orbit', main: GLOWING.vfx, hot: GLOWING.core, range: z.radius * 0.9, spread: 3, size: 0.2, life: z.duration + 0.3, count: 0.8, rate: 0.2 });
+        z.keep(motes, (x, y, zz) => motes.move(x, y, zz));
+      },
+    },
+    hit: (k, h) => {
+      const t = h.target;
+      if (t.combatant.cc.has('blind') && once(dazed, k, t, 3)) brand(k, DREAM, t, 'spiral', 3, 0.85, (u) => u.combatant.cc.has('blind'));
     },
   },
 };

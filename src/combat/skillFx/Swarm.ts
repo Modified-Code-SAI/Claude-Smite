@@ -15,6 +15,8 @@ export const SWARM_MODES = {
   scatter: 2,
   /** Falling from hands and blades: venom drips. */
   drip: 3,
+  /** Streaks of rain falling `spread` meters over a disc `range` across. */
+  rain: 4,
 } as const;
 export type SwarmMode = keyof typeof SWARM_MODES;
 
@@ -66,10 +68,14 @@ function makeMaterial(): THREE.SpriteNodeMaterial {
   // drip: from around a point, falling a meter
   const fall = fract(t.mul(h2.mul(0.8).add(0.9)).add(h1));
   const drip = vec3(cos(dir).mul(u.range).mul(h3), fall.mul(fall).mul(-1.1), sin(dir).mul(u.range).mul(h3));
+  // rain: each drop falls the height on its own clock, spread evenly over the disc
+  const drop = fract(t.mul(h2.mul(0.4).add(1.1)).add(h1.mul(7.3)));
+  const rain = vec3(cos(dir).mul(u.range).mul(h3.sqrt()), float(1).sub(drop).mul(u.spread), sin(dir).mul(u.range).mul(h3.sqrt()));
 
-  m.positionNode = stream.mul(pick(0)).add(orbit.mul(pick(1))).add(scatter.mul(pick(2))).add(drip.mul(pick(3)));
+  m.positionNode = stream.mul(pick(0)).add(orbit.mul(pick(1))).add(scatter.mul(pick(2))).add(drip.mul(pick(3))).add(rain.mul(pick(4)));
   const sz = u.size.mul(h3.mul(0.6).add(0.7));
-  m.scaleNode = vec2(sz, sz);
+  // a raindrop is a streak
+  m.scaleNode = vec2(sz.mul(mix(float(1), float(0.35), pick(4))), sz.mul(mix(float(1), float(3.2), pick(4))));
 
   const p = uv().sub(0.5).mul(2);
   // bugs: a dark body with two pale wings beating fast
@@ -80,7 +86,9 @@ function makeMaterial(): THREE.SpriteNodeMaterial {
   const shape = mix(fleck, max(body, wing.mul(0.55)), u.bugs);
   const shown = step(h1, u.count);
   // the stream fades in at the mouth and out at its far end, the drip as it falls
-  const ends = mix(float(1), smoothstep(0, 0.12, life).mul(smoothstep(1, 0.75, life)), pick(0)).mul(mix(float(1), float(1).sub(fall), pick(3)));
+  const ends = mix(float(1), smoothstep(0, 0.12, life).mul(smoothstep(1, 0.75, life)), pick(0))
+    .mul(mix(float(1), float(1).sub(fall), pick(3)))
+    .mul(mix(float(1), smoothstep(0, 0.15, drop).mul(smoothstep(1, 0.9, drop)), pick(4)));
   const tone = mix(u.main, u.hot, mix(h3.mul(0.5), wing.mul(beat).mul(0.6), u.bugs));
   m.colorNode = vec4(tone.mul(mix(float(2.5), float(1), u.bugs)), 1);
   m.opacityNode = shape.mul(shown).mul(ends).mul(u.fade);

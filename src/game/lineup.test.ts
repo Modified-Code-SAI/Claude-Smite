@@ -3,6 +3,7 @@ import { GODS } from './gods';
 import { clashBots, conquestBots, duelRival, lineupFor, seeded, siegeBots } from './lineup';
 import { rushRoster } from '../net/rushRoster';
 import { descentRoster } from '../net/descentRoster';
+import { jotunnRoster } from '../net/jotunnRoster';
 import type { NetPlayer } from '../net/roster';
 
 const me = (god: string): NetPlayer[] => [{ id: 'me', name: 'You', god, team: 'order' }];
@@ -64,6 +65,25 @@ describe('lineup', () => {
     const seen = new Set<string>();
     for (let k = 1; k < 40; k++) for (const g of conquestBots('zeus', seeded(k)).enemies) seen.add(g);
     expect(seen.size).toBe(GODS.length);
+  });
+
+  it('the Jötunn deals its bots from every god, and trying another god keeps the rest', () => {
+    const bots = (god: string, seed: number) => lineupFor({ mode: 'jotunn', players: me(god), seed }).order.filter((s) => !s.player).map((s) => s.god);
+    expect(bots('zeus', 5)).toEqual(jotunnRoster(me('zeus'), seeded(5)).filter((s) => !s.player).map((s) => s.god));
+    const seen = new Set<string>();
+    for (let seed = 1; seed < 60; seed++) {
+      const b = bots('zeus', seed);
+      expect(b).toHaveLength(4);
+      expect(new Set(b).size).toBe(4);
+      expect(b).not.toContain('zeus');
+      for (const g of b) seen.add(g);
+      // picking one of the bots' gods swaps out only that bot
+      const other = bots(b[2]!, seed);
+      expect(other.filter((g) => b.includes(g))).toHaveLength(3);
+    }
+    expect(seen.size).toBe(GODS.length - 1);
+    // online, the lobby order alone decides (every end builds the same roster)
+    expect(lineupFor({ mode: 'jotunn', players: me('zeus'), seed: 1, net: { mode: 'versus', bots: { order: true, chaos: true } } }).order.map((s) => s.god)).toEqual(jotunnRoster(me('zeus')).map((s) => s.god));
   });
 
   it('the Jötunn marks who is the giant first', () => {
