@@ -296,6 +296,8 @@ export class Jotunn {
     // giant's win rate stayed put with it (46% to 48% with all eight gods,
     // 48% to 46% with the first five, both within the runs' noise)
     sim.alternateOrder = true;
+    // the giant is a god too: the gods run between its legs, and only its knees stand in the way
+    sim.foesBlock = false;
     const gods = Math.max(1, Math.min(JOTUNN.gods, players.length - 1));
     this.might = JOTUNN.might.base + JOTUNN.might.perGod * gods;
     this.giant = giantUnit(this.might);

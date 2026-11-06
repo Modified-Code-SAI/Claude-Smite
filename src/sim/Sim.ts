@@ -43,6 +43,8 @@ export const MARK_MAX = 3;
 /** Seconds a ground-targeted skill shows its circle before it lands. */
 export const GROUND_WARNING = 0.4;
 const LEAP_SPEED = 24;
+/** How tall a god stands, for gods blocking each other (see Sim.foesBlock). */
+const GOD_HEIGHT = 1.8;
 const DASH_SPEED = 28;
 /** Melee basic attacks hit everything in this arc (degrees). */
 /** Melee basic attacks hit enemies within this arc (degrees) in front of the attacker. */
@@ -107,6 +109,15 @@ export class Sim {
    */
   alternateOrder = false;
   private backward = false;
+  /**
+   * Gods of opposing teams can't walk through each other: a body in the way is
+   * gone round, so a screen or a block is real (as in Smite). Allies still pass
+   * through, a god over another's head (a leap) passes over, and a dash runs
+   * through the gods in its way (striking them) and stops clear of anyone at
+   * its end. The Jötunn mode turns it off (its giant is a god whose own
+   * blockers are its knees).
+   */
+  foesBlock = true;
   /** How high (meters) a knockback's arc rises (Jötunn's giant hurls gods high). */
   knockbackArc = 0.6;
   /** How high (meters) a knock-up throws its target. */
@@ -1047,14 +1058,15 @@ export class Sim {
 
   /**
    * Terrain collision plus the standing structures, which nothing walks
-   * through. A walker heading straight at one slides around its side
-   * instead of stalling against it.
+   * through, and for a god (`mover`) the enemy gods (see foesBlock). A walker
+   * heading straight at one slides around its side instead of stalling
+   * against it.
    */
   solid(x: number, z: number, radius: number, feetY: number, from: Point = { x, z }, terrain: SimTerrain = this.terrain, mover: Unit | null = null): Point {
     let r = terrain.resolve(x, z, radius, feetY);
     for (const s of this.units) {
       // (a unit's own parts, the Jötunn's legs, don't block it)
-      if (!s.alive || !(isStructure(s) || s.blocks) || s === mover || (mover && s.owner === mover)) continue;
+      if (!s.alive || !(isStructure(s) || s.blocks || this.bodyBlocks(s, mover, feetY)) || s === mover || (mover && s.owner === mover)) continue;
       const min = s.radius + radius;
       let dx = r.x - s.x;
       let dz = r.z - s.z;
@@ -1081,6 +1093,13 @@ export class Sim {
       r = terrain.resolve(s.x + ((px - s.x) / pd) * min, s.z + ((pz - s.z) / pd) * min, radius, feetY);
     }
     return r;
+  }
+
+  /** Whether god `s` stands in the way of god `mover` (see foesBlock): a foe, at the height of its feet, and not one a dash is running through. */
+  private bodyBlocks(s: Unit, mover: Unit | null, feetY: number): boolean {
+    if (!this.foesBlock || !mover || s.kind !== 'god' || mover.kind !== 'god' || s.team === mover.team) return false;
+    if (mover.forced?.sweep && mover.forced.remaining > 0) return false;
+    return feetY < s.body.y + GOD_HEIGHT && feetY + GOD_HEIGHT > s.body.y;
   }
 
   private walk(u: Unit, dx: number, dz: number, dist: number): void {

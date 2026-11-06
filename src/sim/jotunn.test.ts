@@ -126,6 +126,8 @@ describe('Jötunn', () => {
     expect(g.combatant.ccImmune).toBe(true);
     // nobody always moves first
     expect(sim.alternateOrder).toBe(true);
+    // the gods run between the giant's legs (only its knees stand in the way)
+    expect(sim.foesBlock).toBe(false);
     expect(mode.phase).toBe('countdown');
   });
 
