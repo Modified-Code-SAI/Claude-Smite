@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import type { CastKind, GodModel } from '../actors/GodModel';
 import { createGodModel } from './godModels';
 import { float, fract, length, mix, mx_noise_float, positionGeometry, smoothstep, uv, vec3 } from '../render/tsl';
-import type { StructureKind } from '../sim/factory';
+import { summonCount, summonLook, type StructureKind, type SummonLook } from '../sim/factory';
 import { isStructure, type SimEvent, type Unit } from '../sim/Unit';
 import { MinionViews } from './MinionViews';
 import { createMonsterView, monsterViewKey, type MonsterView } from './MonsterViews';
@@ -10,6 +10,14 @@ import { createStructureModel, type StructureModel } from './structures';
 import { MUZZLE_HEIGHT } from './Vfx';
 import { castStaticAsOne } from '../scene/merge';
 import { hypot } from '../core/math';
+
+/** Which pool of spare models a summon's look draws from. */
+const summonKey = (look: SummonLook): string => `${look.god}|${look.variant}`;
+
+/** The look of a summoned unit, from what called it up and who (see summonLook). */
+function summonLookOf(u: Unit): SummonLook {
+  return summonLook(u.origin?.f === 'summon' ? u.origin.kind : '', u.owner?.combatant.god.id ?? u.combatant.god.id);
+}
 
 /** Seconds a fallen god stays on the ground before it is hidden. */
 const GOD_CORPSE = 2.8;
@@ -222,6 +230,16 @@ export class UnitViews {
   private readonly spares = new Map<string, MonsterView[]>();
   /** Monsters still to get a spare view, built one a frame. */
   private readonly toBuild: { tag: string; name: string }[] = [];
+  /**
+   * Summon models waiting for their next cast, by summonKey: built ahead
+   * for every god that can summon, and handed back when a summon ends, so a
+   * cast never builds a god model in its frame (several ms each).
+   */
+  private readonly summonSpares = new Map<string, GodModel[]>();
+  /** Summon models still to build ahead, one a frame once the monsters' are done. */
+  private readonly summonsToBuild: SummonLook[] = [];
+  /** Gods whose summons are already stocked. */
+  private readonly summoners = new WeakSet<Unit>();
 
   constructor(
     private player: Unit,
@@ -240,10 +258,14 @@ export class UnitViews {
    * batches: three keys a batch's shaders to the batch itself, so drawing
    * any other copy would not spare these a build mid-match. The gods
    * already in the match are built now too, rather than all in the first
-   * frame after the loading screen (a few ms each).
+   * frame after the loading screen (a few ms each), and so are the
+   * summoners' summon models (their shaders are the gods' own, already
+   * warm), so no cast builds a model mid-match.
    */
   prime(units: readonly Unit[]): void {
     for (const u of units) if ((u.kind === 'dummy' || u.kind === 'god') && !this.views.has(u)) this.create(u);
+    // (creating a god's view queued its summons: build them all now)
+    while (this.summonsToBuild.length) this.buildSpare();
   }
 
   /**
@@ -271,9 +293,66 @@ export class UnitViews {
     return n;
   }
 
+  /** Spare summon models ready, for tests and the performance probe. */
+  get summonSpareCount(): number {
+    let n = 0;
+    for (const list of this.summonSpares.values()) n += list.length;
+    return n;
+  }
+
+  /** Queues models for every summon this god's skills can call up (a cast's worth each), once per god. */
+  private stockSummons(u: Unit): void {
+    if (this.summoners.has(u)) return;
+    this.summoners.add(u);
+    const god = u.combatant.god;
+    for (const skill of god.skills)
+      for (const e of skill.effects) {
+        if (e.kind !== 'summon') continue;
+        const look = summonLook(e.unit, god.id);
+        for (let i = 0; i < summonCount(e.unit); i++) this.summonsToBuild.push(look);
+      }
+  }
+
+  /** A model for a summon that has arrived: a spare when one is ready, else a new one. */
+  private summonModel(u: Unit): GodModel {
+    const look = summonLookOf(u);
+    const key = summonKey(look);
+    const spare = this.summonSpares.get(key)?.pop();
+    if (spare) {
+      spare.rest();
+      return spare;
+    }
+    // built now, so one less to build ahead
+    const i = this.summonsToBuild.findIndex((m) => summonKey(m) === key);
+    if (i >= 0) this.summonsToBuild.splice(i, 1);
+    return this.buildSummon(look);
+  }
+
+  private buildSummon(look: SummonLook): GodModel {
+    const model = createGodModel(look.god, look.variant);
+    if (look.variant === 'einherjar') model.root.scale.setScalar(0.88);
+    return model;
+  }
+
+  /** A summon's view is gone: its model waits, casting its shadow again, for the next cast. */
+  private keepSummon(u: Unit, model: GodModel, casters: readonly THREE.Mesh[] | undefined): void {
+    if (casters) for (const m of casters) m.castShadow = true;
+    this.spareSummon(summonKey(summonLookOf(u)), model);
+  }
+
+  private spareSummon(key: string, model: GodModel): void {
+    const list = this.summonSpares.get(key);
+    if (list) list.push(model);
+    else this.summonSpares.set(key, [model]);
+  }
+
   private buildSpare(): void {
     const m = this.toBuild.shift();
-    if (!m) return;
+    if (!m) {
+      const look = this.summonsToBuild.shift();
+      if (look) this.spareSummon(summonKey(look), this.buildSummon(look));
+      return;
+    }
     const key = monsterViewKey(m);
     const list = this.spares.get(key);
     const v = createMonsterView(m);
@@ -344,6 +423,7 @@ export class UnitViews {
       if (seen.has(u)) continue;
       if (u !== this.player || v.custom) this.group.remove(v.root);
       if (u.kind === 'dummy') this.dummies?.remove(v.root);
+      if (u.kind === 'summon' && v.model) this.keepSummon(u, v.model, v.casters);
       this.views.delete(u);
       this.prev.delete(u);
       this.cur.delete(u);
@@ -430,6 +510,7 @@ export class UnitViews {
     } else if (u === this.player) {
       model = this.playerModel;
       root = model.root;
+      this.stockSummons(u);
     } else if (u.kind === 'dummy') {
       // drawn by the batched crowd; this root only carries the pose
       root = new THREE.Group();
@@ -461,12 +542,15 @@ export class UnitViews {
         root.updateMatrixWorld(true);
         MUZZLE_HEIGHT[u.kind] = structure.muzzle.getWorldPosition(new THREE.Vector3()).y - root.position.y;
       }
-    } else {
-      const summoned = u.kind === 'summon' && u.name === 'Einherjar';
-      model = createGodModel(u.combatant.god.id, summoned ? 'einherjar' : 'god');
+    } else if (u.kind === 'summon') {
+      model = this.summonModel(u);
       root = model.root;
-      if (summoned) root.scale.setScalar(0.88);
       this.group.add(root);
+    } else {
+      model = createGodModel(u.combatant.god.id);
+      root = model.root;
+      this.group.add(root);
+      if (u.kind === 'god') this.stockSummons(u);
     }
     const v: UnitView = { root, model, height, wobble: 0, wobbleVel: 0, deathTime: -1, localDir: new THREE.Vector2(), lift: 0, structure, rebirth: -1, emerge: this.emergeMonsters && u.kind === 'monster' && u.alive ? 0 : -1, external, windup: 0, monster, custom: !!own, animDt: 0, stagger: this.created++ };
     this.views.set(u, v);

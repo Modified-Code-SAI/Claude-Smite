@@ -5,6 +5,7 @@ import { WISDOM_XP } from './Jungle';
 import { Passives } from './Passives';
 import { PINGS, PingLimiter, ultState, type PingKind } from './Pings';
 import { hypot } from '../core/math';
+import { summonCount } from './factory';
 import {
   isStructure,
   nextEntityId,
@@ -850,8 +851,7 @@ export class Sim {
 
   private summon(owner: Unit, kind: string, duration: number, at: Point): void {
     if (!this.summonFactory) return;
-    const count = kind === 'einherjar' || kind === 'mirror-copy' ? 2 : 1;
-    for (let i = 0; i < count; i++) {
+    for (let i = 0, count = summonCount(kind); i < count; i++) {
       const s = this.summonFactory(owner, kind, at, i);
       s.owner = owner;
       s.lifetime = duration;
