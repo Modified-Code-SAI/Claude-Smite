@@ -595,6 +595,15 @@ export class UnitViews {
     if (v.model) {
       const target = u.sinceAction < v.model.castHold ? 1 : 0;
       v.model.castWeight += (target - v.model.castWeight) * (1 - Math.exp(-dt * (target ? 22 : 6)));
+      // a dash, juke or shove on the ground: which way it goes in the god's own frame (forward (-sin, -cos), right (cos, -sin))
+      const f = u.forced;
+      v.model.dashing = !!f && f.arc === 0 && u.alive;
+      if (f && v.model.dashing) {
+        const sin = Math.sin(u.body.yaw);
+        const cos = Math.cos(u.body.yaw);
+        v.model.dashDir.set(f.vx * cos - f.vz * sin, -f.vx * sin - f.vz * cos);
+        if (v.model.dashDir.lengthSq() > 1e-6) v.model.dashDir.normalize();
+      }
       v.model.carrying = u === this.carrier && u.alive;
       v.model.reaching = u === this.catcher && u.alive;
       if (v.model.reaching) v.model.reachTo.copy(this.catchAt);

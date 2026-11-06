@@ -110,6 +110,14 @@ const CAST_FEEL: Record<CastKind, { rate: number; accent: number; hold: number }
 };
 
 /**
+ * A dash, juke or shove: the whole body tips from the hips toward where it's
+ * going (`bank` radians into a sidestep, `lean` into a charge or back from a
+ * shove), the legs swinging out the other way as if pushing off, and turning
+ * only `1 - legs` as far as a run would. In at `in`, back out at `out` (1/s).
+ */
+export const DASH = { bank: 0.38, lean: 0.22, legs: 0.7, in: 25, out: 8 };
+
+/**
  * Relic Rush: the off hand holds the relic up while its god carries it, and
  * throws it on from there. Directions are from the shoulder in model space
  * (+x the god's left, +y up, +z ahead).
@@ -177,6 +185,12 @@ export class GodModel {
   readonly leftHand: THREE.Object3D;
   /** 0..1 blend toward the cast pose; gameplay sets it every frame. */
   castWeight = 0;
+  /** Whether a dash, juke or shove is moving this god, and which way in the model's frame (x right, y ahead, unit length; see DASH). */
+  dashing = false;
+  readonly dashDir = new THREE.Vector2();
+  private dash = 0;
+  /** The way the last dash went, held while the lean eases off. */
+  private readonly dashWent = new THREE.Vector2();
   /** Relic Rush: whether this god carries the relic (the off hand holds it up; eased in and out here). */
   carrying = false;
   /** Relic Rush: whether a pass is about to come to this god, whose off hand then reaches out to meet it at `reachTo` (world). */
@@ -513,6 +527,8 @@ export class GodModel {
     this.smoothedSpeed = 0;
     this.prevSpeed = 0;
     this.airWeight = 0;
+    this.dashing = false;
+    this.dash = 0;
     this.carrying = false;
     this.reaching = false;
     this.reach = 0;
@@ -574,8 +590,12 @@ export class GodModel {
       return;
     }
 
-    // strafing: legs turn toward the movement direction, the torso keeps aiming
-    const strafeYaw = speed > 0.5 ? Math.atan2(s.localDir.x, Math.max(0.25, Math.abs(s.localDir.y))) * (backward ? -0.6 : 0.6) : 0;
+    // a dash tips the body in fast and lets it back up more slowly, the way it went
+    const dashing = this.dashing && s.grounded && this.dashDir.lengthSq() > 0.25;
+    if (dashing) this.dashWent.copy(this.dashDir);
+    this.dash += ((dashing ? 1 : 0) - this.dash) * (1 - Math.exp(-dt * (dashing ? DASH.in : DASH.out)));
+    // strafing: legs turn toward the movement direction, the torso keeps aiming (less so in a sidestep)
+    const strafeYaw = speed > 0.5 ? Math.atan2(s.localDir.x, Math.max(0.25, Math.abs(s.localDir.y))) * (backward ? -0.6 : 0.6) * (1 - DASH.legs * this.dash) : 0;
     this.hipYaw += (strafeYaw - this.hipYaw) * k;
     this.root.updateMatrixWorld(true);
     if (Math.abs(this.hipYaw) > 1e-3) {
@@ -592,6 +612,10 @@ export class GodModel {
     this.bank += (bankTarget - this.bank) * Math.min(1, dt * 5);
     if (Math.abs(this.lean) > 1e-3) this.rotateModel(this.spine, this.axisX, this.lean);
     if (Math.abs(this.bank) > 1e-3) this.rotateModel(this.spine, this.axisZ, this.bank);
+    if (this.dash > 1e-3) {
+      this.rotateModel(this.hips, this.axisZ, this.dashWent.x * DASH.bank * this.dash);
+      this.rotateModel(this.hips, this.axisX, this.dashWent.y * DASH.lean * this.dash);
+    }
     // stance: full while standing, gone at a jog
     this.stanceWeight += ((1 - move) * (s.grounded ? 1 : 0) - this.stanceWeight) * Math.min(1, dt * 4);
     if (this.stanceWeight > 0.01) for (const a of this.stance) this.rotateModel(a.bone, a.axis, a.angle * this.stanceWeight);
