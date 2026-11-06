@@ -15,15 +15,11 @@ import { Fire } from '../Effects';
 import { triplanar, type MaterialLibrary } from '../Materials';
 import { mergeStatic } from '../merge';
 import type { MapContent } from '../World';
-import { abyssKit, drownedKit, FLAME_Y, forgeKit, type Kit } from './kits';
+import { abyssKit, drownedKit, FLAME_Y, forgeKit, LINTEL_Y, PYLON_H, type Kit } from './kits';
 import { DEPTH_COLORS, depthLook, depthWeights, flameHot, gateOpen, underworldGlow } from './palettes';
 import { Shafts } from './shafts';
 import { Spirits } from './spirits';
 import { showRunes } from './UnderworldTerrain';
-
-/** How tall the gate pylons stand, and the lintel across them. */
-const PYLON_H = 7.2;
-const LINTEL_Y = 6.4;
 
 /**
  * The underworld's scenery. Each of the six chambers has a shell shared by
@@ -147,7 +143,7 @@ export class UnderworldMap implements MapContent {
       this.lights.push(fire.light);
     });
 
-    // the gates: two pylons and a lintel at each end, and the doorway's veil
+    // the gates: two pylons and a lintel at each end, and the doorway's veil (each depth's kit dresses them in its own style)
     for (const side of [-1, 1]) {
       const zc = side * (c.extent + 0.6);
       for (const sx of [-1, 1]) {
