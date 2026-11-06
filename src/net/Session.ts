@@ -13,6 +13,8 @@ const PREFIX = 'ascendant-lobby-';
 /** No 0/O or 1/I, so a code read aloud or typed from a screenshot comes out right. */
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const JOIN_TIMEOUT = 45000;
+/** How long everyone has to pick a god once the host starts the match. */
+export const PICK_SECONDS = 20;
 
 function newCode(): string {
   let s = '';
@@ -49,10 +51,21 @@ export function encode(msg: Msg): string {
 export class NetSession {
   players: NetPlayer[] = [];
   started = false;
-  /** Lobby changes: someone joined, left, picked a god or switched teams. */
+  /**
+   * The god pick before the match: the host pressed Start, and everyone has
+   * PICK_SECONDS to choose and press Ready. The match starts when the clock
+   * runs out or everyone is ready, each on the god they had then.
+   */
+  selecting = false;
+  /** When the pick ends, on this browser's clock (performance.now). */
+  pickEnds = 0;
+  /** Lobby changes: someone joined, left, picked a god, switched teams or got ready. */
   onLobby: () => void = () => undefined;
-  /** The host started the match. */
+  /** The host started the god pick. */
+  onSelect: () => void = () => undefined;
+  /** The pick is over: the match starts, with everyone's god final. */
   onStart: () => void = () => undefined;
+  private pickTimer: ReturnType<typeof setTimeout> | null = null;
   /** Someone left: a guest (on the host) or the host (on a guest, id 'host'). */
   onLeave: (id: string) => void = () => undefined;
   private handler: ((from: string, msg: Msg) => void) | null = null;
@@ -152,10 +165,42 @@ export class NetSession {
     return this.players.find((p) => p.id === this.me);
   }
 
-  /** Change this player's god in the lobby. */
+  /** Change this player's god in the lobby or the pick (not once they are ready). */
   pick(god: string): void {
+    if (this.started || this.self()?.ready) return;
     if (this.isHost) this.update(this.me, { god });
     else this.send('host', { t: 'pick', god });
+  }
+
+  /** Seconds left in the god pick. */
+  get pickLeft(): number {
+    return this.selecting ? Math.max(0, (this.pickEnds - performance.now()) / 1000) : 0;
+  }
+
+  /** Host: start the god pick for everyone in the lobby. */
+  select(seconds = PICK_SECONDS): void {
+    if (!this.isHost || this.started || this.selecting) return;
+    this.selecting = true;
+    this.pickEnds = performance.now() + seconds * 1000;
+    for (const p of this.players) p.ready = false;
+    this.broadcast({ t: 'select', mode: this.mode, game: this.game, players: this.players, bots: this.bots, left: seconds });
+    this.pickTimer = setTimeout(() => this.start(), seconds * 1000);
+    this.onSelect();
+  }
+
+  /** This player locks in their god. */
+  lockIn(god?: string): void {
+    if (!this.selecting || this.started) return;
+    if (god) this.pick(god);
+    if (this.isHost) {
+      this.update(this.me, { ready: true });
+      this.allReady();
+    } else this.send('host', { t: 'lockin', god: god ?? this.self()?.god });
+  }
+
+  /** Host: everyone ready ends the pick early. */
+  private allReady(): void {
+    if (this.isHost && this.selecting && this.players.every((p) => p.ready)) this.start();
   }
 
   /** Switch this player's team (versus only). */
@@ -176,10 +221,12 @@ export class NetSession {
     } else if (this.self()?.team === team) this.send('host', { t: 'bots', team, on });
   }
 
-  /** Host: start the match for everyone in the lobby. */
+  /** Host: start the match for everyone in the lobby (at the end of the god pick). */
   start(): void {
     if (!this.isHost || this.started) return;
+    if (this.pickTimer) clearTimeout(this.pickTimer);
     this.started = true;
+    this.selecting = false;
     this.broadcast({ t: 'start', mode: this.mode, game: this.game, players: this.players, bots: this.bots });
     this.onStart();
   }
@@ -206,6 +253,7 @@ export class NetSession {
   }
 
   close(): void {
+    if (this.pickTimer) clearTimeout(this.pickTimer);
     this.peer.destroy();
   }
 
@@ -221,7 +269,7 @@ export class NetSession {
     switch (msg.t) {
       case 'hello': {
         if (!conn || !this.isHost) return;
-        const why = this.started ? 'That match has already started.' : this.players.length >= this.cap ? 'That lobby is full.' : null;
+        const why = this.started || this.selecting ? 'That match has already started.' : this.players.length >= this.cap ? 'That lobby is full.' : null;
         if (why) {
           conn.send(encode({ t: 'full', why }));
           setTimeout(() => conn.close(), 500);
@@ -233,15 +281,23 @@ export class NetSession {
         return;
       }
       case 'pick':
-        if (this.isHost && !this.started) this.update(from, { god: msg.god as string });
+        if (this.isHost && !this.started && !this.players.find((p) => p.id === from)?.ready) this.update(from, { god: msg.god as string });
         return;
+      case 'lockin': {
+        if (!this.isHost || !this.selecting || this.started) return;
+        const p = this.players.find((x) => x.id === from);
+        if (!p) return;
+        this.update(from, { ready: true, ...(typeof msg.god === 'string' && !p.ready ? { god: msg.god } : {}) });
+        this.allReady();
+        return;
+      }
       case 'team':
-        if (this.isHost && !this.started && this.mode === 'versus') this.update(from, { team: msg.team as Side });
+        if (this.isHost && !this.started && !this.selecting && this.mode === 'versus') this.update(from, { team: msg.team as Side });
         return;
       case 'bots': {
         // a player may only speak for their own team
         const team = msg.team === 'chaos' ? 'chaos' : 'order';
-        if (!this.isHost || this.started || this.players.find((p) => p.id === from)?.team !== team) return;
+        if (!this.isHost || this.started || this.selecting || this.players.find((p) => p.id === from)?.team !== team) return;
         this.bots[team] = msg.on !== false;
         this.changed();
         return;
@@ -251,7 +307,19 @@ export class NetSession {
         this.game = (msg.game as string | undefined) ?? 'conquest';
         this.players = msg.players as NetPlayer[];
         this.bots = readBots(msg.bots);
+        // the host's clock keeps every pick screen's countdown in step
+        if (this.selecting && typeof msg.left === 'number') this.pickEnds = performance.now() + msg.left * 1000;
         this.onLobby();
+        return;
+      case 'select':
+        if (this.isHost || this.started || this.selecting) return;
+        this.mode = msg.mode as NetMode;
+        this.game = (msg.game as string | undefined) ?? 'conquest';
+        this.players = msg.players as NetPlayer[];
+        this.bots = readBots(msg.bots);
+        this.selecting = true;
+        this.pickEnds = performance.now() + (typeof msg.left === 'number' ? msg.left : PICK_SECONDS) * 1000;
+        this.onSelect();
         return;
       case 'start':
         if (this.isHost || this.started) return;
@@ -260,6 +328,7 @@ export class NetSession {
         this.players = msg.players as NetPlayer[];
         this.bots = readBots(msg.bots);
         this.started = true;
+        this.selecting = false;
         this.onStart();
         return;
       default:
@@ -276,7 +345,7 @@ export class NetSession {
   }
 
   private changed(): void {
-    this.broadcast({ t: 'lobby', mode: this.mode, game: this.game, players: this.players, bots: this.bots });
+    this.broadcast({ t: 'lobby', mode: this.mode, game: this.game, players: this.players, bots: this.bots, ...(this.selecting ? { left: this.pickLeft } : {}) });
     this.onLobby();
   }
 
@@ -285,6 +354,8 @@ export class NetSession {
     if (this.isHost && !this.started) {
       this.players = this.players.filter((p) => p.id !== id);
       this.changed();
+      // whoever is left may all be ready now
+      this.allReady();
     }
     this.onLeave(id);
   }

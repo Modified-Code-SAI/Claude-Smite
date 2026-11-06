@@ -246,6 +246,10 @@ export const SOUNDS: Record<string, Recipe> = {
   'ui.deny': { peak: 0.45, make: () => layer([sine(0.12, 220, 1), 1], [sine(0.14, 165, 1), 1, 0.09]) },
   'ui.point': { peak: 0.5, make: (r) => layer([chime(r, 0.6, 1318.5), 1], [chime(r, 0.6, 1975.5, { at: 0.04 }), 0.5]) },
   'ui.toast': { peak: 0.3, make: (r) => chime(r, 0.4, 987.8) },
+  // the god pick: the clock's last seconds, locking in a god, and both teams revealed
+  'ui.tick': { variants: 2, peak: 0.34, make: (r) => layer([knock(r, 0.05, 1900 + r() * 100), 1], [sine(0.1, 880, 0.5), 0.7]) },
+  'ui.lock': { peak: 0.7, make: (r) => layer([thump(r, 0.5, 120, 50, { click: 0.6, drive: 1.5 }), 1], [chime(r, 0.9, 784), 0.7], [chime(r, 0.9, 1174.7, { at: 0.04 }), 0.55], [whoosh(r, 0.5, 300, 3000, { q: 0.8, peak: 0.6 }), 0.35]) },
+  'ui.versus': { peak: 0.85, make: (r) => layer([thump(r, 1.2, 72, 30, { click: 0.5, drive: 2.5 }), 1], [whoosh(r, 0.9, 140, 2600, { q: 0.7, peak: 0.3 }), 0.6], [horn(r, 1.8, [110, 164.8, 220]), 0.75]) },
 
   // -- pings: a low knock under a bell, each kind its own color of sound
   // look here: a soft wooden tap and a single clear bell

@@ -25,7 +25,9 @@ import { parseRole } from './combat/JotunnMode';
 import { monsterWarmup } from './combat/MonsterViews';
 import { GODS, godById } from './game/gods';
 import { parseDifficulty } from './game/difficulty';
-import { mapOf, savedMode, showStartMenu, type GameMode, type StartChoice } from './ui/StartMenu';
+import { mapOf, saveChoice, savedMode, savedPick, showStartMenu, type GameMode, type ModeChoice, type StartChoice } from './ui/StartMenu';
+import { showGodPick, type PickScreen } from './ui/GodPick';
+import { newSeed } from './game/lineup';
 import { compatibilityMode, installErrorHandlers, showFatal } from './ui/Fatal';
 import { playIntro } from './ui/Intro';
 import { Announcer } from './audio/Announcer';
@@ -69,18 +71,21 @@ async function main(): Promise<void> {
     const gpu = gpuName(r.renderer);
     return { webgpu: r.isWebGPU, gpu, advice: gpuAdvice(gpu) };
   });
-  // a normal launch opens on the home page and the intro trailer; the title
-  // screen (and its hymn) follow once the trailer ends or is skipped
-  const chosen: Promise<StartChoice> = skipMenu
+  // each god (and the giant) says who it is when picked
+  let voice: GodVoice | null = null;
+  const menu = {};
+  const say = (id: string) => voice?.say(menu, id, 'select', { own: true, cut: true, gain: 0.9 });
+  // a normal launch opens on the home page and the intro trailer; the mode
+  // select (and its hymn) follows once the trailer ends or is skipped, then
+  // the god pick once a mode is started
+  const chosen: Promise<StartChoice | ModeChoice> = skipMenu
     ? Promise.resolve({ mode: (['clash', 'siege', 'duel', 'rush', 'descent', 'jotunn'].includes(params.get('map') ?? '') ? params.get('map') : mapFromUrl()) as GameMode, god: godById(params.get('god') ?? '')?.id ?? 'zeus', difficulty: parseDifficulty(params.get('difficulty')), rival: params.get('rival') ?? undefined, allies: params.get('allies') !== '0', rivals: params.get('rivals') === '1' })
     : playIntro(audio).then(() => {
         music.play('hymn');
-        // each god (and the giant) says who it is when picked
-        const voice = new GodVoice(audio, import.meta.env.BASE_URL);
+        voice = new GodVoice(audio, import.meta.env.BASE_URL);
         for (const g of GODS) voice.load(g.id, ['select']);
         voice.load('jotunn', ['select']);
-        const menu = {};
-        return showStartMenu(GODS, graphics, (id) => voice.say(menu, id, 'select', { own: true, cut: true, gain: 0.9 }));
+        return showStartMenu(graphics, savedPick().god ?? GODS[0]!.id, say);
       });
 
   const { renderer, isWebGPU } = await rendering;
@@ -181,12 +186,40 @@ async function main(): Promise<void> {
   // the player picks a god; a different pick builds its own map after Play.
   const guessMode = skipMenu ? null : savedMode();
   const guess = guessMode ? prepare(guessMode) : null;
-  const choice = await chosen;
+  const started = await chosen;
   // A map built for the other mode is left to the garbage collector, not disposed:
   // it shares cached geometry with the new map, and disposing destroys GPU
   // buffers that the new map still draws ("buffer used in submit while destroyed").
-  const reuse = guess && mapOf(guessMode!) === mapOf(choice.mode);
-  const { world, post, models } = reuse ? await guess : await prepare(choice.mode);
+  const reuse = guess && mapOf(guessMode!) === mapOf(started.mode);
+  // the match's map builds while everyone picks a god
+  const loading = reuse ? guess : prepare(started.mode);
+  let pickScreen: PickScreen | null = null;
+  let choice: StartChoice;
+  if ('god' in started) choice = started;
+  else {
+    const seed = newSeed();
+    const last = savedPick();
+    pickScreen = showGodPick({
+      mode: started.mode,
+      net: started.net,
+      gods: GODS,
+      god: last.god ?? GODS[0]!.id,
+      rival: last.rival,
+      allies: started.allies,
+      rivals: started.rivals,
+      role: started.role,
+      seed,
+      say,
+      sound: (name, gain = 0.8) => audio.play(name, { bus: 'ui', gain }, 4, 0.05),
+    });
+    hud.mirrorProgress((f, text) => pickScreen!.progress(f, text));
+    hud.notesHost = pickScreen.notes;
+    const picked = await pickScreen.chosen;
+    // online the host's roster decides the bots; alone the seed the screen showed does
+    choice = { ...started, god: picked.god, rival: picked.rival, seed: started.net ? undefined : seed };
+    saveChoice({ god: picked.god, rival: picked.rival });
+  }
+  const { world, post, models } = await loading;
 
   const input = new Input(renderer.domElement);
   const god = new GodModel();
@@ -235,7 +268,7 @@ async function main(): Promise<void> {
   const loop = new Loop();
   loop.addFixed(player);
   // Conquest plays a full match against bots; the arena is the training ground
-  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, shake: (a) => follow.addShake(a), cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
+  const combat = new CombatGame({ world, input, player, camera, mode: choice.mode, god: choice.god, net: choice.net, difficulty: choice.difficulty, rival: choice.rival, allies: choice.allies, rivals: choice.rivals, seed: choice.seed, shake: (a) => follow.addShake(a), cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
   void baked;
   // `?stage`: the trailer's film set (tools/trailer)
@@ -256,6 +289,7 @@ async function main(): Promise<void> {
   await pipelines.settle(60000, (done, total) => hud.progress(0.9 + (total ? (0.1 * done) / total : 0.1), `Preparing shaders ${done} / ${total}…`));
   clearTimeout(slow);
   hud.ready();
+  pickScreen?.finish();
   if (advice) hud.notice(advice.text, 15);
   const shadersAtStart = pipelines.built;
   const deferredAtStart = pipelines.deferred;

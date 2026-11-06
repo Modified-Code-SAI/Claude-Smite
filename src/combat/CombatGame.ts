@@ -41,6 +41,7 @@ import { Duel, DUEL } from '../sim/Duel';
 import { DuelHud } from '../ui/DuelHud';
 import { Scoreboard } from '../sim/Scoreboard';
 import { difficultyPerks, type Difficulty } from '../game/difficulty';
+import { clashBots, conquestBots, duelRival, seeded, siegeBots } from '../game/lineup';
 import { setXpDifficulty } from '../ui/ascension';
 import { Coach } from '../ui/Coach';
 import { pitchTerrain, RUSH, type Rush } from '../sim/Rush';
@@ -91,6 +92,8 @@ export interface CombatDeps {
   net?: NetSession;
   /** How hard the bots are (single player only). */
   difficulty?: Difficulty;
+  /** Picks the bots' gods (single player): the god pick screen showed the lineup this seed gives (src/game/lineup.ts). Random without one. */
+  seed?: number;
 }
 
 /** Until the Conquest scene lands, a match on another map follows its ground but ignores its walls. */
@@ -182,6 +185,11 @@ export class CombatGame implements Updatable {
   private crosshair: Point | null = null;
   private crossT = 140;
 
+  /** The bots' gods' dice: seeded when the god pick screen showed the lineup, otherwise random. */
+  private rng(): () => number {
+    return this.deps.seed !== undefined ? seeded(this.deps.seed) : Math.random;
+  }
+
   constructor(private readonly deps: CombatDeps) {
     const { world, player } = deps;
     // set before anything can end the game, so the end screen's XP always counts it
@@ -194,11 +202,11 @@ export class CombatGame implements Updatable {
     this.groundAt = (x, z) => terrain.groundAt(x, z);
     const net = conquest || rush || deps.mode === 'descent' || deps.mode === 'jotunn' ? deps.net : undefined;
     const slots = net && conquest ? roster(net.players) : null;
-    const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random) : null;
+    const rushSlots = rush ? rushRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : this.rng()) : null;
     // Underworld Descent: co-op, or a shared descent (online versus, or a bot team against yours alone)
     const descentSlots =
       deps.mode === 'descent'
-        ? descentRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : Math.random, net ? { versus: net.mode === 'versus', bots: net.bots } : { versus: !!deps.rivals, bots: { order: deps.allies !== false } })
+        ? descentRoster(net?.players ?? [{ id: 'me', name: 'You', god: deps.god ?? 'zeus', team: 'order' }], net ? undefined : this.rng(), net ? { versus: net.mode === 'versus', bots: net.bots } : { versus: !!deps.rivals, bots: { order: deps.allies !== false } })
         : null;
     const mySlot = slots?.find((s) => s.player === net!.me) ?? rushSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
     const myDescent = descentSlots?.find((s) => s.player === (net?.me ?? 'me')) ?? null;
@@ -349,8 +357,11 @@ export class CombatGame implements Updatable {
       if (net && slots) this.addRoster(net, slots);
       else {
         this.match.addGod(this.player);
-        this.addTeam('order', GODS.filter((g) => g.id !== mine.id), ['solo', 'duo', 'duo', 'roam'], [0, 2, 3, 4]);
-        this.addTeam('chaos', GODS, ROLES, [0, 1, 2, 3, 4]);
+        // five a side however many gods there are (the god pick shows these: src/game/lineup.ts);
+        // without a seed (?map=conquest, tools) the same lineup every time
+        const bots = conquestBots(mine.id, this.deps.seed !== undefined ? seeded(this.deps.seed) : () => 0);
+        this.addTeam('order', bots.allies.map((id) => godById(id)!), ['solo', 'duo', 'duo', 'roam'], [0, 2, 3, 4]);
+        this.addTeam('chaos', bots.enemies.map((id) => godById(id)!), ROLES, [0, 1, 2, 3, 4]);
       }
       this.matchHud = new MatchHud(this.match, this.player);
       this.matchHud.pings = this.pings.mapMarks;
@@ -425,10 +436,9 @@ export class CombatGame implements Updatable {
   /** Temple Clash: two bot allies against three bot enemies, everyone at level 8, all racing for the plaza. */
   private startClash(mine: GodDef): void {
     this.clash = new Clash(this.sim);
-    const others = GODS.filter((g) => g.id !== mine.id);
-    const shuffled = [...others].sort(() => Math.random() - 0.5);
-    const allies = shuffled.slice(0, 2);
-    const enemies = [...GODS].sort(() => Math.random() - 0.5).slice(0, 3);
+    const bots = clashBots(mine.id, this.rng());
+    const allies = bots.allies.map((id) => godById(id)!);
+    const enemies = bots.enemies.map((id) => godById(id)!);
     const gods: Unit[] = [this.player];
     const add = (def: GodDef, team: 'order' | 'chaos', i: number) => {
       const at = CLASH_SPAWNS[team][i]!;
@@ -585,8 +595,7 @@ export class CombatGame implements Updatable {
   /** Temple Duel: the player against one bot god, round by round, inside a closing ring of fire. */
   private startDuel(mine: GodDef): void {
     this.duel = new Duel(this.sim);
-    const others = GODS.filter((g) => g.id !== mine.id);
-    const def = others.find((g) => g.id === this.deps.rival) ?? others[Math.floor(Math.random() * others.length)]!;
+    const def = godById(duelRival(mine.id, this.deps.rival, this.rng()))!;
     const rival = godUnit(def, 'chaos', DUEL.spawns.chaos);
     rival.brain = new GodBot(this.sim, rival, { anchor: { x: 0, z: 0 }, leash: 30, aggro: 40, aggression: 0.8 });
     this.sim.add(rival);
@@ -671,7 +680,7 @@ export class CombatGame implements Updatable {
   /** Temple Siege: the player and two bot allies hold the plaza against endless monster waves. */
   private startSiege(mine: GodDef): void {
     this.siege = new Siege(this.sim, godById('zeus')!);
-    const allies = [...GODS.filter((g) => g.id !== mine.id)].sort(() => Math.random() - 0.5).slice(0, 2);
+    const allies = siegeBots(mine.id, this.rng()).map((id) => godById(id)!);
     const gods: Unit[] = [this.player];
     allies.forEach((def, i) => {
       const at = SIEGE_SPAWNS[i === 0 ? 0 : 2]!;

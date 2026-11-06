@@ -183,6 +183,32 @@ function isBuild(b: unknown): b is Build {
   return !!x && typeof x.id === 'string' && typeof x.name === 'string' && Array.isArray(x.loadout) && typeof x.ranks === 'object' && x.ranks !== null && Array.isArray(x.trees);
 }
 
+/**
+ * The god pick screen's build choice: the build to follow from the first
+ * point (null: spend by hand), its skills on the bar the match starts with.
+ */
+export function chooseBuild(god: GodDef, id: string | null): void {
+  const all = loadBuilds();
+  const g = (all[god.id] ??= { saved: [], active: null, bar: null });
+  const b = id ? [...readyBuilds(god), ...g.saved].find((x) => x.id === id) : null;
+  g.active = b?.id ?? null;
+  if (b) g.bar = [...b.loadout];
+  saveBuilds(all);
+}
+
+/** A god's builds and the one in use, read fresh (the pick screen, before any match exists). */
+export function buildChoice(god: GodDef): { list: Build[]; active: string | null } {
+  const g = loadBuilds()[god.id];
+  const list = [...readyBuilds(god), ...(g?.saved ?? [])];
+  return { list, active: list.some((b) => b.id === g?.active) ? g!.active : null };
+}
+
+/** The skills a god's next match starts with: last time's bar, or the god's own. */
+export function startingBar(god: GodDef): readonly string[] {
+  const bar = loadBuilds()[god.id]?.bar;
+  return bar ? normalizeLoadout(god, bar) : god.defaultLoadout;
+}
+
 /** What a mode lets a build do. */
 export interface BuildRules {
   /** Set the skills on the bar (not where the mode deals the skills, like Underworld Descent's drafts). */

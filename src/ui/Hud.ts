@@ -120,11 +120,24 @@ export class Hud {
   progress(f: number, text?: string): void {
     this.bar.style.width = `${Math.round(f * 100)}%`;
     if (text) this.root.querySelector('.hud-sub')!.textContent = text;
+    this.loaded = { f, text: text ?? this.loaded.text };
+    this.progressTo?.(f, text);
+  }
+
+  private loaded: { f: number; text?: string } = { f: 0 };
+  private progressTo: ((f: number, text?: string) => void) | null = null;
+  /** Where the slow-shaders note goes when another screen shows the loading (the god pick). */
+  notesHost: HTMLElement | null = null;
+
+  /** Another screen shows the loading progress too (it hears how far along it is now, then every step). */
+  mirrorProgress(to: (f: number, text?: string) => void): void {
+    this.progressTo = to;
+    to(this.loaded.f, this.loaded.text);
   }
 
   /** Shown when shaders take long: says the wait is normal and offers the WebGL 2 renderer. */
   slowLoad(webgpu: boolean): void {
-    if (this.loading.querySelector('.hud-slow')) return;
+    if (this.loading.querySelector('.hud-slow') || this.notesHost?.querySelector('.hud-slow')) return;
     const el = document.createElement('div');
     el.className = 'hud-slow';
     el.textContent = 'Your graphics driver is still building shaders. This is only slow the first time.';
@@ -134,7 +147,7 @@ export class Hud {
       btn.addEventListener('click', () => setCompatibilityMode(true));
       el.appendChild(btn);
     }
-    this.loading.appendChild(el);
+    (this.notesHost ?? this.loading).appendChild(el);
   }
 
   ready(): void {

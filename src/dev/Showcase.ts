@@ -7,8 +7,9 @@ import { GOD_IDS } from '../actors/gods/assets';
  * spawn with a fixed camera. Options (all optional):
  *   showcase=zeus,thor   which gods (default: all)
  *   pose=idle|walk|jog|sprint|cast|basic|ult|death|hit (death and hit freeze at t= seconds)
- *   view=front|back|side|close|three|portrait|bust
- *   (bust frames head and shoulders for the title screen's face cards; see tools/portraits)
+ *   view=front|back|side|close|three|portrait|bust|splash
+ *   (bust frames head and shoulders for the face cards, splash the whole god,
+ *   turned a little, for the god pick screen; see tools/portraits)
  */
 export class Showcase {
   readonly gods: GodModel[] = [];
@@ -29,7 +30,8 @@ export class Showcase {
     // forward (-sin, -cos), right (cos, -sin), like the player controller
     const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
     const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-    const center = new THREE.Vector3(spawn.x, 0, spawn.z).addScaledVector(fwd, 6);
+    // the splash camera stands back further, so its god stands further out (clear of the player at the spawn)
+    const center = new THREE.Vector3(spawn.x, 0, spawn.z).addScaledVector(fwd, view === 'splash' ? 10 : 6);
     const gap = 1.7;
     list.forEach((id, i) => {
       const g = new GodModel(id);
@@ -42,6 +44,7 @@ export class Showcase {
       if (view === 'back') g.root.rotation.y += Math.PI;
       if (view === 'side') g.root.rotation.y += Math.PI / 2;
       if (view === 'three') g.root.rotation.y += 0.6;
+      if (view === 'splash') g.root.rotation.y += 0.42;
       if (this.pose.startsWith('clip:')) g.debugClip(this.pose.slice(5), Number(params.get('t') ?? 0));
       const tint = params.get('tint');
       if (tint) g.tintMetal(parseInt(tint, 16));
@@ -83,6 +86,20 @@ export class Showcase {
       this.camera.updateProjectionMatrix();
       this.camera.position.copy(head).addScaledVector(fwd, 2.9).addScaledVector(side, 0.55).add(new THREE.Vector3(0, -0.06, 0));
       this.camera.lookAt(head.x, head.y - 0.2, head.z);
+    }
+    if (this.view === 'splash' && g) {
+      // the whole god from a little below, on a long lens, like a hero shot
+      // (framed by its head's height, so the giant fits the same way)
+      const head = g.head.getWorldPosition(new THREE.Vector3());
+      const foot = g.root.position;
+      const h = head.y - foot.y;
+      const toCam = new THREE.Vector3(-Math.sin(g.root.rotation.y - 0.42), 0, -Math.cos(g.root.rotation.y - 0.42)).multiplyScalar(-1);
+      this.camera.fov = 28;
+      this.camera.updateProjectionMatrix();
+      const at = new THREE.Vector3(foot.x, foot.y + h * 0.56, foot.z);
+      this.camera.position.copy(at).addScaledVector(toCam, h * 2.75);
+      this.camera.position.y = foot.y + h * 0.42;
+      this.camera.lookAt(at);
     }
     if (this.view === 'portrait' && g) {
       // frame the face: in front of the head bone, slightly above eye level
