@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, cross, float, fract, normalWorld, positionWorld, sqrt, texture, transformNormalToView, uniform, vec3,
+  abs, attribute, cross, float, fract, normalWorld, positionLocal, positionWorld, sqrt, texture, transformNormalToView, uniform, vec3,
 } from '../render/tsl';
 
 import { frosted } from './frost';
@@ -14,6 +14,25 @@ export interface PbrSet {
   /** R,G = tangent normal XY, B = roughness. */
   nr: THREE.Texture;
 }
+
+/**
+ * Where a material reads the surface it textures: by default the position and
+ * normal being drawn. Pieces that move (a collapsing tower's blocks) read their
+ * rest pose instead, so the stone stays put on them as they tumble, and turn
+ * the normals they light with along with the piece.
+ */
+export interface SurfaceSpace {
+  /** World position the textures and noise are laid on. */
+  world: any;
+  /** World normal the projections blend by. */
+  normal: any;
+  /** Object-space position, for noise that belongs to the object. */
+  local: any;
+  /** Turns a world-space shading normal with the piece (identity when nothing moves). */
+  turn(n: any): any;
+}
+
+export const drawnSpace: SurfaceSpace = { world: positionWorld, normal: normalWorld, local: positionLocal, turn: (n) => n };
 
 const ALL: PbrName[] = ['flagstone', 'marble', 'sandstone_blocks', 'rock', 'grass_ground', 'dirt', 'bark'];
 
@@ -132,9 +151,9 @@ export function planar(set: PbrSet, uvNode: any, geomNormal: any = normalWorld):
 const litNormals = new WeakMap<THREE.Material, any>();
 const variants = new WeakMap<THREE.Material, THREE.Material>();
 
-function lightWith(mat: THREE.MeshStandardNodeMaterial, normal: any): void {
-  mat.normalNode = transformNormalToView(normal);
-  litNormals.set(mat, normal);
+function lightWith(mat: THREE.MeshStandardNodeMaterial, normal: any, space: SurfaceSpace = drawnSpace): void {
+  mat.normalNode = transformNormalToView(space.turn(normal));
+  if (space === drawnSpace) litNormals.set(mat, normal);
 }
 
 /**
@@ -162,17 +181,20 @@ export function turnedVariant(mat: THREE.Material): THREE.Material | null {
   return v;
 }
 
-export function applySurface(mat: THREE.MeshStandardNodeMaterial, s: SurfaceNodes, opts: { tint?: any; roughnessMul?: any; aoStrength?: number } = {}): void {
+export function applySurface(mat: THREE.MeshStandardNodeMaterial, s: SurfaceNodes, opts: { tint?: any; roughnessMul?: any; aoStrength?: number } = {}, space: SurfaceSpace = drawnSpace): void {
   // the Jötunn's frost settles on the stone's tops as rime in its grain (folded over 0 to 1, whatever the stone's brightness)
   mat.colorNode = frosted(opts.tint ? s.color.mul(opts.tint) : s.color, fract(s.color.g.mul(7)));
-  lightWith(mat, s.normal);
+  lightWith(mat, s.normal, space);
   mat.roughnessNode = opts.roughnessMul ? s.roughness.mul(opts.roughnessMul) : s.roughness;
   const k = opts.aoStrength ?? 1;
   mat.aoNode = k === 1 ? s.ao : float(1).sub(float(1).sub(s.ao).mul(k));
   mat.metalnessNode = float(0);
 }
 
-/** Library of shared materials used by the architecture. */
+/**
+ * Library of shared materials used by the architecture. A library built with
+ * another `space` (see collapse.ts) has the same materials reading that space.
+ */
 export class MaterialLibrary {
   readonly marble: THREE.MeshStandardNodeMaterial;
   readonly sandstone: THREE.MeshStandardNodeMaterial;
@@ -183,7 +205,7 @@ export class MaterialLibrary {
   /** Global wetness/darkening knob for weather later. */
   readonly grime = uniform(1);
 
-  constructor(readonly textures: TextureLibrary) {
+  constructor(readonly textures: TextureLibrary, readonly space: SurfaceSpace = drawnSpace) {
     this.marble = this.make('marble', 0.42, { tint: vec3(1.0, 0.985, 0.96) });
     this.sandstone = this.make('sandstone_blocks', 0.25);
     this.flagstone = this.make('flagstone', 0.2);
@@ -194,7 +216,7 @@ export class MaterialLibrary {
 
   private make(name: PbrName, scale: number, opts: { tint?: any; aoStrength?: number } = {}): THREE.MeshStandardNodeMaterial {
     const mat = new THREE.MeshStandardNodeMaterial();
-    applySurface(mat, triplanar(this.textures.get(name), scale), opts);
+    applySurface(mat, triplanar(this.textures.get(name), scale, 4, this.space.world, this.space.normal), opts, this.space);
     mat.name = name;
     return mat;
   }
@@ -202,7 +224,7 @@ export class MaterialLibrary {
   /** Metals reuse the rock texture's detail as a subtle wear/patina mask. */
   private metal(base: THREE.Color, roughness: number, patina: boolean): THREE.MeshStandardNodeMaterial {
     const mat = new THREE.MeshStandardNodeMaterial();
-    const s = triplanar(this.textures.get('rock'), 0.9);
+    const s = triplanar(this.textures.get('rock'), 0.9, 4, this.space.world, this.space.normal);
     const wear = s.color.r.mul(2.2).clamp(0, 1);
     const baseCol = vec3(base.r, base.g, base.b);
     let col: any = baseCol.mul(wear.mul(0.35).add(0.75));
@@ -211,7 +233,7 @@ export class MaterialLibrary {
     mat.colorNode = col;
     mat.metalnessNode = patina ? float(1).sub(patinaMask) : float(1);
     mat.roughnessNode = float(roughness).add(s.roughness.sub(0.8).mul(0.4));
-    lightWith(mat, s.normal.mix(normalWorld, 0.6).normalize());
+    lightWith(mat, s.normal.mix(this.space.normal, 0.6).normalize(), this.space);
     return mat;
   }
 }

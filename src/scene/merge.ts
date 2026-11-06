@@ -4,12 +4,17 @@ import { Layers } from '../render/Layers';
 import { mergeLods } from './lod';
 import { turnedVariant } from './Materials';
 
+/** Off only while tools/collapse exports a structure's separate parts. */
+export const mergeSwitch = { on: true };
+
 /**
  * Bakes every mesh under `group` (except the `keep` subtrees) into one mesh
  * per material, cutting a structure's dozens of parts to a handful of draw
  * calls. Call before the group is placed, while its transform is identity.
  */
 export function mergeStatic(group: THREE.Object3D, keep: THREE.Object3D[] = []): void {
+  // (tools/collapse reads a structure's parts one by one, so it turns merging off)
+  if (!mergeSwitch.on) return;
   group.updateMatrixWorld(true);
   const inv = group.matrixWorld.clone().invert();
   const kept = new Set<THREE.Object3D>(keep);

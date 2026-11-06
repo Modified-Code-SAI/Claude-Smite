@@ -10,6 +10,10 @@ import { createStructureModel, type StructureModel } from './structures';
 import { MUZZLE_HEIGHT } from './Vfx';
 import { castStaticAsOne } from '../scene/merge';
 import { hypot, turnToward } from '../core/math';
+import type { Billows } from '../scene/Billows';
+import { TEAM_STYLE } from '../scene/structures/common';
+
+const _cloudAt = new THREE.Vector3();
 
 /** Which pool of spare models a summon's look draws from. */
 const summonKey = (look: SummonLook): string => `${look.god}|${look.variant}`;
@@ -262,6 +266,8 @@ export class UnitViews {
   private readonly cur = new Map<Unit, THREE.Vector3>();
   /** When set, gods off screen or far away animate at a reduced rate. */
   camera: THREE.Camera | null = null;
+  /** Where a falling structure's dust and smoke billow (the world's). */
+  billows: Billows | null = null;
   private readonly frustum = new THREE.Frustum();
   private readonly viewProj = new THREE.Matrix4();
   private readonly bounds = new THREE.Sphere();
@@ -293,6 +299,44 @@ export class UnitViews {
   ) {
     this.group.name = 'units';
     this.group.add(this.minions.group);
+  }
+
+  /**
+   * The clouds of a structure falling (or a Phoenix rising): a ring of dust
+   * thrown out across the ground, smoke rolling up through the wreck, dust
+   * where the big pieces land, and for a Phoenix a burst of its team's fire.
+   */
+  private structureClouds(u: Unit, v: UnitView, rising: boolean): void {
+    const b = this.billows;
+    if (!b) return;
+    const p = v.root.getWorldPosition(_cloudAt);
+    const fire = TEAM_STYLE[u.side === 'chaos' ? 'chaos' : 'order'].fire;
+    const flame: [number, number] = [fire.low, fire.high];
+    if (u.kind === 'phoenix') {
+      b.spawn('blast', p.x, p.y + 6.2, p.z, rising ? 7 : 9.5, { duration: 1.6, tint: 0x5a4c44, flame, rise: 0.6 });
+      if (!rising) {
+        b.spawn('smoke', p.x, p.y + 4.5, p.z, 8, { duration: 2.6, delay: 0.45, tint: 0x4a423c, rise: 1.2 });
+        b.spawn('dust', p.x, p.y + 1.3, p.z, 13, { duration: 2, delay: 0.7, tint: 0x9c8c78 });
+      }
+      return;
+    }
+    if (rising) return;
+    const big = u.kind === 'titan' ? 1.6 : 1;
+    const h = v.height;
+    // a baked collapse (tools/collapse) crumbles for a second before the crown comes down: the dust waits for it
+    const crumble = u.kind === 'tower' && (v.structure?.fallTime ?? 2.2) > 2.2;
+    const land = crumble ? 1.25 : 0.35;
+    // the crown bursts in its team's light, then everything comes down
+    if (u.kind === 'tower') b.spawn('blast', p.x, p.y + h * 0.62, p.z, 5.5, { duration: 1.2, tint: 0x5a5048, flame, rise: 0.4 });
+    if (crumble) b.spawn('dust', p.x, p.y + 1.2, p.z, 9, { duration: 1.6, delay: 0.15, tint: 0xc4b8a4 });
+    b.spawn('dust', p.x, p.y + 1.6 * big, p.z, 17 * big, { duration: 2.6, delay: land, tint: 0xb8ab95 });
+    b.spawn('smoke', p.x, p.y + h * 0.45, p.z, 10 * big, { duration: 3.2, delay: crumble ? 0.9 : 0.25, tint: 0x8a8074, rise: 1.4 });
+    // dust where the heavy pieces hit, around the foot
+    for (let i = 0; i < 3; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = (3 + Math.random() * 2.5) * big;
+      b.spawn('dust', p.x + Math.cos(a) * d, p.y + 0.9, p.z + Math.sin(a) * d, (6 + Math.random() * 3) * big, { duration: 1.8, delay: land + 0.35 + i * 0.25, tint: 0xbcae98 });
+    }
   }
 
   /**
@@ -528,9 +572,11 @@ export class UnitViews {
     } else if (e.type === 'death') {
       const v = this.views.get(e.unit);
       if (v) v.deathTime = 0;
+      if (v?.structure) this.structureClouds(e.unit, v, false);
     } else if (e.type === 'respawn' && isStructure(e.unit)) {
       const v = this.views.get(e.unit);
       if (v) v.rebirth = 0;
+      if (v?.structure) this.structureClouds(e.unit, v, true);
     } else if (e.type === 'respawn' || e.type === 'teleport') {
       // don't interpolate across the map
       const p = this.prev.get(e.unit);
@@ -674,7 +720,7 @@ export class UnitViews {
         v.rebirth += dt;
         v.structure.setRebirth?.(Math.min(1, v.rebirth / 2.5));
         if (v.rebirth >= 2.5) v.rebirth = -1;
-      } else v.structure.setDestroyed(u.alive ? 0 : Math.min(1, v.deathTime / 2.2));
+      } else v.structure.setDestroyed(u.alive ? 0 : Math.min(1, v.deathTime / (v.structure.fallTime ?? 2.2)));
       v.root.visible = true;
       return;
     }

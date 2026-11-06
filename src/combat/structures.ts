@@ -20,6 +20,8 @@ export interface StructureModel {
   pulseFire(): void;
   /** 0 = intact, 1 = rubble. */
   setDestroyed(t: number): void;
+  /** Seconds `setDestroyed` takes to run from 0 to 1 (2.2 when not given). */
+  readonly fallTime?: number;
   /** Phoenix rising from its rubble, 0..1. */
   setRebirth?(t: number): void;
   /** Wear from damage taken, 0..1. */

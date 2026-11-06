@@ -15,3 +15,7 @@ tools/trailer/out/
 
 # orchestra sample sources (tools/music/build.py --fetch)
 tools/music/src/
+
+# Blender effect and collapse scratch (tools/vfx, tools/collapse READMEs)
+tools/vfx/out/
+tools/collapse/out/
