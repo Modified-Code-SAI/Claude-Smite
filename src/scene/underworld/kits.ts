@@ -47,7 +47,10 @@ export type Kit = (k: KitBuild) => void;
 export const FLAME_Y = 1.5;
 
 /** The floor plans with a landmark of their own, by their place in CHAMBERS (the Burning Pit is known by its pit). */
-const PLAN = { hall: 0, nave: 1, crossroads: 2 } as const;
+const PLAN = { hall: 0, nave: 1, crossroads: 2, sanctums: 4 } as const;
+
+/** Whether a pier is one of the Twin Sanctums' two hearts (the broad ones in the middle of each), where each depth sets its own shrine. */
+const shrineAt = (index: number, r: number): boolean => index === PLAN.sanctums && r > 1.3;
 
 /** A spot at the foot of the wall: where it is, the way out into the rock, and its angle round the chamber. */
 interface WallSpot {
@@ -121,6 +124,10 @@ export const forgeKit: Kit = (k) => {
   // piers: a plinth, four drums of basalt bound with iron at two joints, a wide capital
   const nave = index === PLAN.nave;
   for (const [x, z, r] of c.pillars) {
+    if (shrineAt(index, r)) {
+      flameAltar(k, x, z);
+      continue;
+    }
     // the nave's piers all one height, for the arches sprung between them
     const tall = 9 + random() * 3;
     const h = nave ? NAVE_PIER : tall;
@@ -704,6 +711,34 @@ const CROWN_STONES = merge(
 );
 
 // ---------------------------------------------------------------------------
+// The Ashen Depths' landmark: the Twin Sanctums' altars of flame
+
+/**
+ * An altar of the forge at the heart of each sanctum: a stepped basalt
+ * plinth, an iron-bound pillar and a great iron bowl on top, a tall fire
+ * burning in it.
+ */
+function flameAltar(k: KitBuild, x: number, z: number): void {
+  const { mats, add, random } = k;
+  const seed = 9990 + Math.round(z);
+  const turn = random() * 0.5;
+  add(chippedBlock(2.9, 0.5, 2.9, seed, 0.04), mats.forgeStone, x, 0.25, z).rotation.y = turn;
+  add(chippedBlock(2.4, 0.5, 2.4, seed + 1, 0.04), mats.forgeStone, x, 0.75, z).rotation.y = turn + 0.05;
+  add(chippedBlock(1.7, 2.4, 1.7, seed + 2, 0.05), mats.forgeStone, x, 2.2, z).rotation.y = turn;
+  for (const y of [1.45, 2.95]) add(band(1.84, 0.3, 0.07), mats.iron, x, y, z).rotation.y = turn;
+  add(chippedBlock(2.3, 0.45, 2.3, seed + 3, 0.04), mats.forgeStone, x, 3.62, z).rotation.y = turn;
+  add(ALTAR_BOWL, mats.iron, x, 3.85, z);
+  add(COALS.clone().scale(2.6, 2.2, 2.6), mats.coals, x, 3.85 + ALTAR_FIRE - 0.15, z, false);
+  for (const t of [0, Math.PI / 3]) add(FLAME_BED.clone().scale(2.1, 2.8, 2.1), mats.flameBed, x, 3.85 + ALTAR_FIRE - 0.12, z, false).rotation.y = t + turn;
+  k.light(0xff8a3a, 40, 16, x, 6.2, z);
+}
+
+/** How high in the altar's bowl its fire sits. */
+const ALTAR_FIRE = 0.62;
+/** The altar's bowl: a wide iron basin on a short stem, its rim at ALTAR_FIRE. */
+const ALTAR_BOWL = lathe([[0, 0], [0.55, 0], [0.5, 0.16], [0.7, 0.24], [1.3, 0.44], [1.55, ALTAR_FIRE + 0.02], [1.45, ALTAR_FIRE + 0.04], [1.18, 0.42], [0.5, 0.3], [0, 0.3]], 28);
+
+// ---------------------------------------------------------------------------
 // The Treasure Wyrm's arena: its hoard
 
 /**
@@ -894,6 +929,7 @@ export const drownedKit: Kit = (k) => {
   const { c, index, random, mats, add } = k;
   // columns on moulded bases, the broken ones with their drums in pieces at their feet
   c.pillars.forEach(([x, z, r], i) => {
+    if (shrineAt(index, r)) return fountain(k, x, z);
     const cr = r * 0.85;
     const seed = 6000 + index * 97 + i * 13;
     add(columnBase(cr), mats.tideStone, x, 0, z);
@@ -1484,6 +1520,40 @@ const ARMILLARY_BAND = merge([
 ]);
 
 // ---------------------------------------------------------------------------
+// The Drowned Halls' landmark: the Twin Sanctums' fountains
+
+/**
+ * A fountain at the heart of each sanctum: a broad basin, a fluted column
+ * rising from it to a bowl held high, an urn in the bowl, and the water
+ * spilling over the bowl's lip in four streams into the basin below.
+ */
+function fountain(k: KitBuild, x: number, z: number): void {
+  const { mats, add } = k;
+  add(FOUNTAIN_BASIN, mats.tideStone, x, 0, z);
+  add(new THREE.CircleGeometry(1.6, 36).rotateX(-Math.PI / 2), mats.pool, x, 0.56, z, false);
+  add(flutedShaft(0.42, 3.0, 16, 60, 9), mats.tideStone, x, 0.6, z);
+  add(FOUNTAIN_BOWL, mats.tideStone, x, 3.55, z);
+  add(new THREE.CircleGeometry(1.08, 28).rotateX(-Math.PI / 2), mats.pool, x, 3.55 + 0.36, z, false);
+  add(FOUNTAIN_RIM, mats.verdigris, x, 3.55, z, false);
+  add(urn(0.42, 1.2), mats.verdigris, x, 3.55 + 0.3, z);
+  // four streams off the lip into the basin
+  const fall = 3.55 + 0.42 - 0.56;
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const sx = x + Math.cos(a) * 1.22;
+    const sz = z + Math.sin(a) * 1.22;
+    for (const t of [0, Math.PI / 2]) add(stream(fall).scale(0.5, 1, 1), mats.waterfall, sx, 0.56, sz, false).rotation.y = t - a;
+  }
+  k.light(0x6ab8ff, 22, 11, x, 2.2, z + (z > 0 ? 2 : -2));
+}
+
+/** The fountain's basin: a broad round lip 0.6 m high round the water. */
+const FOUNTAIN_BASIN = lathe([[0, 0], [1.9, 0], [1.95, 0.08], [1.88, 0.5], [1.98, 0.6], [1.86, 0.66], [1.66, 0.62], [1.62, 0.5], [0, 0.5]], 40);
+/** The fountain's raised bowl, its lip at 0.42. */
+const FOUNTAIN_BOWL = lathe([[0, 0], [0.5, 0], [0.62, 0.08], [1.0, 0.2], [1.22, 0.36], [1.24, 0.44], [1.12, 0.42], [0.9, 0.3], [0, 0.3]], 32);
+const FOUNTAIN_RIM = new THREE.TorusGeometry(1.2, 0.04, 6, 32).rotateX(Math.PI / 2).translate(0, 0.43, 0);
+
+// ---------------------------------------------------------------------------
 // The Molten Colossus's arena: its foundry
 
 /**
@@ -1655,6 +1725,7 @@ export const abyssKit: Kit = (k) => {
   const { c, index, random, mats, add } = k;
   // spines: a black plinth, vertebrae stacked and tapering, a crown of horns
   c.pillars.forEach(([x, z, r], i) => {
+    if (shrineAt(index, r)) return skullObelisk(k, x, z);
     const seed = 7000 + index * 89 + i * 17;
     const h = 8.5 + random() * 3;
     add(chippedBlock(r * 2.6, 0.8, r * 2.6, seed, 0.05), mats.obsidian, x, 0.4, z).rotation.y = random() * Math.PI;
@@ -2190,6 +2261,49 @@ const SERPENT_SKULL = (() => {
   ]);
 })();
 const SERPENT_EYES = merge([-1, 1].map((side) => new THREE.SphereGeometry(0.11, 8, 6).translate(side * 0.34, 0.22, 0.82)));
+
+// ---------------------------------------------------------------------------
+// The Abyss's landmark: the Twin Sanctums' obelisks
+
+/**
+ * A black obelisk at the heart of each sanctum, gripped by ribs rising from
+ * its foot, and over it a great skull hanging in the air, turning slowly to
+ * look round the sanctum with spirit fire in its eyes.
+ */
+function skullObelisk(k: KitBuild, x: number, z: number): void {
+  const { mats, add } = k;
+  const seed = 9995 + Math.round(z);
+  add(chippedBlock(2.8, 0.6, 2.8, seed, 0.04), mats.obsidian, x, 0.3, z).rotation.y = Math.PI / 4;
+  add(OBELISK, mats.obsidian, x, 0.6, z);
+  add(OBELISK_RIBS, mats.bone, x, 0.6, z);
+  // the skull, turning
+  const head = new THREE.Group();
+  head.position.set(x, 0.6 + OBELISK_H + 1.6, z);
+  head.rotation.y = z > 0 ? 0 : Math.PI;
+  for (const [geo, mat] of [[GREAT_SKULL, mats.bone], [GREAT_SOCKETS, mats.coals]] as const) {
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = mat === mats.bone;
+    m.receiveShadow = true;
+    head.add(m);
+  }
+  k.group.add(head);
+  k.spin(head, new THREE.Vector3(0, 1, 0), z > 0 ? 0.22 : -0.22);
+  k.light(0x5aff8a, 28, 13, x, OBELISK_H + 0.2, z + (z > 0 ? 1.2 : -1.2));
+}
+
+/** How tall the obelisk stands on its plinth, to its tip. */
+const OBELISK_H = 4.4;
+const OBELISK = merge([
+  new THREE.CylinderGeometry(0.62, 0.95, OBELISK_H - 0.7, 4).rotateY(Math.PI / 4).translate(0, (OBELISK_H - 0.7) / 2, 0),
+  new THREE.ConeGeometry(0.62, 0.7, 4).rotateY(Math.PI / 4).translate(0, OBELISK_H - 0.35, 0),
+]);
+/** Four ribs rising from the obelisk's foot and curling in round it. */
+const OBELISK_RIBS = merge(
+  [0, 1, 2, 3].map((i) => curvedBone(3.6, 0.14, -0.45, 0.2, 10).translate(1.15, 0, 0).rotateY((i / 4) * Math.PI * 2)),
+);
+/** The great skull, 0.9 m round, facing +z. */
+const GREAT_SKULL = skull(0.9);
+const GREAT_SOCKETS = SOCKETS.clone().scale(0.9, 0.9, 0.9);
 
 // ---------------------------------------------------------------------------
 // The Ossuary King's arena: its court
