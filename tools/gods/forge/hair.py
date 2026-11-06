@@ -121,6 +121,9 @@ def clumps(paths: list[np.ndarray], normals: np.ndarray, style: Style, widths=No
         col = np.zeros((len(m.v), 4))
         col[:, 0] = np.repeat(t, sides)
         col[:, 1] = rng.uniform()  # per-clump random for tint variation
+        # how freely the lock swings (the hair shader's sway): a long mane fully, a beard
+        # half, a brow or a mustache hardly at all
+        col[:, 2] = min(1.0, float(np.linalg.norm(np.diff(path, axis=0), axis=1).sum()) / 0.5)
         m.col = col
         meshes.append(m)
     return merge(meshes)
