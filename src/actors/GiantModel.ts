@@ -565,8 +565,8 @@ export class GiantModel {
   readonly god: GodModel;
   /** Top of the head when standing, meters. */
   readonly height: number;
-  /** A foot came down: where (world) and how hard (0..1). */
-  onStep: ((at: THREE.Vector3, strength: number) => void) | null = null;
+  /** A foot came down: where (world, its ankle), how hard (0..1) and which (0 left, 1 right). */
+  onStep: ((at: THREE.Vector3, strength: number, foot: 0 | 1) => void) | null = null;
   /** The visual moment a blow lands: what and where (world). */
   onImpact: ((act: GiantAct, at: THREE.Vector3) => void) | null = null;
   /** A weak point shattered (world). */
@@ -1079,7 +1079,15 @@ export class GiantModel {
     if (this.actions.some((x) => x.act === 'stomp' && x.weight > 0.1)) return;
     this.lastStep = this.clock;
     const at = (low === 0 ? tmpV : tmpV2).clone().setY(this.root.position.y);
-    this.onStep?.(at, THREE.MathUtils.clamp(this.pace / 5, 0.4, 1));
+    this.onStep?.(at, THREE.MathUtils.clamp(this.pace / 5, 0.4, 1), low as 0 | 1);
+  }
+
+  /** Where a foot is now (world; 0 left, 1 right), false before the model has feet. */
+  footAt(foot: 0 | 1, out: THREE.Vector3): boolean {
+    const b = this.feet[foot];
+    if (!b) return false;
+    b.getWorldPosition(out);
+    return true;
   }
 
   get windupAct(): GiantAct | null {

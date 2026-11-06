@@ -4,9 +4,11 @@ import { clusterGeometry, crystalGeometry, GIANT_ACTS, GiantModel, MOTIONS, type
 import { attribute, color, float, hash, instanceIndex, mix, mx_noise_float, normalView, positionGeometry, positionView, pow, saturate, sin, smoothstep, time, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
 import { placedGeometry, placeInstances, spriteQuads } from '../render/shared';
 import type { Fire } from '../scene/Effects';
+import { giantFeet } from '../scene/frost';
 import { JOTUNN, PART_IDS, type PartId, type ShrineState } from '../sim/Jotunn';
 import type { Flash, Point, SimEvent, Unit } from '../sim/Unit';
 import type { MonsterView } from './MonsterViews';
+import { FrostPrints } from './frostPrints';
 import type { StructureModel } from './structures';
 import { RelicView } from './Vfx';
 
@@ -440,6 +442,9 @@ class ShrineView {
 const tmp = new THREE.Vector3();
 const tmp2 = new THREE.Vector3();
 const tmp3 = new THREE.Vector3();
+/** How wide (meters) a foot that is down parts the grass round it. */
+const FOOT_PART = 1.9;
+const FEET = [0, 1] as const;
 
 /**
  * The Jötunn mode's 3D side: the giant (a GiantModel posed from its own unit,
@@ -462,6 +467,10 @@ export class JotunnView {
   private readonly mist = new Puffs(220, true);
   private readonly spikes: IceCopies;
   private readonly hail: IceCopies;
+  /** Frost left on the ground where its feet and blows came down. */
+  private readonly prints: FrostPrints;
+  /** Which way the giant faces (its footprints point that way). */
+  private yaw = 0;
   private readonly crust: THREE.BufferGeometry;
   private readonly crustMaterial: THREE.MeshStandardNodeMaterial;
   private readonly plinth = new THREE.CylinderGeometry(1.7, 2.1, 0.9, 6, 1).toNonIndexed();
@@ -500,6 +509,8 @@ export class JotunnView {
       this.spikes.add(p.at, Math.random() * 6.28, 0.35 + Math.random() * 0.25, 0, 0.6);
     };
     this.group.add(this.spikes.mesh, this.hail.mesh);
+    this.prints = new FrostPrints(host.ground);
+    this.group.add(this.prints.mesh);
 
     this.crustMaterial = new THREE.MeshStandardNodeMaterial({ roughness: 0.12, metalness: 0 });
     iceSurface(this.crustMaterial, float(1.3));
@@ -513,7 +524,7 @@ export class JotunnView {
     }
 
     const m = this.model;
-    m.onStep = (at, k) => this.step(at, k);
+    m.onStep = (at, k, foot) => this.step(at, k, foot);
     m.onImpact = (act, at) => this.impact(act, at);
     m.onShatter = (part, at) => this.shatter(part, at);
     m.onFall = (at, k) => this.fall(at, k);
@@ -588,6 +599,7 @@ export class JotunnView {
       s.localDir.set((u.vx * cos - u.vz * sin) / speed, (-u.vx * sin - u.vz * cos) / speed);
     } else s.localDir.set(0, 1);
     s.dead = !u.alive;
+    this.yaw = u.body.yaw;
 
     // the attack it winds up, from its warning
     const warn = this.host.flashes().find((f) => f.warn && f.owner === u && f.act && GIANT_ACTS[f.act]);
@@ -678,6 +690,20 @@ export class JotunnView {
     }
   }
 
+  /** The grass parts round each foot while it is down, and springs back as the foot lifts. */
+  private partGrass(): void {
+    const shown = !!this.model.root.parent && this.model.root.visible;
+    for (const foot of FEET) {
+      const f = giantFeet[foot]!.value;
+      if (!shown || !this.model.footAt(foot, tmp3)) {
+        f.w = 0;
+        continue;
+      }
+      const lift = tmp3.y - this.host.ground(tmp3.x, tmp3.z);
+      f.set(tmp3.x, tmp3.y, tmp3.z, FOOT_PART * THREE.MathUtils.clamp(1 - (lift - 0.9) / 1.6, 0, 1));
+    }
+  }
+
   private idOf(u: Unit): PartId | null {
     for (const [id, p] of this.parts) if (p === u) return id;
     return null;
@@ -685,9 +711,10 @@ export class JotunnView {
 
   // ------------------------------------------------------------------ effects
 
-  private step(at: THREE.Vector3, k: number): void {
-    // snow kicked up around the foot, and the ground shaking
+  private step(at: THREE.Vector3, k: number, foot: 0 | 1): void {
+    // snow kicked up around the foot, the ground shaking, and a print of frost left where it stood
     this.snow.ring(at, Math.round(5 + k * 5), 3 + k * 3, { life: 1.1, size0: 0.8, size1: 2.6 + k, alpha: 0.5, color: 0xe2edf3 });
+    this.prints.foot(at, this.yaw, foot ? 'footR' : 'footL');
     this.host.shake(0.18 * k, at);
     this.host.footfall?.(at, k);
   }
@@ -700,12 +727,14 @@ export class JotunnView {
     if (act === 'club' || act === 'stomp' || act === 'slam' || act === 'boulder') this.snortIn = 0.35;
     switch (act) {
       case 'club':
+        this.prints.blow(at.x, at.z, 2.4);
         this.host.burst(tmp.copy(at).setY(at.y + 0.6), 1.4);
         this.snow.ring(at, 10, 6, { life: 1, size0: 1, size1: 3, alpha: 0.5, color: 0xe2edf3 });
         this.host.shake(0.3, at);
         break;
       case 'stomp': {
         const r = 3.6 * 1.75;
+        this.prints.blow(at.x, at.z, r * 0.8);
         this.host.burst(tmp.copy(at).setY(at.y + 0.5), 2.4);
         this.ringOfSpikes(at, 13, r * 0.55, r * 0.95, 1.6, 2.6, 0.9);
         this.snow.ring(at, 26, 12, { life: 1.5, size0: 1.4, size1: 4.5, alpha: 0.55, color: 0xe2edf3 });
@@ -713,12 +742,14 @@ export class JotunnView {
         break;
       }
       case 'slam':
+        this.prints.blow(at.x, at.z, 3.6);
         this.host.burst(tmp.copy(at).setY(at.y + 0.5), 2);
         this.ringOfSpikes(at, 9, 1.6, 3.6, 1.2, 2.2, JOTUNN.plant - 0.3);
         this.snow.ring(at, 18, 9, { life: 1.3, size0: 1.2, size1: 3.8, alpha: 0.55, color: 0xe2edf3 });
         this.host.shake(0.65, at);
         break;
       case 'boulder':
+        this.prints.blow(at.x, at.z, 3);
         this.host.burst(tmp.copy(at).setY(at.y + 0.8), 2.2);
         this.ringOfSpikes(at, 7, 1.2, 3.4, 0.7, 1.4, 1.2);
         this.snow.ring(at, 20, 10, { life: 1.4, size0: 1.2, size1: 4, alpha: 0.6, color: 0xc9d3da });
@@ -737,7 +768,10 @@ export class JotunnView {
         break;
       case 'avalanche':
         if (shape?.type === 'line') this.wall(shape.x, shape.z, shape.yaw, shape.length, shape.width);
-        else this.ringOfSpikes(at, 10, 1, 5, 1.4, 2.4, 1);
+        else {
+          this.ringOfSpikes(at, 10, 1, 5, 1.4, 2.4, 1);
+          this.prints.blow(at.x, at.z, 5);
+        }
         this.host.shake(0.85, at);
         break;
       case 'hail':
@@ -774,6 +808,8 @@ export class JotunnView {
       }
       if (Math.random() < 0.6) this.snow.spawn(tmp.set(x + fx * d, this.host.ground(x + fx * d, z + fz * d) + 0.5, z + fz * d), tmp2.set((Math.random() - 0.5) * 4, 2 + Math.random() * 2, (Math.random() - 0.5) * 4), { life: 1.6, size0: 1.5, size1: 4.5, alpha: 0.55, color: 0xe2edf3, drag: 1.2 });
     }
+    // frost left down its length
+    for (let d = 3; d < length; d += 4.5) this.prints.blow(x + fx * d, z + fz * d, Math.max(2, width * 0.75));
   }
 
   private shatter(_part: GiantPart, at: THREE.Vector3): void {
@@ -802,6 +838,7 @@ export class JotunnView {
 
   private fall(at: THREE.Vector3, k: number): void {
     at.y = this.host.ground(at.x, at.z);
+    this.prints.blow(at.x, at.z, 3 + 2.5 * k);
     this.snow.ring(at, Math.round(30 * k), 14, { life: 2, size0: 2, size1: 6, alpha: 0.6, color: 0xe2edf3 });
     this.host.shake(0.9 * k, at);
   }
@@ -865,6 +902,8 @@ export class JotunnView {
     this.snow.update(dt);
     this.mist.update(dt);
     for (const b of this.braziers) b.update(dt);
+    this.prints.update(dt);
+    this.partGrass();
     for (const s of this.shrines) s.update(dt, t);
   }
 }

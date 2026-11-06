@@ -1,3 +1,4 @@
+import * as THREE from 'three/webgpu';
 import { clamp, float, mix, normalWorld, smoothstep, uniform, vec3 } from '../render/tsl';
 
 /**
@@ -41,3 +42,10 @@ export function frostFor(snow: number): number {
   const k = Math.max(0, (snow - 0.22) / (FIGHT_TOP - 0.22));
   return 0.5 * k ** 1.1;
 }
+
+/**
+ * Where the Jötunn's feet press the grass flat: each foot's place (xyz) and
+ * how wide it parts the blades (w, meters; 0 while the foot is lifted, and
+ * in every other mode). JotunnView sets them each frame; the grass reads them.
+ */
+export const giantFeet = [uniform(new THREE.Vector4(0, -100, 0, 0)), uniform(new THREE.Vector4(0, -100, 0, 0))];
