@@ -5,7 +5,7 @@ import {
   addUnderworldColliders, CHAMBERS, entranceSpot, GATE, type ChamberDef, type Palette,
 } from '../../map/UnderworldLayout';
 import {
-  abs, atan, cos, dot, exp, float, length, mix, mx_fractal_noise_float, mx_noise_float, normalWorld, positionWorld, sin, smoothstep, time,
+  abs, atan, cos, dot, exp, float, length, mix, mx_fractal_noise_float, mx_noise_float, mx_worley_noise_float, normalWorld, positionWorld, sin, smoothstep, time,
   transformNormalToView, uv, vec2, vec3, vec4,
 } from '../../render/tsl';
 import type { QualitySettings } from '../../render/Quality';
@@ -232,7 +232,7 @@ const KITS: readonly Kit[] = [forgeKit, drownedKit, abyssKit];
  * (glassy black with the depth's glow in its cracks), glowing coals, the lava
  * lake and the gate veils, then each depth's kit's own: the forge's stone,
  * iron, slag and fires, the crypt's limestone, verdigris and water, the
- * ossuary's bone.
+ * ossuary's bone, and the bosses' gold and molten metal.
  */
 function underworldMaterials(lib: MaterialLibrary) {
   const tex = lib.textures;
@@ -437,5 +437,50 @@ function underworldMaterials(lib: MaterialLibrary) {
     bone.name = 'bone';
   }
 
-  return { obsidian, forgeStone, coals, lava, portal, sealed, iron, slag, furnace, flameBed, tideStone, verdigris, waterfall, pool, bone };
+  // the Treasure Wyrm's gold: a heap of coins (cells of polished metal, dark
+  // where they overlap), glints twinkling across it as the fire flickers
+  const gold = new THREE.MeshStandardNodeMaterial();
+  {
+    const coin = smoothstep(0.62, 0.4, mx_worley_noise_float(positionWorld.mul(7.5)));
+    const s = triplanar(tex.get('rock'), 1.4, 6);
+    const tone = lum(s.color).mul(0.5).add(0.75);
+    const base = vec3(1.0, 0.68, 0.26);
+    gold.colorNode = base.mul(mix(float(0.22), float(1), coin)).mul(tone);
+    gold.metalnessNode = float(1);
+    gold.roughnessNode = mix(float(0.6), float(0.26), coin);
+    gold.normalNode = transformNormalToView(s.normal.mix(normalWorld, 0.5).normalize());
+    const glint = smoothstep(0.62, 0.8, mx_noise_float(positionWorld.mul(20).add(vec3(time.mul(0.35), time.mul(0.8), 0)))).mul(coin);
+    gold.emissiveNode = base.mul(glint.mul(6).add(coin.mul(0.1)));
+    gold.name = 'gold';
+  }
+
+  // an old bronze colossus: dark metal, green verdigris crusted in its hollows
+  // and run down it in streaks where the water has fallen on it for ages
+  const bronze = new THREE.MeshStandardNodeMaterial();
+  {
+    const s = triplanar(tex.get('rock'), 0.5, 6);
+    const g = lum(s.color);
+    const streak = smoothstep(0.1, 0.45, mx_noise_float(positionWorld.mul(vec3(2.2, 0.18, 2.2))).add(g.sub(0.3).mul(0.8)));
+    const crust = smoothstep(0.36, 0.2, g).max(streak.mul(0.85));
+    bronze.colorNode = mix(vec3(0.2, 0.12, 0.055).mul(g.add(0.7)), vec3(0.09, 0.24, 0.2).mul(g.add(0.65)), crust);
+    bronze.metalnessNode = mix(float(0.8), float(0.05), crust);
+    bronze.roughnessNode = mix(float(0.4), float(0.85), crust);
+    bronze.normalNode = transformNormalToView(s.normal.mix(normalWorld, 0.45).normalize());
+    bronze.name = 'bronze';
+  }
+
+  // the Molten Colossus's metal, always its own orange whatever the depth:
+  // white-hot where it pours, a dark crust drifting over it where it lies
+  const molten = new THREE.MeshBasicNodeMaterial();
+  {
+    const u = uv();
+    const n = mx_fractal_noise_float(vec3(u.x.mul(10).sub(time.mul(1.8)), u.y.mul(4), time.mul(0.3)), 3, 2.0, 0.5).mul(0.5).add(0.5);
+    const lying = smoothstep(1.2, 0.8, positionWorld.y);
+    const crust = smoothstep(0.52, 0.72, mx_noise_float(vec3(positionWorld.xz.mul(1.1), time.mul(0.05))).mul(0.5).add(0.5)).mul(lying);
+    const hot = mix(vec3(1.0, 0.32, 0.05).mul(3), vec3(1.0, 0.84, 0.5).mul(8), smoothstep(0.5, 0.9, n));
+    molten.colorNode = mix(hot.mul(n.add(0.35)), vec3(0.05, 0.025, 0.015), crust.mul(0.9));
+    molten.name = 'molten';
+  }
+
+  return { obsidian, forgeStone, coals, lava, portal, sealed, iron, slag, furnace, flameBed, tideStone, verdigris, waterfall, pool, bone, gold, molten, bronze };
 }
