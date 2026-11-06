@@ -46,6 +46,21 @@ export interface Slot {
 }
 
 export const TEAM_SIZE = 5;
+
+/** Longest player name a lobby keeps. */
+export const NAME_MAX = 16;
+
+/**
+ * A player's name as every screen shows it: letters, digits, spaces and
+ * . _ ' - only (nothing a page could read as markup), runs of spaces folded,
+ * at most NAME_MAX characters; `fallback` when nothing is left. The host
+ * cleans what guests send, and guests clean what the host sends.
+ */
+export function cleanName(raw: unknown, fallback: string): string {
+  if (typeof raw !== 'string') return fallback;
+  const kept = raw.normalize('NFC').replace(/[^\p{L}\p{M}\p{N} ._'-]/gu, '').replace(/\s+/g, ' ').trim();
+  return Array.from(kept).slice(0, NAME_MAX).join('').trim() || fallback;
+}
 /** Humans take spots in this order: mid, solo, roam, then the two duo spots. */
 const HUMAN_SPOTS = [1, 0, 4, 2, 3];
 

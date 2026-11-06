@@ -98,7 +98,7 @@ async function main(): Promise<void> {
         voice = new GodVoice(audio, import.meta.env.BASE_URL);
         for (const g of GODS) voice.load(g.id, ['select']);
         voice.load('jotunn', ['select']);
-        return showStartMenu(graphics, savedPick().god ?? GODS[0]!.id, say);
+        return showStartMenu(graphics, savedPick().god ?? GODS[0]!.id, say, (name, gain = 0.8) => audio.play(name, { bus: 'ui', gain }, 4, 0.05));
       });
 
   const { renderer, isWebGPU } = await rendering;

@@ -1,6 +1,6 @@
 import { Peer, type DataConnection, type PeerOptions } from 'peerjs';
 import type { Side } from '../game/combatant';
-import { teamFor, TEAM_SIZE, type NetMode, type NetPlayer } from './roster';
+import { cleanName, teamFor, TEAM_SIZE, type NetMode, type NetPlayer } from './roster';
 
 /** Every message is a JSON object with a type tag. */
 export interface Msg {
@@ -97,9 +97,10 @@ export class NetSession {
 
   /**
    * Open a lobby with a fresh code, for a game mode (Conquest by default) and
-   * at most `cap` players (Conquest's five a team by default).
+   * at most `cap` players (Conquest's five a team by default), under the
+   * host's `name` (Player 1 without one).
    */
-  static host(mode: NetMode, god: string, game = 'conquest', cap = mode === 'coop' ? TEAM_SIZE : TEAM_SIZE * 2): Promise<NetSession> {
+  static host(mode: NetMode, god: string, game = 'conquest', cap = mode === 'coop' ? TEAM_SIZE : TEAM_SIZE * 2, name = ''): Promise<NetSession> {
     return new Promise((resolve, reject) => {
       const attempt = (tries: number) => {
         const code = newCode();
@@ -110,7 +111,7 @@ export class NetSession {
           const s = new NetSession('host', mode, code, peer);
           s.game = game;
           s.cap = cap;
-          s.players = [{ id: peer.id, name: 'Player 1', god, team: 'order' }];
+          s.players = [{ id: peer.id, name: cleanName(name, 'Player 1'), god, team: 'order' }];
           peer.on('connection', (c) => s.accept(c));
           resolve(s);
         });
@@ -126,8 +127,8 @@ export class NetSession {
     });
   }
 
-  /** Join the lobby with this code. */
-  static join(code: string, god: string): Promise<NetSession> {
+  /** Join the lobby with this code, under `name` (the host numbers a player without one). */
+  static join(code: string, god: string, name = ''): Promise<NetSession> {
     code = code.trim().toUpperCase();
     return new Promise((resolve, reject) => {
       const peer = new Peer(peerOptions());
@@ -143,7 +144,7 @@ export class NetSession {
       peer.on('open', () => {
         const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'raw' });
         const s = new NetSession('guest', 'coop', code, peer);
-        conn.on('open', () => conn.send(encode({ t: 'hello', god })));
+        conn.on('open', () => conn.send(encode({ t: 'hello', god, name })));
         conn.on('data', (d) => {
           const msg = JSON.parse(d as string) as Msg;
           if (msg.t === 'full') return fail(msg.why as string);
@@ -170,6 +171,15 @@ export class NetSession {
     if (this.started || this.self()?.ready) return;
     if (this.isHost) this.update(this.me, { god });
     else this.send('host', { t: 'pick', god });
+  }
+
+  /** Change this player's name in the lobby (not once the pick has begun). */
+  rename(name: string): void {
+    if (this.started || this.selecting) return;
+    const me = this.self();
+    if (!me) return;
+    if (this.isHost) this.update(this.me, { name: cleanName(name, me.name) });
+    else this.send('host', { t: 'name', name });
   }
 
   /** Seconds left in the god pick. */
@@ -276,7 +286,7 @@ export class NetSession {
           return;
         }
         this.conns.set(from, conn);
-        this.players.push({ id: from, name: `Player ${this.players.length + 1}`, god: msg.god as string, team: teamFor(this.mode, this.players) });
+        this.players.push({ id: from, name: cleanName(msg.name, `Player ${this.players.length + 1}`), god: msg.god as string, team: teamFor(this.mode, this.players) });
         this.changed();
         return;
       }
@@ -289,6 +299,11 @@ export class NetSession {
         if (!p) return;
         this.update(from, { ready: true, ...(typeof msg.god === 'string' && !p.ready ? { god: msg.god } : {}) });
         this.allReady();
+        return;
+      }
+      case 'name': {
+        const p = this.players.find((x) => x.id === from);
+        if (this.isHost && p && !this.started && !this.selecting) this.update(from, { name: cleanName(msg.name, p.name) });
         return;
       }
       case 'team':
@@ -305,7 +320,7 @@ export class NetSession {
       case 'lobby':
         this.mode = msg.mode as NetMode;
         this.game = (msg.game as string | undefined) ?? 'conquest';
-        this.players = msg.players as NetPlayer[];
+        this.players = readPlayers(msg.players);
         this.bots = readBots(msg.bots);
         // the host's clock keeps every pick screen's countdown in step
         if (this.selecting && typeof msg.left === 'number') this.pickEnds = performance.now() + msg.left * 1000;
@@ -315,7 +330,7 @@ export class NetSession {
         if (this.isHost || this.started || this.selecting) return;
         this.mode = msg.mode as NetMode;
         this.game = (msg.game as string | undefined) ?? 'conquest';
-        this.players = msg.players as NetPlayer[];
+        this.players = readPlayers(msg.players);
         this.bots = readBots(msg.bots);
         this.selecting = true;
         this.pickEnds = performance.now() + (typeof msg.left === 'number' ? msg.left : PICK_SECONDS) * 1000;
@@ -325,7 +340,7 @@ export class NetSession {
         if (this.isHost || this.started) return;
         this.mode = msg.mode as NetMode;
         this.game = (msg.game as string | undefined) ?? 'conquest';
-        this.players = msg.players as NetPlayer[];
+        this.players = readPlayers(msg.players);
         this.bots = readBots(msg.bots);
         this.started = true;
         this.selecting = false;
@@ -359,6 +374,11 @@ export class NetSession {
     }
     this.onLeave(id);
   }
+}
+
+/** The host's player list, names cleaned as the host cleans them. */
+function readPlayers(v: unknown): NetPlayer[] {
+  return (Array.isArray(v) ? (v as NetPlayer[]) : []).map((p, i) => ({ ...p, name: cleanName(p.name, `Player ${i + 1}`) }));
 }
 
 function readBots(v: unknown): Record<Side, boolean> {

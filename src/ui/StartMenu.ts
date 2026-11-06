@@ -153,9 +153,10 @@ export interface GraphicsInfo {
  * The home page: choose a mode and its options, then Play (or open a lobby
  * and play with friends). The mode's art fills the screen behind the menu.
  * Shown while the game loads behind it. `picked` hears 'jotunn' when the
- * player picks the giant's mode or asks to play the giant (it says its line).
+ * player picks the giant's mode or asks to play the giant (it says its line);
+ * `sound` plays the lobby's joins, leaves and copies.
  */
-export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: string, picked?: (god: string) => void): Promise<ModeChoice> {
+export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: string, picked?: (god: string) => void, sound?: (name: string, gain?: number) => void): Promise<ModeChoice> {
   const prev = load();
   let mode = savedMode();
   let difficulty: Difficulty = parseDifficulty(prev.difficulty);
@@ -328,6 +329,7 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
       render();
     },
     onStart: (net) => started?.({ mode: isMode(net.game) ? net.game : 'conquest', net, difficulty }),
+    sound,
   });
 
   const note = root.querySelector<HTMLSpanElement>('.sm-note')!;

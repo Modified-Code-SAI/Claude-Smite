@@ -128,6 +128,10 @@
   .hm-play { padding: 10px 24px 9px; }
   .hm-play span { font-size: 25px; }
   .hm-friends { padding-top: 10px; }
+  /* in a lobby the seats need the room: the mode's blurb steps aside */
+  .hm.in-lobby .hm-desc, .hm.in-lobby .hm-rec { display: none; }
+  .lb-face { width: 44px; height: 44px; }
+  .lb-seat { padding: 6px 4px 5px; }
   .hm-foot { margin-top: 8px; }
 }
 @media (max-height: 700px) {
