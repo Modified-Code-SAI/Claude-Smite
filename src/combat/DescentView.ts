@@ -11,7 +11,7 @@ import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { ArcView } from './Arcs';
 import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
 import { GroundDecal } from './GroundDecal';
-import { KEEPER_CORE, KEEPER_GLOW } from './MonsterViews';
+import { KEEPER_CORE, KEEPER_GLOW, setMonsterDepth } from './MonsterViews';
 import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
@@ -192,6 +192,8 @@ export class DescentView {
       const palette = DEPTHS[r.depth]!.palette;
       const c = DEPTH_COLORS[palette];
       if (this.map?.setPalette(palette)) this.world.recolorFires();
+      // and the beasts that live there
+      setMonsterDepth(palette);
       this.world.environment.setDepth(c);
       const dust = this.world.dust;
       dust.tint.value.setHex(c.motes.color);
