@@ -8,6 +8,7 @@ import { isStructure, type Point, type SimEvent, type Unit } from '../sim/Unit';
 import { PingHud, type PingMark } from '../ui/PingHud';
 import { GroundDecal } from './GroundDecal';
 import type { GodPalette } from './palette';
+import { toScreen } from './screenEdge';
 
 export type PingSound = PingDef['sound'] | 'wheel' | 'tick';
 
@@ -42,10 +43,6 @@ const REACH = 140;
 /** Markers up at once; the oldest goes first. */
 const MAX_MARKS = 8;
 const DECALS = 4;
-/** Where markers out of view are pinned: how far out from the middle (screen halves) sideways, up and down. */
-const EDGE_X = 0.92;
-const EDGE_TOP = 0.8;
-const EDGE_BOTTOM = 0.55;
 /** Seconds the ground mark's shockwave takes to sweep out. */
 const SHOCK = 0.45;
 
@@ -84,7 +81,6 @@ export class PingMode {
   private readonly limiter = new PingLimiter();
   private nextId = 1;
   private readonly v = new THREE.Vector3();
-  private readonly fwd = new THREE.Vector3();
   /** A ping went up (its sound, and whether it was this player's), or the wheel opened or lit a wedge. */
   onSound: ((sound: PingSound, mine: boolean) => void) | null = null;
   private lastPick = -1;
@@ -290,8 +286,6 @@ export class PingMode {
   /** Age every marker, keep its ground mark on what it follows, and place it on screen. */
   private age(dt: number): void {
     const me = this.deps.player();
-    const cam = this.deps.camera;
-    cam.getWorldDirection(this.fwd);
     const w = window.innerWidth;
     const h = window.innerHeight;
     const marks: PingMark[] = [];
@@ -315,7 +309,7 @@ export class PingMode {
       const head = on ? this.deps.headOf(on, this.v) : null;
       if (head) head.y += 1.1;
       else this.v.set(l.x, this.deps.groundAt(l.x, l.z) + 1.6, l.z);
-      const p = this.toScreen(this.v, w, h);
+      const p = toScreen(this.v, this.deps.camera, w, h);
       // your own call about yourself needs no marker over your head: the feed says it
       if (!(self && l.mine)) marks.push({ id: l.id, kind: l.kind, x: p.x, y: p.y, edge: p.edge, angle: p.angle, who: l.who, text: l.text, coming: comingLine(l.coming), dist: hypot(l.x - me.x, l.z - me.z), age: l.age, life: l.life, mine: l.mine });
       this.mapMarks.push({ x: l.x, z: l.z, color: PINGS[l.kind].color, age: l.age });
@@ -343,35 +337,6 @@ export class PingMode {
     else if (d.values.style !== 0) d.setStyle('telegraph');
     d.values.opacity = Math.min(1, (l.life - l.age) / 0.8) * (l.age < SHOCK ? 1 : 0.85);
   }
-
-  /**
-   * Screen pixels for a world point, pinned to the screen's edge (with the way
-   * to it) when out of view: above or below the view along its line, and to
-   * the left or right side when it is behind the camera.
-   */
-  private toScreen(at: THREE.Vector3, w: number, h: number): { x: number; y: number; edge: boolean; angle: number } {
-    const cam = this.deps.camera;
-    const behind = this.fwd.dot(this.v2.copy(at).sub(cam.position)) < 0;
-    const p = this.v2.copy(at).project(cam);
-    let ex: number;
-    let ey: number;
-    if (behind) {
-      // the projection mirrors through the camera: flip it back to find the side
-      ex = -p.x >= 0 ? EDGE_X : -EDGE_X;
-      ey = Math.max(-0.35, Math.min(0.35, -p.y * 0.5));
-    } else {
-      if (Math.abs(p.x) < 0.92 && p.y < 0.86 && p.y > -0.9) return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h, edge: false, angle: 0 };
-      // shrink toward the middle until it sits inside the edge box (lower edge kept clear of the skill bar)
-      const k = Math.min(Math.abs(p.x) > EDGE_X ? EDGE_X / Math.abs(p.x) : 1, p.y > EDGE_TOP ? EDGE_TOP / p.y : p.y < -EDGE_BOTTOM ? EDGE_BOTTOM / -p.y : 1);
-      ex = p.x * k;
-      ey = p.y * k;
-    }
-    const x = ((ex + 1) / 2) * w;
-    const y = ((1 - ey) / 2) * h;
-    return { x, y, edge: true, angle: Math.atan2(y - h / 2, x - w / 2) };
-  }
-
-  private readonly v2 = new THREE.Vector3();
 
   dispose(): void {
     this.cancel();

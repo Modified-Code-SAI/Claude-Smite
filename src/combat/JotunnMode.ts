@@ -16,6 +16,7 @@ import { jotunnBots } from '../sim/JotunnBots';
 import type { Sim } from '../sim/Sim';
 import type { Point, SimEvent, Unit } from '../sim/Unit';
 import { JotunnHud } from '../ui/JotunnHud';
+import { JotunnMarks } from '../ui/JotunnMarks';
 import { CINE, CINE_CLEARANCE, JotunnCine, type CineSight } from './jotunnCine';
 import { JotunnView } from './JotunnView';
 import { JotunnWeather } from './jotunnWeather';
@@ -57,6 +58,8 @@ export interface JotunnDeps {
   cameraShot?: (shot: CameraShot | null) => void;
   /** The map's columns and walls, which a shot's camera keeps clear of. */
   collision?: CollisionWorld;
+  /** The player's camera, for the objective marks (JotunnMarks); none, no marks. */
+  camera?: THREE.Camera;
   /** Toward the sun, which a shot of the giant never looks into. */
   sun?: { x: number; z: number };
   /** The map's light and haze, which the giant's winter cools (see JotunnWeather). */
@@ -93,6 +96,7 @@ export class JotunnMode {
   host: NetHost | null = null;
   guest: NetGuest | null = null;
   private readonly hud: JotunnHud;
+  private readonly marks: JotunnMarks | null;
   /** The giant's moments on camera, where the game lends the camera. */
   private readonly cine: JotunnCine | null;
   /** The giant's winter: snow, and the colder light it brings. */
@@ -170,6 +174,7 @@ export class JotunnMode {
     this.weather = new JotunnWeather(deps.environment);
     deps.vfx.add(this.weather.group);
     this.hud = new JotunnHud(mode, player);
+    this.marks = deps.camera ? new JotunnMarks(mode, deps.camera, deps.groundAt) : null;
     const set = deps.cameraShot;
     const view = this.view;
     this.cine = set
@@ -306,6 +311,7 @@ export class JotunnMode {
   onEvent(e: SimEvent): void {
     this.view.onEvent(e);
     this.hud.onEvent(e);
+    this.marks?.onEvent(e);
   }
 
   frame(dt: number, time: number): void {
@@ -313,6 +319,7 @@ export class JotunnMode {
     this.weather.frame(dt, this.mode);
     this.view.update(dt, time);
     this.hud.frame(dt, this.cine?.kind ?? null);
+    this.marks?.frame(dt, this.piloting, !!this.cine?.kind, this.piloting ? this.mode.giant : this.deps.player);
   }
 
   /** Clear floor for a shot's camera at (x, z), `y` up, that looks at each of `sights` (see CineHost.room). */
