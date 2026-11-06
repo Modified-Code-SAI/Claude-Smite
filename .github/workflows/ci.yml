@@ -37,6 +37,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps --only-shell chromium
+      - run: npx playwright install --only-shell chromium  # the runner image already has its system libraries; --with-deps only adds fonts, slowly
       - run: npx vite build
       - run: node scripts/smoke.mjs --shard ${{ matrix.shard }}
