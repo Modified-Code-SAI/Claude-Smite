@@ -1,6 +1,6 @@
 import type { Side } from '../game/combatant';
 import { CAPTAIN_SPEED, PLAYMAKER } from '../game/sport';
-import type { CCKind } from '../game/types';
+import type { CCKind, GodDef, SkillDef } from '../game/types';
 import { Arena } from '../scene/ArenaLayout';
 import { hypot } from '../core/math';
 import type { Sim, SimTerrain } from './Sim';
@@ -124,8 +124,28 @@ export const RUSH = {
   juke: { distance: 3.4, time: 0.18, guard: 0.3, cooldown: 7 },
 } as const;
 
-/** Crowd control that knocks the relic out of its carrier's hands. */
-export const FUMBLE_CC: ReadonlySet<CCKind> = new Set<CCKind>(['stun', 'knockup', 'knockback', 'pull', 'grab', 'fear', 'mesmerize', 'polymorph', 'banish', 'disorient']);
+/** Crowd control that knocks the relic out of its carrier's hands: anything that takes their legs or their will away. */
+export const FUMBLE_CC: ReadonlySet<CCKind> = new Set<CCKind>(['stun', 'knockup', 'knockback', 'pull', 'grab', 'fear', 'taunt', 'mesmerize', 'polymorph', 'banish', 'disorient']);
+
+/** Whether a skill's own effects knock the relic loose: a tackle. */
+export function tackles(skill: SkillDef): boolean {
+  return skill.effects.some((e) => e.kind === 'cc' && FUMBLE_CC.has(e.cc));
+}
+
+/**
+ * The skills a bot brings to Relic Rush: its god's own bar, except where that
+ * bar has no tackle, which leaves a god unable to win the relic back (in bot
+ * matches those gods won about a third of the time). Those swap one skill for
+ * a tackle from their pool.
+ */
+const RUSH_BARS: Readonly<Record<string, readonly string[]>> = {
+  odin: ['odin.gungnir-sweep', 'odin.ravens', 'odin.lunge', 'odin.ring-of-spears'],
+  loki: ['loki.decoy', 'loki.vanish', 'loki.backstab', 'loki.assassinate'],
+};
+
+export function rushBar(god: GodDef): readonly string[] {
+  return RUSH_BARS[god.id] ?? god.defaultLoadout;
+}
 
 export type RushPhase = 'kickoff' | 'play' | 'goal' | 'over';
 export type RelicPhase = 'center' | 'held' | 'flying' | 'loose' | 'gone';
