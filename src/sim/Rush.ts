@@ -141,6 +141,8 @@ export function tackles(skill: SkillDef): boolean {
 const RUSH_BARS: Readonly<Record<string, readonly string[]>> = {
   odin: ['odin.gungnir-sweep', 'odin.ravens', 'odin.lunge', 'odin.ring-of-spears'],
   loki: ['loki.decoy', 'loki.vanish', 'loki.backstab', 'loki.assassinate'],
+  // Halo Burst's knockback is her tackle
+  amaterasu: ['amaterasu.sunpiercer', 'amaterasu.halo-burst', 'amaterasu.crane-step', 'amaterasu.sunfall'],
 };
 
 export function rushBar(god: GodDef): readonly string[] {
