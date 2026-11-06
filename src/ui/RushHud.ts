@@ -1,5 +1,6 @@
 import type { Side } from '../game/combatant';
-import { RUSH, type Rush } from '../sim/Rush';
+import { SLOT_COUNT, SLOT_KEYS } from '../game/loadout';
+import { FUMBLE_CC, RUSH, type Rush } from '../sim/Rush';
 import type { Point, Unit } from '../sim/Unit';
 import type { RushCall, RushCatch } from '../combat/RushMode';
 import { addResult } from './records';
@@ -264,6 +265,35 @@ export class RushHud {
     return u === this.me ? 'You' : u.name;
   }
 
+  /** The player's skills that knock the relic loose (slots, regular first), worked out again when their bar, level or points change. */
+  private tackles: number[] = [];
+  private tacklesKey = '';
+
+  /** What to do about an enemy carrier: the tackle to use now, how long until one is back, or (with none on the bar) to get in their way. */
+  private tackleText(): string {
+    const c = this.me.combatant;
+    const key = `${c.loadout.join('|')}:${c.level}:${c.unspentPoints}`;
+    if (key !== this.tacklesKey) {
+      this.tacklesKey = key;
+      this.tackles = [];
+      for (let slot = 0; slot < SLOT_COUNT; slot++) {
+        if (c.skillRankInSlot(slot) > 0 && c.resolve(slot).hits.some((e) => e.kind === 'cc' && FUMBLE_CC.has(e.cc))) this.tackles.push(slot);
+      }
+    }
+    if (!this.tackles.length) return 'get in their way (none of your skills can knock it loose)';
+    let soonest = -1;
+    let mana = -1;
+    for (const slot of this.tackles) {
+      const why = c.canCast(slot);
+      if (why === null) return `knock it loose with ${c.skillInSlot(slot)!.name} (${SLOT_KEYS[slot]})`;
+      if (why === 'mana' && mana < 0) mana = slot;
+      const cd = c.cooldownOf(slot);
+      if (cd > 0 && (soonest < 0 || cd < c.cooldownOf(soonest))) soonest = slot;
+    }
+    if (soonest >= 0) return `stay on them: ${c.skillInSlot(soonest)!.name} is back in ${Math.ceil(c.cooldownOf(soonest))}`;
+    return mana >= 0 ? `stay on them (not enough mana for ${c.skillInSlot(mana)!.name})` : 'stay on them';
+  }
+
   /** The line under the score: where the relic is and what this player should do about it (`read`: what their throw at `aim` would do). */
   private stateText(read: PassRead | null, aim: Point | null): { text: string; tone: string } {
     const r = this.rush;
@@ -282,7 +312,7 @@ export class RushHud {
       return { text: 'You have the relic! Run it through their gate, or left click to pass where you aim', tone: 'order' };
     }
     if (h && h.team === me.team) return { text: `${h.name} has the relic: get open, and press F to call for the pass`, tone: 'order' };
-    if (h) return { text: `${h.name} has the relic: stun or knock them back to make them drop it`, tone: 'chaos' };
+    if (h) return { text: `${h.name} has the relic: ${this.tackleText()}`, tone: 'chaos' };
     if (relic.phase === 'center') return { text: 'Grab the Sun Relic from the pedestal', tone: 'contested' };
     if (relic.phase === 'flying' && relic.thrower) {
       return relic.thrower.team === me.team ? { text: `${this.who(relic.thrower)} passes!`, tone: 'order' } : { text: 'Enemy pass in the air: cut it off', tone: 'chaos' };
