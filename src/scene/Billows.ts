@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { attribute, cameraPosition, float, hash, mix, select, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
+import { attribute, cameraPosition, float, hash, min, mix, select, smoothstep, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
 import { FLIPBOOK_ASPECT, FLIPBOOK_FRAMES, sampleFlipbook, unpackFlipbook, type FlipbookName } from '../render/flipbook';
 import { spriteQuads } from '../render/shared';
 
@@ -147,11 +147,14 @@ function billowMaterial(sheet: BillowSheet, now: any): THREE.SpriteNodeMaterial 
   const s = unpackFlipbook(sampleFlipbook(sheet, t.mul(FLIPBOOK_FRAMES - 1), vec2(fu, u.y), false));
   // lit from above in the render; the shadowed side keeps a little sky
   const smoke = tint.rgb.mul(mix(float(0.32), float(1.15), s.lit));
-  const fade = float(1).sub(t.pow(3)).mul(alive);
+  // late dust frames rise out of the top of their frame: fade every border so a big card never shows a straight edge
+  const edge = smoothstep(0, 0.1, min(fu, float(1).sub(fu))).mul(smoothstep(0, 0.05, u.y)).mul(smoothstep(0, 0.2, float(1).sub(u.y)));
+  const fade = float(1).sub(t.pow(3)).mul(alive).mul(edge);
   const a = s.alpha.mul(fade);
   const hot = hexColor(flame.x);
   const cool = hexColor(flame.y);
-  const fire = mix(hot, cool, s.heat.pow(1.5)).mul(s.heat).mul(6).mul(fade);
+  // (heat^1.25 keeps the cooler folds of a fireball dark between its hot rolls)
+  const fire = mix(hot, cool, s.heat.pow(1.5)).mul(s.heat.pow(1.25)).mul(5).mul(fade);
   m.colorNode = vec4(smoke.mul(a).add(fire), 1);
   m.opacityNode = a;
   return m;

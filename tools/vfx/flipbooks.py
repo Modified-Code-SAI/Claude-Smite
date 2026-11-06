@@ -78,8 +78,10 @@ SHEETS = {
     'blast': dict(
         frame=(256, 256), domain=(6.4, 6.4, 6.4), voxel=0.0571, ortho=6.4, look=(3.2, 3.2, 3.2), elevation=0,
         settle=0, loop=False,
-        source=dict(shape='sphere', at=(3.2, 3.2, 2.2), size=(0.7, 0.7, 0.7), fuel=1.6, density=0.8, heat=1.2, velocity=(0, 0, 1.0), normal=6.0, until=3, swirl=1.8, churn=1.5),
-        gas=dict(beta=1.2, alpha=0.05, vorticity=3.5, burn=1.8, flame_heat=2.0, flame_smoke=2.0, flame_gain=1.3, expand=2.2, dissolve=0.15, cool=1.5),
+        source=dict(shape='sphere', at=(3.2, 3.2, 2.2), size=(0.7, 0.7, 0.7), fuel=1.6, density=0.8, heat=1.2, velocity=(0, 0, 1.0), normal=6.0, until=3, swirl=2.5, churn=1.5),
+        # the fuel burns from its edges inward and the hot gas glows as it cools, so the fireball has a hot heart and darker folds
+        gas=dict(beta=1.2, alpha=0.05, vorticity=6.0, burn=4.0, reaction=0.85, fuel_ref=1.6, flame_rate=0.6, glow=1.0, ignite=0.6, sharp_heat=True,
+                 flame_heat=2.0, flame_smoke=1.6, expand=2.2, dissolve=0.15, cool=2.2),
         shade=dict(density=8.0, flame=24.0),
     ),
 }
