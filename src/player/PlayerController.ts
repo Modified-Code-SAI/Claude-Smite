@@ -3,7 +3,7 @@ import type { Input } from '../core/Input';
 import type { Updatable } from '../core/Loop';
 import type { GodModel } from '../actors/GodModel';
 import type { CollisionWorld } from '../scene/Collision';
-import { hypot } from '../core/math';
+import { hypot, turnToward } from '../core/math';
 
 /**
  * Smite-style movement: the god always faces where the camera aims (mouse
@@ -15,6 +15,12 @@ export class PlayerController implements Updatable {
   readonly velocity = new THREE.Vector3();
   /** Facing / aim yaw in radians (0 = looking toward -Z). */
   yaw = 0;
+  /**
+   * A turn laid over how the model faces (a scorer turning to the camera to
+   * celebrate): the yaw to face and how far toward it, 0 to 1. The aim, and
+   * the camera that follows it, are left alone.
+   */
+  readonly turn = { yaw: 0, weight: 0 };
   /** Camera pitch, radians; positive looks down. */
   pitch = 0.32;
   grounded = true;
@@ -124,7 +130,8 @@ export class PlayerController implements Updatable {
   render(dt: number, alpha: number): void {
     const m = this.model.root;
     m.position.lerpVectors(this.prevPosition, this.position, alpha);
-    m.rotation.y = this.yaw + Math.PI; // the model is built facing +Z
+    const t = this.turn;
+    m.rotation.y = (t.weight > 0 ? turnToward(this.yaw, t.yaw, t.weight) : this.yaw) + Math.PI; // the model is built facing +Z
     this.model.animate(dt, {
       speed: hypot(this.velocity.x, this.velocity.z),
       localDir: this.localDir,

@@ -480,6 +480,11 @@ export class CombatGame implements Updatable {
       shake: this.deps.shake,
       swing: (u, kind) => this.views.swing(u, kind),
       cameraShot: this.deps.cameraShot,
+      turn: (u, yaw, weight) => {
+        if (u !== this.player) return this.views.turn(u, yaw, weight);
+        this.deps.player.turn.yaw = yaw;
+        this.deps.player.turn.weight = weight;
+      },
     });
     // nobody dies here: a god knocked out lies dazed where it fell (no soul pillar) until it stands up at its gate
     this.views.dazes = true;

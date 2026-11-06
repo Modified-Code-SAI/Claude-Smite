@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { distToSegment } from '../scene/ArenaLayout';
 import { RUSH } from '../sim/Rush';
-import { COLUMNS, goalCamSpot } from './goalCam';
+import { COLUMNS, GOAL_CAM, goalCamSpot, WIN_CAM, winDrift } from './goalCam';
 
 /** Where goals get scored from: dunks across each gate's mouth and shots from out on the pitch. */
 function scorers(): { x: number; z: number; gate: { x: number; z: number } }[] {
@@ -52,5 +52,25 @@ describe('goal cam', () => {
       expect(Math.abs(b.z + a.z)).toBeLessThan(1e-6);
       expect(Math.abs(Math.abs(b.x) - Math.abs(a.x))).toBeLessThan(2);
     }
+  });
+
+  it("the match's last shot drifts round the winner without bringing a column between them", () => {
+    let drifted = 0;
+    for (const s of scorers()) {
+      const c = goalCamSpot(s.x, s.z, s.gate);
+      const a = winDrift(c.x, c.z, s.x, s.z);
+      expect([0, WIN_CAM.drift, -WIN_CAM.drift]).toContain(a);
+      if (a === 0) continue;
+      drifted++;
+      // where it settles, pushed in to GOAL_CAM.near (the frame the result sits over)
+      const ox = c.x - s.x;
+      const oz = c.z - s.z;
+      const d = Math.hypot(ox, oz);
+      const r = GOAL_CAM.near;
+      const end = { x: s.x + ((ox * Math.cos(a) - oz * Math.sin(a)) / d) * r, z: s.z + ((ox * Math.sin(a) + oz * Math.cos(a)) / d) * r };
+      for (const p of COLUMNS) expect(inTheWay(p, end, s), `column at ${p.x.toFixed(1)},${p.z.toFixed(1)} for a winner at ${s.x.toFixed(1)},${s.z.toFixed(1)}`).toBe(false);
+    }
+    // and most winning moments do get the drift
+    expect(drifted).toBeGreaterThan(scorers().length * 0.6);
   });
 });

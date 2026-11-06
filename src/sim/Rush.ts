@@ -43,6 +43,12 @@ export const RUSH = {
    * their teammates run over to them (bots; see RushBot).
    */
   cheer: { again: 0.9, scorerHold: 1.6, mobUntil: 2.6 },
+  /**
+   * Seconds the winning moment plays (the goal cam on whoever won it, the
+   * winners pumping their fists) before the result comes up over it; the
+   * world stills at 4 s.
+   */
+  result: 3.3,
   /** The field is a circle around the temple; nothing walks or lands beyond it. */
   pitchRadius: 32,
   /** The gateway each team defends: the relic carried (or thrown low) through it scores. */
@@ -254,6 +260,15 @@ export class Rush {
   get hatTrick(): boolean {
     const g = this.lastGoal;
     return !!g && this.lines.get(g.scorer)?.goals === 3;
+  }
+
+  /**
+   * Whether the match was won by its last goal (the fifth, or any golden-relic
+   * goal) rather than on the clock. Read from the score, so guests know too.
+   */
+  get wonOnGoal(): boolean {
+    const g = this.lastGoal;
+    return !!this.winner && !!g && g.team === this.winner && (this.overtime || this.score[this.winner] >= RUSH.goals);
   }
   /** Counts every goal, so watchers can tell a new one from the last. */
   goalCount = 0;

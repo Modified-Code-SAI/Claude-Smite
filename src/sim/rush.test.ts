@@ -486,6 +486,53 @@ describe('Relic Rush', () => {
     expect(rush.phase).toBe('over');
   });
 
+  it('knows whether the last goal won it (the fifth, or a golden one) or the clock did, and a guest knows too', () => {
+    const score = (sim: Sim, rush: Rush, a: Unit) => {
+      run(sim, rush, RUSH.countdown + 0.1, () => rush.phase === 'play');
+      sim.teleport(a, 0, 1.6);
+      run(sim, rush, 0.4, () => rush.holder === a);
+      sim.teleport(a, 0, RUSH.gates.chaos.z);
+      run(sim, rush, 0.05);
+    };
+    // the fifth goal
+    const five = match();
+    const a = god(five.sim, zeus, 'order', 0);
+    five.rush.begin([a, god(five.sim, thor, 'chaos', 0)]);
+    five.rush.score.order = RUSH.goals - 1;
+    score(five.sim, five.rush, a);
+    expect(five.rush.winner).toBe('order');
+    expect(five.rush.wonOnGoal).toBe(true);
+    const guest = match();
+    guest.rush.join([god(guest.sim, zeus, 'order', 0), god(guest.sim, thor, 'chaos', 0)]);
+    guest.rush.applyNet(JSON.parse(JSON.stringify(five.rush.netState())));
+    expect(guest.rush.wonOnGoal).toBe(true);
+    // ahead when the clock runs out, though the last goal was the winners' own
+    const clock = match();
+    const b = god(clock.sim, zeus, 'order', 0);
+    clock.rush.begin([b, god(clock.sim, thor, 'chaos', 0)]);
+    score(clock.sim, clock.rush, b);
+    run(clock.sim, clock.rush, RUSH.celebrate + 0.1, () => clock.rush.phase === 'kickoff');
+    run(clock.sim, clock.rush, RUSH.countdown + 0.1, () => clock.rush.phase === 'play');
+    clock.rush.clock = 0.05;
+    run(clock.sim, clock.rush, 0.1);
+    expect(clock.rush.winner).toBe('order');
+    expect(clock.rush.lastGoal?.team).toBe('order');
+    expect(clock.rush.wonOnGoal).toBe(false);
+    // a golden-relic goal at 0-0
+    const gold = match();
+    const c = god(gold.sim, zeus, 'order', 0);
+    gold.rush.begin([c, god(gold.sim, thor, 'chaos', 0)]);
+    run(gold.sim, gold.rush, RUSH.countdown + 0.1);
+    gold.rush.clock = 0.05;
+    run(gold.sim, gold.rush, 0.1);
+    expect(gold.rush.overtime).toBe(true);
+    expect(gold.rush.wonOnGoal).toBe(false);
+    score(gold.sim, gold.rush, c);
+    expect(gold.rush.winner).toBe('order');
+    expect(gold.rush.score.order).toBe(1);
+    expect(gold.rush.wonOnGoal).toBe(true);
+  });
+
   it('bot teams play a full match on the plaza: goals, passes and tackles', () => {
     const terrain = rushTestField();
     let seed = 7;

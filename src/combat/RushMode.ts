@@ -14,12 +14,14 @@ import { RushBot, RushCoach } from '../sim/RushBot';
 import type { Sim } from '../sim/Sim';
 import type { Unit } from '../sim/Unit';
 import { RushHud } from '../ui/RushHud';
-import { GOAL_CAM, goalCamSpot } from './goalCam';
+import { GOAL_CAM, goalCamSpot, WIN_CAM, winDrift } from './goalCam';
 import { RushView } from './RushView';
 import type { GodPalette } from './palette';
 
 /** Seconds after the winning moment that the winners pump their fists (the world stills at 4 s). */
 const VICTORY_PUMPS = [0.45, 1.55, 2.65, 3.6];
+/** The goal cam's subject turning to face it: how quickly (per second), and the walking speed that turns them fully back. */
+const TURN = { rate: 5, walk: 2.5 } as const;
 const tone = (main: number, core: number): GodPalette => ({ cloth: main, trim: core, glow: main, vfx: main, core });
 const GOLD = tone(0xffc23a, 0xfff2c4);
 const ALLY = tone(0x4fb2ff, 0xe6f4ff);
@@ -49,6 +51,8 @@ export interface RushDeps {
   swing?: (u: Unit, kind?: 'basic' | 'ult') => void;
   /** Lays a camera shot over the follow camera (the first kickoff's fly-over); null hands it back. */
   cameraShot?: (shot: CameraShot | null) => void;
+  /** Turns a god's model `weight` (0 to 1) of the way toward facing `yaw`, over its own facing; 0 hands it back. */
+  turn?: (u: Unit, yaw: number, weight: number) => void;
 }
 
 /**
@@ -238,15 +242,40 @@ export class RushMode {
     this.setCine(shot.weight > 0.4);
   }
 
-  /** The goal cam (see GOAL_CAM) for the goal it was set up for. */
-  private goalCam: { goal: number; shot: CameraShot } | null = null;
+  /** The goal cam (see GOAL_CAM) for the goal it was set up for (-1: the match's last moment). */
+  private goalCam: { goal: number; shot: CameraShot; turned: number; drift: number } | null = null;
+
+  /**
+   * Who the goal cam frames: a goal's scorer as they celebrate, and once the
+   * match is won, whoever won it: the scorer of the winning goal, or at full
+   * time the winners' top scorer.
+   */
+  private camSubject(): Unit | null {
+    const r = this.rush;
+    const g = r.lastGoal;
+    if (r.phase === 'goal' && g) return g.scorer;
+    if (r.phase !== 'over' || !r.winner) return null;
+    if (r.wonOnGoal && g) return g.scorer;
+    let best: Unit | null = null;
+    let score = -1;
+    for (const u of r.team(r.winner)) {
+      const l = r.lines.get(u);
+      const s = (l?.goals ?? 0) * 3 + (l?.assists ?? 0) + (u.alive ? 0.5 : 0);
+      if (s > score) {
+        best = u;
+        score = s;
+      }
+    }
+    return best;
+  }
 
   private goalCamFrame(dt: number): void {
     const set = this.deps.cameraShot;
     const r = this.rush;
-    const g = r.lastGoal;
     if (!set) return;
-    if (r.phase !== 'goal' || !g) {
+    const u = this.camSubject();
+    if (!u) {
+      this.turnFrame(null, null, dt);
       if (this.goalCam) {
         set(null);
         this.goalCam = null;
@@ -255,13 +284,17 @@ export class RushMode {
       return;
     }
     const ground = this.deps.groundAt;
-    const u = g.scorer;
-    if (!this.goalCam || this.goalCam.goal !== r.goalCount) {
-      const gate = RUSH.gates[g.team === 'order' ? 'chaos' : 'order'];
+    const over = r.phase === 'over';
+    const key = over ? -1 : r.goalCount;
+    if (!this.goalCam || this.goalCam.goal !== key) {
+      // framed from out past the gate they scored through (at full time, the one they were attacking)
+      const gate = RUSH.gates[u.team === 'order' ? 'chaos' : 'order'];
       const best = goalCamSpot(u.x, u.z, gate);
       this.goalCam = {
-        goal: r.goalCount,
+        goal: key,
         shot: { pos: { x: best.x, y: ground(best.x, best.z) + GOAL_CAM.height, z: best.z }, look: { x: u.x, y: ground(u.x, u.z) + GOAL_CAM.look, z: u.z }, weight: 0 },
+        turned: 0,
+        drift: over ? winDrift(best.x, best.z, u.x, u.z) : 0,
       };
     }
     const shot = this.goalCam.shot;
@@ -278,10 +311,48 @@ export class RushMode {
       shot.pos.x += dx * step;
       shot.pos.z += dz * step;
     }
+    // the match's last shot drifts slowly round the winners and settles, behind the result
+    if (over && shot.weight > 0) {
+      const turn = this.goalCam.drift * (1 - Math.exp(-this.wonFor / WIN_CAM.settle));
+      const a = turn - this.goalCam.turned;
+      this.goalCam.turned = turn;
+      const c = Math.cos(a);
+      const sn = Math.sin(a);
+      const ox = shot.pos.x - shot.look.x;
+      const oz = shot.pos.z - shot.look.z;
+      shot.pos.x = shot.look.x + ox * c - oz * sn;
+      shot.pos.z = shot.look.z + ox * sn + oz * c;
+    }
     shot.pos.y += (ground(shot.pos.x, shot.pos.z) + GOAL_CAM.height - shot.pos.y) * k;
-    shot.weight = RUSH.celebrate - r.timer >= GOAL_CAM.cutAt ? 1 : 0;
+    shot.weight = (over ? this.wonFor : RUSH.celebrate - r.timer) >= GOAL_CAM.cutAt ? 1 : 0;
     set(shot.weight > 0 ? shot : null);
     this.setCine(shot.weight > 0.4);
+    this.turnFrame(u, shot.weight > 0 ? shot.pos : null, dt);
+  }
+
+  /** Who the goal cam's subject is, turning to face it, and how far round (0 to 1). */
+  private turning: { u: Unit; weight: number } | null = null;
+
+  /**
+   * The goal cam's subject turns to the camera as they celebrate, so the shot
+   * sees their face, not their back as they run on through the gate. Walking
+   * turns them back the way they go; the turn is let go when the shot ends.
+   */
+  private turnFrame(u: Unit | null, cam: { x: number; z: number } | null, dt: number): void {
+    const turn = this.deps.turn;
+    if (!turn) return;
+    let t = this.turning;
+    if (t && (t.u !== u || !cam)) {
+      turn(t.u, 0, 0);
+      t = this.turning = null;
+    }
+    if (!u || !cam) return;
+    if (!t) t = this.turning = { u, weight: 0 };
+    const speed = Math.sqrt(u.vx * u.vx + u.vz * u.vz);
+    const want = u.alive ? Math.max(0, 1 - speed / TURN.walk) : 0;
+    t.weight += (want - t.weight) * (1 - Math.exp(-TURN.rate * dt));
+    const w = t.weight * t.weight * (3 - 2 * t.weight);
+    turn(u, Math.atan2(-(cam.x - u.x), -(cam.z - u.z)), w > 0.001 ? w : 0);
   }
 
   /** Whether a camera shot (the fly-over, a goal cam) has the HUD stood aside. */
