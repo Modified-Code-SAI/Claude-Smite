@@ -17,7 +17,7 @@ from .common import add_boot_feet, add_hair_head, add_skirt, face_fields, head_w
 
 def feather(length: float, width: float, rng, curve: float = 0.05, sides: int = 9) -> Mesh:
     """One flat feather along +Y (root at the origin), its face toward +Z, its tip curving back (-Z).
-    Hair shading data: x = root 0 .. tip 1, y = a per-feather tint."""
+    Hair shading data: see feather_data()."""
     t = np.linspace(0, 1, sides)
     half = width * np.sin(np.pi * np.clip(t, 0.02, 1) ** 0.75) ** 0.7 * (1 - 0.25 * t)
     # the leading vane is narrower than the trailing one, as on a flight feather
@@ -27,14 +27,26 @@ def feather(length: float, width: float, rng, curve: float = 0.05, sides: int = 
     m = extrude(poly, 0.006, 0.0)
     v = m.v.copy()
     u = np.clip(v[:, 1] / length, 0, 1)
+    m.col = feather_data(m.v, length, rng)
     v[:, 2] -= curve * length * u * u
     v[:, 0] += 0.04 * width * np.sin(u * np.pi)
     m.v = v
-    col = np.zeros((len(v), 4))
-    col[:, 0] = u
-    col[:, 1] = rng.uniform(0, 1)
-    m.col = col
     return m
+
+
+def feather_data(v, length: float, rng) -> np.ndarray:
+    """Hair shading data for a flat feather laid along +Y with its shaft on x = 0, read
+    before it is bent: x = root 0 .. tip 1, y = a per-feather tint, z = its widest half
+    width over its length (x4), so the shader can angle the barbs, and w = where across
+    the vane the point lies (0.04 one edge, 0.52 the shaft, 1 the other edge). Hair and
+    fur leave w at 0, which is how the shader tells a feather."""
+    half = max(float(np.abs(v[:, 0]).max()), 1e-6)
+    col = np.zeros((len(v), 4))
+    col[:, 0] = np.clip(v[:, 1] / length, 0, 1)
+    col[:, 1] = rng.uniform(0, 1)
+    col[:, 2] = min(1.0, half / length * 4)
+    col[:, 3] = 0.52 + 0.48 * np.clip(v[:, 0] / half, -1, 1)
+    return col
 
 
 class Thanatos(God):

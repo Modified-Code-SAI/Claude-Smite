@@ -16,12 +16,12 @@ from ..god import God
 from ..mathx import normalize
 from ..regions import smooth
 from .common import add_claws, add_skirt, head_weights, heroic
-from .thanatos import feather
+from .thanatos import feather, feather_data
 
 
 def plume(length: float, width: float, rng, droop: float = 0.25, sides: int = 11) -> Mesh:
     """One long tail plume along +Y (root at the origin), face toward +Z, drooping back (-Z) toward its tip.
-    Hair shading data: x = root 0 .. tip 1, y = a per-plume tint."""
+    Hair shading data: see feather_data()."""
     t = np.linspace(0, 1, sides)
     # a bare quill at the root, then a long narrow vane that swells near the tip, like a quetzal's tail
     half = width * (0.25 + 0.75 * np.clip((t - 0.08) / 0.3, 0, 1)) * (1 - 0.25 * t) * np.sin(np.pi * np.clip(t, 0, 0.98)) ** 0.25
@@ -30,13 +30,10 @@ def plume(length: float, width: float, rng, droop: float = 0.25, sides: int = 11
     m = extrude(np.concatenate([right, left[1:-1]]), 0.005, 0.0)
     v = m.v.copy()
     u = np.clip(v[:, 1] / length, 0, 1)
+    m.col = feather_data(m.v, length, rng)
     v[:, 2] -= droop * length * u ** 2
     v[:, 1] -= droop * 0.35 * length * u ** 3
     m.v = v
-    col = np.zeros((len(v), 4))
-    col[:, 0] = u
-    col[:, 1] = rng.uniform(0, 1)
-    m.col = col
     return m
 
 
