@@ -7,7 +7,7 @@ import {
 } from '../../render/tsl';
 import { planar, triplanar, type TextureLibrary } from '../Materials';
 import type { Terrain, TerrainDef } from '../Terrain';
-import { depthLook, gateOpen, runeRings, underworldGlow } from './palettes';
+import { CLEAR_WAVE, clearWave, depthLook, gateOpen, runeRings, underworldGlow } from './palettes';
 
 /** Rune rings carved in each chamber's floor (local center and radius), glowing in the depth's color. */
 const RUNES: readonly (readonly [number, number, number])[][] = [
@@ -421,6 +421,15 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   mat.normalNode = transformNormalToView(nrm.normalize());
   mat.roughnessNode = rough;
   mat.metalnessNode = float(0);
-  mat.emissiveNode = underworldGlow.mul(veins.add(runes).add(bowl).add(seep).add(lavaJoint.mul(2.2)).add(fissure).mul(breathe)).add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)));
+  // the chamber exhales once it is cleared: a wave of the depth's light runs
+  // out from where the last foe fell, every vein, seam and crack swelling as
+  // it passes, a front of light over the bare stone between them (brightest
+  // over the Drowned Halls' wet floor, which has the fewest veins to carry it)
+  const behind = length(xz.sub(clearWave.xy)).sub(clearWave.z.mul(CLEAR_WAVE.speed)).abs();
+  const fading = smoothstep(CLEAR_WAVE.time, CLEAR_WAVE.time * 0.35, clearWave.z).mul(clearWave.w);
+  const crest = exp(behind.mul(-0.35)).mul(fading);
+  const edge = exp(behind.mul(-1.4)).mul(fading).mul(floorW);
+  const lit = veins.add(seep).add(lavaJoint.mul(2.2)).add(fissure).mul(crest.mul(3).add(1)).add(crest.mul(0.06)).add(edge.mul(soul.mul(0.6).add(0.3)));
+  mat.emissiveNode = underworldGlow.mul(lit.add(runes).add(bowl).mul(breathe)).add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)));
   return mat;
 }

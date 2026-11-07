@@ -143,6 +143,8 @@ export class GameAudio {
       else if (name === 'emerge') this.engine.play('monster.emerge', { at, gain: 0.5 + k * 0.6, rate: 1.15 - k * 0.35, vary: 0.06, ref: 12 + k * 20 }, 2, 0.12);
       // a body going down into the depth's ground: crumbling into ash, under the water, unwinding into the dark (a wave falling together shares a few voices)
       else if (name === 'sink' && this.game.descent) this.engine.play(`sink.${DEPTH_GROUND[DEPTHS[this.game.descent.depth]!.palette]}`, { at, gain: 0.45 + k * 0.5, rate: 1.1 - k * 0.25, vary: 0.07, ref: 10 + k * 16 }, 3, 0.07);
+      // a cleared chamber exhaling: the whole room, not one spot in it
+      else if (name === 'clear' && this.game.descent) this.engine.play(`clear.${DEPTH_GROUND[DEPTHS[this.game.descent.depth]!.palette]}`, { bus: 'ambience', gain: 0.7 }, 3);
       // something small stirring near the team, where it's seen (DescentView.stir): hushed while the fighting is loud
       else if (name === 'stir' && this.game.descent) {
         const s = UNDERWORLD_LIFE[DEPTHS[this.game.descent.depth]!.palette].near;

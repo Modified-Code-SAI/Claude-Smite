@@ -67,6 +67,15 @@ export const underworldGlow = uniform(new THREE.Color(DEPTH_COLORS.ember.glow));
 /** How open the current chamber's exit gate is, 0 sealed to 1 open. */
 export const gateOpen = uniform(0);
 
+/** The wave of light a cleared chamber sends out across its floor: how fast it runs (m/s) and how long it lasts (s). */
+export const CLEAR_WAVE = { speed: 24, time: 3.2 };
+/**
+ * The cleared chamber's wave, as (x, z where the last foe fell, seconds since,
+ * on): the floor's veins, seams and cracks swell as it passes (see
+ * UnderworldTerrain), so the chamber seems to exhale.
+ */
+export const clearWave = uniform(new THREE.Vector4(0, 0, 0, 0));
+
 /**
  * The shown chamber's rune rings in the floor, as (center x, center z, radius,
  * glyph count); a radius of 0 turns a ring off. Only one chamber shows at a
