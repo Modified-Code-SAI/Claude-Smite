@@ -1379,6 +1379,27 @@ describe('Relic Rush: bots among the temple’s stones', () => {
     expect(rush.holder).toBe(chaser);
   });
 
+  it.each([[0, 18], [3, 29]])('a bot at (%d, %d) sent for a relic in the pocket behind the fallen lintel finds the narrow way in along the stone', (x, z) => {
+    const terrain = rushTestField();
+    const { sim, rush } = match(terrain);
+    const nav = new Nav({ groundAt: (x, z) => terrain.groundAt(x, z), resolve: (x, z, r, y) => sim.solid(x, z, r, y) }, RUSH.pitchRadius + 2);
+    const coach = new RushCoach(sim, rush);
+    const chaser = god(sim, thor, 'chaos', 0);
+    const far = god(sim, zeus, 'order', 0);
+    chaser.brain = new RushBot(sim, chaser, rush, coach, nav);
+    rush.begin([chaser, far]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(far, -20, -20);
+    far.brain = null;
+    // the lintel's east piece lies slanted behind the order gate, a lane wall and the pitch's edge close the pocket north
+    // of it, and the only way in is a strip along the lintel's north face narrower than a path cell: the grid saw none,
+    // and a bot coming from the gate's side walked into the stone for good
+    sim.teleport(chaser, x, z);
+    Object.assign(rush.relic, { phase: 'loose', holder: null, x: 8.6, z: 29.3, h: RUSH.relic.looseHeight, thrower: null, team: 'order' });
+    run(sim, rush, 8, () => rush.holder === chaser);
+    expect(rush.holder).toBe(chaser);
+  });
+
   it('a carrier bot wedged between a gate pillar and the fallen lintel behind it, a defender at the open side, finds its way out', () => {
     const terrain = rushTestField();
     const { sim, rush } = match(terrain);
