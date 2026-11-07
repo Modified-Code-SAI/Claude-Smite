@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { abs, cos, float, fract, hash, instanceIndex, max, mix, sin, smoothstep, step, uv, vec2, vec3, vec4 } from '../../render/tsl';
-import { instancedSprite, objectUniforms, useUniforms } from '../../render/shared';
+import { abs, cos, float, fract, hash, instanceIndex, max, mix, modelWorldMatrix, sin, smoothstep, step, uv, varying, vec2, vec3, vec4 } from '../../render/tsl';
+import { cameraFade, instancedSprite, objectUniforms, useUniforms } from '../../render/shared';
 import type { Live } from './pool';
 
 export const SWARM_SIZE = 72;
@@ -72,7 +72,8 @@ function makeMaterial(): THREE.SpriteNodeMaterial {
   const drop = fract(t.mul(h2.mul(0.4).add(1.1)).add(h1.mul(7.3)));
   const rain = vec3(cos(dir).mul(u.range).mul(h3.sqrt()), float(1).sub(drop).mul(u.spread), sin(dir).mul(u.range).mul(h3.sqrt()));
 
-  m.positionNode = stream.mul(pick(0)).add(orbit.mul(pick(1))).add(scatter.mul(pick(2))).add(drip.mul(pick(3))).add(rain.mul(pick(4)));
+  const at = stream.mul(pick(0)).add(orbit.mul(pick(1))).add(scatter.mul(pick(2))).add(drip.mul(pick(3))).add(rain.mul(pick(4)));
+  m.positionNode = at;
   const sz = u.size.mul(h3.mul(0.6).add(0.7));
   // a raindrop is a streak
   m.scaleNode = vec2(sz.mul(mix(float(1), float(0.35), pick(4))), sz.mul(mix(float(1), float(3.2), pick(4))));
@@ -91,7 +92,10 @@ function makeMaterial(): THREE.SpriteNodeMaterial {
     .mul(mix(float(1), smoothstep(0, 0.15, drop).mul(smoothstep(1, 0.9, drop)), pick(4)));
   const tone = mix(u.main, u.hot, mix(h3.mul(0.5), wing.mul(beat).mul(0.6), u.bugs));
   m.colorNode = vec4(tone.mul(mix(float(2.5), float(1), u.bugs)), 1);
-  m.opacityNode = shape.mul(shown).mul(ends).mul(u.fade);
+  // thinned away near the camera (see cameraFade): a fleck passing a meter from the lens fills the screen as a blot.
+  // Its center is found per instance in the vertex stage and handed on.
+  const near = cameraFade(varying(modelWorldMatrix.mul(vec4(at, 1)).xyz), sz.mul(0.5));
+  m.opacityNode = shape.mul(shown).mul(ends).mul(u.fade).mul(near);
   return m;
 }
 

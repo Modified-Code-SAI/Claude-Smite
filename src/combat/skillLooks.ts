@@ -1996,18 +1996,19 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     cast: (k, c) => {
       const u = c.owner;
       const held = (t: Unit) => t.combatant.shieldTotal > 0.5;
-      // the hide goes slick and hard: slime running off it, glowing bands drawn tight round the body
+      // the hide goes slick and hard: slime running off it, glowing bands drawn round the body. His wings hide
+      // his back from the camera, so the bands ride wide and high, out past the wings and over them
       shock(k, c.p, u.x, u.z, 0.4, 2.6, { life: 0.35, wall: true, width: 0.9 });
       for (let i = 0; i < 2; i++) {
-        const dy = 0.8 + i * 0.75;
+        const dy = 1.6 + i * 0.9;
         const r = k.ribbon({
-          x: u.x, y: u.body.y + dy, z: u.z, main: ABYSS.vfx, hot: GLOWING.core, ax: NORTH, ay: EAST, an: UP,
-          radius: u.radius + 0.45 - i * 0.08, a0: i * 2.4, span: 1.7 * Math.PI, width: 0.32, wall: 1, sweep: 0.2, tail: 1, taper: 0.4, spin: i === 0 ? 0.5 : -0.65, life: 4, hold: true,
+          x: u.x, y: u.body.y + dy, z: u.z, main: BATWING.vfx, hot: GLOWING.vfx, ax: NORTH, ay: EAST, an: UP,
+          radius: u.radius + 1.05 - i * 0.2, a0: i * 2.4, span: 1.7 * Math.PI, width: 0.4, wall: 1, sweep: 0.2, tail: 1, taper: 0.4, spin: i === 0 ? 0.5 : -0.65, life: 4, hold: true,
         });
         k.attach(r, u, dy, 4, (x, y, z) => r.follow(x, y, z), held);
       }
-      const d = k.swarm({ x: u.x, y: u.body.y + 1.8, z: u.z, mode: 'drip', main: OOZE.vfx, hot: OOZE.core, range: 0.6, spread: 0, size: 0.14, life: 4, count: 0.4 });
-      k.attach(d, u, 1.8, 4, (x, y, z) => d.move(x, y, z), held);
+      const d = k.swarm({ x: u.x, y: u.body.y + 2.9, z: u.z, mode: 'drip', main: OOZE.vfx, hot: OOZE.core, range: 0.9, spread: 0, size: 0.18, life: 4, count: 0.5 });
+      k.attach(d, u, 2.9, 4, (x, y, z) => d.move(x, y, z), held);
       k.burst(c.p, u.x, u.body.y + 1.4, u.z, 0.6);
     },
   },
