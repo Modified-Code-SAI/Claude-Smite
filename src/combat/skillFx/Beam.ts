@@ -67,6 +67,8 @@ export interface BeamOpts {
   chase?: number;
   flow?: number;
   wraps?: boolean;
+  /** Seconds before it starts (a second hand's marks); its timings count from then. */
+  delay?: number;
 }
 
 /**
@@ -93,7 +95,7 @@ export class Beam implements Live {
 
   start(o: BeamOpts): this {
     this.o = o;
-    this.age = 0;
+    this.age = -(o.delay ?? 0);
     const v = this.values;
     v.main.setHex(o.main);
     v.hot.setHex(o.hot);
@@ -120,6 +122,11 @@ export class Beam implements Live {
     const o = this.o;
     const k = (this.age += dt);
     const v = this.values;
+    if (k < 0) {
+      v.head = 0;
+      v.fade = 0;
+      return true;
+    }
     v.head = o.reach > 0 ? Math.min(1, k / o.reach) : 1;
     v.tail = o.chase ? Math.max(0, Math.min(1, (k - o.chase) / Math.max(0.01, o.reach))) : 0;
     const held = Math.max(o.reach, o.chase ? o.reach + o.chase : 0) + o.hold;

@@ -15,6 +15,10 @@ const sigilUniforms = () => ({
   open: 1,
   spin: 0,
   fade: 1,
+  /** Line weight (1 as drawn; a brand over a god is bolder). */
+  weight: 1,
+  /** 0..1 a dark disc behind the glyph, so it reads against a bright sky or plaza. */
+  back: 0,
 });
 
 /** Distance from p to the segment a-b, with the segment's constants folded in here. */
@@ -86,14 +90,19 @@ function makeMaterial(): THREE.MeshBasicNodeMaterial {
   const pick = (k: number) => step(abs(u.glyph.sub(k)), 0.5);
   const d = bolt.mul(pick(0)).add(eye.mul(pick(1))).add(ankh.mul(pick(2))).add(algiz.mul(pick(3))).add(scales.mul(pick(4))).add(tiwaz.mul(pick(5))).add(moon.mul(pick(6))).add(heart.mul(pick(7)))
     .add(star.mul(pick(8))).add(mask.mul(pick(9))).add(spiral.mul(pick(10)));
-  const core = smoothstep(0.05, 0.015, d);
-  const halo = exp(d.mul(-11)).mul(0.55);
+  const dw = d.div(u.weight);
+  const core = smoothstep(0.05, 0.015, dw);
+  const halo = exp(dw.mul(-11)).mul(0.55);
   // drawn on from the middle outward (the eye opens instead)
   const reach = mix(u.open.mul(1.35), float(2), pick(1));
   const shown = smoothstep(reach, reach.sub(0.18), q.length());
   const glow = core.add(halo).mul(shown);
-  m.colorNode = vec4(mix(u.main, u.hot, core.mul(0.85)).mul(float(1.3).add(glow.mul(3))), 1);
-  m.opacityNode = glow.clamp(0, 1).mul(u.fade);
+  const lit = glow.clamp(0, 1);
+  // the backing: a deep tint of the glyph's own color, edged by a soft ring
+  const disc = smoothstep(0.98, 0.86, q.length()).mul(shown).mul(u.back);
+  const bright = mix(u.main, u.hot, core.mul(0.85)).mul(float(1.3).add(glow.mul(3)));
+  m.colorNode = vec4(mix(bright, u.main.mul(0.14), disc.mul(lit.oneMinus())), 1);
+  m.opacityNode = max(lit, disc.mul(0.62)).mul(u.fade);
   return m;
 }
 
@@ -116,6 +125,10 @@ export interface SigilOpts {
   rise?: number;
   /** Seconds to draw on. */
   open?: number;
+  /** Line weight (1 as drawn). */
+  weight?: number;
+  /** 0..1 a dark disc behind it (a brand over a god). */
+  back?: number;
 }
 
 /** A glowing glyph: brands over a marked god, runes, an ankh, the Allfather's eye. */
@@ -145,6 +158,8 @@ export class Sigil implements Live {
     v.hot.setHex(o.hot);
     v.glyph = GLYPHS[o.glyph];
     v.spin = 0;
+    v.weight = o.weight ?? 1;
+    v.back = o.back ?? 0;
     this.facing = !o.flat;
     this.baseY = o.y;
     this.group.position.set(o.x, o.y, o.z);

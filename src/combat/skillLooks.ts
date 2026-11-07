@@ -171,8 +171,10 @@ const EAST = new THREE.Vector3(1, 0, 0);
 const FWD = new THREE.Vector3();
 const RIGHT = new THREE.Vector3();
 const TILT = new THREE.Vector3();
+const NORMAL = new THREE.Vector3();
 const P1 = new THREE.Vector3();
 const P2 = new THREE.Vector3();
+const P3 = new THREE.Vector3();
 
 const DEG = Math.PI / 180;
 
@@ -191,18 +193,24 @@ function along(s: FlashShape, k: number): { x: number; z: number } {
 
 const yawOf = (s: FlashShape) => (s.type === 'circle' ? 0 : s.yaw);
 
-/** A blade's slash: a crescent sweeping across `angle` degrees in front, at chest height. */
-function slash(k: FxKit, c: Colors, x: number, z: number, yaw: number, o: { radius: number; width: number; angle: number; y?: number; sweep?: number; life?: number; reverse?: boolean; tail?: number; delay?: number }): Ribbon {
+/**
+ * A blade's slash: a crescent sweeping across `angle` degrees in front, at
+ * chest height. `pitch` tips its plane up toward the far side (degrees): a
+ * level slash is seen almost edge-on by the camera behind and above a god,
+ * a pitched one nearly face-on.
+ */
+function slash(k: FxKit, c: Colors, x: number, z: number, yaw: number, o: { radius: number; width: number; angle: number; y?: number; sweep?: number; life?: number; reverse?: boolean; tail?: number; delay?: number; pitch?: number }): Ribbon {
   basis(yaw);
+  const p = (o.pitch ?? 0) * DEG;
+  TILT.copy(FWD).multiplyScalar(Math.cos(p)).addScaledVector(UP, Math.sin(p));
+  NORMAL.copy(UP).multiplyScalar(Math.cos(p)).addScaledVector(FWD, -Math.sin(p));
   const half = (o.angle * DEG) / 2;
   return k.ribbon({
-    x, y: k.ground(x, z) + (o.y ?? 1.2), z, main: c.vfx, hot: c.core, ax: FWD, ay: RIGHT, an: UP,
+    x, y: k.ground(x, z) + (o.y ?? 1.2), z, main: c.vfx, hot: c.core, ax: TILT, ay: RIGHT, an: NORMAL,
     radius: o.radius, a0: o.reverse ? half : -half, span: o.reverse ? -2 * half : 2 * half, width: o.width,
     sweep: o.sweep ?? 0.13, tail: o.tail ?? 0.75, taper: 0.2, life: o.life ?? 0.42, delay: o.delay,
   });
 }
-
-const NORMAL = new THREE.Vector3();
 
 /**
  * A diagonal cut in front at height `y`: a slash in a plane tilted `tilt`
@@ -285,8 +293,9 @@ const STILL = new Set<Glyph>(['eye', 'moon', 'heart', 'mask']);
 /** A glyph floating over a god while `life` lasts (or while `keep` holds). */
 function brand(k: FxKit, c: Colors, u: Unit, glyph: Glyph, life: number, size = 0.85, keep?: (u: Unit) => boolean): void {
   const dy = u.radius * 3.6 + 0.75;
-  // a touch larger than asked: a brand has to read over a god from across a fight
-  const s = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph, size: size * 1.25, main: c.vfx, hot: c.core, life, spin: STILL.has(glyph) ? 0 : 0.15 });
+  // a touch larger than asked, in bold lines on a dark disc: a brand has to read over a god from across a fight,
+  // against the bright plaza or the sky
+  const s = k.sigil({ x: u.x, y: u.body.y + dy, z: u.z, glyph, size: size * 1.4, main: c.vfx, hot: c.core, life, spin: STILL.has(glyph) ? 0 : 0.15, weight: 2, back: 1 });
   k.attach(s, u, dy, life, (x, y, z) => s.follow(x, y, z), keep);
 }
 
@@ -303,6 +312,15 @@ function godAt(k: FxKit, x: number, z: number, team: string): Unit | null {
     }
   }
   return best;
+}
+
+/** Where a blow lands on `t`: its skin on the side facing the attacker, at chest height. */
+function contact(out: THREE.Vector3, from: Unit, t: Unit, h = 1.2): THREE.Vector3 {
+  const dx = from.x - t.x;
+  const dz = from.z - t.z;
+  const d = Math.hypot(dx, dz) || 1;
+  const r = t.radius * 0.8;
+  return out.set(t.x + (dx / d) * r, t.body.y + h, t.z + (dz / d) * r);
 }
 
 /** Point `d` meters ahead of a unit at height `h`. */
@@ -370,6 +388,8 @@ const GOLD_BOLT = { vfx: 0xffb42a, core: 0xfff3c4 };
 const STORM = { vfx: 0x7fc8ff, core: 0xffffff };
 const DAWN = { vfx: 0xffb84a, core: 0xfff4dc };
 const FURY = { vfx: 0xff4a24, core: 0xffd0a0 };
+/** Dark iron links, lit along their edges by the storm. */
+const CHAIN = { vfx: 0x2c3646, core: 0x9fd8ff };
 const WELL = { vfx: 0x40c8ff, core: 0xe4fbff };
 const RUNE = { vfx: 0xffcf5a, core: 0xfff7da };
 const VENOM = { vfx: 0x9cff2a, core: 0xf2ffc8 };
@@ -377,6 +397,8 @@ const SHADOW = { vfx: 0x6a3cff, core: 0xe6dcff };
 const CHAOS = { vfx: 0x46ff5a, core: 0xfff0a0 };
 const SPIRIT = { vfx: 0x5af0d8, core: 0xe8fffa };
 const LINEN = { vfx: 0xe9dcc0, core: 0xfff4d6 };
+/** Old burial linen, deep enough to read against the bright plaza. */
+const BANDAGE = { vfx: 0xb88a48, core: 0xfff0d0 };
 const DREAD = { vfx: 0xa070ff, core: 0xf0e6ff };
 const GAZE = { vfx: 0xff5418, core: 0xfff0b0 };
 const MAAT = { vfx: 0xffc23a, core: 0xfff6d4 };
@@ -423,10 +445,43 @@ function spray(k: FxKit, x: number, y: number, z: number, range: number, o: { si
   return k.swarm({ x, y, z, mode: 'scatter', main: BRINE.vfx, hot: FOAM.core, range, spread: 0, size: o.size ?? 0.2, life: o.life ?? 1.2, count: o.count ?? 0.6 });
 }
 
-/** A clawed hand's rake: three parallel cuts across the cone. */
-function rake(k: FxKit, c: Colors, x: number, z: number, yaw: number, range: number, angle: number, o: { reverse?: boolean; delay?: number; y?: number }): void {
+/**
+ * A clawed hand's rake: three parallel claw lines swiping from high on one
+ * side down across the front, and three gouges torn glowing into the ground
+ * where the claws come down. The swipe stands in the upright plane across his
+ * facing, so it faces the camera behind him; his wings hide everything within
+ * a few meters ahead of him below about 2.5 m, so it arches high.
+ */
+function rake(k: FxKit, c: Colors, x: number, z: number, yaw: number, range: number, o: { reverse?: boolean; delay?: number; y?: number }): void {
+  const gy = k.ground(x, z);
+  const delay = o.delay ?? 0;
+  const side = o.reverse ? -1 : 1;
+  basis(yaw);
+  // the arch leans so one end rides high: the first hand swipes from high right, the second from high left
+  const t = side * 25 * DEG;
+  TILT.copy(RIGHT).multiplyScalar(Math.cos(t)).addScaledVector(UP, Math.sin(t));
+  NORMAL.copy(UP).multiplyScalar(Math.cos(t)).addScaledVector(RIGHT, -Math.sin(t));
+  const d = range * 0.55;
+  const cx = x + FWD.x * d;
+  const cz = z + FWD.z * d;
   for (let i = 0; i < 3; i++) {
-    slash(k, c, x, z, yaw, { radius: range * (0.5 + i * 0.17), width: 0.28, angle: angle + 6, sweep: 0.09, life: 0.32, reverse: o.reverse, y: (o.y ?? 1.2) - i * 0.12, delay: (o.delay ?? 0) + i * 0.015, tail: 0.85 });
+    k.ribbon({
+      x: cx, y: gy + (o.y ?? 0.9), z: cz, main: c.vfx, hot: c.core, ax: TILT, ay: NORMAL, an: FWD,
+      radius: 1.9 + i * 0.4, a0: (side > 0 ? 30 : 150) * DEG, span: side * 120 * DEG, width: 0.62, sweep: 0.1, tail: 0.9, taper: 0.2, life: 0.4, delay: delay + i * 0.02,
+    });
+  }
+  // the gouges run slantwise across the cone, the way the hand drags
+  basis(yaw + side * 0.5);
+  const mx = x - Math.sin(yaw) * range * 0.72;
+  const mz = z - Math.cos(yaw) * range * 0.72;
+  for (let i = 0; i < 3; i++) {
+    const d = (i - 1) * 0.42;
+    const cx = mx + FWD.x * d;
+    const cz = mz + FWD.z * d;
+    const half = 1.15 - Math.abs(i - 1) * 0.2;
+    P1.set(cx - RIGHT.x * half * side, k.ground(cx, cz) + 0.06, cz - RIGHT.z * half * side);
+    P2.set(cx + RIGHT.x * half * side, k.ground(cx, cz) + 0.06, cz + RIGHT.z * half * side);
+    k.beam({ from: P1, to: P2, width: 0.13, main: c.vfx, hot: c.core, reach: 0.08, hold: 0.45, fadeOut: 0.5, flow: 8, delay: delay + 0.06 + i * 0.015 });
   }
 }
 
@@ -478,9 +533,9 @@ const rooted = (u: Unit) => u.combatant.cc.has('root');
 /** A coil of the serpent's body round a held god, jade over a gold belly, for as long as they are held. */
 function coils(k: FxKit, u: Unit, life: number, o: { radius?: number; turns?: number } = {}): void {
   if (!once(coiled, k, u, life)) return;
-  const radius = o.radius ?? u.radius + 0.3;
-  wrap(k, JADE, u, life, { radius, height: 1.9, turns: o.turns ?? 3, width: 0.36, sweep: 0.22, taper: 0.5, hold: true, keep: rooted });
-  wrap(k, SUNLIT, u, life, { radius: radius + 0.04, height: 1.7, turns: o.turns ?? 3, width: 0.12, sweep: 0.22, taper: 0.5, hold: true, keep: rooted });
+  const radius = o.radius ?? u.radius + 0.38;
+  wrap(k, JADE, u, life, { radius, height: 1.9, turns: o.turns ?? 3, width: 0.62, sweep: 0.22, taper: 0.5, hold: true, keep: rooted });
+  wrap(k, SUNLIT, u, life, { radius: radius + 0.05, height: 1.75, turns: o.turns ?? 3, width: 0.22, sweep: 0.22, taper: 0.5, hold: true, keep: rooted });
 }
 
 // ---------------------------------------------------------------------------
@@ -523,7 +578,20 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const o = f.owner;
       shock(k, f.p, o.x, o.z, 0.5, 9, { life: 0.45, width: 0.7, wall: true });
+      shock(k, f.p, o.x, o.z, 0.4, 6.5, { life: 0.4, width: 1.6 });
       k.strike(f.p, o.x, o.z, { width: 0.5, height: 14, forks: 4, spread: 1 });
+      // the charge he carries thrown off him in a crown of bolts, grounding all round
+      const gy = k.ground(o.x, o.z);
+      const turn = Math.random() * Math.PI * 2;
+      for (let i = 0; i < 9; i++) {
+        const a = turn + (i / 9) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+        const r = 4.2 + Math.random() * 2.6;
+        P1.set(o.x + Math.sin(a) * 0.4, o.body.y + 1.6, o.z + Math.cos(a) * 0.4);
+        P2.set(o.x + Math.sin(a) * r, gy + 0.2, o.z + Math.cos(a) * r);
+        k.bolt(f.p, P1, P2, 0.16, 0.32, 0.32);
+      }
+      k.crackle(f.p, o, 0.7, 0.9, 2.4, 0.05, 0.12);
+      k.burst(f.p, o.x, o.body.y + 1.5, o.z, 0.9);
     },
     hit: (k, h) => {
       const t = h.target;
@@ -713,9 +781,12 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   'thor.thunder-guard': {
     cast: (k, c) => {
       const u = c.owner;
+      const held = (t: Unit) => t.combatant.shieldTotal > 0.5;
       shock(k, c.p, u.x, u.z, 0.4, 2.6, { life: 0.35, wall: true, width: 0.7 });
       k.crackle(c.p, u, 4, 1.15, 2.6, 0.09, 0.13);
-      wrap(k, c.p, u, 4, { radius: u.radius + 0.55, height: 2.4, turns: 1.5, width: 0.16, sweep: 0.25, spin: 0.9, taper: 0.3, hold: true });
+      // two bands of storm light wound round him the opposite ways, for as long as the guard holds
+      wrap(k, c.p, u, 4, { radius: u.radius + 0.55, height: 2.4, turns: 1.5, width: 0.34, sweep: 0.25, spin: 0.9, taper: 0.3, hold: true, keep: held });
+      wrap(k, STORM, u, 4, { radius: u.radius + 0.6, height: 2.2, turns: -1.25, width: 0.2, sweep: 0.25, spin: -1.2, taper: 0.3, hold: true, keep: held });
     },
   },
   'thor.call-of-asgard': {
@@ -724,17 +795,24 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const u = c.owner;
       shock(k, c.p, u.x, u.z, 0.5, 4.5, { life: 0.5, wall: true, width: 1 });
       shock(k, c.p, u.x, u.z, 0.3, 3, { life: 0.4 });
-      const s = k.swarm({ x: u.x, y: u.body.y, z: u.z, mode: 'orbit', main: 0xff5a1e, hot: 0xffd08a, range: 1.1, spread: 2.9, size: 0.2, life: 5, count: 0.7 });
+      k.burst(c.p, u.x, u.body.y + 1.4, u.z, 1);
+      // the battle-fury: a red swirl climbing round him, embers flying, a band of fire at his feet
+      const f = k.funnel({ x: u.x, y: u.body.y, z: u.z, main: 0xff3a14, hot: 0xffc070, bottom: 1.1, top: 0.7, height: 2.9, twist: 3.4, density: 0.42, glow: 1.1, sway: 0.04, life: 5 });
+      k.attach(f, u, 0, 5, (x, y, z) => f.move(x, y, z));
+      const s = k.swarm({ x: u.x, y: u.body.y, z: u.z, mode: 'orbit', main: 0xff5a1e, hot: 0xffd08a, range: 1.2, spread: 3.1, size: 0.26, life: 5, count: 0.8 });
       k.attach(s, u, 0, 5, (x, y, z) => s.move(x, y, z));
-      wrap(k, c.p, u, 5, { radius: u.radius + 0.6, height: 0.5, turns: 1, width: 0.22, sweep: 0.2, spin: -0.7, hold: true });
+      wrap(k, c.p, u, 5, { radius: u.radius + 0.6, height: 0.5, turns: 1, width: 0.36, sweep: 0.2, spin: -0.7, hold: true });
     },
   },
   'thor.storm-chain': {
     shot: { tether: 0.26, orb: 0.55, crackle: true },
     hit: (k, h) => {
       // the chain coils round the god's legs while they are held
-      k.crackle(h.p, h.target, 1.2, 0.85, 0.7, 0.07, 0.14);
-      zap(k, h.p, h.target, 3);
+      const t = h.target;
+      wrap(k, CHAIN, t, 1.6, { radius: t.radius + 0.3, height: 0.9, turns: 2.5, width: 0.42, sweep: 0.18, taper: 0.6, hold: true, keep: rooted });
+      wrap(k, h.p, t, 1.6, { radius: t.radius + 0.34, height: 0.85, turns: 2.5, width: 0.14, sweep: 0.18, taper: 0.6, hold: true, keep: rooted });
+      k.crackle(h.p, t, 1.2, 0.85, 0.7, 0.07, 0.14);
+      zap(k, h.p, t, 3);
     },
   },
   'thor.anvil-of-dawn': {
@@ -818,6 +896,15 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       // a short twist of air where the spear leaves the hand
       slash(k, f.p, s.x, s.z, s.yaw, { radius: 1.1, angle: 70, width: 0.45, y: 1.25, sweep: 0.08, life: 0.3 });
       k.burst(f.p, end.x, P2.y, end.z, 0.7);
+      // (seen from behind, the streak hides behind him: rings punched through the air along it carry the thrust)
+      basis(s.yaw);
+      for (let i = 0; i < 3; i++) {
+        const d = s.length * (0.4 + i * 0.3);
+        const x = s.x + FWD.x * d;
+        const z = s.z + FWD.z * d;
+        k.ribbon({ x, y: k.ground(x, z) + 1.25, z, main: f.p.vfx, hot: RUNE.core, ax: RIGHT, ay: UP, an: FWD, radius: 0.25, radiusTo: 0.9 + i * 0.35, a0: 0, span: Math.PI * 2, width: 0.5 + i * 0.15, sweep: 0, tail: 3, life: 0.3, delay: 0.03 + i * 0.03 });
+      }
+      shock(k, f.p, end.x, end.z, 0.3, 2, { life: 0.35, width: 0.6 });
     },
   },
   'odin.ravens': {
@@ -948,13 +1035,25 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       if (s.type !== 'cone') return;
       const o = f.owner;
       const gy = k.ground(s.x, s.z);
+      // the flick of the throw, and the fan opening: a band racing out with the daggers across the whole spread
+      cut(k, VENOM, s.x, gy + 1.45, s.z, s.yaw, { radius: 1.1, width: 0.9, angle: 120, tilt: -24, sweep: 0.07, life: 0.24, tail: 0.9 });
+      basis(s.yaw);
+      const half = ((s.angle + 6) * DEG) / 2;
+      k.ribbon({ x: s.x, y: gy + 1.3, z: s.z, main: f.p.vfx, hot: f.p.core, ax: FWD, ay: RIGHT, an: UP, radius: 0.9, radiusTo: s.range, a0: -half, span: 2 * half, width: 1.3, sweep: 0, tail: 3, taper: 1, life: 0.34 });
       for (let i = 0; i < 5; i++) {
         const yaw = s.yaw + ((i - 2) / 2) * (s.angle / 2) * DEG;
         P1.set(s.x - Math.sin(yaw) * 0.6, gy + 1.35, s.z - Math.cos(yaw) * 0.6);
         ahead(P2, o, yaw, s.range * 0.95, 1.25);
-        k.fly('dagger', f.p.vfx, 2, P1, P2, 0.17 + i * 0.008);
-        k.beam({ from: P1, to: P2, width: 0.08, main: f.p.vfx, hot: f.p.core, reach: 0.17, chase: 0.09, hold: 0, fadeOut: 0.16, flow: 30 });
+        k.fly('dagger', f.p.vfx, 2.8, P1, P2, 0.2 + i * 0.008);
+        k.beam({ from: P1, to: P2, width: 0.07, main: VENOM.vfx, hot: f.p.core, reach: 0.2, chase: 0.12, hold: 0, fadeOut: 0.2, flow: 30 });
       }
+    },
+    hit: (k, h) => {
+      // each dagger that lands spits venom
+      const t = h.target;
+      contact(P3, h.owner, t, 1.3);
+      k.burst({ ...h.p, ...VENOM }, P3.x, P3.y, P3.z, 0.4);
+      k.swarm({ x: P3.x, y: P3.y, z: P3.z, mode: 'scatter', main: VENOM.vfx, hot: VENOM.core, range: 0.9, spread: 0, size: 0.14, life: 0.7, count: 0.3 });
     },
   },
   'loki.vanish': {
@@ -981,10 +1080,22 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     cast: (k, c) => {
       const u = c.owner;
       k.burst(c.p, u.x, u.body.y + 1.3, u.z, 0.9);
-      const s = k.swarm({ x: u.x, y: u.body.y + 1.2, z: u.z, mode: 'drip', main: 0x7cff2a, hot: 0xeaffb0, range: 0.55, spread: 0, size: 0.11, life: 6, count: 0.35 });
-      k.attach(s, u, 1.2, 6, (x, y, z) => s.move(x, y, z));
+      wrap(k, VENOM, u, 0.7, { radius: u.radius + 0.4, height: 2.2, turns: 1.5, width: 0.4, sweep: 0.25 });
+      // venom running off both blades for as long as they are coated
+      for (const side of [-1, 1]) {
+        const s = k.swarm({ x: u.x, y: u.body.y + 1.1, z: u.z, mode: 'drip', main: 0x7cff2a, hot: 0xeaffb0, range: 0.3, spread: 0, size: 0.17, life: 6, count: 0.55 });
+        k.attach(s, u, 1.1, 6, (x, y, z) => {
+          const yaw = u.body.yaw;
+          s.move(x - Math.sin(yaw) * 0.35 + Math.cos(yaw) * 0.55 * side, y, z - Math.cos(yaw) * 0.35 - Math.sin(yaw) * 0.55 * side);
+        });
+      }
     },
-    hit: (k, h) => k.burst(h.p, h.target.x, h.target.body.y + 1.2, h.target.z, 0.35),
+    hit: (k, h) => {
+      const t = h.target;
+      contact(P3, h.owner, t, 1.2);
+      k.burst({ ...h.p, ...VENOM }, P3.x, P3.y, P3.z, 0.45);
+      k.swarm({ x: P3.x, y: P3.y, z: P3.z, mode: 'scatter', main: VENOM.vfx, hot: VENOM.core, range: 0.8, spread: 0, size: 0.15, life: 0.8, count: 0.3 });
+    },
   },
   'loki.backstab': {
     shot: { prop: 'dagger', size: 1.8, orb: 0.45, trail: 0.8 },
@@ -1113,9 +1224,17 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const end = along(s, 1);
       P1.set(s.x, k.ground(s.x, s.z) + 1.4, s.z);
       P2.set(end.x, k.ground(end.x, end.z) + 1.3, end.z);
-      k.beam({ from: P1, to: P2, width: 0.6, main: f.p.vfx, hot: 0xffc23a, reach: 0.18, chase: 0.16, hold: 0.12, fadeOut: 0.3, flow: 6, wraps: true });
+      k.beam({ from: P1, to: P2, width: 0.75, main: BANDAGE.vfx, hot: BANDAGE.core, reach: 0.18, chase: 0.16, hold: 0.12, fadeOut: 0.3, flow: 6, wraps: true });
+      k.beam({ from: P1, to: P2, width: 0.3, main: f.p.vfx, hot: 0xffffff, reach: 0.18, chase: 0.16, hold: 0.06, fadeOut: 0.25, flow: 10, wraps: true });
     },
-    hit: (k, h) => wrap(k, { vfx: LINEN.vfx, core: 0xffc23a }, h.target, 1.3, { turns: 4, width: 0.42, sweep: 0.3 }),
+    hit: (k, h) => {
+      // the wraps bind them head to foot for as long as the stun holds
+      const t = h.target;
+      const stunned = (u: Unit) => u.combatant.cc.has('stun');
+      wrap(k, BANDAGE, t, 1.5, { radius: t.radius + 0.22, height: 2.2, turns: 4, width: 0.66, sweep: 0.3, hold: true, keep: stunned });
+      wrap(k, { vfx: 0xffc23a, core: 0xfff4d6 }, t, 1.5, { radius: t.radius + 0.26, height: 2.1, turns: 4, width: 0.16, sweep: 0.3, hold: true, keep: stunned });
+      k.billow('dust', t.x, t.body.y + 0.6, t.z, 2.6, { duration: 1, tint: 0xe4c086 });
+    },
   },
   'anubis.scales-of-maat': {
     colors: MAAT,
@@ -1230,11 +1349,12 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'cone') return;
-      // two sweeps of the leaf blade, the second back the other way as the second hit lands
+      // two sweeps of the leaf blade, the second back the other way as the second hit lands, each
+      // tipped up toward the far side so the camera behind him sees the crescent, not its edge
       for (let i = 0; i < 2; i++) {
-        const o = { angle: s.angle + 10, sweep: 0.1, life: 0.34, reverse: i === 1, y: 1.3 - i * 0.25, delay: i * 0.3 };
-        slash(k, BLADE, s.x, s.z, s.yaw, { ...o, radius: s.range * 0.5, width: s.range * 0.55 });
-        slash(k, { vfx: BLADE.core, core: 0xffffff }, s.x, s.z, s.yaw, { ...o, radius: s.range * 0.8, width: 0.26, y: o.y + 0.05 });
+        const o = { angle: s.angle + 10, sweep: 0.1, life: 0.38, reverse: i === 1, y: 1.1 - i * 0.15, pitch: 38, delay: i * 0.3, tail: 0.85 };
+        slash(k, BLADE, s.x, s.z, s.yaw, { ...o, radius: s.range * 0.55, width: 2.4 });
+        slash(k, { vfx: BLADE.core, core: 0xffffff }, s.x, s.z, s.yaw, { ...o, radius: s.range * 0.8, width: 0.34, y: o.y + 0.05 });
       }
     },
     hit: (k, h) => k.burst({ ...h.p, ...BLADE }, h.target.x, h.target.body.y + 1.2, h.target.z, 0.45),
@@ -1661,8 +1781,8 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const s = f.shape;
       if (s.type !== 'cone') return;
       // one clawed hand rakes across, then the other back the other way as the second hit lands
-      rake(k, f.p, s.x, s.z, s.yaw, s.range, s.angle, { y: 1.3 });
-      rake(k, GLOWING, s.x, s.z, s.yaw, s.range, s.angle, { reverse: true, delay: 0.35, y: 1 });
+      rake(k, f.p, s.x, s.z, s.yaw, s.range, {});
+      rake(k, GLOWING, s.x, s.z, s.yaw, s.range, { reverse: true, delay: 0.35, y: 1 });
     },
     hit: (k, h) => {
       const t = h.target;
@@ -1813,16 +1933,19 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       if (s.type !== 'line') return;
       basis(s.yaw);
       const gy = k.ground(s.x, s.z);
-      // a wall of black seawater rolls out ahead of him, white water breaking along its crest
-      const half = Math.atan2(s.width * 0.75, s.length) + 0.25;
-      // (a long tail lights the whole front at once)
-      const wave = { x: s.x, z: s.z, ax: FWD, ay: RIGHT, an: UP, a0: -half, span: 2 * half, sweep: 0, tail: 3, life: 0.65, radius: 0.8, radiusTo: s.length };
-      k.ribbon({ ...wave, y: gy + 1.2, main: BLACKWATER.vfx, hot: BLACKWATER.core, width: 2.4, wall: 1 });
-      k.ribbon({ ...wave, y: gy + 2.4, main: FOAM.vfx, hot: FOAM.core, width: 0.5, wall: 1, life: 0.6 });
-      k.ribbon({ ...wave, y: gy + 0.15, main: BRINE.vfx, hot: FOAM.core, width: 1.4, life: 0.75 });
-      const end = along(s, 0.8);
-      k.billow('dust', end.x, k.ground(end.x, end.z) + 0.8, end.z, 5, { duration: 1.2, tint: SPRAY, delay: 0.35 });
-      spray(k, end.x, k.ground(end.x, end.z) + 1, end.z, 2.2, { count: 0.7 });
+      // a wall of seawater rolls out ahead of him, deep sea-blue under a breaking white crest, and stays
+      // up the whole way out (a long tail lights the whole front at once; holding keeps it full till it breaks)
+      const half = Math.atan2(s.width * 0.75, s.length) + 0.3;
+      const wave = { x: s.x, z: s.z, ax: FWD, ay: RIGHT, an: UP, a0: -half, span: 2 * half, sweep: 0.001, tail: 3, hold: true, radius: 1, radiusTo: s.length };
+      k.ribbon({ ...wave, y: gy + 1.1, main: BRINE.vfx, hot: BLACKWATER.core, width: 3, wall: 1, life: 0.85 });
+      k.ribbon({ ...wave, y: gy + 0.9, main: BLACKWATER.vfx, hot: BRINE.vfx, width: 1.6, wall: 1, life: 0.85, radius: 0.7, radiusTo: s.length - 0.3 });
+      k.ribbon({ ...wave, y: gy + 2.45, main: FOAM.vfx, hot: FOAM.core, width: 0.9, wall: 1, life: 0.8 });
+      k.ribbon({ ...wave, y: gy + 0.12, main: BRINE.vfx, hot: FOAM.core, width: 2.2, life: 1 });
+      // white water thrown forward off the crest all along its run, and the burst where it breaks
+      k.swarm({ x: s.x, y: gy + 1.9, z: s.z, yaw: s.yaw, mode: 'stream', main: FOAM.vfx, hot: FOAM.core, range: s.length, spread: 0.38, size: 0.3, life: 0.9, count: 1 });
+      const end = along(s, 0.85);
+      k.billow('dust', end.x, k.ground(end.x, end.z) + 1, end.z, 6, { duration: 1.4, tint: SPRAY, delay: 0.3 });
+      spray(k, end.x, k.ground(end.x, end.z) + 1.4, end.z, 2.8, { count: 0.9, size: 0.28 });
     },
     hit: (k, h) => {
       const t = h.target;
@@ -1919,21 +2042,11 @@ export interface BasicLook extends SkillLook {
   attack?(k: FxKit, a: AttackCtx): void;
 }
 
-/** Where a blow lands on `t`: its skin on the side facing the attacker, at chest height. */
-function contact(out: THREE.Vector3, from: Unit, t: Unit, h = 1.2): THREE.Vector3 {
-  const dx = from.x - t.x;
-  const dz = from.z - t.z;
-  const d = Math.hypot(dx, dz) || 1;
-  const r = t.radius * 0.8;
-  return out.set(t.x + (dx / d) * r, t.body.y + h, t.z + (dz / d) * r);
-}
-
 /** The hand a ranged god throws from, a little ahead of the chest. */
 function hand(out: THREE.Vector3, u: Unit, yaw: number): THREE.Vector3 {
   return ahead(out, u, yaw, 0.75, 1.5);
 }
 
-const P3 = new THREE.Vector3();
 const SAND = { vfx: 0xe0a040, core: 0xfff0c8 };
 const THUNDER = { vfx: 0x2a6cff, core: 0xeaf4ff };
 const CLAW = { vfx: 0x10d49a, core: 0xd0fff0 };
