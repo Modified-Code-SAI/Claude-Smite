@@ -72,6 +72,11 @@ class God:
         self.F = Fields(b)
 
     # ---------------------------------------------------------------- parts
+    def verts_of(self, *names: str) -> np.ndarray:
+        """Rest positions of the named parts added so far (what a cape or panel hangs over)."""
+        found = [p.position for p in self.parts if p.name in names]
+        return np.concatenate(found) if found else np.zeros((0, 3))
+
     def add(self, name: str, material: str, mesh: Mesh, weights: np.ndarray | str | None = None, transfer_only=None):
         """Adds a mesh. weights: dense (N,B) array, a bone name (rigid), or None (nearest body skin)."""
         if isinstance(weights, str):

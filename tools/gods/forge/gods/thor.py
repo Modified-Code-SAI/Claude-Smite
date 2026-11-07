@@ -109,10 +109,11 @@ class Thor(God):
 
         # ---- red cape and back panel
         armmask = F.arms() > 0.3
-        self.meta['colliders'] = physics.colliders(b)
+        under = self.verts_of('tunic')
+        self.meta['colliders'] = physics.colliders(b, over=under)
         self.meta['cloths'] += [
-            physics.cape(b, 'cape', 'cloth', width=0.6, length=1.55, arm_mask=armmask, clearance=0.08),
-            physics.panel(b, 'loin.front', 'cloth', hips[1] + 0.03, True, 0.26, 0.6, arm_mask=armmask, clearance=0.08),
+            physics.cape(b, 'cape', 'cloth', width=0.6, length=1.55, arm_mask=armmask, clearance=0.08, over=under),
+            physics.panel(b, 'loin.front', 'cloth', hips[1] + 0.03, True, 0.26, 0.6, arm_mask=armmask, clearance=0.08, over=under),
         ]
 
         # ---- head: long red mane, braided beard

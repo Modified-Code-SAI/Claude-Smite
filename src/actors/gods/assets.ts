@@ -28,7 +28,8 @@ export interface GodMeta {
   /** Simulated cloth and hair sheets (see Physics.ts). */
   cloths?: ClothSpec[];
   /** Capsules the sheets collide with: two points in model (bind) space on one bone. */
-  colliders?: { bone: string; a: number[]; b: number[]; r: number }[];
+  /** Capsules for the cloth sim; `rb` (radius at b) tapers a thigh out under a skirt. */
+  colliders?: { bone: string; a: number[]; b: number[]; r: number; rb?: number }[];
 }
 
 export interface ClothSpec {
@@ -46,6 +47,8 @@ export interface ClothSpec {
   stiffness: number[];
   gravity?: number;
   damping?: number;
+  /** How far the sheet keeps off every collider (a cape rides over the cloth beneath it). */
+  pad?: number;
 }
 
 const assets = new Map<string, GodAsset>();

@@ -86,11 +86,12 @@ class Zeus(God):
         self.pteruges(hips)
         self.emblem(neck)
         armmask = F.arms() > 0.3
-        self.meta['colliders'] = physics.colliders(b)
+        under = self.verts_of('skirt', 'pteruges', 'pteruges_tips')
+        self.meta['colliders'] = physics.colliders(b, over=under)
         self.meta['cloths'] += [
-            physics.panel(b, 'loin.front', 'cloth', hips[1] - 0.03, True, 0.28, 0.55, arm_mask=armmask),
-            physics.panel(b, 'loin.back', 'cloth', hips[1] - 0.03, False, 0.32, 0.6, arm_mask=armmask),
-            physics.cape(b, 'cape', 'cloth', width=0.52, length=1.45, arm_mask=armmask),
+            physics.panel(b, 'loin.front', 'cloth', hips[1] - 0.03, True, 0.28, 0.55, arm_mask=armmask, over=under),
+            physics.panel(b, 'loin.back', 'cloth', hips[1] - 0.03, False, 0.32, 0.6, arm_mask=armmask, over=under),
+            physics.cape(b, 'cape', 'cloth', width=0.52, length=1.45, arm_mask=armmask, over=under),
         ]
 
         # ---- head: mane, beard, brows, laurel crown
