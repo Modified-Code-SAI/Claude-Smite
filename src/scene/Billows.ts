@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { attribute, cameraPosition, float, hash, min, mix, select, smoothstep, uniform, uv, vec2, vec3, vec4 } from '../render/tsl';
 import { FLIPBOOK_ASPECT, FLIPBOOK_FRAMES, sampleFlipbook, unpackFlipbook, type FlipbookName } from '../render/flipbook';
-import { spriteQuads } from '../render/shared';
+import { cameraFade, spriteQuads } from '../render/shared';
 
 /** The one-shot sheets a billow can play. */
 export type BillowSheet = Exclude<FlipbookName, 'fire'>;
@@ -153,7 +153,8 @@ function billowMaterial(sheet: BillowSheet, now: any): THREE.SpriteNodeMaterial 
   const smoke = tint.rgb.mul(mix(float(0.32), float(1.15), s.lit));
   // late dust frames rise out of the top of their frame: fade every border so a big card never shows a straight edge
   const edge = smoothstep(0, 0.1, min(fu, float(1).sub(fu))).mul(smoothstep(0, 0.05, u.y)).mul(smoothstep(0, 0.2, float(1).sub(u.y)));
-  const fade = float(1).sub(t.pow(3)).mul(alive).mul(edge);
+  // (and thinned away near the camera: a billow round it or just in front washed the screen out)
+  const fade = float(1).sub(t.pow(3)).mul(alive).mul(edge).mul(cameraFade(center, size.mul(0.35)));
   const a = s.alpha.mul(fade).mul(tint.w);
   const hot = hexColor(flame.x);
   const cool = hexColor(flame.y);

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { attribute, normalLocal, positionLocal, uniform, vec3 } from './tsl';
+import { attribute, cameraPosition, normalLocal, positionLocal, smoothstep, uniform, vec3 } from './tsl';
 
 /*
  * three r186 generates a shader (10-70 ms of main-thread work) for every
@@ -96,4 +96,18 @@ export function placedGeometry(source: THREE.BufferGeometry, count: number): {
   geometry.setAttribute('turn', turn);
   geometry.instanceCount = count;
   return { geometry, spot, turn };
+}
+
+/**
+ * How far from the camera a cloud's near edge must be to show at full
+ * strength: nothing within `from` m, all of it from `to` m. A cloud drifting
+ * between the camera and the god it follows (or round the camera itself)
+ * thins away instead of washing the whole screen out; the fight beyond, the
+ * camera's usual 4-9 m off, keeps its clouds whole.
+ */
+export const CAMERA_FADE = { from: 0.6, to: 3.5 } as const;
+
+/** A cloud's strength for its distance from the camera (see CAMERA_FADE): `center` in world space, `reach` how far its edge stands out from it. */
+export function cameraFade(center: any, reach: any = 0): any {
+  return smoothstep(CAMERA_FADE.from, CAMERA_FADE.to, cameraPosition.sub(center).length().sub(reach));
 }
