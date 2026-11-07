@@ -456,6 +456,23 @@ def eye(t, c, strength=1.4):
     t.output(b.outputs[0])
 
 
+def petal(t, c):
+    """Poppy petals (materials.ts petalMaterial): red silk, a black blotch at the base, veins, a satin sheen."""
+    d = t.attr('vdata', 'Color')
+    sep = t.node('ShaderNodeSeparateColor')
+    t.link(d, sep.inputs[0])
+    along, across01, tint = sep.outputs[0], sep.outputs[1], sep.outputs[2]
+    inner = t.attr('vdata', 'Alpha')
+    across = t.sub(t.mul(across01, 2.0), 1.0)
+    blotch = t.one_minus(t.smooth(0.15, 0.26, t.add(along, t.mul(t.sin(t.mul(across, 9.0)), 0.025))))
+    vein = t.add(t.mul(t.sin(t.mul(t.mul(across, 30.0), t.add(t.mul(along, 0.6), 0.4))), 0.5), 0.5)
+    tone = t.mul(t.mul(t.add(t.mul(tint, 0.25), 0.85), t.add(t.mul(vein, 0.14), 0.86)), t.lerpf(0.72, 1.0, inner))
+    col = t.mix(t.vscale(c, tone), srgb(0x0b0608), blotch)
+    b = t.bsdf(Base_Color=ao_mix(t, col), Roughness=0.55, Sheen_Weight=0.7, Sheen_Roughness=0.35,
+               Subsurface_Weight=0.3, Subsurface_Radius=(1.0, 0.2, 0.2), Subsurface_Scale=0.004)
+    t.output(b.outputs[0])
+
+
 def gem(t, c, ice=False):
     lw = t.node('ShaderNodeLayerWeight')
     lw.inputs['Blend'].default_value = 0.5
@@ -489,6 +506,7 @@ def build_materials(p):
         'glow': lambda t: glow(t, P['glow']),
         'eye': lambda t: eye(t, P['eye'], 6.0 if p.get('frost') else 1.4),
         'gem': lambda t: gem(t, P['gem'], ice=bool(p.get('frost'))),
+        'petal': lambda t: petal(t, P['gem']),
     }
     out = {}
     for name, make in recipes.items():

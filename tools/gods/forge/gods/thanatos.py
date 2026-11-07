@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import mh, shell, kit, skin
-from ..geo import Mesh, extrude, lathe, tube, merge, look_rotation, sphere
+from ..geo import Mesh, extrude, grid_faces, lathe, tube, merge, look_rotation, sphere
 from ..god import God
 from ..mathx import normalize
 from ..regions import smooth
@@ -47,6 +47,53 @@ def feather_data(v, length: float, rng) -> np.ndarray:
     col[:, 2] = min(1.0, half / length * 4)
     col[:, 3] = 0.52 + 0.48 * np.clip(v[:, 0] / half, -1, 1)
     return col
+
+
+def poppy_petal(length: float, width: float, rng, rows: int = 7, cols: int = 9) -> Mesh:
+    """One poppy petal along +Y from its base at the origin, its inner face toward +Z: narrow
+    at the base, broad and rounded at the rim, cupped, crinkled and ruffled at the edge. Two
+    sheets back to back (thin, and seen from both sides).
+
+    Petal shading data: x = base 0 .. rim 1, y = across (0 .. 1), z = a per-petal tint,
+    w = 1 on the inner face, 0 on the outer."""
+    s = np.linspace(0, 1, rows)[:, None]
+    t = np.linspace(-1, 1, cols)[None, :]
+    ph, ph2 = rng.uniform(0, 2 * np.pi, 2)
+    w = width * (0.14 + 0.86 * np.sqrt(np.clip(1 - ((s - 0.62) / 0.62) ** 2, 0, 1)))
+    x = t * w
+    y = length * s * (1 - 0.22 * t * t * s * s)
+    z = (0.12 * length * t * t * s  # the sides curl up
+         + 0.24 * length * s * s  # the petal rises toward its rim: the flower is a cup
+         + 0.05 * length * s ** 3 * np.sin(t * 3 * np.pi + ph)  # a ruffled rim
+         + 0.014 * length * s * np.sin(t * 11 + s * 7 + ph2))  # crinkles
+    top = np.stack(np.broadcast_arrays(x, y, z), axis=-1).reshape(-1, 3)
+    n = rows * cols
+    bottom = top - np.array([0, 0, 0.0012])
+    f = grid_faces(rows, cols)
+    m = Mesh(np.concatenate([top, bottom]), np.concatenate([f[:, ::-1], f + n]))
+    col = np.zeros((2 * n, 4))
+    col[:, 0] = np.tile(np.broadcast_to(s, (rows, cols)).reshape(-1), 2)
+    col[:, 1] = np.tile(np.broadcast_to((t + 1) / 2, (rows, cols)).reshape(-1), 2)
+    col[:, 2] = rng.uniform()
+    col[:n, 3] = 1
+    m.col = col
+    return m
+
+
+def poppy_heart(scale: float = 1.0) -> Mesh:
+    """The black heart of a poppy, its axis along +Y: the seed pod with a flat, rayed cap, in
+    a ring of stamens that splay out over the petals."""
+    pod = sphere(0.0085, 10, 6).transformed(s=[1, 0.85, 1], t=[0, 0.007, 0])
+    cap = lathe(np.array([[0.0, 0.0118], [0.0105, 0.0118], [0.009, 0.0128], [0.0, 0.0135]]), 10)
+    rays = [tube(np.array([[0, 0.0138, 0], [np.cos(a) * 0.0085, 0.0134, np.sin(a) * 0.0085]]), 0.0011, 3)
+            for a in np.arange(7) / 7 * 2 * np.pi]
+    stamens = []
+    for a in np.arange(13) / 13 * 2 * np.pi + 0.1:
+        d = np.array([np.cos(a), 0, np.sin(a)])
+        root, tip = d * 0.006 + [0, 0.003, 0], d * 0.0165 + [0, 0.0115 + 0.002 * np.sin(a * 5), 0]
+        stamens.append(tube(np.array([root, (root + tip) / 2 + d * 0.002, tip]), 0.0007, 3))
+        stamens.append(sphere(0.0021, 5, 3).transformed(t=tip))
+    return merge([pod, cap] + rays + stamens).transformed(s=scale)
 
 
 class Thanatos(God):
@@ -201,32 +248,42 @@ class Thanatos(God):
         self.add('clasp_eye', 'glow', sphere(0.01, 10, 8).transformed(t=c + [0, 0, 0.01]), 'DEF-spine.003')
 
     def poppies(self):
+        """A silver circlet set with five red poppies, each a cup of four thin, crinkled petals
+        (two broad outer ones, two inner ones turned across them) around a black heart: the
+        seed pod with its rayed cap in a ring of dark stamens."""
         lm = face_fields(self)
         crown, head = lm['crown'], lm['head']
         c = np.array([head[0], crown[1] - 0.07, head[2] - 0.012])
         rx, rz = 0.122, 0.134
         band = np.array([[c[0] + np.sin(a) * rx, c[1] + 0.012 * np.cos(a), c[2] + np.cos(a) * rz] for a in np.linspace(0, 2 * np.pi, 64)])
         stems = [tube(band, 0.006, 6)]
+        rng = np.random.default_rng(29)
         petals, hearts = [], []
-        # petal: a broad cup-shaped disc segment
-        prof = np.array([[np.cos(a) * 0.036, np.sin(a) * 0.04 + 0.034] for a in np.linspace(-np.pi * 0.5, np.pi * 1.5, 16)[:-1]])
-        petal = extrude(prof, 0.003, 0.0)
         for k, a in enumerate(np.linspace(-1.6, 1.6, 5)):
             p = np.array([c[0] + np.sin(a) * rx, c[1] + 0.005, c[2] + np.cos(a) * rz])
             out = normalize(np.array([np.sin(a), 0.6, np.cos(a)]))
-            ref = np.cross(out, [0, 1, 0])
-            ref = normalize(ref if np.linalg.norm(ref) > 1e-3 else np.array([1.0, 0, 0]))
-            side = np.cross(ref, out)
-            for j in range(4):
-                th = j / 4 * 2 * np.pi + k
-                dirp = normalize(ref * np.cos(th) + side * np.sin(th) + out * 0.9)
-                R = look_rotation(normalize(out - dirp * (dirp @ out)), dirp)
-                petals.append(petal.transformed(s=0.9 + 0.1 * (k % 2), R=R, t=p))
-            hearts.append(sphere(0.014, 10, 8).transformed(s=[1, 0.8, 1], t=p + out * 0.012))
-        m = merge(stems + hearts)
+            # the band's direction here: the outer petals open across it (up and down the head),
+            # so neighboring flowers don't cut through each other
+            along = normalize(np.array([np.cos(a), 0.0, -np.sin(a)]))
+            along = normalize(along - out * (along @ out))
+            across = np.cross(out, along)
+            s = 1.25 + 0.15 * rng.uniform()
+            p = p + out * 0.012  # on the hair, not in it
+            for j, (az, L, W, tilt, h) in enumerate(((0.0, 0.044, 0.027, 0.16, 0.0), (np.pi, 0.044, 0.027, 0.16, 0.0),
+                                                     (np.pi / 2, 0.037, 0.024, 0.48, 0.0035), (-np.pi / 2, 0.037, 0.024, 0.48, 0.0035))):
+                az = az + rng.uniform(-0.15, 0.15)
+                radial = across * np.cos(az) + along * np.sin(az)
+                fwd = normalize(radial * np.cos(tilt) + out * np.sin(tilt))
+                up = normalize(out - fwd * (fwd @ out))
+                R = np.stack([np.cross(fwd, up), fwd, up], axis=1)  # local x across, y along the petal, z its inner face
+                petals.append(poppy_petal(L * s, W * s, rng).transformed(R=R, t=p + out * h))
+            hearts.append(poppy_heart(s).transformed(R=np.stack([along, out, np.cross(along, out)], axis=1), t=p))
+        m = merge(stems)
         self.add('poppy_stems', 'steel', m, head_weights(self, m.v))
+        hm = merge(hearts)
+        self.add('poppy_hearts', 'leather', hm, head_weights(self, hm.v))
         pm = merge(petals)
-        self.add('poppies', 'gem', pm, head_weights(self, pm.v))
+        self.add('poppies', 'petal', pm, head_weights(self, pm.v))
 
     def wings(self, neck):
         """Two great black wings, half open, rising from the shoulder blades and sweeping down behind."""
