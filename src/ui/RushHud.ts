@@ -87,7 +87,7 @@ export class RushHud {
   private readonly cut: HTMLElement;
   private cutOut = 0;
   private lastCut = '';
-  private wasGoal = false;
+  private wasPhase = '';
   /** The whole pitch at a glance, top right. */
   private readonly radar: RushRadar;
   private time = 0;
@@ -467,8 +467,9 @@ export class RushHud {
   private dip(dt: number): void {
     const r = this.rush;
     const goal = r.phase === 'goal';
-    if (this.wasGoal && !goal && r.phase === 'kickoff') this.cutOut = RUSH_CUT.out;
-    this.wasGoal = goal;
+    // back to the kickoff marks: after a goal's dip, or straight off the clock into golden-relic overtime (a cut to dark on the buzzer)
+    if (r.phase === 'kickoff' && (this.wasPhase === 'goal' || this.wasPhase === 'play')) this.cutOut = RUSH_CUT.out;
+    this.wasPhase = r.phase;
     this.cutOut = Math.max(0, this.cutOut - dt);
     const a = goal ? Math.max(0, 1 - r.timer / RUSH_CUT.in) : this.cutOut / RUSH_CUT.out;
     const v = (a * a * (3 - 2 * a)).toFixed(2);

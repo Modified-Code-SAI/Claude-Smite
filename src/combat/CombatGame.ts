@@ -503,6 +503,7 @@ export class CombatGame implements Updatable {
       toast: (t) => this.hud.toast(t),
       camera: this.deps.camera,
       burst: (p, x, y, z, power) => this.vfx.burst(p, x, y, z, power),
+      clearEffects: () => this.vfx.reset(),
       shake: this.deps.shake,
       swing: (u, kind) => this.views.swing(u, kind),
       cameraShot: this.deps.cameraShot,
