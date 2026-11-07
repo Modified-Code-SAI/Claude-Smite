@@ -49,6 +49,7 @@ import { closeSettings, mountSettings, openSettings, setGraphicsHooks, settingsO
 import { escapeKey, mountPadCursor, padCursor } from './ui/PadCursor';
 import { pad } from './core/Gamepad';
 import { mountSubtitles } from './ui/Subtitles';
+import { MenuGate } from './ui/MenuGate';
 
 async function main(): Promise<void> {
   installErrorHandlers();
@@ -85,6 +86,8 @@ async function main(): Promise<void> {
     const gpu = gpuName(r.renderer);
     return { webgpu: r.isWebGPU, gpu, advice: gpuAdvice(gpu) };
   });
+  // the map loading behind the menus waits while they're in use
+  const menuGate = new MenuGate();
   // each god (and the giant) says who it is when picked
   let voice: GodVoice | null = null;
   const menu = {};
@@ -99,6 +102,7 @@ async function main(): Promise<void> {
         voice = new GodVoice(audio, import.meta.env.BASE_URL);
         for (const g of GODS) voice.load(g.id, ['select']);
         voice.load('jotunn', ['select']);
+        menuGate.homeShown(true);
         return showStartMenu(graphics, savedPick().god ?? GODS[0]!.id, say, (name, gain = 0.8) => audio.play(name, { bus: 'ui', gain }, 4, 0.05));
       });
 
@@ -160,6 +164,8 @@ async function main(): Promise<void> {
     const cull = world.showEverything();
     const start = pipelines.built;
     for (;;) {
+      // a frame here holds the page for up to a quarter second: none while a menu is in use
+      await menuGate.clear();
       // a new frame number each time: passes render once per frame
       await new Promise((r) => requestAnimationFrame(r));
       world.environment.redrawShadows();
@@ -218,6 +224,7 @@ async function main(): Promise<void> {
   const guessMode = skipMenu ? null : savedMode();
   const guess = guessMode ? prepare(guessMode) : null;
   const started = await chosen;
+  menuGate.homeShown(false);
   // A map built for the other mode is left to the garbage collector, not disposed:
   // it shares cached geometry with the new map, and disposing destroys GPU
   // buffers that the new map still draws ("buffer used in submit while destroyed").
@@ -246,6 +253,7 @@ async function main(): Promise<void> {
       sound: (name, gain = 0.8) => audio.play(name, { bus: 'ui', gain }, 4, 0.05),
       mood: (v) => music.setIntensity(v, 0.1),
     });
+    menuGate.pickShown(pickScreen.settled);
     hud.mirrorProgress((f, text) => pickScreen!.progress(f, text));
     hud.notesHost = pickScreen.notes;
     const picked = await pickScreen.chosen;

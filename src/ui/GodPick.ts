@@ -50,6 +50,11 @@ export interface PickSetup {
 export interface PickScreen {
   /** The god (and Duel rival) once the pick is over: the clock ran out or everyone is ready. */
   chosen: Promise<{ god: string; rival: string }>;
+  /**
+   * Resolves once nothing on the screen takes a click: the pick is over, or online
+   * you pressed Ready while the others still choose. Heavy loading waits for it.
+   */
+  settled: Promise<void>;
   /** Loading, after the pick: how far along and what is happening. */
   progress(f: number, text?: string): void;
   /** Where loading notes go (the slow-shaders card). */
@@ -443,6 +448,9 @@ export function showGodPick(setup: PickSetup): PickScreen {
   // -- Ready, the clock, and the end of the pick
   let resolve!: (r: { god: string; rival: string }) => void;
   const chosen = new Promise<{ god: string; rival: string }>((r) => (resolve = r));
+  let settle!: () => void;
+  const settled = new Promise<void>((r) => (settle = r));
+  void chosen.then(() => settle());
   const renderGo = () => {
     readyBtn.classList.toggle('done', ready);
     readyBtn.querySelector('span')!.textContent = ready ? 'Ready' : 'Ready';
@@ -458,6 +466,8 @@ export function showGodPick(setup: PickSetup): PickScreen {
     if (ready || locked) return;
     ready = true;
     root.classList.add('is-ready');
+    // (alone, the bots lock in one after another within a second: that plays out first)
+    if (net) settle();
     setup.sound?.('ui.lock', 0.9);
     if (said !== god && !asGiant) say(god);
     if (net) net.lockIn(god);
@@ -612,6 +622,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
 
   return {
     chosen,
+    settled,
     progress(f: number, text?: string) {
       bar.style.width = `${Math.round(Math.min(1, Math.max(0, f)) * 100)}%`;
       if (text) sub.textContent = text;
