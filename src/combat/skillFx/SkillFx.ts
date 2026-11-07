@@ -621,7 +621,7 @@ export class SkillFx implements FxKit {
         const side = Math.cos(yaw);
         const fwd = Math.sin(yaw);
         const off = (i - (flock - 1) / 2) * 0.9 + Math.sin(a) * 0.25;
-        prop.aim(p.x + side * off + fwd * Math.sin(a * 0.7) * 0.4, y + 0.3 + Math.sin(a * 1.3) * 0.35 + (i % 2) * 0.3, p.z - fwd * off + side * Math.cos(a * 0.7) * 0.4, yaw + Math.sin(a) * 0.25);
+        prop.aim(p.x + side * off + fwd * Math.sin(a * 0.7) * 0.4, y + (s.lift ?? 0) + 0.3 + Math.sin(a * 1.3) * 0.35 + (i % 2) * 0.3, p.z - fwd * off + side * Math.cos(a * 0.7) * 0.4, yaw + Math.sin(a) * 0.25);
       }
       if (s.spin) prop.mesh.rotation.x = -t * s.spin * Math.PI * 2;
       if (s.roll) prop.mesh.rotation.z = t * s.roll * Math.PI * 2;

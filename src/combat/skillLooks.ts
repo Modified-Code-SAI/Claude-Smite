@@ -240,10 +240,10 @@ function swing(k: FxKit, c: Colors, x: number, z: number, yaw: number, o: { radi
 }
 
 /** A ring rolling out over the ground (`wall`: a standing band, a shout's wave). */
-function shock(k: FxKit, c: Colors, x: number, z: number, from: number, to: number, o: { life?: number; width?: number; wall?: boolean; y?: number } = {}): Ribbon {
+function shock(k: FxKit, c: Colors, x: number, z: number, from: number, to: number, o: { life?: number; width?: number; wall?: boolean; y?: number; delay?: number } = {}): Ribbon {
   return k.ribbon({
     x, y: k.ground(x, z) + (o.y ?? (o.wall ? 0.35 : 0.2)), z, main: c.vfx, hot: c.core, ax: NORTH, ay: EAST, an: UP,
-    radius: from, radiusTo: to, a0: 0, span: Math.PI * 2, width: o.width ?? 0.9, wall: o.wall ? 1 : 0, sweep: 0, life: o.life ?? 0.5,
+    radius: from, radiusTo: to, a0: 0, span: Math.PI * 2, width: o.width ?? 0.9, wall: o.wall ? 1 : 0, sweep: 0, life: o.life ?? 0.5, delay: o.delay,
   });
 }
 
@@ -392,6 +392,13 @@ const FURY = { vfx: 0xff4a24, core: 0xffd0a0 };
 const CHAIN = { vfx: 0x2c3646, core: 0x9fd8ff };
 const WELL = { vfx: 0x40c8ff, core: 0xe4fbff };
 const RUNE = { vfx: 0xffcf5a, core: 0xfff7da };
+/**
+ * Raven black burning gold along its heart: the dark under Odin's gold. His
+ * gold alone washes to cream on the sunlit plaza; over this it reads as gold.
+ */
+const RAVEN = { vfx: 0x1c1830, core: 0xffa62a };
+/** War Cry's fire, a deeper and redder gold than his runes. */
+const WAR = { vfx: 0xff6a10, core: 0xffe0a0 };
 const VENOM = { vfx: 0x9cff2a, core: 0xf2ffc8 };
 const SHADOW = { vfx: 0x6a3cff, core: 0xe6dcff };
 const CHAOS = { vfx: 0x46ff5a, core: 0xfff0a0 };
@@ -529,6 +536,8 @@ function once(seen: WeakMap<Unit, number>, k: FxKit, u: Unit, gap: number): bool
 const coiled = new WeakMap<Unit, number>();
 const dazed = new WeakMap<Unit, number>();
 const rooted = (u: Unit) => u.combatant.cc.has('root');
+const shielded = (u: Unit) => u.combatant.shieldTotal > 0.5;
+const pecked = new WeakMap<Unit, number>();
 
 /** A coil of the serpent's body round a held god, jade over a gold belly, for as long as they are held. */
 function coils(k: FxKit, u: Unit, life: number, o: { radius?: number; turns?: number } = {}): void {
@@ -776,6 +785,13 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       ahead(P2, u, c.yaw, 12.25, 1.2);
       k.beam({ from: P1, to: P2, width: 0.32, main: c.p.vfx, hot: c.p.core, reach: 0.44, hold: 0.08, fadeOut: 0.35, flow: 30 });
       k.crackle(c.p, u, 0.5, 0.7, 2, 0.04);
+      // bolts slam down along his path: upright, they stand clear of him where the streak hides behind him
+      for (let i = 0; i < 3; i++) {
+        ahead(P3, u, c.yaw, 1.5 + i * 2.6, 0);
+        k.strike(STORM, P3.x, P3.z, { height: 7, width: 0.3, life: 0.3, forks: 2, spread: 1.5 });
+      }
+      ahead(P3, u, c.yaw, 7, 0);
+      shock(k, STORM, P3.x, P3.z, 0.3, 2.2, { life: 0.4, width: 0.6, delay: 0.22 });
     },
   },
   'thor.thunder-guard': {
@@ -908,48 +924,86 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     },
   },
   'odin.ravens': {
-    shot: { prop: 'raven', count: 3, size: 1.25, orb: 0.3, trail: 0.5 },
+    // larger, and flying over his shoulder rather than hidden behind him
+    shot: { prop: 'raven', count: 3, size: 1.8, orb: 0.3, trail: 0.5, lift: 0.7 },
     burst: 0.5,
     cast: (k, c) => {
       const u = c.owner;
-      k.swarm({ x: u.x, y: u.body.y + 1.6, z: u.z, mode: 'scatter', main: 0x18161e, hot: 0x6a5a90, range: 1.2, spread: 0, size: 0.17, life: 1.2, count: 0.3 });
+      feathers(k, u.x, u.body.y + 2, u.z, 1.6, { count: 0.45, size: 0.24, life: 1.3 });
     },
     hit: (k, h) => {
       const t = h.target;
-      k.swarm({ x: t.x, y: t.body.y + 1, z: t.z, mode: 'scatter', main: 0x18161e, hot: 0x6a5a90, range: 1.6, spread: 0, size: 0.16, life: 1.3, count: 0.35 });
+      feathers(k, t.x, t.body.y + 1.2, t.z, 1.8, { count: 0.45, size: 0.22, life: 1.3 });
+      // and while their protections are stripped, a few of the ravens keep circling over them
+      if (!once(pecked, k, t, 4)) return;
+      const s = k.swarm({ x: t.x, y: t.body.y + 2.5, z: t.z, mode: 'orbit', main: 0x14111c, hot: 0x3a3450, range: 1.4, spread: 0.5, size: 0.75, life: 4, count: 0.12, bugs: true, rate: 0.5 });
+      k.attach(s, t, 2.5, 4, (x, y, z) => s.move(x, y, z));
     },
   },
   'odin.war-cry': {
-    colors: { vfx: 0xff9a2a, core: 0xfff0c8 },
+    colors: WAR,
     decal: 0.45,
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'circle') return;
-      shock(k, f.p, s.x, s.z, 0.6, s.radius, { life: 0.55, wall: true, width: 1.1 });
-      shock(k, f.p, s.x, s.z, 0.4, s.radius * 0.7, { life: 0.7, wall: true, width: 0.5 });
-      for (const a of k.near(s.x, s.z, s.radius, f.owner.team)) brand(k, RUNE, a, 'tiwaz', 1.4, 0.7);
+      // the roar rolls out in three dark waves, each with fire along its crest
+      for (let i = 0; i < 3; i++) {
+        const r = s.radius * (1 - i * 0.14);
+        shock(k, RAVEN, s.x, s.z, 0.6, r, { life: 0.6, wall: true, width: 1.4 - i * 0.3, y: 0.75 - i * 0.15, delay: i * 0.12 });
+        shock(k, f.p, s.x, s.z, 0.6, r, { life: 0.5, wall: true, width: 0.35, y: 1.4 - i * 0.3, delay: i * 0.12 });
+      }
+      k.burst(f.p, s.x, k.ground(s.x, s.z) + 1.8, s.z, 0.9);
+      // every ally it reaches takes fire: the war rune over them and embers climbing round them
+      for (const a of k.near(s.x, s.z, s.radius, f.owner.team)) {
+        brand(k, RUNE, a, 'tiwaz', 2, 0.7);
+        const e = k.swarm({ x: a.x, y: a.body.y, z: a.z, mode: 'orbit', main: WAR.vfx, hot: WAR.core, range: 0.9, spread: 2.4, size: 0.12, life: 1.6, count: 0.4 });
+        k.attach(e, a, 0, 1.6, (x, y, z) => e.move(x, y, z));
+      }
     },
   },
   'odin.lunge': {
     cast: (k, c) => {
       const u = c.owner;
       k.comet(c.p, u, 0.45, 0.45);
-      P1.set(u.x, u.body.y + 1.2, u.z);
-      ahead(P2, u, c.yaw, 10.5, 1.2);
-      k.beam({ from: P1, to: P2, width: 0.22, main: c.p.vfx, hot: c.p.core, reach: 0.38, hold: 0.05, fadeOut: 0.3, flow: 20 });
+      k.billow('dust', u.x, u.body.y + 0.4, u.z, 2.8, { duration: 1, tint: 0xc0a47a });
+      P1.set(u.x, u.body.y + 1.3, u.z);
+      ahead(P2, u, c.yaw, 8, 1.3);
+      k.beam({ from: P1, to: P2, width: 0.36, main: RAVEN.vfx, hot: c.p.vfx, reach: 0.26, hold: 0.06, fadeOut: 0.3, flow: 20 });
+      k.beam({ from: P1, to: P2, width: 0.13, main: c.p.vfx, hot: c.p.core, reach: 0.26, hold: 0.06, fadeOut: 0.3, flow: 20 });
+      // rings punched through the air ahead of the spear point as he drives in (the streak alone hides behind him)
+      basis(c.yaw);
+      for (let i = 0; i < 3; i++) {
+        const d = 1.8 + i * 2;
+        const x = u.x + FWD.x * d;
+        const z = u.z + FWD.z * d;
+        const y = u.body.y + 1.35;
+        const delay = d / 28;
+        k.ribbon({ x, y, z, main: RAVEN.vfx, hot: c.p.vfx, ax: RIGHT, ay: UP, an: FWD, radius: 0.3, radiusTo: 0.8 + i * 0.25, a0: 0, span: Math.PI * 2, width: 0.55, sweep: 0, tail: 3, life: 0.3, delay });
+        k.ribbon({ x, y, z, main: c.p.vfx, hot: c.p.core, ax: RIGHT, ay: UP, an: FWD, radius: 0.32, radiusTo: 0.85 + i * 0.25, a0: 0, span: Math.PI * 2, width: 0.2, sweep: 0, tail: 3, life: 0.3, delay });
+      }
     },
-    hit: (k, h) => k.burst(h.p, h.target.x, h.target.body.y + 1.3, h.target.z, 0.8),
+    hit: (k, h) => {
+      const t = h.target;
+      k.burst(h.p, t.x, t.body.y + 1.3, t.z, 0.8);
+      // the spear goes through: sparks thrown out round them
+      k.swarm({ x: t.x, y: t.body.y + 1.2, z: t.z, mode: 'scatter', main: h.p.vfx, hot: h.p.core, range: 1.4, spread: 0, size: 0.12, life: 0.7, count: 0.4 });
+    },
   },
   'odin.gungnir-sweep': {
     decal: 0.4,
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'cone') return;
-      slash(k, f.p, s.x, s.z, s.yaw, { radius: s.range * 0.6, width: s.range * 0.62, angle: s.angle + 15, sweep: 0.15 });
-      slash(k, { vfx: f.p.core, core: 0xffffff }, s.x, s.z, s.yaw, { radius: s.range * 0.92, width: 0.22, angle: s.angle + 15, sweep: 0.15, y: 1.25 });
+      const angle = s.angle + 15;
+      // tipped up toward the far side so it faces the camera behind him: a dark swath, the gold blade edge, a white-hot tip
+      slash(k, RAVEN, s.x, s.z, s.yaw, { radius: s.range * 0.6, width: s.range * 0.55, angle, sweep: 0.15, pitch: 30 });
+      slash(k, f.p, s.x, s.z, s.yaw, { radius: s.range * 0.8, width: 0.7, angle, sweep: 0.15, pitch: 30, y: 1.25 });
+      slash(k, { vfx: f.p.core, core: 0xffffff }, s.x, s.z, s.yaw, { radius: s.range * 0.93, width: 0.2, angle, sweep: 0.15, pitch: 30, y: 1.3 });
       const mid = along(s, 0.6);
-      k.billow('dust', mid.x, k.ground(mid.x, mid.z) + 0.5, mid.z, 4.5, { duration: 1.3, tint: 0xd8c8aa });
+      k.billow('dust', mid.x, k.ground(mid.x, mid.z) + 0.5, mid.z, 4.5, { duration: 1.3, tint: 0xc0a47a });
     },
+    // knocked back: dust kicked up under them
+    hit: (k, h) => k.billow('dust', h.target.x, h.target.body.y + 0.4, h.target.z, 2.2, { duration: 0.9, tint: 0xc0a47a }),
   },
   'odin.wisdom': {
     colors: WELL,
@@ -968,8 +1022,19 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'circle') return;
-      k.sigil({ x: s.x, y: k.ground(s.x, s.z) + 0.15, z: s.z, glyph: 'algiz', size: Math.min(9, s.radius * 0.9), main: f.p.vfx, hot: f.p.core, life: 1.4, flat: true, spin: 0.05, open: 0.35 });
-      for (const a of k.near(s.x, s.z, s.radius, f.owner.team)) brand(k, f.p, a, 'algiz', 1.8, 0.75);
+      // the rune cut into the ground in bold gold over dark stone, and a wall of it rising round the circle
+      k.sigil({ x: s.x, y: k.ground(s.x, s.z) + 0.15, z: s.z, glyph: 'algiz', size: Math.min(9, s.radius * 0.9), main: f.p.vfx, hot: f.p.core, life: 1.6, flat: true, spin: 0.05, open: 0.35, weight: 1.6, back: 0.8 });
+      shock(k, RAVEN, s.x, s.z, s.radius * 0.5, s.radius, { life: 0.7, wall: true, width: 1.1, y: 0.6 });
+      shock(k, f.p, s.x, s.z, s.radius * 0.5, s.radius, { life: 0.6, wall: true, width: 0.3, y: 1.15 });
+      // a band of rune light turning round each ally while the ward holds
+      for (const a of k.near(s.x, s.z, s.radius, f.owner.team)) {
+        brand(k, f.p, a, 'algiz', 1.8, 0.75);
+        const r = k.ribbon({
+          x: a.x, y: a.body.y + 1.1, z: a.z, main: f.p.vfx, hot: f.p.core, ax: NORTH, ay: EAST, an: UP,
+          radius: a.radius + 0.5, a0: 0, span: 1.6 * Math.PI, width: 0.3, wall: 1, sweep: 0.2, tail: 1, taper: 0.3, spin: 0.6, life: 4, hold: true,
+        });
+        k.attach(r, a, 1.1, 4, (x, y, z) => r.follow(x, y, z), shielded);
+      }
     },
   },
   'odin.einherjar': {
@@ -977,10 +1042,19 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'circle') return;
-      k.sigil({ x: s.x, y: k.ground(s.x, s.z) + 0.15, z: s.z, glyph: 'tiwaz', size: 4, main: f.p.vfx, hot: f.p.core, life: 1.6, flat: true, open: 0.3 });
+      const gy = k.ground(s.x, s.z);
+      k.sigil({ x: s.x, y: gy + 0.15, z: s.z, glyph: 'tiwaz', size: 4.4, main: f.p.vfx, hot: f.p.core, life: 1.8, flat: true, open: 0.3, weight: 1.6, back: 0.8 });
       basis(yawOf(s) || f.owner.body.yaw);
-      for (const side of [-1, 1]) k.pillar(f.p, s.x + RIGHT.x * side * 0.9, s.z + RIGHT.z * side * 0.9, 0.45, 0.55);
-      shock(k, f.p, s.x, s.z, 0.3, s.radius + 0.8, { life: 0.5, wall: true, width: 0.9 });
+      for (const side of [-1, 1]) {
+        const x = s.x + RIGHT.x * side * 0.9;
+        const z = s.z + RIGHT.z * side * 0.9;
+        k.pillar(f.p, x, z, 0.45, 0.55);
+        // the ground breaks where each warrior climbs out
+        rockRing(k, x, z, 0.8, 5, f.p.vfx, { size: 0.45 });
+      }
+      shock(k, RAVEN, s.x, s.z, 0.3, s.radius + 1, { life: 0.55, wall: true, width: 1.2, y: 0.6 });
+      shock(k, f.p, s.x, s.z, 0.3, s.radius + 0.8, { life: 0.5, wall: true, width: 0.35, y: 1.15 });
+      k.billow('dust', s.x, gy + 0.5, s.z, 4, { duration: 1.2, tint: 0xc0a47a });
       // the fallen rise: motes of rune light climbing out of the circle
       k.swarm({ x: s.x, y: k.ground(s.x, s.z), z: s.z, mode: 'orbit', main: f.p.vfx, hot: f.p.core, range: s.radius, spread: 3.2, size: 0.2, life: 1.8, count: 0.6 });
     },
@@ -1071,8 +1145,8 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       if (s.type !== 'circle') return;
       k.billow('smoke', s.x, k.ground(s.x, s.z) + 1.3, s.z, 3.8, { duration: 1.5, tint: 0x3c5a44, rise: 0.5 });
       shock(k, f.p, s.x, s.z, 0.4, s.radius * 1.1, { life: 0.5, wall: true, width: 0.7 });
-      const mock = k.sigil({ x: s.x, y: k.ground(s.x, s.z) + 3.4, z: s.z, glyph: 'eye', size: 1.1, main: f.p.vfx, hot: f.p.core, life: 1.4, open: 0.2 });
-      void mock;
+      // a mocking eye over the double
+      k.sigil({ x: s.x, y: k.ground(s.x, s.z) + 3.4, z: s.z, glyph: 'eye', size: 1.4, main: f.p.vfx, hot: f.p.core, life: 1.4, open: 0.2, weight: 1.6, back: 0.8 });
     },
   },
   'loki.poison-blade': {
@@ -1196,7 +1270,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
         P2.set(a.x, a.body.y + 1.4, a.z);
         k.beam({ from: P1, to: P2, width: 0.18, main: c.p.vfx, hot: c.p.core, reach: 0.14, hold: 0.1, fadeOut: 0.4, flow: 10 });
       }
-      brand(k, c.p, a, 'ankh', 4, 0.8, (t) => t.combatant.shieldTotal > 0.5);
+      brand(k, c.p, a, 'ankh', 4, 0.8, shielded);
       k.burst(c.p, a.x, a.body.y + 1.3, a.z, 0.9);
       shock(k, c.p, a.x, a.z, 0.3, 1.6, { life: 0.5, wall: true, width: 1.4 });
     },
@@ -1206,12 +1280,15 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
     flash: (k, f) => {
       const s = f.shape;
       if (s.type !== 'cone') return;
-      k.swarm({ x: s.x, y: k.ground(s.x, s.z), z: s.z, yaw: s.yaw, mode: 'stream', main: 0x2a2010, hot: 0xffb040, range: s.range, spread: Math.tan((s.angle / 2) * DEG), size: 0.36, life: 2.6, bugs: true });
-      // the dust they raise, drifting down the cone
       const g = k.ground(s.x, s.z);
+      const spread = Math.tan((s.angle / 2) * DEG);
+      // a thick cloud of them: a low stream and a faster one over it, big enough to tell as wings from behind
+      k.swarm({ x: s.x, y: g, z: s.z, yaw: s.yaw, mode: 'stream', main: 0x2a2010, hot: 0xffb040, range: s.range, spread, size: 0.5, life: 2.6, bugs: true });
+      k.swarm({ x: s.x, y: g + 0.8, z: s.z, yaw: s.yaw, mode: 'stream', main: 0x2a2010, hot: 0xffb040, range: s.range, spread, size: 0.42, life: 2.4, bugs: true, count: 0.7, rate: 1.25 });
+      // the dust they raise, drifting down the cone (a deep amber: pale dust vanishes on the stone)
       for (let i = 1; i <= 3; i++) {
         const d = (s.range * i) / 4;
-        k.billow('dust', s.x - Math.sin(s.yaw) * d, g + 0.5, s.z - Math.cos(s.yaw) * d, 2.4 + i * 0.9, { duration: 1.8, delay: i * 0.15, tint: 0xdcb474 });
+        k.billow('dust', s.x - Math.sin(s.yaw) * d, g + 0.5, s.z - Math.cos(s.yaw) * d, 2.4 + i * 0.9, { duration: 1.8, delay: i * 0.15, tint: 0xa07838 });
       }
     },
   },
@@ -1249,8 +1326,16 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   },
   'anubis.grave-grasp': {
     colors: { vfx: 0xffa040, core: 0xfff0d0 },
-    shot: { prop: 'claw', size: 2.1, orb: 0.4, trail: 0.8, tether: 0.22 },
-    hit: (k, h) => k.billow('dust', h.target.x, h.target.body.y + 0.5, h.target.z, 3.4, { duration: 1.4, tint: 0xe4c086 }),
+    shot: { prop: 'claw', size: 2.4, orb: 0.4, trail: 0.8, tether: 0.3 },
+    hit: (k, h) => {
+      const t = h.target;
+      const o = h.owner;
+      k.billow('dust', t.x, t.body.y + 0.5, t.z, 3.4, { duration: 1.4, tint: 0xb08850 });
+      // the dead hand's grip, and the rope of grave linen it drags them in by
+      wrap(k, BANDAGE, t, 0.7, { turns: 2, width: 0.42, sweep: 0.12 });
+      const b = k.beam({ from: P1.set(o.x, o.body.y + 1.4, o.z), to: P2.set(t.x, t.body.y + 1.1, t.z), width: 0.26, main: BANDAGE.vfx, hot: h.p.vfx, reach: 0, hold: 0.45, fadeOut: 0.25, flow: -14 });
+      k.attach(b, t, 0, 0.7, (x, y, z) => b.place(P1.set(o.x, o.body.y + 1.4, o.z), P2.set(x, y + 1.1, z)));
+    },
   },
   'anubis.sand-step': {
     cast: (k, c) => {
@@ -1337,7 +1422,7 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       shock(k, f.p, s.x, s.z, 1, s.radius, { life: 0.9, wall: true, width: 1.5 });
       for (const a of k.near(s.x, s.z, s.radius, o.team)) {
         k.pillar(SPIRIT_PALETTE(f.p), a.x, a.z, 0.45, 0.55);
-        brand(k, f.p, a, 'ankh', 5, 0.75, (t) => t.combatant.shieldTotal > 0.5);
+        brand(k, f.p, a, 'ankh', 5, 0.75, shielded);
       }
     },
   },
@@ -1450,9 +1535,9 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
           x: u.x, y: u.body.y + dy, z: u.z, main: c.p.vfx, hot: c.p.core, ax: NORTH, ay: EAST, an: UP,
           radius: u.radius + 0.5 - i * 0.08, a0: i * 2, span: 1.6 * Math.PI, width: 0.3, wall: 1, sweep: 0.2, tail: 1, taper: 0.3, spin: i === 0 ? 0.7 : -0.9, life: 4, hold: true,
         });
-        k.attach(r, u, dy, 4, (x, y, z) => r.follow(x, y, z), (t) => t.combatant.shieldTotal > 0.5);
+        k.attach(r, u, dy, 4, (x, y, z) => r.follow(x, y, z), shielded);
       }
-      brand(k, HEART, u, 'heart', 4, 0.9, (t) => t.combatant.shieldTotal > 0.5);
+      brand(k, HEART, u, 'heart', 4, 0.9, shielded);
       k.burst({ ...c.p, ...HEART }, u.x, u.body.y + 1.4, u.z, 0.6);
     },
   },
@@ -1544,12 +1629,12 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
       const u = c.owner;
       // the star kindles at the head of his staff
       ahead(P1, u, c.yaw, 0.8, 2.1);
-      k.sigil({ x: P1.x, y: P1.y, z: P1.z, glyph: 'star', size: 1.1, main: c.p.vfx, hot: c.p.core, life: 0.35, spin: 0.6, open: 0.08 });
+      k.sigil({ x: P1.x, y: P1.y, z: P1.z, glyph: 'star', size: 1.4, main: c.p.vfx, hot: c.p.core, life: 0.4, spin: 0.6, open: 0.08, weight: 1.6, back: 0.8 });
       k.burst(c.p, P1.x, P1.y, P1.z, 0.5);
     },
     hit: (k, h) => {
       const t = h.target;
-      k.sigil({ x: t.x, y: t.body.y + 1.4, z: t.z, glyph: 'star', size: 1.6, main: h.p.vfx, hot: h.p.core, life: 0.45, spin: 0.8, open: 0.06 });
+      k.sigil({ x: t.x, y: t.body.y + 1.4, z: t.z, glyph: 'star', size: 1.8, main: h.p.vfx, hot: h.p.core, life: 0.5, spin: 0.8, open: 0.06, weight: 1.6, back: 0.8 });
       k.burst(h.p, t.x, t.body.y + 1.3, t.z, 0.6);
     },
   },
@@ -1792,16 +1877,17 @@ export const SKILL_LOOKS: Record<string, SkillLook> = {
   },
   'cthulhu.reaching-feelers': {
     colors: ABYSS,
-    shot: { tether: 0.3, orb: 0.5, trail: 0.9 },
+    shot: { tether: 0.4, orb: 0.5, trail: 0.9 },
     hit: (k, h) => {
       const t = h.target;
       const o = h.owner;
-      // the feelers wrap round them and drag them in to his face
-      wrap(k, h.p, t, 0.75, { turns: 2, width: 0.3, sweep: 0.15, taper: 0.4 });
+      // the feelers wrap round them and drag them in to his face: dark flesh with a glow running down it
+      wrap(k, BATWING, t, 0.75, { turns: 2, width: 0.46, sweep: 0.15, taper: 0.4 });
+      wrap(k, GLOWING, t, 0.75, { turns: 2, width: 0.14, sweep: 0.15, taper: 0.4 });
       for (let i = 0; i < 3; i++) {
         const side = (i - 1) * 0.28;
         const lift = 2.05 - Math.abs(i - 1) * 0.15;
-        const b = k.beam({ from: P1.set(o.x, o.body.y + lift, o.z), to: P2.set(t.x, t.body.y + 1.3, t.z), width: 0.16, main: i === 1 ? GLOWING.vfx : h.p.vfx, hot: h.p.core, reach: 0.05, hold: 0.35, fadeOut: 0.25, flow: -16 });
+        const b = k.beam({ from: P1.set(o.x, o.body.y + lift, o.z), to: P2.set(t.x, t.body.y + 1.3, t.z), width: 0.24, main: BATWING.vfx, hot: i === 1 ? GLOWING.core : GLOWING.vfx, reach: 0.05, hold: 0.35, fadeOut: 0.25, flow: -16 });
         k.attach(b, t, 0, 0.6, (x, y, z) => b.place(P1.set(o.x + side * Math.cos(o.body.yaw), o.body.y + lift, o.z - side * Math.sin(o.body.yaw)), P2.set(x, y + 1.3, z)));
       }
       k.burst(h.p, t.x, t.body.y + 1.3, t.z, 0.6);
