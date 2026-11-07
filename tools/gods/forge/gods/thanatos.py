@@ -49,7 +49,7 @@ def feather_data(v, length: float, rng) -> np.ndarray:
     return col
 
 
-def poppy_petal(length: float, width: float, rng, rows: int = 8, cols: int = 11) -> Mesh:
+def poppy_petal(length: float, width: float, rng, rows: int = 7, cols: int = 9) -> Mesh:
     """One poppy petal along +Y from its base at the origin, its inner face toward +Z: narrow
     at the base, broad and rounded at the rim, cupped, crinkled and ruffled at the edge. Two
     sheets back to back (thin, and seen from both sides).
@@ -83,16 +83,16 @@ def poppy_petal(length: float, width: float, rng, rows: int = 8, cols: int = 11)
 def poppy_heart(scale: float = 1.0) -> Mesh:
     """The black heart of a poppy, its axis along +Y: the seed pod with a flat, rayed cap, in
     a ring of stamens that splay out over the petals."""
-    pod = sphere(0.0085, 12, 8).transformed(s=[1, 0.85, 1], t=[0, 0.007, 0])
-    cap = lathe(np.array([[0.0, 0.0118], [0.0105, 0.0118], [0.009, 0.0128], [0.0, 0.0135]]), 14)
-    rays = [tube(np.array([[0, 0.0138, 0], [np.cos(a) * 0.0085, 0.0134, np.sin(a) * 0.0085]]), 0.0011, 4)
+    pod = sphere(0.0085, 10, 6).transformed(s=[1, 0.85, 1], t=[0, 0.007, 0])
+    cap = lathe(np.array([[0.0, 0.0118], [0.0105, 0.0118], [0.009, 0.0128], [0.0, 0.0135]]), 10)
+    rays = [tube(np.array([[0, 0.0138, 0], [np.cos(a) * 0.0085, 0.0134, np.sin(a) * 0.0085]]), 0.0011, 3)
             for a in np.arange(7) / 7 * 2 * np.pi]
     stamens = []
-    for a in np.arange(18) / 18 * 2 * np.pi + 0.1:
+    for a in np.arange(13) / 13 * 2 * np.pi + 0.1:
         d = np.array([np.cos(a), 0, np.sin(a)])
         root, tip = d * 0.006 + [0, 0.003, 0], d * 0.0165 + [0, 0.0115 + 0.002 * np.sin(a * 5), 0]
-        stamens.append(tube(np.array([root, (root + tip) / 2 + d * 0.002, tip]), 0.0007, 4))
-        stamens.append(sphere(0.0019, 6, 4).transformed(t=tip))
+        stamens.append(tube(np.array([root, (root + tip) / 2 + d * 0.002, tip]), 0.0007, 3))
+        stamens.append(sphere(0.0021, 5, 3).transformed(t=tip))
     return merge([pod, cap] + rays + stamens).transformed(s=scale)
 
 
