@@ -4,7 +4,7 @@ import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { CHAMBERS, chamberField, DEPTH_CHAMBERS, entranceSpot, exitSpot, underworldCave, underworldField, obstaclesOf } from '../map/UnderworldLayout';
 import { navOf } from '../map/ChamberNav';
-import { ALL_SLOTS, BRUTE, chamberWaves, CINDER, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, GRIP, KEEPER, KING, learnSkill, LURK, planRun, SHADE_BLINK, type ChamberKind } from './Descent';
+import { ALL_SLOTS, BRUTE, chamberWaves, CINDER, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, GRIP, HOWL, KEEPER, KING, learnSkill, LURK, planRun, POUNCE, SHADE_BLINK, type ChamberKind } from './Descent';
 import { CURSES } from './Siege';
 import { DescentBot } from './DescentBot';
 import { godUnit, monsterUnit } from './factory';
@@ -176,11 +176,11 @@ describe('Underworld Descent: the run', () => {
     expect(chamberWaves({ n: 4, layout: 0, kind: 'elite' })[0]).toContain('warden');
   });
 
-  it('brings Shades only into the Abyss, more of them deeper down', () => {
+  it('brings Shades only into the Abyss, never fewer deeper down', () => {
     const shades = (n: number) => chamberWaves({ n, layout: 0, kind: 'pack' }).flat().filter((t) => t === 'shade').length;
     for (let n = 1; n <= 2 * DESCENT.bossEvery; n++) expect(shades(n)).toBe(0);
     expect(shades(2 * DESCENT.bossEvery + 1)).toBeGreaterThan(0);
-    expect(shades(14)).toBeGreaterThan(shades(2 * DESCENT.bossEvery + 1));
+    expect(shades(14)).toBeGreaterThanOrEqual(shades(2 * DESCENT.bossEvery + 1));
   });
 
   it('blinks a Shade away from a god who closes in, onto open floor, but never while it is stunned', () => {
@@ -396,8 +396,22 @@ describe('Underworld Descent: the run', () => {
     for (const t of ['drownedThrall', 'lanternJelly', 'tideLurker']) expect(elsewhere.has(t), t).toBe(false);
   });
 
+  it('gives the Abyss beasts of its own: Gravehounds, Packleaders and Shades, with no Thornbacks left anywhere', () => {
+    const kinds: ChamberKind[] = ['pack', 'trap', 'elite', 'champion', 'treasure'];
+    const raised = (from: number, to: number) => {
+      const out = new Set<string>();
+      for (let n = from; n <= to; n++) for (const kind of kinds) for (const t of chamberWaves({ n, layout: 0, kind }).flat()) out.add(t);
+      return out;
+    };
+    const abyss = raised(2 * DESCENT.bossEvery + 1, DESCENT.chambers - 1);
+    for (const t of ['gravehound', 'packleader', 'shade', 'gravekeeper']) expect(abyss.has(t), t).toBe(true);
+    for (const t of ['thornback', 'thornbackAlpha', 'thornSpitter', 'cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker']) expect(abyss.has(t), t).toBe(false);
+    const above = raised(1, 2 * DESCENT.bossEvery - 1);
+    for (const t of ['gravehound', 'packleader', 'thornback', 'thornbackAlpha']) expect(above.has(t), t).toBe(false);
+  });
+
   /** One Descent beast on its own in a chamber, fighting for real. */
-  const loose = (sim: Sim, type: 'drownedThrall' | 'tideLurker', x: number, z: number) => {
+  const loose = (sim: Sim, type: 'drownedThrall' | 'tideLurker' | 'gravehound' | 'packleader', x: number, z: number) => {
     const c = CHAMBERS[7]!;
     const m = sim.add(monsterUnit(zeus, type, { x, z, yaw: 0 }, 0));
     m.tag = `descent-small-7.0.0:${type}`;
@@ -476,6 +490,76 @@ describe('Underworld Descent: the run', () => {
     // (right beside the god already, it goes straight from under to rising)
     expect(brain.lurkState).not.toBe('up');
     expect(m.targetable).toBe(false);
+  });
+
+  it('crouches a Gravehound, then pounces it onto a god who stands off from it, biting where it lands; stunned, it can\'t', () => {
+    const sim = new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(4));
+    const c = CHAMBERS[7]!;
+    const [sx, sz] = c.spawns[2]!;
+    const { m, brain } = loose(sim, 'gravehound', c.x + sx, c.z + sz);
+    // the god a few strides off, along a clear line
+    const nav = navOf(c);
+    let [gx, gz] = [m.x + 5, m.z];
+    for (let a = 0; a < Math.PI * 2; a += 0.3) {
+      [gx, gz] = [m.x + Math.cos(a) * 5, m.z + Math.sin(a) * 5];
+      if (nav.clear(m.x, m.z, gx, gz) && nav.room(gx, gz) > 1.2) break;
+    }
+    const god = sim.add(godUnit(thor, 'order', { x: gx, z: gz, yaw: 0 }));
+    god.brain = null;
+    const run = (seconds: number) => {
+      for (let i = 0; i < Math.round(seconds * 30); i++) {
+        god.move = null;
+        sim.step(1 / 30);
+      }
+    };
+    let struck = 0;
+    sim.listeners.push((e) => {
+      if (e.type === 'damage' && e.source === m && e.target === god) struck++;
+    });
+    // held down past its first pounce's time, it neither crouches nor leaps
+    m.combatant.cc.apply('stun', POUNCE.first + 0.5);
+    run(POUNCE.first + 0.4);
+    expect(brain.gathering).toBe(0);
+    expect(brain.loosed).toBe(0);
+    // free again: it crouches, then flies at the god
+    run(0.2);
+    expect(brain.gathering).toBeGreaterThan(0);
+    expect(m.forced).toBeNull();
+    run(POUNCE.crouch);
+    expect(brain.loosed).toBe(1);
+    expect(m.forced).not.toBeNull();
+    run(0.7);
+    expect(m.forced).toBeNull();
+    expect(struck).toBeGreaterThan(0);
+    expect(Math.hypot(god.x - m.x, god.z - m.z)).toBeLessThan(POUNCE.radius + god.radius);
+  });
+
+  it('has a Packleader howl once a god comes near, hastening itself and the Gravehounds round it; silenced, it can\'t', () => {
+    const sim = new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(5));
+    const c = CHAMBERS[7]!;
+    const [sx, sz] = c.spawns[2]!;
+    const { m: lead, brain } = loose(sim, 'packleader', c.x + sx, c.z + sz);
+    const { m: hound } = loose(sim, 'gravehound', c.x + sx + 1.2, c.z + sz);
+    const god = sim.add(godUnit(thor, 'order', { x: lead.x + 4, z: lead.z, yaw: 0 }));
+    god.brain = null;
+    const run = (seconds: number) => {
+      for (let i = 0; i < Math.round(seconds * 30); i++) {
+        god.move = null;
+        god.combatant.health = god.combatant.stats.maxHealth;
+        sim.step(1 / 30);
+      }
+    };
+    run(HOWL.first - 0.2);
+    expect(brain.loosed).toBe(0);
+    for (let i = 0; i < 60 && brain.loosed === 0; i++) run(1 / 30);
+    expect(brain.loosed).toBe(1);
+    expect(hound.combatant.stats.bonusMoveSpeed).toBeGreaterThanOrEqual(HOWL.haste - 1e-6);
+    expect(hound.combatant.stats.bonusAttackSpeed).toBeGreaterThanOrEqual(HOWL.frenzy - 1e-6);
+    expect(lead.combatant.stats.bonusMoveSpeed).toBeGreaterThanOrEqual(HOWL.haste - 1e-6);
+    // silenced when its next howl comes round, it stays quiet
+    lead.combatant.cc.apply('silence', HOWL.every + 1);
+    run(HOWL.every + 0.5);
+    expect(brain.loosed).toBe(1);
   });
 
   it('crowns the bottom of the run with the Ossuary King: Soul Rain under every god, never while stunned, faster when hurt; a Grave Toll; Shades among its adds', () => {

@@ -172,6 +172,9 @@ export class GameAudio {
       // a Tide Lurker plunging into the floor, and bursting up out of it
       else if (name === 'lurkDive') this.engine.play('lurk.dive', { at, gain: 0.7, vary: 0.06, ref: 12 }, 3, 0.1);
       else if (name === 'lurkBurst') this.engine.play('lurk.burst', { at, gain: 1, vary: 0.05, ref: 16 }, 4, 0.1);
+      else if (name === 'pounce') this.engine.play('hound.pounce', { at, gain: 0.7, vary: 0.08, ref: 10 }, 3, 0.08);
+      else if (name === 'pounceLand') this.engine.play('hound.land', { at, gain: 0.7, vary: 0.08, ref: 10 }, 3, 0.08);
+      else if (name === 'howl') this.engine.play('pack.howl', { at, gain: 0.9, vary: 0.05, ref: 22 }, 2, 0.4);
     };
   }
 
@@ -343,7 +346,7 @@ export class GameAudio {
         ref = 20;
         break;
       case 'monster':
-        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.name === 'Ossuary King' ? 'basic.king' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : u.tag.endsWith(':cinderling') ? 'basic.cinder' : u.tag.endsWith(':slagBrute') ? 'basic.brute' : u.tag.endsWith(':drownedThrall') ? 'basic.thrall' : u.tag.endsWith(':lanternJelly') ? 'basic.jelly' : u.tag.endsWith(':tideLurker') ? 'basic.lurker' : 'basic.monster';
+        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.name === 'Ossuary King' ? 'basic.king' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : u.tag.endsWith(':cinderling') ? 'basic.cinder' : u.tag.endsWith(':slagBrute') ? 'basic.brute' : u.tag.endsWith(':drownedThrall') ? 'basic.thrall' : u.tag.endsWith(':lanternJelly') ? 'basic.jelly' : u.tag.endsWith(':tideLurker') ? 'basic.lurker' : u.tag.endsWith(':gravehound') ? 'basic.hound' : u.tag.endsWith(':packleader') ? 'basic.packleader' : 'basic.monster';
         ref = u.radius > 2 ? 16 : 7;
         gain = u.radius > 2 ? 1.1 : 0.7;
         break;
@@ -372,7 +375,7 @@ export class GameAudio {
       name = t === 'brute' ? 'hit.blunt' : t === 'archer' ? 'hit.flesh' : 'hit.blade';
       gain *= 0.6;
       gap = 0.05;
-    } else if (src.kind === 'monster') name = src.radius > 2 ? 'hit.blunt' : src.tag.endsWith('thornSpitter') ? 'hit.acid' : src.tag.endsWith(':shade') ? 'hit.shade' : src.tag.endsWith(':gravekeeper') ? 'hit.keeper' : src.tag.endsWith(':cinderling') ? 'hit.cinder' : src.tag.endsWith(':slagBrute') ? 'hit.blunt' : src.tag.endsWith(':drownedThrall') ? 'hit.thrall' : src.tag.endsWith(':lanternJelly') ? 'hit.jelly' : 'hit.monster';
+    } else if (src.kind === 'monster') name = src.radius > 2 ? 'hit.blunt' : src.tag.endsWith('thornSpitter') ? 'hit.acid' : src.tag.endsWith(':shade') ? 'hit.shade' : src.tag.endsWith(':gravekeeper') ? 'hit.keeper' : src.tag.endsWith(':cinderling') ? 'hit.cinder' : src.tag.endsWith(':slagBrute') ? 'hit.blunt' : src.tag.endsWith(':drownedThrall') ? 'hit.thrall' : src.tag.endsWith(':lanternJelly') ? 'hit.jelly' : src.tag.endsWith(':gravehound') || src.tag.endsWith(':packleader') ? 'hit.hound' : 'hit.monster';
     else name = 'hit.flesh';
     const mine = src === this.me || target === this.me;
     this.at(name, target, { gain, vary: 0.08 }, src === this.me ? 4 : 2, gap, mine);

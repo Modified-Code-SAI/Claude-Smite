@@ -136,6 +136,8 @@ export type MonsterType =
   | 'drownedThrall'
   | 'lanternJelly'
   | 'tideLurker'
+  | 'gravehound'
+  | 'packleader'
   | 'gildedThornback'
   | 'warden'
   | 'treasureWyrm'
@@ -162,6 +164,10 @@ const MONSTERS: Record<MonsterType, { name: string; health: number; power: numbe
   lanternJelly: { name: 'Lantern Jelly', health: 230, power: 19, speed: 320, prot: 8, range: 7, radius: 0.55, rate: 0.7, xp: 60, favor: 8, projectile: 18 },
   // the Drowned Halls' heavy: a great lure-headed fish that swims under the floor and bursts up beneath the gods
   tideLurker: { name: 'Tide Lurker', health: 700, power: 25, speed: 330, prot: 20, range: 1.9, radius: 1.0, rate: 0.7, xp: 120, favor: 13 },
+  // the Abyss's many: gaunt hounds of bone and grave-hide that circle in and pounce on whoever stands off from them
+  gravehound: { name: 'Gravehound', health: 290, power: 15, speed: 385, prot: 8, range: 1.4, radius: 0.6, rate: 0.95, xp: 45, favor: 6 },
+  // the Abyss's heavy: the pack's antlered leader, whose howl drives the hounds near it into a frenzy
+  packleader: { name: 'Packleader', health: 720, power: 25, speed: 350, prot: 18, range: 1.8, radius: 0.95, rate: 0.8, xp: 120, favor: 13 },
   // Temple Siege only: never fights, runs from the gods, and carries a second boon
   gildedThornback: { name: 'Gilded Thornback', health: 900, power: 0, speed: 345, prot: 25, range: 1.4, radius: 0.6, rate: 0.5, xp: 120, favor: 40 },
   treasureWyrm: { name: 'Treasure Wyrm', health: 5200, power: 70, speed: 280, prot: 35, range: 3.2, radius: 2.6, rate: 0.5, xp: 300, favor: 0 },

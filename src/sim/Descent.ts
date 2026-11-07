@@ -110,13 +110,31 @@ export const GRIP = { slow: 0.25, time: 1.6 } as const;
  */
 export const LURK = { first: 3.5, up: 7, under: 3.5, warn: 0.9, radius: 2.3, scale: 1.6, lift: 0.5, haste: 0.4 } as const;
 
+/**
+ * The Gravehound's pounce: when its foe is between `min` and `reach` away
+ * (edge to edge) with nothing in between, it crouches for `crouch` seconds
+ * and leaps on them, hitting every god within `radius` of where it lands for
+ * `scale` times its power. Then it waits `every` seconds (`first` the first
+ * time) to do it again.
+ */
+export const POUNCE = { first: 1.5, every: 6, min: 2.2, reach: 6.5, crouch: 0.45, scale: 1.3, radius: 1.3, arc: 0.9, speed: 11 } as const;
+
+/**
+ * The Packleader's howl: every `every` seconds (`first` the first time),
+ * with a god within `near`, it throws its head back for `windup` seconds and
+ * howls: itself and every Gravehound within `range` run a `haste` faster and
+ * bite a `frenzy` faster for `time` seconds.
+ */
+export const HOWL = { first: 3, every: 10, near: 9, windup: 0.7, range: 12, time: 4, haste: 0.35, frenzy: 0.3 } as const;
+
 /** Each depth's own beasts: the many that rush in, the ones that hang back and shoot, and the heavy that anchors a pack. */
 export const DEPTH_BEASTS: readonly { body: MonsterType; ranged: MonsterType; heavy: MonsterType }[] = [
   // the Ashen Depths: Cinderlings swarm, Slag Brutes slam
   { body: 'cinderling', ranged: 'thornSpitter', heavy: 'slagBrute' },
   // the Drowned Halls: Drowned Thralls grip, Lantern Jellies shoot, Tide Lurkers rise from under the floor
   { body: 'drownedThrall', ranged: 'lanternJelly', heavy: 'tideLurker' },
-  { body: 'thornback', ranged: 'thornSpitter', heavy: 'thornbackAlpha' },
+  // the Abyss: Gravehounds pounce, Shades shoot and blink, Packleaders howl the hounds into a frenzy
+  { body: 'gravehound', ranged: 'shade', heavy: 'packleader' },
 ];
 
 /** The Ossuary King, lord of the Abyss and the run's last boss. */
@@ -147,6 +165,8 @@ export const SOULS: Record<MonsterType, number> = {
   drownedThrall: 1,
   lanternJelly: 1,
   tideLurker: 2,
+  gravehound: 1,
+  packleader: 2,
   thornbackAlpha: 2,
   warden: 4,
   gildedThornback: 5,
@@ -294,14 +314,12 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     const add = (t: MonsterType, count: number) => {
       for (let i = 0; i < Math.round(count * k * many); i++) out.push(t);
     };
-    // Shades haunt the halls past the first boss, each in place of a Thornback, and Gravekeepers the Abyss
-    // past the second, each in place of two (a healer in a pack is worth more than a body)
-    const shades = n > 2 * DESCENT.bossEvery ? Math.min(3, 1 + Math.floor((n - DESCENT.bossEvery - 1) / 3)) : 0;
+    // Gravekeepers tend the Abyss's packs past the second boss, each in place of two of the many (a healer in a pack
+    // is worth more than a body)
     const keepers = n > 2 * DESCENT.bossEvery ? Math.min(2, 1 + Math.floor((n - 2 * DESCENT.bossEvery - 1) / 2)) : 0;
-    add(beasts.body, Math.min(9, 3 + Math.floor(n * 0.6)) - shades - 2 * keepers);
+    add(beasts.body, Math.min(9, 3 + Math.floor(n * 0.6)) - 2 * keepers);
     add(beasts.ranged, n >= 2 ? Math.min(4, Math.floor(n / 2)) : 0);
     add(beasts.heavy, Math.min(4, Math.floor((n - 1) / 3)));
-    add('shade', shades);
     add('gravekeeper', keepers);
     return out;
   };
@@ -412,6 +430,15 @@ export class DescentMonsterBrain extends MonsterBrain {
   /** A Tide Lurker: on the floor, swimming under it, or rising beneath its foe; and the seconds left of that. */
   private lurk: 'up' | 'under' | 'rising' = 'up';
   private lurkLeft: number = LURK.first;
+  /** A Gravehound's next pounce, in seconds; the crouch before it; and whom it leaps at. */
+  private pounceIn: number = POUNCE.first;
+  private crouch = 0;
+  private prey: Unit | null = null;
+  /** A Packleader's next howl, in seconds, and the windup of one under way. */
+  private howlIn: number = HOWL.first;
+  private howlLeft = 0;
+  /** How many times it has pounced or howled (for the view's cues). */
+  private acts = 0;
   /** Its way to its foe round the chamber's lava, water or void. */
   private readonly route = new Route();
   /** The chamber's columns (world coordinates). */
@@ -463,6 +490,8 @@ export class DescentMonsterBrain extends MonsterBrain {
       return;
     }
     if (u.tag.endsWith(':tideLurker') && this.lurking(dt)) return;
+    if (u.tag.endsWith(':gravehound') && this.pouncing(dt)) return;
+    if (u.tag.endsWith(':packleader') && this.howling(dt)) return;
     if (u.tag.endsWith(':shade') && (this.blinkIn -= dt) <= 0 && this.blink()) this.blinkIn = SHADE_BLINK.every;
     const keeper = u.tag.endsWith(':gravekeeper');
     if (keeper && (this.mendIn -= dt) <= 0) this.mendIn = this.mend() ? KEEPER.every : 0.4;
@@ -482,6 +511,113 @@ export class DescentMonsterBrain extends MonsterBrain {
       }
     }
     if (keeper) this.keepBack();
+  }
+
+  /** Share of a Gravehound's crouch before a pounce, or of a Packleader's howl, done; 0 when neither (for the view). */
+  get gathering(): number {
+    if (this.crouch > 0) return 1 - this.crouch / POUNCE.crouch;
+    if (this.howlLeft > 0) return 1 - this.howlLeft / HOWL.windup;
+    return 0;
+  }
+
+  /** How many pounces or howls it has let loose (for the view's cues). */
+  get loosed(): number {
+    return this.acts;
+  }
+
+  /**
+   * The Gravehound's pounce (see POUNCE): it crouches, then leaps at its foe
+   * along a clear line. True while it crouches or is in the air, when this
+   * does all it does. Stunned, rooted or silenced, it can't.
+   */
+  private pouncing(dt: number): boolean {
+    const u = this.self;
+    const s = this.s;
+    if (u.forced) return true;
+    const locked = !s.canMove(u) || u.combatant.cc.locks().cast;
+    if (this.crouch > 0) {
+      const t = this.prey;
+      if (!t || !t.alive || !t.targetable || locked) {
+        this.crouch = 0;
+        return false;
+      }
+      u.move = null;
+      u.body.yaw = Math.atan2(-(t.x - u.x), -(t.z - u.z));
+      this.crouch -= dt;
+      if (this.crouch > 0) return true;
+      this.crouch = 0;
+      // the leap: to the near side of its prey, never into them
+      const dx = t.x - u.x;
+      const dz = t.z - u.z;
+      const d = Math.max(0.01, hypot(dx, dz));
+      const go = Math.max(0, d - t.radius - u.radius * 0.6);
+      const time = Math.min(0.55, Math.max(0.22, go / POUNCE.speed));
+      u.forced = { vx: ((dx / d) * go) / time, vz: ((dz / d) * go) / time, remaining: time, total: time, arc: POUNCE.arc, collide: true, land: () => this.land() };
+      this.acts++;
+      return true;
+    }
+    this.pounceIn -= dt;
+    const foe = this.camp.foe;
+    if (this.pounceIn > 0 || !foe || !foe.alive || !foe.targetable || u.windup > 0 || locked) return false;
+    const gap = hypot(foe.x - u.x, foe.z - u.z) - foe.radius - u.radius;
+    if (gap < POUNCE.min || gap > POUNCE.reach) return false;
+    // (never through a column or over the lava, water or void)
+    if (this.chamber && !navOf(this.chamber).clear(u.x, u.z, foe.x, foe.z)) return false;
+    this.pounceIn = POUNCE.every;
+    this.crouch = POUNCE.crouch;
+    this.prey = foe;
+    u.move = null;
+    return true;
+  }
+
+  /** A Gravehound coming down from its pounce: every god under it is bitten. */
+  private land(): void {
+    const u = this.self;
+    const s = this.s;
+    if (!u.alive) return;
+    u.sinceAction = 0;
+    s.flashAt(u, { type: 'circle', x: u.x, z: u.z, radius: POUNCE.radius });
+    const raw = u.combatant.stats.attackPower * POUNCE.scale;
+    for (const t of s.enemiesOf(u)) {
+      if (t.kind !== 'god' || !t.alive || hypot(t.x - u.x, t.z - u.z) > POUNCE.radius + t.radius) continue;
+      s.strike(u, t, raw, 'physical');
+    }
+  }
+
+  /**
+   * The Packleader's howl (see HOWL): it stops, throws its head back, and
+   * the hounds round it run and bite faster. True while it howls. Stunned or
+   * silenced, it can't, and one cut short is lost.
+   */
+  private howling(dt: number): boolean {
+    const u = this.self;
+    const s = this.s;
+    const locked = !u.alive || u.combatant.cc.locks().cast || u.combatant.cc.locks().move;
+    if (this.howlLeft > 0) {
+      if (locked) {
+        this.howlLeft = 0;
+        return false;
+      }
+      u.move = null;
+      this.howlLeft -= dt;
+      if (this.howlLeft > 0) return true;
+      this.howlLeft = 0;
+      this.acts++;
+      for (const m of s.units) {
+        if (m.kind !== 'monster' || !m.alive || m.team !== u.team || hypot(m.x - u.x, m.z - u.z) > HOWL.range) continue;
+        if (m !== u && !m.tag.endsWith(':gravehound')) continue;
+        m.combatant.refreshTimedMod('bonusMoveSpeed', HOWL.haste, HOWL.time);
+        m.combatant.refreshTimedMod('bonusAttackSpeed', HOWL.frenzy, HOWL.time);
+      }
+      return true;
+    }
+    this.howlIn -= dt;
+    const foe = this.camp.foe;
+    if (this.howlIn > 0 || !foe || !foe.alive || u.windup > 0 || locked || hypot(foe.x - u.x, foe.z - u.z) > HOWL.near) return false;
+    this.howlIn = HOWL.every;
+    this.howlLeft = HOWL.windup;
+    u.move = null;
+    return true;
   }
 
   /** Where a Tide Lurker is: on the floor, under it, or rising (for the view). */
