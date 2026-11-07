@@ -6,7 +6,7 @@ import {
 } from './Architecture';
 import type { CollisionWorld } from './Collision';
 import { Fire, Relic } from './Effects';
-import type { MaterialLibrary } from './Materials';
+import { nearFaded, type MaterialLibrary } from './Materials';
 import type { Terrain } from './Terrain';
 import type { MapContent } from './World';
 import { hypot } from '../core/math';
@@ -101,6 +101,8 @@ export class Temple implements MapContent {
     const capGeo = columnCapital(R);
     const shaftH = p.columnHeight - 0.6 - 0.66;
     const shaftGeo = flutedShaft(R, shaftH);
+    // the columns and their architrave thin away where the follow camera passes beside them
+    const near = nearFaded(this.mats.marble);
     const random = rng(77);
     // Indices of standing columns that still carry the architrave (north-east arc).
     const intact = new Set([0, 1, 2, 11, 12, 13]);
@@ -113,7 +115,7 @@ export class Temple implements MapContent {
       const x = Math.cos(a) * p.columnRing;
       const z = Math.sin(a) * p.columnRing;
       if (Math.abs(Math.cos(a)) < 0.12) continue;
-      const base = this.add(new THREE.Mesh(baseGeo, this.mats.marble));
+      const base = this.add(new THREE.Mesh(baseGeo, near));
       base.position.set(x, y0, z);
       base.rotation.y = -a;
       this.collision.addCircle(x, z, R * 1.35, y0 + 0.6);
@@ -124,19 +126,19 @@ export class Temple implements MapContent {
         continue;
       }
       if (intact.has(i)) {
-        const shaft = this.add(new THREE.Mesh(shaftGeo, this.mats.marble));
+        const shaft = this.add(new THREE.Mesh(shaftGeo, near));
         shaft.position.set(x, y0 + 0.6, z);
         shaft.rotation.y = random() * Math.PI;
-        const cap = this.add(new THREE.Mesh(capGeo, this.mats.marble));
+        const cap = this.add(new THREE.Mesh(capGeo, near));
         cap.position.set(x, y0 + 0.6 + shaftH, z);
         cap.rotation.y = -a;
         this.collision.addCircle(x, z, R * 1.1);
       } else {
         const h = shaftH * (0.25 + random() * 0.45);
         const seed = 100 + i;
-        const shaft = this.add(new THREE.Mesh(brokenShaft(R, h, seed), this.mats.marble));
+        const shaft = this.add(new THREE.Mesh(brokenShaft(R, h, seed), near));
         shaft.position.set(x, y0 + 0.6, z);
-        const top = this.add(new THREE.Mesh(brokenCap(R * (1 - 0.12 * (h / shaftH)), seed), this.mats.marble));
+        const top = this.add(new THREE.Mesh(brokenCap(R * (1 - 0.12 * (h / shaftH)), seed), near));
         top.position.set(x, y0 + 0.6 + h, z);
         // as tall as the broken shaft (its jagged top rises and falls about this much): a relic flies over a short one
         this.collision.addCircle(x, z, R * 1.1, y0 + 0.6 + h + 0.3);
@@ -149,9 +151,9 @@ export class Temple implements MapContent {
     const ring = p.columnRing;
     const spans: [number, number][] = [[-1.19, 2.38]];
     for (const [start, len] of spans) {
-      const arch = this.add(new THREE.Mesh(arcBlock(ring - 0.75, ring + 0.75, 0.85, start, len, 0.05), this.mats.marble));
+      const arch = this.add(new THREE.Mesh(arcBlock(ring - 0.75, ring + 0.75, 0.85, start, len, 0.05), near));
       arch.position.y = topY;
-      const cornice = this.add(new THREE.Mesh(arcBlock(ring - 0.95, ring + 0.95, 0.32, start - 0.01, len + 0.02, 0.04), this.mats.marble));
+      const cornice = this.add(new THREE.Mesh(arcBlock(ring - 0.95, ring + 0.95, 0.32, start - 0.01, len + 0.02, 0.04), near));
       cornice.position.y = topY + 0.85;
     }
     await slice();
@@ -195,10 +197,10 @@ export class Temple implements MapContent {
       [0, 0], [3.6, 0], [3.6, 0.22], [3.55, 0.26], [2.9, 0.26], [2.9, 0.5], [2.85, 0.54], [0, 0.54],
     ], 96), this.mats.marble));
     dais.position.y = y0;
-    // Pedestal the relic hovers over.
+    // Pedestal the relic hovers over (thinning away under a camera that passes over it).
     const ped = this.add(new THREE.Mesh(lathe([
       [0, 0], [0.9, 0], [0.9, 0.12], [0.7, 0.2], [0.55, 0.3], [0.5, 1.0], [0.62, 1.08], [0.8, 1.18], [0.8, 1.26], [0, 1.26],
-    ], 64), this.mats.gold));
+    ], 64), nearFaded(this.mats.gold)));
     ped.position.y = y0 + 0.54;
     this.collision.addSurface((x, z) => {
       const r = hypot(x, z);
@@ -216,6 +218,8 @@ export class Temple implements MapContent {
   /** Monumental gateways where each lane meets the temple. */
   private buildGates(): void {
     const p = Arena.plaza;
+    // the pillars and lintels thin away where the follow camera comes up beside them
+    const stone = nearFaded(this.mats.sandstone);
     for (const side of [-1, 1]) {
       const z = side * (p.baseRadius + 4.5);
       let top = -Infinity;
@@ -229,7 +233,7 @@ export class Temple implements MapContent {
         for (let c = 0; c < courses; c++) {
           const h = 0.95 + random() * 0.15;
           const w = 1.9 - c * 0.04;
-          const block = this.add(new THREE.Mesh(chippedBlock(w, h, 1.9 - c * 0.04, 1000 + c * 13 + side * 7 + sx * 3), this.mats.sandstone));
+          const block = this.add(new THREE.Mesh(chippedBlock(w, h, 1.9 - c * 0.04, 1000 + c * 13 + side * 7 + sx * 3), stone));
           block.position.set(x + (random() - 0.5) * 0.05, y + h / 2, z + (random() - 0.5) * 0.05);
           block.rotation.y = (random() - 0.5) * 0.04;
           y += h;
@@ -239,19 +243,19 @@ export class Temple implements MapContent {
       }
       // lintel (north gate is intact, south gate's lintel has fallen)
       if (side < 0) {
-        const lintel = this.add(new THREE.Mesh(chippedBlock(13.2, 1.2, 2.1, 2000), this.mats.sandstone));
+        const lintel = this.add(new THREE.Mesh(chippedBlock(13.2, 1.2, 2.1, 2000), stone));
         lintel.position.set(0, top + 0.6, z);
-        const crown = this.add(new THREE.Mesh(roundedBox(14, 0.35, 2.5, 0.05), this.mats.marble));
+        const crown = this.add(new THREE.Mesh(roundedBox(14, 0.35, 2.5, 0.05), nearFaded(this.mats.marble)));
         crown.position.set(0, top + 1.38, z);
       } else {
-        const lintel = this.add(new THREE.Mesh(chippedBlock(6.5, 1.2, 2.0, 2001), this.mats.sandstone));
+        const lintel = this.add(new THREE.Mesh(chippedBlock(6.5, 1.2, 2.0, 2001), stone));
         const gx = 7.6;
         const gz = z + 2.5;
         const g = this.terrain.heightAt(gx, gz);
         lintel.position.set(gx, g + 0.5, gz);
         lintel.rotation.set(0.05, 0.5, 0.18);
         this.collision.addBox(gx, gz, 3.3, 1.1, 0.5, g + 1.2);
-        const piece = this.add(new THREE.Mesh(chippedBlock(5.5, 1.15, 2.0, 2002), this.mats.sandstone));
+        const piece = this.add(new THREE.Mesh(chippedBlock(5.5, 1.15, 2.0, 2002), stone));
         piece.position.set(-8.4, this.terrain.heightAt(-8.4, z + 1.6) + 0.45, z + 1.6);
         piece.rotation.set(-0.08, -0.35, -0.12);
         this.collision.addBox(-8.4, z + 1.6, 2.8, 1.1, -0.35, g + 1.2);
@@ -342,13 +346,14 @@ export class Temple implements MapContent {
     for (const a of [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4]) {
       spots.push(new THREE.Vector2(Math.cos(a) * 9.5, Math.sin(a) * 9.5));
     }
+    // a brazier the camera passes over thins away rather than filling the bottom of the screen
     spots.forEach((s, i) => {
       const ground = this.collision.groundAt(s.x, s.y);
-      const pl = this.add(new THREE.Mesh(plinth, this.mats.sandstone));
+      const pl = this.add(new THREE.Mesh(plinth, nearFaded(this.mats.sandstone)));
       pl.position.set(s.x, ground + 0.3, s.y);
-      const b = this.add(new THREE.Mesh(bowl, this.mats.bronze));
+      const b = this.add(new THREE.Mesh(bowl, nearFaded(this.mats.bronze)));
       b.position.set(s.x, ground + 0.65, s.y);
-      const c = new THREE.Mesh(coalGeo, coals);
+      const c = new THREE.Mesh(coalGeo, nearFaded(coals));
       c.position.set(s.x, ground + 0.65 + 0.84, s.y);
       this.group.add(c);
       const fire = new Fire(new THREE.Vector3(s.x, ground + 1.5, s.y), 0.9, i * 7.3, 18);

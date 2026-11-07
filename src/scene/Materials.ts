@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, cross, float, fract, normalWorld, positionLocal, positionWorld, sqrt, texture, transformNormalToView, uniform, vec3,
+  abs, attribute, cameraPosition, cross, dot, float, fract, normalWorld, positionLocal, positionWorld, screenCoordinate, smoothstep, sqrt, texture, transformNormalToView, uniform, vec2, vec3,
 } from '../render/tsl';
 
 import { frosted } from './frost';
@@ -179,6 +179,38 @@ export function turnedVariant(mat: THREE.Material): THREE.Material | null {
     variants.set(mat, v);
   }
   return v;
+}
+
+/** How near the camera (m) a near-faded material is gone, and from where it is solid (see nearFaded). */
+export const NEAR_FADE = { gone: 0.8, solid: 3.2 } as const;
+
+const nearFades = new WeakMap<THREE.Material, THREE.MeshStandardNodeMaterial>();
+
+/**
+ * A copy of `mat` that thins away in a fine, even dither where it comes
+ * within a couple of meters of the camera, so a column, brazier or gate
+ * pillar the follow camera passes beside stops filling half the screen (its
+ * collision keeps it 0.8 m off a column; a brazier or the pedestal sits under
+ * its ray). It stays opaque (pixels are dropped, nothing is sorted or
+ * blended), and only the view thins: the shadow pass skips the alpha test
+ * node, so the shadow keeps its shape and still casts with the rest
+ * (`solidShadow`, see merge.ts). A library material keeps its lighting when
+ * baked (see turnedVariant). One copy per material, so one shader.
+ */
+export function nearFaded(mat: THREE.MeshStandardNodeMaterial): THREE.MeshStandardNodeMaterial {
+  let f = nearFades.get(mat);
+  if (!f) {
+    f = mat.clone();
+    f.name = `${mat.name}-near`;
+    f.opacityNode = smoothstep(NEAR_FADE.gone, NEAR_FADE.solid, cameraPosition.distance(positionWorld));
+    // interleaved gradient noise per screen pixel: an even screen-door, where hashed alpha clumped into speckle
+    f.alphaTestNode = fract(float(52.9829189).mul(fract(dot(screenCoordinate.xy.floor(), vec2(0.06711056, 0.00583715)))));
+    f.userData.solidShadow = true;
+    const normal = litNormals.get(mat);
+    if (normal) litNormals.set(f, normal);
+    nearFades.set(mat, f);
+  }
+  return f;
 }
 
 export function applySurface(mat: THREE.MeshStandardNodeMaterial, s: SurfaceNodes, opts: { tint?: any; roughnessMul?: any; aoStrength?: number } = {}, space: SurfaceSpace = drawnSpace): void {
