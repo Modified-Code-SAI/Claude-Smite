@@ -38,12 +38,20 @@ export interface ChamberDef {
   sd(lx: number, lz: number): number;
   /** Signed distance to the cavern's rock, positive inside it: the floor and what cuts it (local coordinates, gates excluded). */
   cave(lx: number, lz: number): number;
+  /**
+   * Signed distance to the nearest edge of the lava, water or void, the walls
+   * left out: positive on the floor (BRINK_FAR where nothing cuts it),
+   * negative over the hole (local coordinates).
+   */
+  brink(lx: number, lz: number): number;
   /** Columns that block movement: local x, z and radius (some stand in the water). */
   readonly pillars: readonly (readonly [number, number, number])[];
   /** Brazier spots: near the floor's edges, never on a bridge. */
   readonly fires: readonly (readonly [number, number])[];
   /** Where monsters rise from the floor, kept away from the entrance. */
   readonly spawns: readonly (readonly [number, number])[];
+  /** The forge's magma vents: spots on its open floor that blow fire (local x, z; none in the other depths). */
+  readonly vents: readonly (readonly [number, number])[];
   /** Spots over the chamber's lava or water where its light rises (local x, z). */
   readonly wells: readonly (readonly [number, number])[];
   /** Where the team holds the chamber: its middle, or the nearest broad floor to it. */
@@ -138,6 +146,9 @@ interface Spec {
   boss?: boolean;
 }
 
+/** What ChamberDef.brink reads on floor that nothing cuts. */
+export const BRINK_FAR = 50;
+
 /** The grid the chambers sit on: five across, four down, this far apart (meters). */
 const COLS = 5;
 const ROWS = 4;
@@ -156,9 +167,16 @@ function build(depth: number, slot: number, s: Spec): ChamberDef {
     for (const b of bridges) f = Math.max(f, Math.min(b(x, z), c0));
     return f;
   };
+  const brink: Field = (x, z) => {
+    let f = outline ? Math.min(BRINK_FAR, outline(x, z)) : BRINK_FAR;
+    for (const h of holes) f = Math.min(f, -h(x, z));
+    for (const b of bridges) f = Math.max(f, b(x, z));
+    return f;
+  };
   const pillars = s.pillars ?? [];
   const extent = s.extent;
   const fires = rimSpots(sd, cave, extent, pillars, s.boss ? 10 : 6);
+  const hold = holdSpot(sd, pillars);
   const def: ChamberDef = {
     name: s.name,
     depth,
@@ -168,11 +186,13 @@ function build(depth: number, slot: number, s: Spec): ChamberDef {
     extent,
     sd,
     cave,
+    brink,
     pillars,
     fires,
     spawns: spawnSpots(sd, extent, pillars, fires),
+    vents: depth === 0 ? ventSpots(sd, brink, extent, pillars, fires, hold, s.boss ? 6 : 4) : [],
     wells: s.wells ?? [],
-    hold: holdSpot(sd, pillars),
+    hold,
     runes: s.runes,
     ...(s.boss ? { boss: true } : {}),
   };
@@ -241,6 +261,29 @@ function spawnSpots(sd: Field, extent: number, pillars: readonly (readonly [numb
     return !nearPillar(pillars, x, z, 1.6);
   });
   return spread(spots, 8, ([x, z]) => hypot(x, z + extent * 0.45));
+}
+
+/**
+ * The forge's magma vents: on open floor clear of the lava's brink, the
+ * columns and the fires, out of the entrance's way and off the spot the
+ * team holds, spread as far apart as they will go.
+ */
+function ventSpots(
+  sd: Field,
+  brink: Field,
+  extent: number,
+  pillars: readonly (readonly [number, number, number])[],
+  fires: readonly (readonly [number, number])[],
+  hold: readonly [number, number],
+  count: number,
+): [number, number][] {
+  const spots = gridSpots(extent, (x, z) => {
+    if (sd(x, z) < 3.2 || brink(x, z) < 3) return false;
+    if (hypot(x, z - (extent - 3.5)) < 12 || hypot(x - hold[0], z - hold[1]) < 3.5) return false;
+    if (fires.some(([fx, fz]) => hypot(x - fx, z - fz) < 3)) return false;
+    return !nearPillar(pillars, x, z, 2.6);
+  });
+  return spread(spots, count, ([x, z]) => hypot(x, z + 6));
 }
 
 /** The chamber's middle if the floor is broad there, else the nearest broad floor to it (the south side first). */
@@ -525,6 +568,14 @@ export function underworldCave(x: number, z: number): number {
   if (i < 0) return SOLID;
   const c = CHAMBERS[i]!;
   return caveField(c, x - c.x, z - c.z);
+}
+
+/** ChamberDef.brink over the whole underworld, in world coordinates (gates aside). */
+export function underworldBrink(x: number, z: number): number {
+  const i = chamberAt(x, z);
+  if (i < 0) return SOLID;
+  const c = CHAMBERS[i]!;
+  return c.brink(x - c.x, z - c.z);
 }
 
 /** Where the team arrives in a chamber: just inside its south gate, facing north. */

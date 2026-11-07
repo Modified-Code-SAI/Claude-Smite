@@ -397,6 +397,64 @@ export const SOUNDS: Record<string, Recipe> = {
         [shimmer(r, 2, 1046.5, { rise: 1.2, peak: 0.12 }), 0.45, 0.35],
       ),
   },
+  // the Descent's dangers (HazardsView): a vent's rumble building, its blast of fire, a glob of slag landing with a hiss,
+  // the Drowned Halls' water surging in, the Abyss's brink breaking off and falling away, and the dark drawing in on a low moan
+  'hazard.ventWarn': {
+    variants: 2,
+    peak: 0.5,
+    make: (r) => layer([rumble(r, 1.7, { tone: 150, attack: 1.2 }), 0.6], [filter(whoosh(r, 1.6, 260, 950, { q: 0.8 }), 'lowpass', 2200), 0.55], [crackles(r, 1.4, 14), 0.3, 0.25]),
+  },
+  'hazard.vent': {
+    variants: 3,
+    peak: 0.75,
+    make: (r) =>
+      layer(
+        [fire(r, 1.9, { roar: 1 }), 1],
+        [filter(whoosh(r, 1.2, 700, 220, { q: 0.7 }), 'highpass', 160), 0.7],
+        [impact(r, 1.1, { tone: 110, room: 0.5 }), 0.5],
+        [debris(r, 1.2, { density: 20, gain: 0.4, tone: 900 }), 0.5, 0.05],
+        [crackles(r, 1.7, 30), 0.4, 0.1],
+      ),
+  },
+  'hazard.slag': {
+    variants: 3,
+    peak: 0.5,
+    make: (r) => layer([thump(r, 0.25, 190, 95, { noise: 0.6, gain: 0.7 }), 0.55], [vent(r), 0.6, 0.03], [crackles(r, 1, 26), 0.5, 0.02]),
+  },
+  'hazard.tide': {
+    variants: 2,
+    peak: 0.5,
+    make: (r) => {
+      const parts: [Float32Array, number, number][] = [
+        [filter(whoosh(r, 3.2, 200, 460, { q: 0.7 }), 'lowpass', 1500), 0.9, 0],
+        [filter(whoosh(r, 2.4, 560, 280, { q: 0.9 }), 'lowpass', 2400), 0.45, 0.7],
+        [filter(thump(r, 0.8, 140, 70, { noise: 0.4, gain: 0.6 }), 'lowpass', 800), 0.35, 0.15],
+      ];
+      for (let k = 0; k < 6; k++) parts.push([bubble(r), 0.14, 0.6 + k * 0.32 + r() * 0.1]);
+      return layer(...parts);
+    },
+  },
+  'hazard.crumble': {
+    variants: 3,
+    peak: 0.7,
+    make: (r) =>
+      layer(
+        [impact(r, 1.3, { tone: 120, crunch: 1 }), 0.8],
+        [debris(r, 1.9, { density: 34, gain: 0.5, tone: 850 }), 1, 0.05],
+        [rumble(r, 2.2, { tone: 140 }), 0.55, 0.1],
+        [filter(whoosh(r, 1.7, 950, 220, { q: 0.8 }), 'lowpass', 2200), 0.45, 0.35],
+      ),
+  },
+  'hazard.dark': {
+    variants: 2,
+    peak: 0.45,
+    make: (r) =>
+      layer(
+        [choir(r, 3.4, 98, { vowelName: 'oo', env: (t) => ahr(t, 1.2, 0.8, 1.3) }), 0.55],
+        [choir(r, 3, 147, { vowelName: 'oo', env: (t) => ahr(t, 1, 0.6, 1.2) }), 0.3, 0.4],
+        [whoosh(r, 3, 340, 160, { q: 1 }), 0.4],
+      ),
+  },
   'soul.absorb': { variants: 3, peak: 0.35, make: (r) => layer([whoosh(r, 0.3, 700, 3400, { q: 1.4, peak: 0.85, gain: 0.7 }), 0.6], [shimmer(r, 0.55, 1046.5, { rise: 1.3, peak: 0.15 }), 1, 0.07], [choir(r, 0.6, 523.3, { vowelName: 'oo', env: (t) => ahr(t, 0.06, 0.08, 0.4) }), 0.35, 0.05]) },
 
   // -- the gods' own voices (voices.ts)

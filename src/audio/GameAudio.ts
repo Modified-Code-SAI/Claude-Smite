@@ -44,6 +44,15 @@ interface Tracked {
 }
 
 /** How loud each relic's sound plays (the bursts carry, a god's own relics stay close). */
+/** The Descent's dangers going off (HazardsView): how loud, how far they carry (ref, m), and the herald's warning the first time each comes in a run. */
+const HAZARD_SOUND: Record<string, { gain: number; ref: number; say?: string }> = {
+  'hazard.ventWarn': { gain: 0.5, ref: 10 },
+  'hazard.vent': { gain: 0.85, ref: 18, say: 'The vents are blowing!' },
+  'hazard.slag': { gain: 0.5, ref: 9, say: 'The lava spits slag!' },
+  'hazard.tide': { gain: 0.65, ref: 0, say: 'The water is rising!' },
+  'hazard.crumble': { gain: 0.8, ref: 16, say: 'The ground is giving way!' },
+  'hazard.dark': { gain: 0.6, ref: 0, say: 'The dark is creeping in!' },
+};
 const RELIC_GAIN: Record<string, number> = { 'relic.knell': 0.75, 'relic.chain': 0.45, 'relic.echo': 0.5, 'relic.aegis': 0.45, 'relic.harvest': 0.35, 'relic.spite': 0.7 };
 
 /** Which god basic-hit sound each god makes. */
@@ -157,11 +166,33 @@ export class GameAudio {
       else if (name === 'bossCall') this.bossCall(at, k);
       // a relic going off: bursts and leaps where they happen (a pack's chain of bursts thinned out), a god's own relics at that god
       else if (name.startsWith('relic.')) this.engine.play(name, { at, gain: RELIC_GAIN[name] ?? 0.5, vary: 0.05, ref: 14 }, 2, name === 'relic.knell' ? 0.09 : name === 'relic.chain' ? 0.06 : 0.12);
+      else if (name.startsWith('hazard.')) this.hazard(name, at);
     };
   }
 
   private get me(): Unit {
     return this.game.player;
+  }
+
+  /** The dangers the herald has warned of this run (it names each once). */
+  private warned = new Set<string>();
+  private warnedRun: unknown = null;
+
+  /** A Descent danger going off: where it is, or (the flood, the dark) through the whole room. */
+  private hazard(name: string, at: { x: number; y: number; z: number }): void {
+    const s = HAZARD_SOUND[name];
+    if (!s) return;
+    if (s.ref) this.engine.play(name, { at, gain: s.gain, vary: 0.06, ref: s.ref }, 2, 0.1);
+    else this.engine.play(name, { bus: 'ambience', gain: s.gain }, 2);
+    const run = this.game.descent;
+    if (run !== this.warnedRun) {
+      this.warnedRun = run;
+      this.warned.clear();
+    }
+    if (s.say && !this.warned.has(name)) {
+      this.warned.add(name);
+      this.herald.say(s.say, 'bad', 1);
+    }
   }
 
   // -------------------------------------------------------------------------
