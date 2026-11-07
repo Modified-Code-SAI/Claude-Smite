@@ -133,6 +133,9 @@ export type MonsterType =
   | 'gravekeeper'
   | 'cinderling'
   | 'slagBrute'
+  | 'drownedThrall'
+  | 'lanternJelly'
+  | 'tideLurker'
   | 'gildedThornback'
   | 'warden'
   | 'treasureWyrm'
@@ -153,6 +156,12 @@ const MONSTERS: Record<MonsterType, { name: string; health: number; power: numbe
   cinderling: { name: 'Cinderling', health: 250, power: 13, speed: 385, prot: 6, range: 1.3, radius: 0.5, rate: 1.05, xp: 40, favor: 5 },
   // the Ashen Depths' heavy: a hunched brute of cooled slag round a molten core that slams the floor
   slagBrute: { name: 'Slag Brute', health: 760, power: 26, speed: 300, prot: 24, range: 2, radius: 1.05, rate: 0.6, xp: 130, favor: 14 },
+  // the Drowned Halls' many: bloated husks of the drowned that shamble in and grip whoever they strike, slowing them
+  drownedThrall: { name: 'Drowned Thrall', health: 340, power: 14, speed: 300, prot: 12, range: 1.5, radius: 0.6, rate: 0.8, xp: 45, favor: 6 },
+  // the Drowned Halls' shooters: jellyfish of cold soul light drifting over the floor, spitting bolts of it
+  lanternJelly: { name: 'Lantern Jelly', health: 230, power: 19, speed: 320, prot: 8, range: 7, radius: 0.55, rate: 0.7, xp: 60, favor: 8, projectile: 18 },
+  // the Drowned Halls' heavy: a great lure-headed fish that swims under the floor and bursts up beneath the gods
+  tideLurker: { name: 'Tide Lurker', health: 700, power: 25, speed: 330, prot: 20, range: 1.9, radius: 1.0, rate: 0.7, xp: 120, favor: 13 },
   // Temple Siege only: never fights, runs from the gods, and carries a second boon
   gildedThornback: { name: 'Gilded Thornback', health: 900, power: 0, speed: 345, prot: 25, range: 1.4, radius: 0.6, rate: 0.5, xp: 120, favor: 40 },
   treasureWyrm: { name: 'Treasure Wyrm', health: 5200, power: 70, speed: 280, prot: 35, range: 3.2, radius: 2.6, rate: 0.5, xp: 300, favor: 0 },

@@ -10,7 +10,7 @@ import { PROJECTILE_HEIGHT } from '../sim/Sim';
 import { isStructure, WORLD_SCALE, type Unit, type Flash, type FlashShape, type Projectile, type SimEvent } from '../sim/Unit';
 import { ArcView } from './Arcs';
 import { GroundDecal, type DecalShape } from './GroundDecal';
-import { ACID, KEEPER_CORE, KEEPER_GLOW, SHADE_CORE, SHADE_GLOW, BUFF_GLOW } from './MonsterViews';
+import { ACID, DROWNED_CORE, DROWNED_GLOW, KEEPER_CORE, KEEPER_GLOW, SHADE_CORE, SHADE_GLOW, BUFF_GLOW } from './MonsterViews';
 import { paletteFor, paletteOf, type GodPalette } from './palette';
 import { hypot } from '../core/math';
 import { basicLookFor, lookFor, type ShotLook, type ZoneLook } from './skillLooks';
@@ -1044,6 +1044,7 @@ function monsterPalette(u: Unit, fire: GodPalette | null): GodPalette {
   if (u.tag.endsWith('moltenColossus')) return { ...p, vfx: 0xff4a10, core: 0xffd080 };
   if (u.tag.endsWith('thornSpitter')) return { ...p, vfx: ACID, core: 0xe8ffc0 };
   if (u.tag.endsWith(':shade')) return { ...p, vfx: SHADE_GLOW, core: SHADE_CORE };
+  if (u.tag.endsWith(':lanternJelly')) return { ...p, vfx: DROWNED_GLOW, core: DROWNED_CORE };
   if (u.tag.endsWith(':gravekeeper') || u.tag.endsWith(':ossuaryKing')) return { ...p, vfx: KEEPER_GLOW, core: KEEPER_CORE };
   if (u.kind !== 'monster') return p;
   if (!u.tag.endsWith('warden')) return fire ?? p;

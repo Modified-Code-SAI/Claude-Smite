@@ -97,11 +97,25 @@ export const CINDER = { warn: 1.25, radius: 2.2, damage: 0.07 } as const;
 /** The Slag Brute's slam: both fists into the floor, every god within `radius` hit for `scale` times its power, wound up (its circle on the ground) only once one is within `near` of it. */
 export const BRUTE: BossSpecial = { every: 8, windup: 1.1, radius: 3.4, scale: 1.5, near: 4.5, warn: true };
 
+/** A Drowned Thrall's grip: each blow it lands slows the god by `slow` for `time` seconds. */
+export const GRIP = { slow: 0.25, time: 1.6 } as const;
+
+/**
+ * The Tide Lurker: it fights on the floor for `up` seconds (`first` the
+ * first time), then dives under it, out of reach, and swims at its foe a
+ * `haste` faster for up to `under` seconds. Beside them it rises: its
+ * circle shows on the ground for `warn` seconds, then it bursts up, hitting
+ * every god within `radius` for `scale` times its power and throwing them
+ * off their feet for `lift`.
+ */
+export const LURK = { first: 3.5, up: 7, under: 3.5, warn: 0.9, radius: 2.3, scale: 1.6, lift: 0.5, haste: 0.4 } as const;
+
 /** Each depth's own beasts: the many that rush in, the ones that hang back and shoot, and the heavy that anchors a pack. */
 export const DEPTH_BEASTS: readonly { body: MonsterType; ranged: MonsterType; heavy: MonsterType }[] = [
   // the Ashen Depths: Cinderlings swarm, Slag Brutes slam
   { body: 'cinderling', ranged: 'thornSpitter', heavy: 'slagBrute' },
-  { body: 'thornback', ranged: 'thornSpitter', heavy: 'thornbackAlpha' },
+  // the Drowned Halls: Drowned Thralls grip, Lantern Jellies shoot, Tide Lurkers rise from under the floor
+  { body: 'drownedThrall', ranged: 'lanternJelly', heavy: 'tideLurker' },
   { body: 'thornback', ranged: 'thornSpitter', heavy: 'thornbackAlpha' },
 ];
 
@@ -130,6 +144,9 @@ export const SOULS: Record<MonsterType, number> = {
   gravekeeper: 3,
   cinderling: 1,
   slagBrute: 2,
+  drownedThrall: 1,
+  lanternJelly: 1,
+  tideLurker: 2,
   thornbackAlpha: 2,
   warden: 4,
   gildedThornback: 5,
@@ -279,7 +296,7 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     };
     // Shades haunt the halls past the first boss, each in place of a Thornback, and Gravekeepers the Abyss
     // past the second, each in place of two (a healer in a pack is worth more than a body)
-    const shades = n > DESCENT.bossEvery ? Math.min(3, 1 + Math.floor((n - DESCENT.bossEvery - 1) / 3)) : 0;
+    const shades = n > 2 * DESCENT.bossEvery ? Math.min(3, 1 + Math.floor((n - DESCENT.bossEvery - 1) / 3)) : 0;
     const keepers = n > 2 * DESCENT.bossEvery ? Math.min(2, 1 + Math.floor((n - 2 * DESCENT.bossEvery - 1) / 2)) : 0;
     add(beasts.body, Math.min(9, 3 + Math.floor(n * 0.6)) - shades - 2 * keepers);
     add(beasts.ranged, n >= 2 ? Math.min(4, Math.floor(n / 2)) : 0);
@@ -392,6 +409,9 @@ export class DescentMonsterBrain extends MonsterBrain {
   private blinkIn: number = SHADE_BLINK.first;
   /** A Gravekeeper's next mend, in seconds. */
   private mendIn: number = KEEPER.first;
+  /** A Tide Lurker: on the floor, swimming under it, or rising beneath its foe; and the seconds left of that. */
+  private lurk: 'up' | 'under' | 'rising' = 'up';
+  private lurkLeft: number = LURK.first;
   /** Its way to its foe round the chamber's lava, water or void. */
   private readonly route = new Route();
   /** The chamber's columns (world coordinates). */
@@ -442,6 +462,7 @@ export class DescentMonsterBrain extends MonsterBrain {
       if (f) u.body.yaw = Math.atan2(-(f.x - u.x), -(f.z - u.z));
       return;
     }
+    if (u.tag.endsWith(':tideLurker') && this.lurking(dt)) return;
     if (u.tag.endsWith(':shade') && (this.blinkIn -= dt) <= 0 && this.blink()) this.blinkIn = SHADE_BLINK.every;
     const keeper = u.tag.endsWith(':gravekeeper');
     if (keeper && (this.mendIn -= dt) <= 0) this.mendIn = this.mend() ? KEEPER.every : 0.4;
@@ -461,6 +482,75 @@ export class DescentMonsterBrain extends MonsterBrain {
       }
     }
     if (keeper) this.keepBack();
+  }
+
+  /** Where a Tide Lurker is: on the floor, under it, or rising (for the view). */
+  get lurkState(): 'up' | 'under' | 'rising' {
+    return this.lurk;
+  }
+
+  /** Share of a Tide Lurker's rise done, 0 when not rising (for the view). */
+  get riseProgress(): number {
+    return this.lurk === 'rising' ? 1 - Math.max(0, this.lurkLeft) / LURK.warn : 0;
+  }
+
+  /**
+   * The Tide Lurker's dive: when its time on the floor is up it goes under,
+   * out of reach, swims at its foe and rises beside them in a burst (see
+   * LURK). True while it is under or rising, when this does all it does.
+   * Stunned or rooted on the floor, it can't dive.
+   */
+  private lurking(dt: number): boolean {
+    const u = this.self;
+    const s = this.s;
+    const foe = this.camp.foe;
+    if (this.lurk === 'up') {
+      this.lurkLeft -= dt;
+      if (this.lurkLeft > 0 || !foe || !this.chamber || u.windup > 0 || !s.canMove(u) || u.combatant.cc.locks().cast) return false;
+      this.lurk = 'under';
+      this.lurkLeft = LURK.under;
+      u.sinceAction = 0;
+    }
+    // out of reach while it's under the floor and rising
+    u.untargetable = Math.max(u.untargetable, 0.2);
+    u.windup = 0;
+    if (this.lurk === 'under') {
+      this.lurkLeft -= dt;
+      u.move = null;
+      const near = foe && foe.alive ? hypot(foe.x - u.x, foe.z - u.z) - foe.radius - u.radius : Infinity;
+      if (foe && foe.alive && near > 0.4 && this.chamber) {
+        u.combatant.refreshTimedMod('bonusMoveSpeed', LURK.haste, 0.25);
+        const p = this.route.next(this.chamber, u, foe, s.time);
+        const dx = p.x - u.x;
+        const dz = p.z - u.z;
+        const d = Math.max(0.01, hypot(dx, dz));
+        u.move = { x: dx / d, z: dz / d };
+        u.body.yaw = Math.atan2(-dx, -dz);
+      }
+      if (near <= 0.4 || this.lurkLeft <= 0) {
+        this.lurk = 'rising';
+        this.lurkLeft = LURK.warn;
+        u.move = null;
+        s.warnAt(u, { type: 'circle', x: u.x, z: u.z, radius: LURK.radius }, LURK.warn);
+      }
+      return true;
+    }
+    // rising: it holds still under its circle, then bursts up
+    u.move = null;
+    this.lurkLeft -= dt;
+    if (this.lurkLeft > 0) return true;
+    u.untargetable = 0;
+    this.lurk = 'up';
+    this.lurkLeft = LURK.up;
+    u.sinceAction = 0;
+    s.flashAt(u, { type: 'circle', x: u.x, z: u.z, radius: LURK.radius });
+    const raw = u.combatant.stats.attackPower * LURK.scale;
+    for (const t of s.enemiesOf(u)) {
+      if (t.kind !== 'god' || !t.alive || hypot(t.x - u.x, t.z - u.z) > LURK.radius + t.radius) continue;
+      s.strike(u, t, raw, 'physical');
+      if (t.alive) t.combatant.receiveCC('stun', LURK.lift, 0, 'descent:lurker');
+    }
+    return true;
   }
 
   /**
@@ -861,6 +951,12 @@ export class Descent {
       e.unit.downed = false;
       const c = e.unit.combatant;
       c.health = Math.max(1, c.stats.maxHealth * share);
+      return;
+    }
+    if (e.type === 'damage') {
+      // a Drowned Thrall's blow: it grips and drags at the god it lands on
+      const src = e.source;
+      if (src && !e.ability && src.tag.endsWith(':drownedThrall') && e.target.kind === 'god' && e.target.alive) e.target.combatant.receiveCC('slow', GRIP.time, GRIP.slow, 'descent:grip');
       return;
     }
     if (e.type !== 'death') return;
