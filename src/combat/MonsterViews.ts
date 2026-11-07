@@ -57,7 +57,7 @@ export const KEEPER_CORE = 0xfff0c8;
  * Seconds after death each body starts going down into the ground (the rigs
  * below sink on these), so whatever marks the ground taking it lands as it goes.
  */
-const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5, drownedThrall: 1.5, lanternJelly: 1.2, tideLurker: 1.6, gravehound: 1.3, packleader: 1.6 } as const;
+const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5, drownedThrall: 1.5, lanternJelly: 1.2, tideLurker: 1.6, gravehound: 1.3, packleader: 1.6, soulForge: 1.4 } as const;
 
 /** When a monster's body starts sinking into the ground, in seconds after it died. */
 export function sinksAfter(tag: string): number {
@@ -942,6 +942,103 @@ function slagBrute(): MonsterView {
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// Soul Forge
+
+/**
+ * The Ashen Depths' soul forges: squat beehive kilns of cracked basalt bound
+ * in iron on a plinth of stone, a fire roaring in the arched mouth, a
+ * chimney glowing on top and a hide bellows working at either flank. Each
+ * breath of the bellows fans the fire; when it breathes out a Cinderling the
+ * fire flares out of its mouth. Smashed, it splits, slumps and goes into the
+ * ground, its fire dying.
+ */
+function soulForge(): MonsterView {
+  const lavaMat = lavaStone();
+  const { stone, hoof: iron, hide } = mats();
+  const fire = glow(CINDER_GLOW, 4.5);
+  const flameMat = (cinderFlame ??= cinderFlameMaterial());
+  const root = new THREE.Group();
+  const rig = pivot(root, 0, 0, 0);
+  // a plinth of blocks under it, and a step out in front of the mouth
+  // (of slag, like the kiln: pale stone underfoot glared in the forge's light)
+  mesh(rig, geo('sf-plinth', () => rock(1.25, 51).scale(1.12, 0.3, 1.12)), lavaMat, 0, 0.1, 0);
+  mesh(rig, geo('sf-step', () => rock(0.55, 52).scale(1.5, 0.35, 0.8)), iron, 0, 0.06, 1.05);
+  const kiln = pivot(rig, 0, 0.22, 0);
+  // the beehive: wide at the foot, drawn in to its chimney
+  mesh(kiln, geo('sf-dome', () => new THREE.LatheGeometry([[1.02, -0.05], [1.1, 0.3], [1.08, 0.75], [0.95, 1.2], [0.72, 1.6], [0.48, 1.88], [0.36, 2.0]].map(([x, y]) => new THREE.Vector2(x, y)), 22)), lavaMat);
+  // iron hoops round it
+  mesh(kiln, geo('sf-hoop', () => new THREE.TorusGeometry(1.1, 0.055, 6, 32).rotateX(Math.PI / 2)), iron, 0, 0.42, 0);
+  mesh(kiln, geo('sf-hoop2', () => new THREE.TorusGeometry(0.97, 0.05, 6, 30).rotateX(Math.PI / 2)), iron, 0, 1.12, 0);
+  // the chimney and the fire showing at its top (what the camera above sees best)
+  mesh(kiln, geo('sf-chimney', () => new THREE.CylinderGeometry(0.3, 0.4, 0.75, 12, 1, true)), lavaMat, 0, 2.3, 0);
+  mesh(kiln, geo('sf-lip', () => new THREE.TorusGeometry(0.31, 0.07, 6, 16).rotateX(Math.PI / 2)), iron, 0, 2.66, 0);
+  const vent = mesh(kiln, geo('sf-vent', () => new THREE.CircleGeometry(0.28, 14).rotateX(-Math.PI / 2)), fire, 0, 2.6, 0, 0, 0, 0, false);
+  // the mouth: an arch of stone round a face of fire, a lintel over it
+  mesh(kiln, geo('sf-arch', () => new THREE.TorusGeometry(0.5, 0.14, 8, 18, Math.PI)), stone, 0, 0.12, 1.02);
+  mesh(kiln, geo('sf-lintel', () => rock(0.3, 53).scale(1.9, 0.55, 0.8)), stone, 0, 0.78, 0.98);
+  const face = mesh(kiln, geo('sf-face', () => new THREE.CircleGeometry(0.46, 18, 0, Math.PI)), fire, 0, 0.12, 0.99, 0, 0, 0, false);
+  // tongues of flame licking up out of it
+  const flames: THREE.Mesh[] = [];
+  const tongue = geo('sf-tongue', () => new THREE.ConeGeometry(0.16, 0.7, 10, 1, true).translate(0, 0.35, 0));
+  for (let i = 0; i < 3; i++) flames.push(mesh(kiln, tongue, flameMat, (i - 1) * 0.24, 0.18, 1.05, 0.55, 0, (i - 1) * -0.3, false));
+  // a hide bellows working at each flank, its iron nose in the kiln
+  const bags: THREE.Mesh[] = [];
+  const boards: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const b = pivot(kiln, sx * 1.12, 0.45, -0.25);
+    b.rotation.y = sx * 0.25;
+    mesh(b, geo('sf-nose', () => new THREE.ConeGeometry(0.09, 0.45, 8).rotateZ(Math.PI / 2)), iron, -sx * 0.05, 0, 0, 0, 0, sx > 0 ? Math.PI : 0);
+    bags.push(mesh(b, geo('sf-bag', () => new THREE.SphereGeometry(0.34, 14, 10).scale(0.95, 0.55, 1.1)), hide, sx * 0.42, 0, 0));
+    mesh(b, geo('sf-board', () => new THREE.BoxGeometry(0.75, 0.05, 0.62)), iron, sx * 0.42, -0.2, 0);
+    const top = pivot(b, sx * 0.08, 0.2, 0);
+    mesh(top, geo('sf-board', () => new THREE.BoxGeometry(0.75, 0.05, 0.62)), iron, sx * 0.34, 0, 0);
+    mesh(top, geo('sf-handle', () => new THREE.CylinderGeometry(0.03, 0.03, 0.5, 6).rotateZ(Math.PI / 2)), iron, sx * 0.9, 0.02, 0);
+    boards.push(top);
+  }
+  const embers = makeEmbers(rig);
+  skinRigid(root, 'soul-forge', rig, [vent, face, ...flames, ...bags], bounds(3));
+
+  let t = Math.random() * 10;
+  let pump = Math.random() * 10;
+  return {
+    root,
+    height: 2.9,
+    linger: 3.4,
+    animate(u, dt, deathTime, wobble) {
+      t += dt;
+      const dead = deathTime >= 0;
+      // a Cinderling just breathed out of it (see Descent's forges): the fire flares out of its mouth
+      const flare = !dead && u.sinceAction < 0.9 ? Math.sin((u.sinceAction / 0.9) * Math.PI) : 0;
+      pump += dt * (dead ? 0 : 3 + flare * 5);
+      const p = Math.sin(pump) * 0.5 + 0.5;
+      for (const [i, top] of boards.entries()) top.rotation.z = (i ? 1 : -1) * (0.05 + p * 0.32);
+      for (const bag of bags) bag.scale.set(1 + p * 0.08, 0.45 + p * 0.75, 1 + p * 0.06);
+      // each breath of the bellows fans the fire
+      const fan = 1 - p * 0.6;
+      const roar = Math.sin(t * 7) * 0.05 + Math.sin(t * 13.1) * 0.03;
+      face.scale.setScalar(Math.max(0.01, (1 + roar + fan * 0.08 + flare * 0.2) * (dead ? Math.max(0, 1 - deathTime) : 1)));
+      vent.scale.setScalar(Math.max(0.01, (0.9 + fan * 0.15 + flare * 0.3) * (dead ? Math.max(0, 1 - deathTime * 0.8) : 1)));
+      flames.forEach((f, i) => {
+        const lick = 0.75 + Math.sin(t * (8 + i * 1.7) + i) * 0.2 + fan * 0.25 + flare * 1.6;
+        f.scale.set(1 + flare * 0.5, Math.max(0.01, dead ? lick * Math.max(0, 1 - deathTime * 1.5) : lick), 1 + flare * 0.5);
+      });
+      embers.step(dt, dead ? 0 : 0.6 + fan * 0.4 + flare * 3);
+      // a blow makes it shudder
+      kiln.rotation.set(wobble * 0.05, 0, wobble * 0.04);
+      kiln.scale.setScalar(1 + flare * 0.03);
+      if (dead) {
+        // it splits and slumps to one side, then goes down into the ground
+        const k = Math.min(1, deathTime / 0.8);
+        kiln.rotation.set(k * k * 0.22, 0, -k * k * 0.18);
+        kiln.position.y = 0.22 - k * 0.35;
+        rig.position.y = -Math.max(0, deathTime - SINKS.soulForge) * 1.1;
+      }
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Drowned Thrall
 
@@ -1517,6 +1614,92 @@ function gravehound(leader: boolean): MonsterView {
         mane.scale.setScalar(Math.max(0.01, 1 - deathTime * 0.8));
         for (const l of legs) l.rotation.x *= 1 - t;
       }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Grave bell
+
+let bronze: THREE.Material | null = null;
+
+/** Old bell bronze gone green: verdigris over the dull metal, streaked down from the crown where the wet runs. */
+function bellBronzeMaterial(): THREE.Material {
+  const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide });
+  const p = positionGeometry;
+  const patina = smoothstep(0.45, 0.68, n(3.2, p).mul(0.6).add(n(12, p).mul(0.4)));
+  const streak = smoothstep(0.58, 0.8, mx_noise_float(vec3(p.x.mul(10), p.y.mul(1.3), p.z.mul(10))).mul(0.5).add(0.5));
+  const green = patina.max(streak.mul(0.75));
+  m.colorNode = mix(vec3(0.34, 0.21, 0.1), vec3(0.2, 0.38, 0.32), green);
+  m.metalnessNode = mix(float(0.9), float(0.15), green);
+  m.roughnessNode = mix(float(0.32), float(0.8), green);
+  return m;
+}
+
+export interface GraveBell {
+  root: THREE.Group;
+  /** Poses it for this frame: how far it is rung (0..1) and the seconds since it tolled (negative before). */
+  ring(dt: number, rung: number, since: number): void;
+}
+
+/**
+ * One of the Abyss's grave bells: a green-bronze bell hung from a beam of
+ * stone between two posts, a skull on each, soul fire cold and dim in its
+ * mouth. As a god stands by it the bell stirs and its fire wakes; it tolls,
+ * swings wide and keeps burning green.
+ */
+export function graveBell(): GraveBell {
+  const { stone } = mats();
+  const ivory = (wyrmMats ??= wyrmMaterials()).ivory;
+  const metal = (bronze ??= bellBronzeMaterial());
+  const soul = glow(HOUND_GLOW, 3.5);
+  const flameMat = (houndFlame ??= houndFlameMaterial());
+  const root = new THREE.Group();
+  const rig = pivot(root, 0, 0, 0);
+  mesh(rig, geo('gb-slab', () => rock(1.4, 61).scale(1.15, 0.16, 0.75)), stone, 0, 0.04, 0);
+  for (const sx of [-1, 1]) {
+    mesh(rig, geo('gb-post', () => new THREE.CylinderGeometry(0.17, 0.26, 3, 7)), stone, sx * 1.15, 1.5, 0, 0, 0, sx * 0.03);
+    mesh(rig, geo('gb-cap', () => rock(0.3, 62).scale(1.2, 0.6, 1.2)), stone, sx * 1.15, 3.05, 0);
+    // a skull on each post, eyes lit
+    const skull = pivot(rig, sx * 1.15, 3.32, 0.04);
+    skull.rotation.y = -sx * 0.35;
+    mesh(skull, geo('gb-skull', () => new THREE.SphereGeometry(0.17, 14, 10).scale(1, 0.95, 1.12)), ivory, 0, 0, 0);
+    mesh(skull, geo('gb-jaw', () => new THREE.SphereGeometry(0.11, 10, 8).scale(1, 0.55, 1.1)), ivory, 0, -0.12, 0.06);
+    for (const ex of [-1, 1]) mesh(skull, geo('gb-eye', () => new THREE.SphereGeometry(0.035, 8, 6)), soul, ex * 0.065, 0.02, 0.14, 0, 0, 0, false);
+  }
+  mesh(rig, geo('gb-beam', () => new THREE.CylinderGeometry(0.14, 0.14, 2.7, 8).rotateZ(Math.PI / 2)), stone, 0, 2.86, 0);
+  // the bell hangs from a pair of links; it swings from the beam
+  const swing = pivot(rig, 0, 2.78, 0);
+  for (let i = 0; i < 2; i++) mesh(swing, geo('gb-link', () => new THREE.TorusGeometry(0.07, 0.022, 6, 12)), metal, 0, -0.05 - i * 0.11, 0, 0, i * Math.PI / 2, 0);
+  const lip = 0.62;
+  mesh(swing, geo('gb-bell', () => new THREE.LatheGeometry([[0.001, 0], [0.16, -0.02], [0.24, -0.12], [0.28, -0.45], [0.36, -0.8], [0.52, -1.0], [lip, -1.08], [0.6, -1.12]].map(([x, y]) => new THREE.Vector2(x, y)), 26)), metal, 0, -0.2, 0);
+  mesh(swing, geo('gb-band', () => new THREE.TorusGeometry(0.35, 0.03, 6, 24).rotateX(Math.PI / 2)), metal, 0, -0.98, 0);
+  const clapper = pivot(swing, 0, -0.32, 0);
+  mesh(clapper, geo('gb-rod', () => new THREE.CylinderGeometry(0.025, 0.025, 0.7, 6)), metal, 0, -0.38, 0);
+  mesh(clapper, geo('gb-ball', () => new THREE.SphereGeometry(0.09, 10, 8)), ivory, 0, -0.75, 0);
+  // the soul fire in its mouth, and a flame that burns over it once it has tolled
+  const fire = mesh(swing, geo('gb-soul', () => new THREE.SphereGeometry(0.3, 14, 10).scale(1, 0.6, 1)), soul, 0, -1.06, 0, 0, 0, 0, false);
+  const flame = mesh(rig, geo('gb-flame', () => new THREE.ConeGeometry(0.22, 0.9, 10, 1, true).translate(0, 0.45, 0)), flameMat, 0, 2.98, 0, 0, 0, 0, false);
+  skinRigid(root, 'grave-bell', rig, [fire, flame], bounds(3.6));
+
+  let t = Math.random() * 10;
+  let sway = 0;
+  let vel = 0;
+  return {
+    root,
+    ring(dt, rung, since) {
+      t += dt;
+      const tolled = since >= 0;
+      // stirring as it's rung, then a toll: a hard swing that rings down
+      if (tolled && since < dt * 1.5) vel = 2.6;
+      const target = tolled ? 0 : Math.sin(t * (2 + rung * 3)) * rung * 0.12;
+      vel += ((target - sway) * 18 - vel * (tolled ? 1.2 : 6)) * dt;
+      sway += vel * dt;
+      swing.rotation.x = sway;
+      clapper.rotation.x = -sway * 1.6 + Math.sin(t * 3) * 0.02;
+      const lit = tolled ? 1 : rung;
+      fire.scale.setScalar(Math.max(0.05, 0.35 + lit * 0.75 + Math.sin(t * 5) * 0.05 * lit + (tolled ? Math.max(0, 1 - since) * 0.8 : 0)));
+      flame.scale.set(1, Math.max(0.01, tolled ? Math.min(1, since * 2) * (0.85 + Math.sin(t * 6.3) * 0.15) : 0.01), 1);
     },
   };
 }
@@ -2235,6 +2418,8 @@ export function monsterWarmup(): THREE.Object3D[] {
     tideLurker(),
     gravehound(false),
     gravehound(true),
+    soulForge(),
+    graveBell(),
   ].map((v) => v.root);
 }
 
@@ -2274,5 +2459,6 @@ function createView(u: Pick<Unit, 'tag'>): MonsterView {
   if (type === 'lanternJelly') return lanternJelly();
   if (type === 'tideLurker') return tideLurker();
   if (type === 'gravehound' || type === 'packleader') return gravehound(type === 'packleader');
+  if (type === 'soulForge') return soulForge();
   return thornback(type === 'thornbackAlpha', type === 'thornSpitter', type === 'gildedThornback');
 }

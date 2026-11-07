@@ -73,6 +73,8 @@ export class Hazards {
   readonly gaps: Gap[] = [];
   /** Seconds into the tide's cycle (calm, rising, high, ebbing). */
   tide = 0;
+  /** A flood chamber's flood (see Descent's 'flood'): while set, the tide comes straight in and holds at the full. */
+  surge = false;
   /** How far (m) the creeping dark reaches in from the void. */
   dark = 0;
   /** The chamber they belong to. */
@@ -105,6 +107,7 @@ export class Hazards {
     this.fought = 0;
     this.owed.clear();
     this.tide = HAZARDS.tide.calm - HAZARDS.tide.first;
+    this.surge = false;
     this.spitIn = HAZARDS.slag.first;
     this.crumbleIn = HAZARDS.crumble.first;
     const rng = this.sim.rng;
@@ -256,8 +259,12 @@ export class Hazards {
     const T = HAZARDS.tide;
     const period = T.calm + T.rise + T.high + T.ebb;
     // between fights a flood under way drains away; the next fight starts calm
-    if (active) this.tide = (this.tide + dt) % period;
-    else if (this.tide >= T.calm) {
+    if (active) {
+      if (this.surge && this.tide < T.calm) this.tide = T.calm;
+      this.tide = (this.tide + dt) % period;
+      // (a flood chamber's water never ebbs until it drains)
+      if (this.surge && this.tide > T.calm + T.rise + T.high * 0.5) this.tide = T.calm + T.rise;
+    } else if (this.tide >= T.calm) {
       // (from wherever it stands, straight into the ebb)
       const ebbFrom = T.calm + T.rise + T.high;
       this.tide = Math.max(this.tide + dt, ebbFrom + T.ebb * (1 - this.flood));

@@ -3,6 +3,7 @@
 .descent-where span { font-size: 14px; opacity: 0.85; }
 .descent-where em { font-style: normal; font-size: 13px; color: #9ff0ff; text-shadow: 0 0 8px rgba(120, 220, 255, 0.8); }
 .descent .clash-state b.down { color: #ff9a86; }
+.descent .clash-state b.challenge { color: #ffe0a0; }
 /* the top of the screen stacks without overlapping: status line (one line), curses, a boss's bar, then hints */
 .descent .clash-state { white-space: nowrap; max-width: 96vw; overflow: hidden; text-overflow: ellipsis; }
 body.descent-cursed .ch-boss { top: 112px; }

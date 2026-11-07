@@ -348,6 +348,11 @@ export class DescentHud {
         if (r.spoils > 0) s += r.spoilsTeam === this.mine ? ` · Champion's spoils ${Math.ceil(r.spoils)}` : ` · the rivals took the Champion's spoils`;
         else if (r.champion?.alive) s += r.versus ? ' · a Champion leads them: its fall empowers whoever lands it' : ' · a Champion leads them';
         if (r.gilded) s += r.versus ? ' · catch the Gilded Thornback before the rivals!' : ' · catch the Gilded Thornback!';
+        // the chamber's own challenge, and where it stands
+        const forges = r.forges.filter((f) => f.alive).length;
+        if (forges) s = `<b class="challenge">${forges} soul ${forges === 1 ? 'forge' : 'forges'} left</b>: smash ${forges === 1 ? 'it' : 'them'} · ${left - forges} ${left - forges === 1 ? 'monster' : 'monsters'}`;
+        if (r.floodLeft > 0) s = `<b class="challenge">Hold out ${Math.ceil(r.floodLeft)}s</b> until the flood drains · ${s}`;
+        if (r.bells.length && r.rung < r.bells.length) s = `<b class="challenge">Bells rung ${r.rung}/${r.bells.length}</b>: stand by a bell to toll it · ${s}`;
         if (r.erupting) s += ' · soul fire!';
         return s + downText;
       }

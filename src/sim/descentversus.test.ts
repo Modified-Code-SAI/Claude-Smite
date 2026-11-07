@@ -54,6 +54,9 @@ const fight = (sim: Sim, run: Descent) => step(sim, run, DESCENT.enterTime + 0.1
 const clear = (sim: Sim, run: Descent, by: Unit) => {
   for (let guard = 0; guard < 20 && run.phase === 'fight'; guard++) {
     for (const m of [...run.monsters]) if (m.alive) sim.strike(by, m, 1e7, 'true');
+    // (and a challenge chamber's own task done: the bells rung, the flood waited out)
+    for (const b of run.bells) b.rung = 1;
+    if (run.floodLeft > 0) run.floodLeft = 0.01;
     step(sim, run, 0.2);
   }
 };

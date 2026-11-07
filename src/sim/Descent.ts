@@ -127,6 +127,36 @@ export const POUNCE = { first: 1.5, every: 6, min: 2.2, reach: 6.5, crouch: 0.45
  */
 export const HOWL = { first: 3, every: 10, near: 9, windup: 0.7, range: 12, time: 4, haste: 0.35, frenzy: 0.3 } as const;
 
+/**
+ * Each depth's own challenge chamber, in place of the soul fire's trap room:
+ * the Ashen Depths' soul forges, which breathe out Cinderlings until they are
+ * smashed; the Drowned Halls' flood, which brings the drowned in with it until
+ * it drains; and the Abyss's grave bells, each rung by standing beside it,
+ * the dead rising until all three toll.
+ */
+export const DEPTH_CHALLENGE: readonly ChamberKind[] = ['forges', 'flood', 'bells'];
+
+export const CHALLENGE = {
+  /** The soul forges: how many, how long each takes (`first` the first time) to breathe out a Cinderling, and the most beasts up at once. */
+  forges: { count: 3, first: 3, every: 9, cap: 5, spawn: 'cinderling' as MonsterType },
+  /** The flood: how long the team holds out, when the water comes in to stay (seconds left), how often more of the drowned rise with it, how many, and the most up at once. */
+  flood: { time: 40, surge: 22, first: 5, every: 6, batch: 2, cap: 8 },
+  /**
+   * The grave bells: how many, how near a god stands to ring one and for how
+   * long (`held` as fast while a beast stands that near too: the dead drag at it),
+   * how often more beasts rise until all three toll (how many, the most up at
+   * once), how far a toll staggers the beasts round it and for how long, the
+   * share of their health its soul fire gives back to the gods (in a shared
+   * descent, the ringers' team) and the souls it pays them there.
+   */
+  bells: { count: 3, radius: 2.6, ring: 4, held: 0.35, first: 4, every: 6, batch: 2, cap: 7, stagger: 7, stun: 1.2, heal: 0.12, souls: 3 },
+  /** A smashed forge bursts like a Cinderling, only bigger. */
+  burst: { radius: 3, warn: 1.25, damage: 0.1 },
+} as const;
+
+/** The challenge spawns the views are stocked for ahead (a chamber's worth of births or batches). */
+const CHALLENGE_STOCK = 14;
+
 /** Each depth's own beasts: the many that rush in, the ones that hang back and shoot, and the heavy that anchors a pack. */
 export const DEPTH_BEASTS: readonly { body: MonsterType; ranged: MonsterType; heavy: MonsterType }[] = [
   // the Ashen Depths: Cinderlings swarm, Slag Brutes slam
@@ -167,6 +197,7 @@ export const SOULS: Record<MonsterType, number> = {
   tideLurker: 2,
   gravehound: 1,
   packleader: 2,
+  soulForge: 3,
   thornbackAlpha: 2,
   warden: 4,
   gildedThornback: 5,
@@ -175,7 +206,7 @@ export const SOULS: Record<MonsterType, number> = {
   ossuaryKing: 20,
 };
 
-export type ChamberKind = 'pack' | 'trap' | 'elite' | 'champion' | 'treasure' | 'boss';
+export type ChamberKind = 'pack' | 'trap' | 'forges' | 'flood' | 'bells' | 'elite' | 'champion' | 'treasure' | 'boss';
 
 export interface ChamberPlan {
   /** 1-based chamber number. */
@@ -197,6 +228,9 @@ export const depthOf = (n: number): number => Math.min(DEPTHS.length - 1, Math.f
 export const KIND_NAMES: Record<ChamberKind, string> = {
   pack: 'Monster pack',
   trap: 'Trap room',
+  forges: 'Soul forges',
+  flood: 'The flood',
+  bells: 'Grave bells',
   elite: 'Elite guardians',
   champion: 'Champion',
   treasure: 'Treasure hunt',
@@ -207,6 +241,9 @@ export const KIND_NAMES: Record<ChamberKind, string> = {
 export const KIND_TEXT: Record<ChamberKind, string> = {
   pack: 'Clear the chamber.',
   trap: 'Soul fire erupts beneath you. Keep moving!',
+  forges: 'Three forges breathe out Cinderlings. Smash them all!',
+  flood: 'The dead come in with the water. Hold out until it drains.',
+  bells: 'Ring the three grave bells: stand by one to toll it.',
   elite: 'Wardens guard this chamber.',
   champion: 'A Champion leads the dead. Its fall empowers your team.',
   treasure: 'A Gilded Thornback hides here. Catch it for a second reward.',
@@ -215,7 +252,8 @@ export const KIND_TEXT: Record<ChamberKind, string> = {
 
 /**
  * The whole run's chambers, rolled up front: every depth visits four of its
- * own five halls in a random order, then its master's arena.
+ * own five halls in a random order, then its master's arena. A depth's
+ * challenge chamber is its own (see DEPTH_CHALLENGE).
  */
 export function planRun(rng: () => number): ChamberPlan[] {
   const out: ChamberPlan[] = [];
@@ -234,7 +272,7 @@ export function planRun(rng: () => number): ChamberPlan[] {
       if (n > 1) {
         const r = rng();
         if (n >= 3 && !treasure && r < 0.14) kind = 'treasure';
-        else if (r < 0.36) kind = 'trap';
+        else if (r < 0.36) kind = DEPTH_CHALLENGE[depth]!;
         else if (r < 0.58) kind = 'elite';
         else if (n >= 3 && r < 0.78) kind = 'champion';
         else kind = 'pack';
@@ -245,6 +283,58 @@ export function planRun(rng: () => number): ChamberPlan[] {
   }
   return out;
 }
+
+/**
+ * Where a chamber's challenge stands, its soul forges or its grave bells:
+ * spots spread across its broad floor (local x, z), clear of the columns, the
+ * vents, the brink and both gates, the same on every machine.
+ */
+export function challengeSpots(c: ChamberDef): readonly (readonly [number, number])[] {
+  const known = spots.get(c.name);
+  if (known) return known;
+  const e = c.extent;
+  const find = (floor: number, brink: number, clear: number): [number, number][] => {
+    const out: [number, number][] = [];
+    for (let z = -e * 0.62; z <= e * 0.5; z += 1) {
+      for (let x = -e * 0.85; x <= e * 0.85; x += 1) {
+        if (c.sd(x, z) < floor || c.brink(x, z) < brink) continue;
+        if (c.pillars.some(([px, pz, r]) => hypot(x - px, z - pz) < r + clear)) continue;
+        if (c.vents.some(([vx, vz]) => hypot(x - vx, z - vz) < 2.8)) continue;
+        out.push([x, z]);
+      }
+    }
+    return out;
+  };
+  // spread out, but toward the middle rather than off in the corners, and as far from the brink as the floor allows
+  const pick = (cands: [number, number][]): (readonly [number, number])[] => {
+    const out: (readonly [number, number])[] = [];
+    // (the first on a ring part way out, toward the far gate; each next one as far from the rest as it can be)
+    const score = ([x, z]: readonly [number, number]) =>
+      (out.length ? Math.min(e * 0.8, ...out.map(([ox, oz]) => hypot(x - ox, z - oz))) - hypot(x, z) * 0.25 : -Math.abs(hypot(x, z) - e * 0.45) - z * 0.05) + Math.min(10, c.brink(x, z)) * 0.1;
+    while (out.length < CHALLENGE.bells.count && cands.length) {
+      let best = 0;
+      for (let i = 1; i < cands.length; i++) if (score(cands[i]!) > score(cands[best]!)) best = i;
+      out.push(cands.splice(best, 1)[0]!);
+    }
+    return out;
+  };
+  const apart = (s: readonly (readonly [number, number])[]) =>
+    s.length === CHALLENGE.bells.count && s.every(([x, z], i) => s.every(([ox, oz], j) => j <= i || hypot(x - ox, z - oz) > 6.5));
+  // broad floor well clear of the columns (an Abyss spire's fronds reach out over its foot), then less broad, then nearer them
+  let out: (readonly [number, number])[] = [];
+  for (const [floor, brink, clear] of [[3, 4.5, 4.2], [2, 2.5, 4.2], [3, 4.5, 2.6], [2, 2.5, 2.6]] as const) {
+    const cands = find(floor, brink, clear);
+    if (cands.length < CHALLENGE.bells.count * 4) continue;
+    out = pick(cands);
+    if (apart(out)) break;
+  }
+  // (a chamber with no broad floor to speak of: its monsters' spawns)
+  for (let i = 0; out.length < CHALLENGE.bells.count; i++) out.push(c.spawns[i % c.spawns.length]!);
+  spots.set(c.name, out);
+  return out;
+}
+
+const spots = new Map<string, readonly (readonly [number, number])[]>();
 
 function shuffle<T>(list: readonly T[], rng: () => number): T[] {
   const a = [...list];
@@ -340,6 +430,13 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
       return split(pack(1));
     case 'trap':
       return split(pack(0.6));
+    // the challenge chambers bring fewer to begin with: the forges, the flood and the bells bring the rest
+    case 'forges':
+      return split(pack(0.3));
+    case 'flood':
+      return split(pack(0.5));
+    case 'bells':
+      return split(pack(0.45));
     case 'elite': {
       const wardens: MonsterType[] = Array(n >= 8 ? 2 : 1).fill('warden');
       return [[...wardens, ...pack(0.45)], pack(0.3)].filter((w) => w.length);
@@ -351,6 +448,17 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     case 'boss':
       return [[n >= DESCENT.chambers ? 'ossuaryKing' : n % 10 === 5 ? 'treasureWyrm' : 'moltenColossus', ...(n >= 10 ? [beasts.ranged, beasts.ranged] : [])]];
   }
+}
+
+/** The `k`th batch of beasts to rise with the flood or against the bells: the depth's many, every third one that shoots, and deeper down now and then a heavy. */
+function challengeBatch(n: number, k: number): MonsterType[] {
+  const { body, ranged, heavy } = DEPTH_BEASTS[depthOf(n)]!;
+  return [body, k % 3 === 2 ? ranged : n >= 8 && k % 5 === 4 ? heavy : body];
+}
+
+/** A bell chamber's grave bells, none rung yet (world x, z). */
+export function bellsOf(c: ChamberDef): { x: number; z: number; rung: number }[] {
+  return challengeSpots(c).map(([x, z]) => ({ x: c.x + x, z: c.z + z, rung: 0 }));
 }
 
 /** The adds a boss calls as it weakens. */
@@ -379,7 +487,7 @@ export interface Reward {
 }
 
 /** The chance a reward offers a relic, by the kind of chamber just cleared (none after the first): about three a run, one after each boss. */
-export const RELIC_CHANCE: Partial<Record<ChamberKind, number>> = { boss: 1, elite: 0.4, champion: 0.4, pack: 0.1, trap: 0.12, treasure: 0.12 };
+export const RELIC_CHANCE: Partial<Record<ChamberKind, number>> = { boss: 1, elite: 0.4, champion: 0.4, pack: 0.1, trap: 0.12, forges: 0.15, flood: 0.15, bells: 0.15, treasure: 0.12 };
 
 /** Boons for the underworld: Siege's that make sense away from the plaza. */
 export const DESCENT_BOONS: readonly Boon[] = BOONS.filter((b) => !b.cleanse && !b.corruptScale);
@@ -482,6 +590,11 @@ export class DescentMonsterBrain extends MonsterBrain {
       }
       // a monster whose foe is only far away keeps it rather than flip-flopping
       if (best || !foe?.alive || !foe.targetable) camp.foe = best;
+    }
+    // a soul forge stands where it was built, and does nothing but burn (the run has it breathe out its Cinderlings)
+    if (u.tag.endsWith(':soulForge')) {
+      u.move = null;
+      return;
     }
     if (this.held()) {
       u.move = null;
@@ -952,6 +1065,19 @@ export class Descent {
   readonly relics: Relics;
   /** The current chamber's own dangers: the forge's vents and slag, the Drowned Halls' tides, the Abyss's crumbling brink and creeping dark. */
   readonly hazards: Hazards;
+  /** A forge chamber's soul forges, standing or smashed. */
+  readonly forges: Unit[] = [];
+  /** Seconds until each standing forge breathes out its next Cinderling. */
+  private readonly forgeIn = new Map<Unit, number>();
+  /** A flood chamber's seconds left to hold out (0 once it drains, and in every other chamber). */
+  floodLeft = 0;
+  /** A bell chamber's grave bells (world x, z) and how far each is rung (0..1, 1 once it tolls). */
+  readonly bells: { x: number; z: number; rung: number }[] = [];
+  /** Bells tolled this run (for the view's cues). */
+  tolls = 0;
+  /** Seconds until more beasts rise with the flood or against the bells, and how many batches have. */
+  private batchIn = 0;
+  private batches = 0;
 
   constructor(
     private readonly sim: Sim,
@@ -1009,7 +1135,7 @@ export class Descent {
   }
 
   /** A beast the dangers barely touch: the boss, a champion, the Gilded Thornback. */
-  private readonly isMaster = (m: Unit): boolean => m === this.boss || m === this.champion || m === this.gilded;
+  private readonly isMaster = (m: Unit): boolean => m === this.boss || m === this.champion || m === this.gilded || this.forges.includes(m);
 
   /** The chamber the team is in (or about to enter). */
   get current(): ChamberPlan {
@@ -1104,8 +1230,13 @@ export class Descent {
     if (u.kind !== 'monster') return;
     const ours = this.monsters.includes(u);
     if (ours) this.hazards.onKill();
-    // a Cinderling bursts into flame where it fell
+    // a Cinderling bursts into flame where it fell, and a smashed forge bursts bigger
     if (ours && u.tag.endsWith(':cinderling')) this.eruptions.push({ id: this.nextEruption++, x: u.x, z: u.z, r: CINDER.radius, left: CINDER.warn, share: CINDER.damage });
+    if (ours && this.forges.includes(u)) {
+      const B = CHALLENGE.burst;
+      this.eruptions.push({ id: this.nextEruption++, x: u.x, z: u.z, r: B.radius, left: B.warn, share: B.damage });
+      this.forgeIn.delete(u);
+    }
     // in co-op every kill is the team's; in a shared descent the team that made it
     const side = this.versus ? this.creditOf(u, e.killer, e.assists) : 'order';
     if (ours) {
@@ -1243,8 +1374,116 @@ export class Descent {
     this.stepBoss();
     this.waveTimer += dt;
     const left = this.monsters.filter((m) => m !== this.gilded).length;
+    this.stepChallenge(dt);
     if (this.wave < this.waves.length && (left <= this.waveSize * DESCENT.nextWave.left || this.waveTimer >= DESCENT.nextWave.after)) this.spawnWave();
-    else if (this.wave >= this.waves.length && this.monsters.length === 0 && this.fallLeft <= 0) this.clearChamber();
+    else if (this.wave >= this.waves.length && this.monsters.length === 0 && this.fallLeft <= 0 && this.challengeDone) this.clearChamber();
+  }
+
+  /** Whether the chamber's own challenge is met: the flood drained, every bell tolled (a forge is a monster like any other). */
+  get challengeDone(): boolean {
+    const kind = this.current.kind;
+    if (kind === 'flood') return this.floodLeft <= 0;
+    if (kind === 'bells') return this.bells.every((b) => b.rung >= 1);
+    return true;
+  }
+
+  /** How many grave bells have tolled. */
+  get rung(): number {
+    return this.bells.filter((b) => b.rung >= 1).length;
+  }
+
+  /**
+   * The chamber's own challenge, while the fight lasts: the forges breathing
+   * out Cinderlings, the flood bringing the drowned in until it drains, the
+   * bells ringing under the gods who stand by them while the dead rise to
+   * stop them.
+   */
+  private stepChallenge(dt: number): void {
+    const kind = this.current.kind;
+    if (this.introLeft > 0) return;
+    const beasts = this.monsters.filter((m) => m.alive && !this.forges.includes(m)).length;
+    if (kind === 'forges') {
+      const F = CHALLENGE.forges;
+      for (const f of this.forges) {
+        if (!f.alive) continue;
+        const left = (this.forgeIn.get(f) ?? F.every) - dt;
+        if (left > 0 || beasts >= F.cap) {
+          this.forgeIn.set(f, Math.max(0, left));
+          continue;
+        }
+        this.forgeIn.set(f, F.every * (0.85 + this.sim.rng() * 0.3));
+        // out of its mouth, toward the middle of the chamber
+        const k = f.radius + 0.7;
+        this.spawn([F.spawn], 'b', [[f.x - Math.sin(f.body.yaw) * k, f.z - Math.cos(f.body.yaw) * k]]);
+        f.sinceAction = 0;
+      }
+      return;
+    }
+    if (kind === 'flood') {
+      if (this.floodLeft <= 0) return;
+      this.floodLeft = Math.max(0, this.floodLeft - dt);
+      // (the water comes in for the second half, and stays in until it drains)
+      this.hazards.surge = this.floodLeft > 0 && this.floodLeft < CHALLENGE.flood.surge;
+      if (this.floodLeft <= 0) {
+        this.drain();
+        return;
+      }
+      this.batch(dt, CHALLENGE.flood, beasts);
+      return;
+    }
+    if (kind !== 'bells') return;
+    const B = CHALLENGE.bells;
+    for (const b of this.bells) {
+      if (b.rung >= 1) continue;
+      const ringers = this.gods.filter((g) => g.alive && hypot(g.x - b.x, g.z - b.z) < B.radius);
+      if (!ringers.length) continue;
+      const held = this.monsters.some((m) => m.alive && hypot(m.x - b.x, m.z - b.z) < B.radius);
+      b.rung = Math.min(1, b.rung + (dt / B.ring) * (held ? B.held : 1));
+      if (b.rung >= 1) this.toll(b, ringers);
+    }
+    if (this.rung < this.bells.length) this.batch(dt, B, beasts);
+  }
+
+  /** More of the depth's beasts rising, every so often, while there is room. */
+  private batch(dt: number, spec: { every: number; batch: number; cap: number }, beasts: number): void {
+    this.batchIn -= dt;
+    if (this.batchIn > 0 || beasts >= spec.cap) return;
+    this.batchIn = spec.every;
+    const c = this.layout;
+    const roster = challengeBatch(this.chamber, this.batches++).slice(0, Math.min(spec.batch, spec.cap - beasts));
+    const at = roster.map(() => {
+      const [x, z] = c.spawns[Math.floor(this.sim.rng() * c.spawns.length)]!;
+      return [c.x + x + (this.sim.rng() - 0.5) * 2.2, c.z + z + (this.sim.rng() - 0.5) * 2.2] as const;
+    });
+    this.spawn(roster, 'c', at);
+  }
+
+  /** The flood drains, and every beast still standing goes down with it (each to the nearest god, for the kill). */
+  private drain(): void {
+    this.wave = this.waves.length;
+    this.hazards.surge = false;
+    for (const m of [...this.monsters]) {
+      if (!m.alive || m === this.gilded) continue;
+      let by: Unit | null = null;
+      let bd = Infinity;
+      for (const g of this.gods) {
+        const d = hypot(g.x - m.x, g.z - m.z);
+        if (g.alive && d < bd) [bd, by] = [d, g];
+      }
+      if (by) this.sim.slay(by, m);
+    }
+  }
+
+  /** A bell tolls: the dark falls back, the beasts round it reel, its soul fire mends the gods, and (a shared descent) its ringers' team takes souls. */
+  private toll(b: { x: number; z: number }, ringers: readonly Unit[]): void {
+    const B = CHALLENGE.bells;
+    this.tolls++;
+    this.hazards.dark = 0;
+    for (const m of this.monsters) if (m.alive && !this.isMaster(m) && hypot(m.x - b.x, m.z - b.z) < B.stagger) m.combatant.receiveCC('stun', B.stun, 0, 'descent:toll');
+    const sides = new Set(ringers.map((g) => this.sideOf(g)));
+    for (const g of this.gods) if (g.alive && sides.has(this.sideOf(g))) g.combatant.heal(g.combatant.stats.maxHealth * B.heal);
+    if (!this.versus) return;
+    for (const side of sides) this.score(side, B.souls);
   }
 
   /**
@@ -1287,6 +1526,31 @@ export class Descent {
     this.eruptIn = 3;
     this.spawnWave();
     if (this.current.kind === 'treasure') this.spawnGilded();
+    this.startChallenge();
+  }
+
+  /** Sets up the chamber's own challenge: its forges built, its flood rising, its bells hung. */
+  private startChallenge(): void {
+    const kind = this.current.kind;
+    const c = this.layout;
+    this.forges.length = 0;
+    this.forgeIn.clear();
+    this.batches = 0;
+    this.floodLeft = kind === 'flood' ? CHALLENGE.flood.time : 0;
+    this.batchIn = kind === 'flood' ? CHALLENGE.flood.first : CHALLENGE.bells.first;
+    this.bells.length = 0;
+    if (kind === 'bells') this.bells.push(...bellsOf(c));
+    if (kind !== 'forges') return;
+    const at = challengeSpots(c).map(([x, z]) => [c.x + x, c.z + z] as const);
+    const built = this.spawn(Array<MonsterType>(at.length).fill('soulForge'), 'k', at);
+    built.forEach((f, i) => {
+      // its mouth toward the middle of the floor, where the team holds
+      f.body.yaw = Math.atan2(-(c.x + c.hold[0] - f.x), -(c.z + c.hold[1] - f.z));
+      f.blocks = true;
+      f.combatant.ccImmune = true;
+      this.forges.push(f);
+      this.forgeIn.set(f, CHALLENGE.forges.first + i * 1.3);
+    });
   }
 
   private spawnWave(): void {
@@ -1335,23 +1599,32 @@ export class Descent {
     chamberWaves(this.current, this.gods.length).forEach((w, k) => add(w, `w${k + 1}`));
     if (this.current.kind === 'boss') for (let k = 0; k < DESCENT.bossAdds.length; k++) add(bossAdds(n), 'adds');
     if (this.current.kind === 'treasure') out.push({ tag: `descent-small-${n}.g:gildedThornback`, name: monsterName('gildedThornback') });
+    // the forges, and what they breathe out; what rises with the flood or against the bells (a chamber's worth)
+    const kind = this.current.kind;
+    if (kind === 'forges') {
+      add(Array<MonsterType>(CHALLENGE.forges.count).fill('soulForge'), 'k');
+      for (let k = 0; k < CHALLENGE_STOCK; k++) add([CHALLENGE.forges.spawn], 'b');
+    }
+    if (kind === 'flood' || kind === 'bells') for (let k = 0; k < CHALLENGE_STOCK / 2; k++) add(challengeBatch(n, k), 'c');
     return out;
   }
 
-  private spawn(roster0: MonsterType[], label: string): void {
+  /** Raises a wave's monsters at the chamber's spawns, or at `at` (world x, z, one per monster); returns them. */
+  private spawn(roster0: MonsterType[], label: string, at?: readonly (readonly [number, number])[]): Unit[] {
     const n = this.chamber;
     const c = this.layout;
-    const roster = this.swarmed(roster0);
+    const roster = at ? roster0 : this.swarmed(roster0);
+    const out: Unit[] = [];
     const minutes = chamberMinutes(n);
     const scale = chamberScale(n, !this.versus);
     const team = teamScale(this.gods.length);
     roster.forEach((type, i) => {
       const boss = isBossType(type);
       const spot = boss ? [0, -c.extent * 0.35] : c.spawns[(i + this.wave * 3) % c.spawns.length]!;
-      const jx = boss ? 0 : (this.sim.rng() - 0.5) * 2.2;
-      const jz = boss ? 0 : (this.sim.rng() - 0.5) * 2.2;
-      const x = c.x + spot[0]! + jx;
-      const z = c.z + spot[1]! + jz;
+      const jx = boss || at ? 0 : (this.sim.rng() - 0.5) * 2.2;
+      const jz = boss || at ? 0 : (this.sim.rng() - 0.5) * 2.2;
+      const x = at ? at[i]![0] : c.x + spot[0]! + jx;
+      const z = at ? at[i]![1] : c.z + spot[1]! + jz;
       const king = type === 'ossuaryKing';
       const { title, champion, campKind, tag } = this.look(type, i, label);
       const u = monsterUnit(this.base, type, { x, z, yaw: 0 }, minutes, title);
@@ -1381,7 +1654,9 @@ export class Descent {
         for (const [s, v] of Object.entries(k.flat ?? {}) as [StatKey, number][]) cb.refreshTimedMod(s, v, 1e9);
       }
       cb.health = cb.stats.maxHealth;
-      if (u.bounty) u.bounty = { xp: u.bounty.xp * DESCENT_TUNING.killXp, favor: u.bounty.favor * DESCENT_TUNING.favor };
+      // (what a forge breathes out or rises with the flood or against the bells keeps coming: it pays half)
+      const born = label === 'b' || label === 'c' ? 0.5 : 1;
+      if (u.bounty) u.bounty = { xp: u.bounty.xp * DESCENT_TUNING.killXp * born, favor: u.bounty.favor * DESCENT_TUNING.favor * born };
       u.tag = tag;
       u.home.x = x;
       u.home.z = z;
@@ -1393,7 +1668,9 @@ export class Descent {
       u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : champion ? 'champion' : '' } satisfies DescentSpawn };
       this.monsters.push(u);
       this.sim.add(u);
+      out.push(u);
     });
+    return out;
   }
 
   private spawnGilded(): void {
@@ -1838,6 +2115,8 @@ export class Descent {
       ...(this.introLeft > 0 ? { it: r2(this.introLeft) } : {}),
       ...(this.fallLeft > 0 ? { fl: r2(this.fallLeft) } : {}),
       ...(this.bossAddsCalled ? { bc: this.bossAddsCalled } : {}),
+      ...(this.floodLeft > 0 ? { fd: r2(this.floodLeft) } : {}),
+      ...(this.bells.length ? { bl: this.bells.map((b) => r2(b.rung)), tl: this.tolls } : {}),
       l: this.learned,
       h: [...this.humans].map(gi),
       ...(this.versus
@@ -1861,6 +2140,11 @@ export class Descent {
   applyNet(state: unknown): void {
     const s = state as DescentNet;
     const god = (i: number) => this.gods[i] ?? null;
+    // a new chamber: the last one's forges and bells are gone
+    if (s.c !== this.chamber) {
+      this.forges.length = 0;
+      this.bells.length = 0;
+    }
     this.chamber = s.c;
     this.phase = s.p;
     this.timer = s.t;
@@ -1869,6 +2153,15 @@ export class Descent {
     this.introLeft = s.it ?? 0;
     this.fallLeft = s.fl ?? 0;
     this.bossAddsCalled = s.bc ?? 0;
+    this.floodLeft = s.fd ?? 0;
+    // (the bells hang where the host's do: the same spots in the same chamber)
+    if (s.bl && s.c > 0) {
+      if (this.bells.length !== s.bl.length) this.bells.splice(0, this.bells.length, ...bellsOf(this.layout).slice(0, s.bl.length));
+      s.bl.forEach((r, i) => {
+        if (this.bells[i]) this.bells[i]!.rung = r;
+      });
+      this.tolls = s.tl ?? this.tolls;
+    } else this.bells.length = 0;
     this.kills = s.k;
     this.obols = s.o;
     this.obolUsed = s.ou;
@@ -1952,6 +2245,10 @@ export class Descent {
     if (origin.kind !== 'descent') return null;
     const d = origin.data as DescentSpawn;
     const u = monsterUnit(this.base, d.type, at, d.min, d.title);
+    if (d.type === 'soulForge') {
+      u.blocks = true;
+      this.forges.push(u);
+    }
     if (d.role === 'boss') this.boss = u;
     else if (d.role === 'champion') this.champion = u;
     else if (d.role === 'gilded') this.gilded = u;
@@ -1968,6 +2265,7 @@ export class Descent {
     this.spoils = Math.max(0, this.spoils - dt);
     this.introLeft = Math.max(0, this.introLeft - dt);
     this.fallLeft = Math.max(0, this.fallLeft - dt);
+    if (this.floodLeft > 0) this.floodLeft = Math.max(0.01, this.floodLeft - dt);
     for (const e of this.eruptions) e.left = Math.max(0, e.left - dt);
     this.hazards.follow(dt);
   }
@@ -2015,6 +2313,11 @@ export interface DescentNet {
   fl?: number;
   /** Times the boss has called up its adds (left out until it does). */
   bc?: number;
+  /** A flood chamber's seconds left to hold out (left out once it drains, and elsewhere). */
+  fd?: number;
+  /** A bell chamber's bells, how far each is rung, and the tolls so far this run (left out elsewhere). */
+  bl?: number[];
+  tl?: number;
   l: [number, number, number, string][];
   h: number[];
   /** A shared descent's score and team choices (teams as 'o' and 'c'). */

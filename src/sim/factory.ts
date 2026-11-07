@@ -138,6 +138,7 @@ export type MonsterType =
   | 'tideLurker'
   | 'gravehound'
   | 'packleader'
+  | 'soulForge'
   | 'gildedThornback'
   | 'warden'
   | 'treasureWyrm'
@@ -168,6 +169,8 @@ const MONSTERS: Record<MonsterType, { name: string; health: number; power: numbe
   gravehound: { name: 'Gravehound', health: 290, power: 15, speed: 385, prot: 8, range: 1.4, radius: 0.6, rate: 0.95, xp: 45, favor: 6 },
   // the Abyss's heavy: the pack's antlered leader, whose howl drives the hounds near it into a frenzy
   packleader: { name: 'Packleader', health: 720, power: 25, speed: 350, prot: 18, range: 1.8, radius: 0.95, rate: 0.8, xp: 120, favor: 13 },
+  // the Ashen Depths' forge chambers: a squat kiln of slag that never moves or strikes, but breathes out Cinderlings until smashed
+  soulForge: { name: 'Soul Forge', health: 450, power: 0, speed: 100, prot: 15, range: 0.5, radius: 1.15, rate: 0.1, xp: 120, favor: 14 },
   // Temple Siege only: never fights, runs from the gods, and carries a second boon
   gildedThornback: { name: 'Gilded Thornback', health: 900, power: 0, speed: 345, prot: 25, range: 1.4, radius: 0.6, rate: 0.5, xp: 120, favor: 40 },
   treasureWyrm: { name: 'Treasure Wyrm', health: 5200, power: 70, speed: 280, prot: 35, range: 3.2, radius: 2.6, rate: 0.5, xp: 300, favor: 0 },

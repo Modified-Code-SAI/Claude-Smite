@@ -2,7 +2,7 @@ import { hypot } from '../core/math';
 import { Route } from '../map/ChamberNav';
 import { exitSpot, type ChamberDef } from '../map/UnderworldLayout';
 import { GodBot } from './Bot';
-import { DESCENT, type Descent } from './Descent';
+import { CHALLENGE, DESCENT, type Descent } from './Descent';
 import type { Sim } from './Sim';
 import type { Brain, Point, Unit } from './Unit';
 
@@ -12,13 +12,16 @@ import type { Brain, Point, Unit } from './Unit';
  * to raise them, and once the chamber is cleared it heads for the exit gate
  * (walking in itself only when no human is on the team). In a shared
  * descent it hunts monsters for souls first and takes on a rival god only up
- * close or when the rival is nearly down.
+ * close or when the rival is nearly down. In a challenge chamber it smashes
+ * the soul forges first and goes to ring the grave bells.
  */
 export class DescentBot implements Brain {
   readonly inner: GodBot;
   private readonly anchor: Point = { x: 0, z: 0 };
   /** Its way round the chamber's lava, water or void. */
   private readonly way = new Route();
+  /** What it last chose to fight. */
+  private target: Unit | null = null;
 
   constructor(
     private readonly sim: Sim,
@@ -38,7 +41,8 @@ export class DescentBot implements Brain {
 
   /**
    * Its target: the nearest monster, though a Gravekeeper in reach comes
-   * first (left to mend, it outlasts the gods). In a shared descent, only
+   * first (left to mend, it outlasts the gods), and a soul forge before the
+   * Cinderlings it breathes out. In a shared descent, only
    * monsters on its own side, unless a rival god is close, nearly down, or
    * hitting this bot.
    */
@@ -61,6 +65,7 @@ export class DescentBot implements Brain {
       }
       let score = d;
       if (t.kind === 'monster' && d < KEEPER_FIRST && t.tag.endsWith(':gravekeeper')) score = d - KEEPER_FIRST;
+      if (t.kind === 'monster' && d < FORGE_FIRST && t.tag.endsWith(':soulForge')) score = d - FORGE_LEAD;
       if (t.kind === 'god') {
         // a rival worth turning on: one in our face, one nearly down, or one hitting us right now
         const low = t.combatant.health / t.combatant.stats.maxHealth < 0.3;
@@ -71,7 +76,7 @@ export class DescentBot implements Brain {
       }
       if (score < bs) [bs, best] = [score, t];
     }
-    return best ?? spare;
+    return (this.target = best ?? spare);
   }
 
   private route(goal: Point): Point {
@@ -95,8 +100,13 @@ export class DescentBot implements Brain {
     const [hx, hz] = run.versus ? holdSide(c, side) : c.hold;
     this.anchor.x = leaving ? door.x + (run.versus ? side * 4.5 : 0) : c.x + hx;
     this.anchor.z = leaving ? door.z + (run.humans.size || run.versus ? 4 : 0) : c.z + hz;
+    this.target = null;
     this.inner.update(dt);
     if (!u.alive || u.forced) return;
+    // a soul forge never comes to the bot: it goes the long way round to reach it
+    // (set by choose, which the inner bot calls)
+    const t = this.target as Unit | null;
+    if (t?.alive && u.move && t.tag.endsWith(':soulForge') && hypot(t.x - u.x, t.z - u.z) > t.radius + u.radius + 1.5) this.walk(t, true);
 
     // soul fire about to erupt underfoot: step out of it first
     if (this.dodge()) return;
@@ -106,8 +116,35 @@ export class DescentBot implements Brain {
       else u.move = null;
       return;
     }
+    // a grave bell to ring: there, and it fights from beside it
+    if (run.phase === 'fight' && this.ringBell()) return;
     // with no human to lead the way, the bots walk into the gate themselves
     if (run.phase === 'exit' && !run.humans.size && !this.enemyClose(20)) this.walk(door, true);
+  }
+
+  /**
+   * A bell chamber: the bot goes to the nearest bell not yet tolled and holds
+   * beside it while it rings, fighting whatever comes at it from there. True
+   * while it does.
+   */
+  private ringBell(): boolean {
+    const u = this.u;
+    const R = CHALLENGE.bells.radius;
+    let bell: { x: number; z: number } | null = null;
+    let bd = Infinity;
+    for (const b of this.run.bells) {
+      const d = hypot(b.x - u.x, b.z - u.z);
+      if (b.rung < 1 && d < bd) [bd, bell] = [d, b];
+    }
+    if (!bell) return false;
+    if (bd > R * 0.6) {
+      this.walk(bell, !this.enemyClose(5));
+      return true;
+    }
+    // beside it: it fights as it likes, but never steps out of the bell's reach to do it
+    const m = u.move;
+    if (m && hypot(u.x + m.x * 0.5 - bell.x, u.z + m.z * 0.5 - bell.z) > R * 0.75) u.move = null;
+    return true;
   }
 
   /** Steps out of an eruption or a beast's slam that is about to land under the bot, or out of the depth's dangers (see Hazards.threat). */
@@ -201,3 +238,7 @@ const holds = new Map<string, readonly [number, number]>();
 
 /** How near a Gravekeeper must be for a bot to make it its target before the nearer beasts (it backs off from gods, so not across the chamber). */
 const KEEPER_FIRST = 14;
+
+/** How near a soul forge must be for a bot to make it its target, and how many meters nearer than the rest it counts as. */
+const FORGE_FIRST = 30;
+const FORGE_LEAD = 14;

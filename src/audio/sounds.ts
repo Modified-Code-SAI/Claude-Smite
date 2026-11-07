@@ -143,6 +143,30 @@ export const SOUNDS: Record<string, Recipe> = {
         [shimmer(r, 1.4, 880, { rise: 0.6, peak: 0.25 }), 0.3, 0.15],
       ),
   },
+  // the depths' own challenges: a soul forge's bellows heaving and the roar of fire out of its mouth, the forge
+  // splitting and falling in; a grave bell's toll (deep bronze, a choir under it); the flood draining away in a rush
+  'forge.breath': { variants: 3, peak: 0.65, make: (r) => layer([filter(whoosh(r, 0.9, 220, 700, { q: 0.7, peak: 0.55, gain: 1.2 }), 'lowpass', 1800), 0.8], [fire(r, 1.2, { roar: 1.4, gain: 0.8 }), 1, 0.12], [crackles(r, 1, 20), 0.4, 0.2]) },
+  'forge.fall': {
+    variants: 2,
+    peak: 0.9,
+    make: (r) => layer([impact(r, 1.3, { tone: 120, crunch: 1, sub: 0.7 }), 1], [debris(r, 1.6, { density: 34, gain: 0.6, tone: 900 }), 0.9, 0.05], [fire(r, 1.4, { gain: 0.6, roar: 1.6 }), 0.7, 0.1], [clang(r, 1.2, 98, { decay: 0.8, bright: 0.2, gain: 0.35 }), 0.35, 0.02]),
+  },
+  'bell.toll': {
+    variants: 2,
+    peak: 0.95,
+    make: (r) =>
+      layer(
+        [clang(r, 4.5, 110, { decay: 3.6, bright: 0.4, gain: 1 }), 1],
+        [clang(r, 3.6, 164.8, { decay: 2.6, bright: 0.3, gain: 0.55 }), 0.55, 0.01],
+        [clang(r, 2.2, 261.6, { decay: 1.4, bright: 0.5, gain: 0.3 }), 0.35, 0.01],
+        [knock(r, 0.08, 700), 0.6],
+        [choir(r, 3, 110, { vowelName: 'oo', env: (t) => ahr(t, 0.3, 0.8, 1.8) }), 0.35, 0.15],
+      ),
+  },
+  'flood.drain': {
+    peak: 0.85,
+    make: (r) => layer([filter(whoosh(r, 2.4, 900, 160, { q: 0.6, peak: 0.25, gain: 1.4 }), 'lowpass', 2400), 1], [splash(r, 1.2), 0.8], [rumble(r, 2.6, { tone: 110, attack: 0.3 }), 0.6, 0.1], [splash(r, 0.8), 0.5, 0.6]),
+  },
   'basic.brute': { variants: 3, peak: 0.8, make: (r) => layer([whoosh(r, 0.42, 150, 460, { q: 0.8, peak: 0.7, gain: 1.3 }), 1], [roar(r, 0.45, 82 + r() * 10, { open: 0.6 }), 0.45], [crackles(r, 0.35, 12), 0.25, 0.05]) },
   'brute.windup': { variants: 2, peak: 0.75, make: (r) => layer([roar(r, 1, 70, { open: 0.85 }), 1], [rumble(r, 1.1, { tone: 150, attack: 0.5 }), 0.6], [fire(r, 1, { gain: 0.5, roar: 0.6 }), 0.35, 0.15]) },
   'brute.slam': {
