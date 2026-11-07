@@ -513,6 +513,26 @@ function eyeMaterial(c: number, glow = 1.4): THREE.Material {
   return m;
 }
 
+/**
+ * Poppy petals (Thanatos's crown): thin red silk with the black blotch at each
+ * petal's base, fine veins fanning out from it, a satin sheen, and a glow toward
+ * the rim where light comes through. Data: x = base 0 .. rim 1, y = across
+ * (0 .. 1), z = a per-petal tint, w = 1 on the inner face (the outer is darker).
+ */
+function petalMaterial(c: number): THREE.MeshPhysicalNodeMaterial {
+  const m = new THREE.MeshPhysicalNodeMaterial({
+    roughness: 0.55, metalness: 0, sheen: 0.7, sheenRoughness: 0.35, sheenColor: new THREE.Color(c).lerp(new THREE.Color(0xffd8c8), 0.45),
+  });
+  const d = data();
+  const across = d.y.mul(2).sub(1);
+  const blotch = float(1).sub(smoothstep(0.15, 0.26, d.x.add(sin(across.mul(9)).mul(0.025))));
+  const vein = sin(across.mul(30).mul(d.x.mul(0.6).add(0.4))).mul(0.5).add(0.5);
+  const red = color(c).mul(d.z.mul(0.25).add(0.85)).mul(vein.mul(0.14).add(0.86)).mul(mix(float(0.72), float(1), d.w));
+  m.colorNode = mix(red, color(0x0b0608), blotch);
+  m.emissiveNode = color(c).mul(float(1).sub(blotch).mul(d.x).mul(rim().mul(0.45).add(0.1)));
+  return m;
+}
+
 function gemMaterial(c: number): THREE.Material {
   const m = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.05, metalness: 0, clearcoat: 1, transmission: 0 });
   m.colorNode = color(c).mul(0.6);
@@ -548,6 +568,7 @@ function buildMaterials(id: string, variant?: string): Map<string, THREE.Materia
   // a frost giant's eyes burn cold, visible across the valley
   m.set('eye', eyeMaterial(p.eye, p.frost ? 6 : 1.4));
   m.set('gem', gemMaterial(p.gem));
+  m.set('petal', petalMaterial(p.gem));
   m.set('default', new THREE.MeshStandardNodeMaterial({ color: 0x888888 }));
   for (const [name, mat] of m) {
     mat.name = name;
@@ -566,7 +587,7 @@ function buildMaterials(id: string, variant?: string): Map<string, THREE.Materia
  */
 export const COMBINED: Record<string, readonly string[]> = {
   metal: ['gold', 'goldplain', 'steel'],
-  body: ['skin', 'cloth', 'clothplain', 'cloth2', 'stripes', 'leather', 'hair', 'fur', 'eye', 'gem', 'glow'],
+  body: ['skin', 'cloth', 'clothplain', 'cloth2', 'stripes', 'leather', 'hair', 'fur', 'eye', 'gem', 'glow', 'petal'],
 };
 
 const combinedCache = new Map<string, Map<string, THREE.Material>>();
