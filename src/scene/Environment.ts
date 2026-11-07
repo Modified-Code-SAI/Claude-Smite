@@ -10,6 +10,15 @@ import type { QualitySettings } from '../render/Quality';
 /** Cascades from this one on are far: drawn every fourth frame, without `Layers.NEAR_SHADOW`. */
 const FAR_CASCADE = 2;
 
+/** What a depth of the underworld sets on the light and air (see DepthColors). */
+export interface UnderworldLight {
+  fog: number;
+  horizon: number;
+  key: number;
+  bounce: { color: number; intensity: number };
+  air: { density: number; falloff: number; start: number };
+}
+
 /**
  * Sky, sun, image-based lighting and atmosphere.
  *
@@ -52,6 +61,13 @@ export class Environment {
 
   /** Set for the underworld: a dark sky with a glow at the horizon instead of the daylight model. */
   private dark: { horizon: any; zenith: any } | null = null;
+  /**
+   * The underworld's floor glow thrown back up: a light from below only (its
+   * sky half is black), so undersides and the feet of walls take the depth's
+   * color while the floor itself takes none. Added with the underworld, before
+   * any shader is prepared, and only recolored after.
+   */
+  bounce: THREE.HemisphereLight | null = null;
 
   constructor(private readonly scene: THREE.Scene, private readonly camera: THREE.PerspectiveCamera) {
     this.sky = new SkyMesh();
@@ -152,10 +168,11 @@ export class Environment {
   /**
    * The underworld's air: no sun or clouds, a black sky with the depth's glow
    * low at the horizon, a cold light from high above (its shadows are the
-   * walls'), a dim warm bounce from the other side and dark, low-lying haze.
+   * walls'), a dim warm fill from the other side, the depth's glow thrown
+   * back up off its floor (see `bounce`) and dark, low-lying haze.
    * Call before the first frame; `setDepth` recolors it later.
    */
-  underworld(c: { fog: number; horizon: number; key: number; air: { density: number; falloff: number; start: number } }): void {
+  underworld(c: UnderworldLight): void {
     const horizon = uniform(new THREE.Color(c.horizon));
     const zenith = uniform(new THREE.Color(0.006, 0.006, 0.012));
     this.dark = { horizon, zenith };
@@ -167,15 +184,21 @@ export class Environment {
     this.sun.intensity = 1.5;
     this.fill.intensity = 0.55;
     this.fill.color.setRGB(1.0, 0.72, 0.6);
+    this.bounce = new THREE.HemisphereLight(0x000000, c.bounce.color, c.bounce.intensity);
+    this.scene.add(this.bounce);
     this.setDepth(c);
   }
 
   /** Recolors the underworld's sky, haze and light for a depth, and thickens or thins its air (uniform writes only). */
-  setDepth(c: { fog: number; horizon: number; key: number; air: { density: number; falloff: number; start: number } }): void {
+  setDepth(c: UnderworldLight): void {
     if (!this.dark) return;
     this.dark.horizon.value.setHex(c.horizon);
     this.fogColor.value.setHex(c.fog);
     this.sun.color.setHex(c.key);
+    if (this.bounce) {
+      this.bounce.groundColor.setHex(c.bounce.color);
+      this.bounce.intensity = c.bounce.intensity;
+    }
     this.fogDensity.value = c.air.density;
     this.fogHeightFalloff.value = c.air.falloff;
     this.fogStart.value = c.air.start;

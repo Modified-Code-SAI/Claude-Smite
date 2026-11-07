@@ -7,7 +7,7 @@ import { DESCENT, DEPTHS, SOULS, type Descent } from '../sim/Descent';
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { Flash, SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
-import { CLEAR_WAVE, clearWave, DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
+import { CLEAR_WAVE, clearFlare, clearWave, DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
 import { DepthKicks } from '../scene/underworld/kicks';
 import { DepthTracks } from '../scene/underworld/prints';
 import { DepthScars, scarsFor } from '../scene/underworld/scars';
@@ -237,6 +237,8 @@ export class DescentView {
       this.lastFall.set = false;
       this.cleared = -1;
       clearWave.value.w = 0;
+      const bounce = this.world.environment.bounce;
+      if (bounce) bounce.intensity = DEPTH_COLORS[DEPTHS[r.depth]!.palette].bounce.intensity;
       this.callAt.age = -1;
       this.callRing.mesh.visible = false;
     }
@@ -289,6 +291,9 @@ export class DescentView {
         this.cleared = -1;
         clearWave.value.w = 0;
       }
+      // and the light it breathes up off the floor washes over the gods and beasts standing in it
+      const bounce = this.world.environment.bounce;
+      if (bounce) bounce.intensity = DEPTH_COLORS[DEPTHS[r.depth]!.palette].bounce.intensity * (1 + clearFlare(this.cleared));
     }
 
     // the exit's veil glows up once the way down is open

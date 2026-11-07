@@ -12,6 +12,8 @@ export interface DepthColors {
   fog: number;
   horizon: number;
   key: number;
+  /** The depth's glow thrown back up off its floor, onto the undersides of the gods, the beasts and every overhang. */
+  bounce: { color: number; intensity: number };
   /** How the air hangs: the haze's density at the floor, how fast it thins with height (per m), and how far off it begins (m). */
   air: { density: number; falloff: number; start: number };
   /** The motes in the air: their color, glow of their own (0 lit only by the light behind them), rise (m/s) and size. */
@@ -27,6 +29,8 @@ export const DEPTH_COLORS: Record<Palette, DepthColors> = {
     horizon: 0x5a1808,
     // the light from above comes down through the forges' smoke, dull and warm
     key: 0xd4b8b0,
+    // the lava's glow, up under chins, arms and ledges
+    bounce: { color: 0xff5a1c, intensity: 0.6 },
     // smoke filling the hall to the roof
     air: { density: 0.018, falloff: 0.035, start: 12 },
     // embers off the forges, drifting up
@@ -39,6 +43,8 @@ export const DEPTH_COLORS: Record<Palette, DepthColors> = {
     fog: 0x1a2c46,
     horizon: 0x0a2a5a,
     key: 0xa8d0ff,
+    // the soul-light off the wet stone
+    bounce: { color: 0x2a86ff, intensity: 0.5 },
     // a cold mist lying low over the floor, the far end of the hall lost in it
     air: { density: 0.036, falloff: 0.3, start: 6 },
     // pale soul-light motes sinking slowly through the damp air
@@ -51,6 +57,8 @@ export const DEPTH_COLORS: Record<Palette, DepthColors> = {
     fog: 0x040a07,
     horizon: 0x0c3a22,
     key: 0xc0ffd8,
+    // the spirit light in the glass
+    bounce: { color: 0x2aff74, intensity: 0.5 },
     // darkness, swallowing the far walls
     air: { density: 0.022, falloff: 0.03, start: 9 },
     // spirit wisps rising out of the dark
@@ -68,7 +76,17 @@ export const underworldGlow = uniform(new THREE.Color(DEPTH_COLORS.ember.glow));
 export const gateOpen = uniform(0);
 
 /** The wave of light a cleared chamber sends out across its floor: how fast it runs (m/s) and how long it lasts (s). */
-export const CLEAR_WAVE = { speed: 24, time: 3.2 };
+export const CLEAR_WAVE = { speed: 24, time: 3.2, flare: 2.4 };
+
+/**
+ * How much brighter than its own the floor's bounce light shines `t` seconds
+ * after a chamber is cleared (below 0, or once the wave has run out, none):
+ * it swells in a quarter second as the wave sets off and dies away behind it.
+ */
+export function clearFlare(t: number): number {
+  if (t < 0 || t > CLEAR_WAVE.time) return 0;
+  return CLEAR_WAVE.flare * Math.min(1, t / 0.25) * Math.exp(-t * 1.3);
+}
 /**
  * The cleared chamber's wave, as (x, z where the last foe fell, seconds since,
  * on): the floor's veins, seams and cracks swell as it passes (see
