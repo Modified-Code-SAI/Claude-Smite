@@ -5,7 +5,7 @@ import { spriteQuads } from '../render/shared';
 import type { CampKind } from '../map/ConquestLayout';
 import { skinRigid } from '../scene/merge';
 import { BUFF_COLOR } from '../scene/conquest/Props';
-import { CINDER } from '../sim/Descent';
+import { CINDER, DescentMonsterBrain } from '../sim/Descent';
 import { MonsterBrain } from '../sim/Jungle';
 import type { Unit } from '../sim/Unit';
 import { hypot } from '../core/math';
@@ -30,6 +30,9 @@ import { hypot } from '../core/math';
  *  - Cinderlings and Slag Brutes, the Ashen Depths' own: imps of cinder
  *    that burst into flame when they fall, and knuckle-walking heaps of
  *    cooled slag with a furnace in their chests that slam the floor.
+ *  - The Drowned Halls' own: bloated Drowned Thralls that grab and hold,
+ *    Lantern Jellies of cold soul light, and Tide Lurkers, lure-headed fish
+ *    that swim under the floor and burst up beneath the gods.
  * Each monster is a small hierarchy of rigid parts posed every frame, drawn
  * as one skinned mesh per material (`skinRigid`): the pivots are its bones.
  * Materials read `positionGeometry`, the part's unposed position, so patterns
@@ -54,7 +57,7 @@ export const KEEPER_CORE = 0xfff0c8;
  * Seconds after death each body starts going down into the ground (the rigs
  * below sink on these), so whatever marks the ground taking it lands as it goes.
  */
-const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5 } as const;
+const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5, drownedThrall: 1.5, lanternJelly: 1.2, tideLurker: 1.6 } as const;
 
 /** When a monster's body starts sinking into the ground, in seconds after it died. */
 export function sinksAfter(tag: string): number {
@@ -940,6 +943,399 @@ function slagBrute(): MonsterView {
 }
 
 // ---------------------------------------------------------------------------
+// Drowned Thrall
+
+/** The cold soul light in the Drowned Halls' beasts: a Thrall's eyes, a Jelly's bell, a Lurker's lure. */
+export const DROWNED_GLOW = 0x7fe0ff;
+export const DROWNED_CORE = 0xe2fbff;
+let thrallSkin: THREE.Material | null = null;
+
+/**
+ * Drowned flesh: bloated grey-green going blue in bruised blotches, slick
+ * and shining, barnacles crusting whatever faces up, and a faint cold light
+ * in the veins under it.
+ */
+function thrallSkinMaterial(): THREE.Material {
+  const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.55 });
+  const p = positionGeometry;
+  const mottle = n(3, p).mul(0.6).add(n(11, p).mul(0.4));
+  // waterlogged flesh, grey-green and blotched, a green scum of weed toward the feet
+  const flesh = mix(mix(vec3(0.07, 0.12, 0.11), vec3(0.26, 0.32, 0.27), mottle), vec3(0.08, 0.17, 0.09), smoothstep(0.7, 0.1, p.y).mul(n(7, p.add(3))).mul(0.8));
+  const bruise = smoothstep(0.55, 0.75, n(5, p.add(13)));
+  const shell = smoothstep(0.32, 0.14, mx_worley_noise_float(p.mul(14))).mul(smoothstep(0.1, 0.6, normalWorld.y.add(n(2, p).sub(0.5))));
+  m.colorNode = mix(mix(flesh, vec3(0.13, 0.15, 0.25), bruise.mul(0.65)), vec3(0.6, 0.58, 0.5), shell);
+  m.roughnessNode = mix(float(0.42).add(mottle.mul(0.25)), float(0.9), shell);
+  // fine veins of cold light, only in patches (lit all over they read as a pattern, not a body)
+  const veins = smoothstep(0.012, 0.0, abs(n(9, p).sub(0.5))).mul(smoothstep(0.36, 0.6, n(2.5, p.add(7))));
+  const rim = pow(float(1).sub(saturate(normalView.dot(positionView.normalize().negate()))), 3);
+  m.emissiveNode = vec3(0.3, 0.85, 1).mul(veins.mul(0.9).add(rim.mul(0.2)));
+  return m;
+}
+
+/**
+ * Drowned Thralls: the Drowned Halls' many. Bloated husks of the drowned,
+ * hunched under drapes of kelp, barnacled, jaws hanging slack, a cold light
+ * in their sunken eyes. They shamble in on a dragging leg and lunge to grab
+ * with both hands, and what they grab they hold onto.
+ */
+function drownedThrall(): MonsterView {
+  const skin = (thrallSkin ??= thrallSkinMaterial());
+  const kelp = mats().fur;
+  const eye = glow(DROWNED_GLOW, 5);
+  const root = new THREE.Group();
+  const s = 1.15;
+  const rig = pivot(root, 0, 0, 0);
+  rig.scale.setScalar(s);
+  const hips = pivot(rig, 0, 0.95, 0);
+  mesh(hips, geo('dt-pelvis', () => new THREE.SphereGeometry(0.22, 16, 12).scale(1.2, 0.8, 0.9)), skin);
+  const legs: THREE.Group[] = [];
+  const knees: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const leg = pivot(hips, sx * 0.14, -0.05, 0);
+    mesh(leg, geo('dt-thigh', () => new THREE.CapsuleGeometry(0.09, 0.3, 4, 10)), skin, 0, -0.21, 0);
+    const knee = pivot(leg, 0, -0.42, 0);
+    mesh(knee, geo('dt-shin', () => new THREE.CapsuleGeometry(0.075, 0.28, 4, 10)), skin, 0, -0.2, 0);
+    mesh(knee, geo('dt-foot', () => new THREE.SphereGeometry(0.09, 10, 8).scale(0.9, 0.5, 1.6)), skin, 0, -0.42, 0.06);
+    legs.push(leg);
+    knees.push(knee);
+  }
+  const torso = pivot(hips, 0, 0.1, 0);
+  mesh(torso, geo('dt-belly', () => new THREE.SphereGeometry(0.3, 20, 14).scale(1.05, 0.95, 0.95)), skin, 0, 0.2, 0.05);
+  mesh(torso, geo('dt-chest', () => new THREE.SphereGeometry(0.28, 20, 14).scale(1.2, 0.9, 0.85)), skin, 0, 0.5, -0.02);
+  // kelp draped over the shoulders and hanging down the back
+  const strand = geo('dt-kelp', () => new THREE.ConeGeometry(0.06, 0.7, 6).rotateX(Math.PI).translate(0, -0.35, 0));
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 6 - 0.5) * 2.6;
+    mesh(torso, strand, kelp, Math.sin(a) * 0.3, 0.68, -Math.cos(a) * 0.12 - 0.05, -0.15 - Math.abs(a) * 0.05, 0, a * 0.15).scale.set(1, 0.7 + ((i * 7) % 5) * 0.12, 1);
+  }
+  // a rotted net of weed hanging from the hips, and a ragged drape of it down the back
+  mesh(hips, geo('dt-rags', () => tattered([[0.3, -0.42], [0.28, -0.2], [0.25, -0.04], [0.2, 0.06]], 8, 0.2, 1.7, 28)), kelp);
+  mesh(torso, geo('dt-drape', () => tattered([[0.42, 0.12], [0.38, 0.38], [0.33, 0.6], [0.2, 0.74]], 7, 0.22, 2.9, 28, Math.PI * 0.5, Math.PI)), kelp);
+  const head = pivot(torso, 0, 0.78, 0.1);
+  mesh(head, geo('dt-skull', () => new THREE.SphereGeometry(0.17, 16, 12).scale(0.95, 1.05, 1)), skin, 0, 0, 0);
+  const jaw = pivot(head, 0, -0.06, 0.02);
+  mesh(jaw, geo('dt-jaw', () => new THREE.SphereGeometry(0.12, 12, 10).scale(1, 0.55, 1.1)), skin, 0, -0.08, 0.06);
+  for (const sx of [-1, 1]) mesh(head, geo('dt-eye', () => new THREE.SphereGeometry(0.03, 10, 8)), eye, sx * 0.06, 0.03, 0.15, 0, 0, 0, false);
+  // weed for hair, hanging lank over the skull
+  for (let i = 0; i < 5; i++) mesh(head, strand, kelp, (i - 2) * 0.06, 0.13, -0.04 - Math.abs(i - 2) * 0.02, -0.5, 0, (i - 2) * 0.2).scale.set(0.6, 0.55, 0.6);
+  const arms: THREE.Group[] = [];
+  const elbows: THREE.Group[] = [];
+  const finger = geo('dt-finger', () => new THREE.ConeGeometry(0.025, 0.14, 6).rotateX(Math.PI).translate(0, -0.07, 0));
+  for (const sx of [-1, 1]) {
+    const arm = pivot(torso, sx * 0.36, 0.6, 0);
+    mesh(arm, geo('dt-upper', () => new THREE.CapsuleGeometry(0.08, 0.3, 4, 10)), skin, 0, -0.2, 0);
+    const elbow = pivot(arm, 0, -0.4, 0);
+    mesh(elbow, geo('dt-fore', () => new THREE.CapsuleGeometry(0.07, 0.3, 4, 10)), skin, 0, -0.18, 0);
+    mesh(elbow, geo('dt-hand', () => new THREE.SphereGeometry(0.1, 12, 8).scale(1, 1.2, 0.6)), skin, 0, -0.42, 0.02);
+    for (let i = -1; i <= 1; i++) mesh(elbow, finger, skin, i * 0.05, -0.52, 0.03, 0.2, 0, i * 0.15, false);
+    // a trailing frond of kelp caught round the wrist
+    mesh(elbow, strand, kelp, 0, -0.28, -0.06, 0.2, 0, 0).scale.set(0.5, 0.5, 0.5);
+    arms.push(arm);
+    elbows.push(elbow);
+  }
+  skinRigid(root, 'drowned-thrall', rig, [], bounds(2 * s));
+
+  let phase = Math.random() * 10;
+  let clock = Math.random() * 10;
+  return {
+    root,
+    height: 1.9 * s,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      const speed = hypot(u.vx, u.vz);
+      const gait = Math.min(1, speed / 1.6);
+      phase += dt * (2 + speed * 1.5);
+      const sw = Math.sin(phase);
+      // a shamble: the left leg steps, the right drags after it, the whole body lurching over each step
+      legs[0]!.rotation.x = sw * 0.55 * gait;
+      legs[1]!.rotation.x = -sw * 0.28 * gait - 0.1 * gait;
+      knees[0]!.rotation.x = Math.max(0, -sw) * 0.7 * gait;
+      knees[1]!.rotation.x = 0.1 * gait;
+      hips.position.y = 0.95 + Math.abs(Math.cos(phase)) * 0.04 * gait - gait * 0.03;
+      // the lunge: both arms thrown forward to grab, the body after them, the jaw gaping
+      const a = u.sinceAction;
+      const grab = a < 0.55 ? Math.sin(Math.min(1, a / 0.55) * Math.PI) : 0;
+      torso.rotation.set(0.35 + gait * 0.1 + grab * 0.35 + wobble * 0.1, Math.sin(clock * 0.6) * 0.08, sw * 0.13 * gait + Math.sin(clock * 0.9) * 0.04 + wobble * 0.08);
+      head.rotation.set(-0.15 - grab * 0.3, Math.sin(clock * 0.5) * 0.2, Math.sin(clock * 0.7) * 0.16);
+      jaw.rotation.x = 0.25 + Math.sin(clock * 1.3) * 0.05 + grab * 0.45;
+      arms.forEach((arm, i) => {
+        const sx = i ? 1 : -1;
+        arm.rotation.x = -0.55 + Math.sin(phase + i * Math.PI) * 0.22 * gait - grab * 1.15;
+        arm.rotation.z = sx * (0.12 - grab * 0.2);
+        elbows[i]!.rotation.x = -0.35 + grab * 0.3 + Math.sin(clock * 1.1 + i) * 0.05;
+      });
+      if (deathTime >= 0) {
+        // it pitches forward onto its face and goes under
+        const t = Math.min(1, deathTime / 0.7);
+        const k = t * t;
+        hips.position.y = 0.95 - k * 0.55 - Math.max(0, deathTime - SINKS.drownedThrall) * 0.45;
+        torso.rotation.x = 0.35 + k * 1.05;
+        for (const l of legs) l.rotation.x = -k * 0.4;
+        for (const kn of knees) kn.rotation.x = k * 1.2;
+        for (const arm of arms) arm.rotation.x = -0.55 - k * 1.3;
+        jaw.rotation.x = 0.25 + k * 0.3;
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Lantern Jelly
+
+let jellyBell: THREE.Material | null = null;
+
+/** A jellyfish's bell: clear, glowing cold at its rim and along canals of light inside, breathing. */
+function jellyBellMaterial(): THREE.Material {
+  const m = new THREE.MeshStandardNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, roughness: 0.15 });
+  const p = positionGeometry;
+  const rim = pow(float(1).sub(saturate(abs(normalView.dot(positionView.normalize().negate())))), 2);
+  const canals = smoothstep(0.045, 0.0, abs(n(5, p).sub(0.5)));
+  const breathe = sin(time.mul(2.4)).mul(0.15).add(0.9);
+  m.colorNode = vec3(0.3, 0.7, 0.9);
+  m.emissiveNode = vec3(0.3, 0.85, 1).mul(rim.mul(1.5).add(canals.mul(0.9)).add(0.12)).mul(breathe);
+  m.opacityNode = rim.mul(0.55).add(canals.mul(0.25)).add(0.18);
+  return m;
+}
+
+const JELLY_HOVER = 1.5;
+
+/**
+ * Lantern Jellies: the Drowned Halls' shooters. A clear bell of cold soul
+ * light drifting at head height, canals of light inside it, a bright core
+ * that gathers each bolt, frilled arms and long glowing tentacles trailing
+ * behind. It pulses as it swims; to shoot it clenches hard and the core
+ * flares.
+ */
+function lanternJelly(): MonsterView {
+  const bell = (jellyBell ??= jellyBellMaterial());
+  const strand = glow(DROWNED_GLOW, 1.8);
+  const core = glow(DROWNED_CORE, 5);
+  const root = new THREE.Group();
+  const rig = pivot(root, 0, 0, 0);
+  const body = pivot(rig, 0, JELLY_HOVER, 0);
+  const dome = pivot(body, 0, 0, 0);
+  mesh(dome, geo('lj-bell', () => tattered([[0.47, -0.06], [0.5, 0.02], [0.49, 0.14], [0.42, 0.3], [0.3, 0.42], [0.15, 0.48], [0.02, 0.5]], 8, 0.09, 0.7)), bell, 0, 0, 0, 0, 0, 0, false);
+  mesh(dome, geo('lj-inner', () => new THREE.SphereGeometry(0.3, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.5).scale(1, 0.75, 1)), bell, 0, 0.04, 0, 0, 0, 0, false);
+  const heart = mesh(dome, geo('lj-core', () => new THREE.SphereGeometry(0.13, 14, 10).scale(1, 0.8, 1)), core, 0, 0.18, 0, 0, 0, 0, false);
+  // four lobes of light round the core
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.4;
+    mesh(dome, geo('lj-lobe', () => new THREE.TorusGeometry(0.07, 0.018, 6, 14)), strand, Math.cos(a) * 0.17, 0.14, Math.sin(a) * 0.17, Math.PI / 2, 0, a, false);
+  }
+  // frilled arms from the middle, long fine tentacles from the margin
+  const arms: THREE.Group[] = [];
+  // (each a thin ribbon curling as it hangs, splayed out from the next so the four never read as one bar)
+  const frill = geo('lj-arm', () => {
+    const pts: THREE.Vector3[] = [];
+    for (let k = 0; k <= 10; k++) {
+      const t = k / 10;
+      pts.push(new THREE.Vector3(t * 0.13 + Math.sin(t * 11) * 0.045 * t, -t * 0.82, Math.cos(t * 9) * 0.04 * t));
+    }
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 28, 0.018, 5, false);
+  });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.3;
+    const arm = pivot(body, Math.cos(a) * 0.1, -0.02, Math.sin(a) * 0.1);
+    mesh(arm, frill, strand, 0, 0, 0, 0, -a, 0, false);
+    arms.push(arm);
+  }
+  const tentacles: THREE.Group[] = [];
+  const line = geo('lj-tentacle', () => new THREE.ConeGeometry(0.014, 1.3, 5).rotateX(Math.PI).translate(0, -0.65, 0));
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const t = pivot(body, Math.cos(a) * 0.44, -0.04, Math.sin(a) * 0.44);
+    mesh(t, line, strand, 0, 0, 0, 0, 0, 0, false);
+    t.scale.y = 0.75 + ((i * 3) % 4) * 0.12;
+    tentacles.push(t);
+  }
+  skinRigid(root, 'lantern-jelly', rig, [heart], bounds(2.4));
+  const lengths = tentacles.map((t) => t.scale.y);
+
+  let clock = Math.random() * 10;
+  let lean = 0;
+  return {
+    root,
+    height: 2.1,
+    linger: 2.6,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      lean += (Math.min(1, hypot(u.vx, u.vz) / 3) - lean) * Math.min(1, dt * 4);
+      // swimming: the bell clenches and opens, lifting it a little each beat
+      const a = u.sinceAction;
+      const spit = a < 0.35 ? Math.sin((a / 0.35) * Math.PI) : 0;
+      const beat = Math.sin(clock * 2.6);
+      const squeeze = Math.max(0, beat) * 0.09 + spit * 0.2;
+      dome.scale.set(1 - squeeze, 1 + squeeze * 0.9, 1 - squeeze);
+      body.position.y = JELLY_HOVER + Math.sin(clock * 2.6 - 0.8) * 0.06 + Math.sin(clock * 0.7) * 0.08;
+      body.rotation.set(lean * 0.35 + wobble * 0.1, 0, Math.sin(clock * 0.9) * 0.05 + wobble * 0.08);
+      // the core gathers light between bolts and flares as one leaves
+      heart.scale.setScalar(0.7 + Math.min(1, a / 1.2) * 0.4 + spit * 0.7 + Math.max(0, beat) * 0.06);
+      // tentacles trail and wave, swept back as it swims
+      tentacles.forEach((t, i) => {
+        t.rotation.x = lean * 0.7 + Math.sin(clock * 1.8 + i * 0.9) * 0.14;
+        t.rotation.z = Math.sin(clock * 1.4 + i * 1.7) * 0.14;
+        t.scale.y = lengths[i]! * (1 - squeeze * 0.6);
+      });
+      arms.forEach((arm, i) => {
+        arm.rotation.x = lean * 0.5 + Math.sin(clock * 1.2 + i * 1.6) * 0.1;
+        arm.rotation.z = Math.sin(clock * 1.5 + i) * 0.1;
+      });
+      if (deathTime >= 0) {
+        // the light goes out of it and it settles to the floor, deflating
+        const t = Math.min(1, deathTime / 1.1);
+        body.position.y = JELLY_HOVER * (1 - t) + 0.15 * t - Math.max(0, deathTime - SINKS.lanternJelly) * 0.3;
+        dome.scale.set(1 + t * 0.35, Math.max(0.2, 1 - t * 0.75), 1 + t * 0.35);
+        heart.scale.setScalar(Math.max(0.01, 1 - t * 1.4));
+        for (const tt of tentacles) tt.rotation.x = t * 1.2;
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tide Lurker
+
+let lurkerSkin: THREE.Material | null = null;
+
+/** A deep-water fish's hide: near-black blue-green on its back, pale underneath, wet, with rows of cold lights down its flanks that pulse. */
+function lurkerSkinMaterial(): THREE.Material {
+  const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.4 });
+  const p = positionGeometry;
+  const top = smoothstep(-0.35, 0.35, normalWorld.y);
+  const mottle = n(4, p).mul(0.6).add(n(13, p).mul(0.4));
+  // dark banding across the back, as on a deep-water fish
+  const bands = smoothstep(0.35, 0.65, sin(p.z.mul(7).add(n(3, p).mul(4))).mul(0.5).add(0.5));
+  const back = mix(mix(vec3(0.02, 0.045, 0.06), vec3(0.07, 0.13, 0.14), mottle), vec3(0.01, 0.02, 0.03), bands.mul(0.6));
+  m.colorNode = mix(mix(vec3(0.36, 0.4, 0.36), vec3(0.52, 0.55, 0.48), mottle), back, top);
+  // rows of cold lights down its flanks, pulsing in a wave from head to tail
+  const spots = smoothstep(0.2, 0.08, mx_worley_noise_float(p.mul(7))).mul(smoothstep(0.8, 0.2, abs(normalWorld.y)));
+  m.emissiveNode = vec3(0.3, 0.9, 1).mul(spots.mul(sin(time.mul(1.7).add(p.z.mul(3))).mul(0.45).add(1)).mul(1.8));
+  m.roughnessNode = float(0.32).add(mottle.mul(0.25));
+  return m;
+}
+
+/** How far under the floor a Tide Lurker swims: only the tall fin on its back cuts through. */
+const LURK_DEPTH = 1.45;
+
+/**
+ * Tide Lurkers: the Drowned Halls' heavies. A great flat-headed fish that
+ * hauls itself along on its fore-fins, a jaw of needle teeth jutting under
+ * a glowing lure, cold lights down its flanks and a tall fin on its back.
+ * It sinks into the floor and swims beneath it, only that fin showing,
+ * and bursts up under its prey with its jaws wide.
+ */
+function tideLurker(): MonsterView {
+  const skin = (lurkerSkin ??= lurkerSkinMaterial());
+  const tooth = mats().bone;
+  const lure = glow(DROWNED_CORE, 5);
+  const root = new THREE.Group();
+  const rig = pivot(root, 0, 0, 0);
+  const body = pivot(rig, 0, 0.75, 0);
+  mesh(body, geo('tl-body', () => new THREE.SphereGeometry(0.6, 24, 16).scale(1, 0.72, 1.45)), skin, 0, 0, -0.15);
+  // the fin along its back, the front one tall enough to cut the floor while it swims under it
+  const fin = geo('tl-fin', () => new THREE.ConeGeometry(0.55, 1, 4, 1).scale(0.06, 1, 1).translate(0, 0.5, 0));
+  mesh(body, fin, skin, 0, 0.3, 0.05, -0.55, 0, 0).scale.set(1, 1.15, 1);
+  mesh(body, fin, skin, 0, 0.28, -0.55, -0.8, 0, 0).scale.set(1, 0.6, 0.7);
+  for (let i = 0; i < 5; i++) mesh(body, geo('tl-spine', () => new THREE.ConeGeometry(0.03, 0.5, 6).translate(0, 0.25, 0)), tooth, 0, 0.3 + i * 0.02, 0.3 - i * 0.18, -0.55 - i * 0.08, 0, 0).scale.setScalar(1.6 - i * 0.2);
+  // a wide flat head and the underbite of a jaw full of needles
+  const head = pivot(body, 0, 0.05, 0.75);
+  mesh(head, geo('tl-skull', () => new THREE.SphereGeometry(0.55, 22, 14).scale(1.15, 0.6, 0.9)), skin, 0, 0.06, 0.22);
+  const upper = geo('tl-fang', () => new THREE.ConeGeometry(0.03, 0.2, 6).rotateX(Math.PI).translate(0, -0.1, 0));
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 6 - 0.5) * 2.2;
+    mesh(head, upper, tooth, Math.sin(a) * 0.48, -0.08, 0.22 + Math.cos(a) * 0.38, 0, 0, 0, false).scale.setScalar(1 - Math.abs(a) * 0.2);
+  }
+  const jaw = pivot(head, 0, -0.1, -0.05);
+  mesh(jaw, geo('tl-jaw', () => new THREE.SphereGeometry(0.5, 20, 12, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55).scale(1.12, 0.6, 1.05)), skin, 0, 0.02, 0.32);
+  const lower = geo('tl-tooth', () => new THREE.ConeGeometry(0.035, 0.28, 6).translate(0, 0.14, 0));
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 8 - 0.5) * 2.4;
+    mesh(jaw, lower, tooth, Math.sin(a) * 0.52, -0.02, 0.32 + Math.cos(a) * 0.46, 0.25, 0, -Math.sin(a) * 0.2, false).scale.setScalar(1 - Math.abs(a) * 0.18);
+  }
+  for (const sx of [-1, 1]) mesh(head, geo('tl-eye', () => new THREE.SphereGeometry(0.06, 10, 8)), lure, sx * 0.4, 0.22, 0.3, 0, 0, 0, false);
+  // the lure: a stalk curling up and forward off its brow, a bulb of light at the end
+  const stalk = pivot(head, 0, 0.3, 0.12);
+  mesh(stalk, geo('tl-stalk', () => new THREE.CylinderGeometry(0.025, 0.04, 0.7, 6).translate(0, 0.35, 0)), tooth, 0, 0, 0, 0.35);
+  const tip = pivot(stalk, 0, 0.66, 0.24);
+  mesh(tip, geo('tl-stalk-tip', () => new THREE.CylinderGeometry(0.015, 0.025, 0.4, 6).translate(0, 0.2, 0)), tooth, 0, 0, 0, 1.2);
+  const bulb = mesh(tip, geo('tl-bulb', () => new THREE.SphereGeometry(0.1, 14, 10)), lure, 0, 0.34, 0.15, 0, 0, 0, false);
+  // fore-fins it hauls itself along on
+  const fins: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const f = pivot(body, sx * 0.5, -0.3, 0.35);
+    mesh(f, geo('tl-flipper', () => new THREE.SphereGeometry(0.32, 14, 8).scale(0.45, 0.16, 1).translate(0, 0, 0.18)), skin, sx * 0.12, -0.08, 0, 0, 0, sx * 0.3);
+    fins.push(f);
+  }
+  // a tail in three joints, ending in a fan
+  const tail: THREE.Group[] = [];
+  let parent: THREE.Object3D = body;
+  for (let i = 0; i < 3; i++) {
+    const seg = pivot(parent, 0, i ? 0 : 0.02, i ? -0.42 : -0.95);
+    const r = 0.36 - i * 0.09;
+    mesh(seg, geo(`tl-tail-${i}`, () => new THREE.SphereGeometry(r, 14, 10).scale(0.85, 0.75, 1.5)), skin, 0, 0, -0.2);
+    tail.push(seg);
+    parent = seg;
+  }
+  mesh(parent, geo('tl-fan', () => new THREE.ConeGeometry(0.45, 0.7, 4, 1).scale(0.06, 1, 1).rotateX(-Math.PI / 2).translate(0, 0, -0.55)), skin, 0, 0, -0.1);
+  skinRigid(root, 'tide-lurker', rig, [bulb], bounds(3));
+
+  let phase = Math.random() * 10;
+  let clock = Math.random() * 10;
+  /** How far under the floor it is (0 up, 1 swimming under with only its fin out). */
+  let under = 0;
+  /** Seconds since it burst up out of the floor. */
+  let leapt = 9;
+  let was: 'up' | 'under' | 'rising' = 'up';
+  return {
+    root,
+    height: 1.7,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      const state = u.brain instanceof DescentMonsterBrain ? u.brain.lurkState : u.untargetable > 0 ? 'under' : 'up';
+      if (was !== 'up' && state === 'up') leapt = 0;
+      was = state;
+      leapt += dt;
+      const goal = state === 'up' ? 0 : 1;
+      under += (goal - under) * Math.min(1, dt * (goal ? 5 : 30));
+      const speed = hypot(u.vx, u.vz);
+      const gait = Math.min(1, speed / 2);
+      phase += dt * (2.4 + speed * 1.8);
+      const sw = Math.sin(phase);
+      // hauling itself along: the fore-fins pull by turns, the body rolls and the tail sweeps
+      fins.forEach((f, i) => {
+        const sx = i ? 1 : -1;
+        f.rotation.x = Math.sin(phase + i * Math.PI) * 0.6 * gait;
+        f.rotation.z = sx * (0.1 + Math.max(0, Math.sin(phase + i * Math.PI)) * 0.3 * gait) - sx * under * 0.6;
+      });
+      tail.forEach((t, i) => (t.rotation.y = Math.sin(clock * 2.2 + phase * 0.6 - i * 0.9) * (0.2 + gait * 0.15 + under * 0.25)));
+      // a burst out of the floor: it leaps clear with its jaws wide, then thumps down
+      const leap = leapt < 0.55 ? Math.sin((leapt / 0.55) * Math.PI) : 0;
+      const tremble = state === 'rising' ? Math.sin(clock * 50) * 0.05 : 0;
+      rig.position.y = -under * LURK_DEPTH + leap * 0.9 + tremble;
+      body.position.y = 0.75 + Math.abs(Math.cos(phase)) * 0.04 * gait;
+      // the bite: the jaw drops wide and snaps shut
+      const a = u.sinceAction;
+      const bite = a < 0.35 ? Math.sin((a / 0.35) * Math.PI) : 0;
+      jaw.rotation.x = 0.06 + bite * 0.75 + leap * 0.9 + Math.sin(clock * 1.1) * 0.04;
+      head.rotation.set(-bite * 0.25 - leap * 0.7, Math.sin(clock * 0.8) * 0.1 * (1 - gait), Math.sin(phase) * 0.06 * gait);
+      body.rotation.set(-leap * 0.5 + wobble * 0.05, 0, sw * 0.07 * gait + wobble * 0.06);
+      stalk.rotation.x = 0.35 + Math.sin(clock * 1.6) * 0.12 + gait * 0.2;
+      tip.rotation.x = 1.2 + Math.sin(clock * 2.3) * 0.15;
+      bulb.scale.setScalar(1 + Math.sin(clock * 3.1) * 0.15);
+      if (deathTime >= 0) {
+        // it rolls over belly-up, the lure guttering out, and sinks
+        const t = Math.min(1, deathTime / 0.9);
+        body.rotation.z = t * t * 2.6;
+        rig.position.y = -Math.max(0, deathTime - SINKS.tideLurker) * 0.5;
+        jaw.rotation.x = 0.06 + t * 0.4;
+        bulb.scale.setScalar(Math.max(0.01, 1 - t));
+        for (const f of fins) f.rotation.x *= 1 - t;
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Treasure Wyrm
 
 const WYRM_SEGMENTS = 36;
@@ -1648,6 +2044,9 @@ export function monsterWarmup(): THREE.Object3D[] {
     ossuaryKing(),
     cinderling(),
     slagBrute(),
+    drownedThrall(),
+    lanternJelly(),
+    tideLurker(),
   ].map((v) => v.root);
 }
 
@@ -1683,5 +2082,8 @@ function createView(u: Pick<Unit, 'tag'>): MonsterView {
   if (type === 'ossuaryKing') return ossuaryKing();
   if (type === 'cinderling') return cinderling();
   if (type === 'slagBrute') return slagBrute();
+  if (type === 'drownedThrall') return drownedThrall();
+  if (type === 'lanternJelly') return lanternJelly();
+  if (type === 'tideLurker') return tideLurker();
   return thornback(type === 'thornbackAlpha', type === 'thornSpitter', type === 'gildedThornback');
 }

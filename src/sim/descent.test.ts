@@ -4,7 +4,7 @@ import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { CHAMBERS, chamberField, DEPTH_CHAMBERS, entranceSpot, exitSpot, underworldCave, underworldField, obstaclesOf } from '../map/UnderworldLayout';
 import { navOf } from '../map/ChamberNav';
-import { ALL_SLOTS, BRUTE, chamberWaves, CINDER, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, KEEPER, KING, learnSkill, planRun, SHADE_BLINK, type ChamberKind } from './Descent';
+import { ALL_SLOTS, BRUTE, chamberWaves, CINDER, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, GRIP, KEEPER, KING, learnSkill, LURK, planRun, SHADE_BLINK, type ChamberKind } from './Descent';
 import { CURSES } from './Siege';
 import { DescentBot } from './DescentBot';
 import { godUnit, monsterUnit } from './factory';
@@ -176,11 +176,11 @@ describe('Underworld Descent: the run', () => {
     expect(chamberWaves({ n: 4, layout: 0, kind: 'elite' })[0]).toContain('warden');
   });
 
-  it('brings Shades only past the first boss, more of them deeper down', () => {
+  it('brings Shades only into the Abyss, more of them deeper down', () => {
     const shades = (n: number) => chamberWaves({ n, layout: 0, kind: 'pack' }).flat().filter((t) => t === 'shade').length;
-    for (let n = 1; n <= DESCENT.bossEvery; n++) expect(shades(n)).toBe(0);
-    expect(shades(DESCENT.bossEvery + 1)).toBeGreaterThan(0);
-    expect(shades(14)).toBeGreaterThan(shades(DESCENT.bossEvery + 1));
+    for (let n = 1; n <= 2 * DESCENT.bossEvery; n++) expect(shades(n)).toBe(0);
+    expect(shades(2 * DESCENT.bossEvery + 1)).toBeGreaterThan(0);
+    expect(shades(14)).toBeGreaterThan(shades(2 * DESCENT.bossEvery + 1));
   });
 
   it('blinks a Shade away from a god who closes in, onto open floor, but never while it is stunned', () => {
@@ -380,6 +380,102 @@ describe('Underworld Descent: the run', () => {
     sim.strike(near, brute, 1e7, 'true');
     run(1 / 15);
     expect(warning()).toBeUndefined();
+  });
+
+  it("gives the Drowned Halls beasts of its own: Drowned Thralls, Lantern Jellies and Tide Lurkers, found nowhere else", () => {
+    const kinds: ChamberKind[] = ['pack', 'trap', 'elite', 'champion', 'treasure'];
+    const raised = (from: number, to: number) => {
+      const out = new Set<string>();
+      for (let n = from; n <= to; n++) for (const kind of kinds) for (const t of chamberWaves({ n, layout: 0, kind }).flat()) out.add(t);
+      return out;
+    };
+    const drowned = raised(DESCENT.bossEvery + 1, 2 * DESCENT.bossEvery - 1);
+    for (const t of ['drownedThrall', 'lanternJelly', 'tideLurker']) expect(drowned.has(t), t).toBe(true);
+    for (const t of ['thornback', 'thornbackAlpha', 'thornSpitter', 'cinderling', 'slagBrute', 'shade', 'gravekeeper']) expect(drowned.has(t), t).toBe(false);
+    const elsewhere = new Set([...raised(1, DESCENT.bossEvery - 1), ...raised(2 * DESCENT.bossEvery + 1, DESCENT.chambers - 1)]);
+    for (const t of ['drownedThrall', 'lanternJelly', 'tideLurker']) expect(elsewhere.has(t), t).toBe(false);
+  });
+
+  /** One Descent beast on its own in a chamber, fighting for real. */
+  const loose = (sim: Sim, type: 'drownedThrall' | 'tideLurker', x: number, z: number) => {
+    const c = CHAMBERS[7]!;
+    const m = sim.add(monsterUnit(zeus, type, { x, z, yaw: 0 }, 0));
+    m.tag = `descent-small-7.0.0:${type}`;
+    const camp = { camp: { id: type, kind: 'small' as const, team: null, at: [x, z] as [number, number] }, members: [m], respawnAt: null, foe: null };
+    const brain = new DescentMonsterBrain(sim, m, camp, c);
+    m.brain = brain;
+    return { m, brain, c };
+  };
+
+  it("slows the god a Drowned Thrall's blows land on", () => {
+    const { sim, run, team } = setup([thor], 1, 9);
+    const c = CHAMBERS[7]!;
+    const [sx, sz] = c.spawns[2]!;
+    const { m } = loose(sim, 'drownedThrall', c.x + sx, c.z + sz);
+    const god = team[0]!;
+    sim.teleport(god, m.x + 1.6, m.z, undefined, true);
+    god.brain = null;
+    const before = sim.moveSpeed(god);
+    let hit = false;
+    sim.listeners.push((e) => {
+      if (e.type === 'damage' && e.source === m && e.target === god) hit = true;
+    });
+    for (let i = 0; i < 90 && !hit; i++) {
+      run.step(1 / 30);
+      sim.step(1 / 30);
+    }
+    expect(hit).toBe(true);
+    expect(sim.moveSpeed(god)).toBeLessThan(before * (1 - GRIP.slow * 0.8));
+  });
+
+  it('sends a Tide Lurker under the floor out of reach, up beside its foe behind a warning circle, and bursts it up into every god there; stunned, it stays up', () => {
+    const sim = new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(12));
+    const c = CHAMBERS[7]!;
+    const [sx, sz] = c.spawns[2]!;
+    const { m, brain } = loose(sim, 'tideLurker', c.x + sx, c.z + sz);
+    // the god across the chamber from it, too far to reach on foot before it dives
+    const [fx, fz] = [...c.spawns].sort((a, b) => Math.hypot(b[0] - sx, b[1] - sz) - Math.hypot(a[0] - sx, a[1] - sz))[0]!;
+    const god = sim.add(godUnit(thor, 'order', { x: c.x + fx, z: c.z + fz, yaw: 0 }));
+    god.brain = null;
+    const far = Math.hypot(god.x - m.x, god.z - m.z);
+    const run = (seconds: number) => {
+      for (let i = 0; i < Math.round(seconds * 30); i++) sim.step(1 / 30);
+    };
+    expect(far).toBeGreaterThan(18);
+    run(LURK.first - 0.3);
+    expect(brain.lurkState).toBe('up');
+    expect(m.targetable).toBe(true);
+    run(0.4);
+    expect(brain.lurkState).toBe('under');
+    expect(m.targetable).toBe(false);
+    // nothing touches it down there
+    const hp = m.combatant.health;
+    sim.strike(god, m, 1e5, 'true');
+    expect(m.combatant.health).toBe(hp);
+    // it comes up beside the god, its circle on the ground first
+    for (let i = 0; i < 30 * LURK.under + 10 && brain.lurkState === 'under'; i++) run(1 / 30);
+    expect(brain.lurkState).toBe('rising');
+    const w = sim.flashes.find((f) => f.owner === m && f.warn && f.act === 'special')!;
+    expect(w).toBeDefined();
+    expect(w.shape).toMatchObject({ type: 'circle', radius: LURK.radius });
+    expect(Math.hypot(god.x - m.x, god.z - m.z)).toBeLessThan(LURK.radius);
+    let struck = 0;
+    sim.listeners.push((e) => {
+      if (e.type === 'damage' && e.source === m && e.target === god) struck++;
+    });
+    god.move = null;
+    run(LURK.warn + 0.1);
+    expect(brain.lurkState).toBe('up');
+    expect(m.targetable).toBe(true);
+    expect(struck).toBeGreaterThan(0);
+    // stunned when its time comes round again, it can't go under
+    m.combatant.cc.apply('stun', LURK.up + 2);
+    run(LURK.up + 1);
+    expect(brain.lurkState).toBe('up');
+    run(1.5);
+    // (right beside the god already, it goes straight from under to rising)
+    expect(brain.lurkState).not.toBe('up');
+    expect(m.targetable).toBe(false);
   });
 
   it('crowns the bottom of the run with the Ossuary King: Soul Rain under every god, never while stunned, faster when hurt; a Grave Toll; Shades among its adds', () => {

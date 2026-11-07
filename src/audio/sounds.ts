@@ -113,6 +113,19 @@ export const SOUNDS: Record<string, Recipe> = {
     peak: 0.7,
     make: (r) => layer([fire(r, 1.1, { roar: 0.8 }), 1], [thump(r, 0.35, 170, 75, { noise: 0.8, click: 0.3 }), 0.7], [crackles(r, 1.2, 34), 0.55, 0.05], [debris(r, 0.7, { density: 18, gain: 0.35, tone: 1500 }), 0.35, 0.04]),
   },
+  // the Drowned Halls' own: a Thrall's wet lunge and the slap of its grip, a Jelly's bubbling bolt and its cold sting,
+  // a Lurker's snapping bite, its plunge into the floor and the eruption of water as it bursts up
+  'basic.thrall': { variants: 3, peak: 0.6, make: (r) => layer([vowel(r, 0.45, (t) => glide(170 + r() * 30, 120, t, 0.45), VOWELS.oh, { breath: 1.4, growl: 0.35, gain: 0.55, env: (t) => ahr(t, 0.05, 0.12, 0.3) }), 0.9], [whoosh(r, 0.3, 300, 800, { q: 0.9 }), 0.6, 0.05], [splash(r, 0.2), 0.4, 0.1]) },
+  'hit.thrall': { variants: 3, peak: 0.6, make: (r) => layer([hitFlesh(r, 0.8), 0.8], [splash(r, 0.35), 0.6, 0.005]) },
+  'basic.jelly': { variants: 3, peak: 0.5, make: (r) => layer([shimmer(r, 0.4, 880 + r() * 120, { rise: 1.6, peak: 0.1 }), 0.6], [whoosh(r, 0.25, 700, 2000, { q: 1.4 }), 0.6, 0.02], [bubble(r), 0.4, 0.04], [bubble(r), 0.3, 0.09]) },
+  'hit.jelly': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.12, { tone: 1300 }), 0.6], [shimmer(r, 0.35, 1174.7, { rise: 0.7, peak: 0.05 }), 0.5, 0.01], [bubble(r), 0.35, 0.02]) },
+  'basic.lurker': { variants: 3, peak: 0.75, make: (r) => layer([knock(r, 0.06, 900 + r() * 200), 0.7], [thump(r, 0.25, 160, 70, { noise: 0.6, click: 0.5 }), 0.7], [vowel(r, 0.3, (t) => glide(110, 80, t, 0.3), VOWELS.ah, { breath: 1, growl: 0.4, gain: 0.5 }), 0.6, 0.02], [splash(r, 0.3), 0.35, 0.03]) },
+  'lurk.dive': { variants: 2, peak: 0.6, make: (r) => layer([splash(r, 1), 1], [filter(whoosh(r, 0.9, 900, 220, { q: 0.8 }), 'lowpass', 2000), 0.6, 0.05], [bubble(r), 0.3, 0.3], [bubble(r), 0.25, 0.45], [bubble(r), 0.2, 0.6]) },
+  'lurk.burst': {
+    variants: 2,
+    peak: 0.85,
+    make: (r) => layer([splash(r, 1), 1], [splash(r, 0.8), 0.7, 0.07], [thump(r, 0.6, 120, 50, { noise: 0.9, click: 0.3 }), 0.7], [roar(r, 0.8, 78, { open: 0.9 }), 0.6, 0.08], [filter(whoosh(r, 1.4, 300, 1100, { q: 0.7 }), 'lowpass', 2600), 0.5, 0.05]),
+  },
   'basic.brute': { variants: 3, peak: 0.8, make: (r) => layer([whoosh(r, 0.42, 150, 460, { q: 0.8, peak: 0.7, gain: 1.3 }), 1], [roar(r, 0.45, 82 + r() * 10, { open: 0.6 }), 0.45], [crackles(r, 0.35, 12), 0.25, 0.05]) },
   'brute.windup': { variants: 2, peak: 0.75, make: (r) => layer([roar(r, 1, 70, { open: 0.85 }), 1], [rumble(r, 1.1, { tone: 150, attack: 0.5 }), 0.6], [fire(r, 1, { gain: 0.5, roar: 0.6 }), 0.35, 0.15]) },
   'brute.slam': {

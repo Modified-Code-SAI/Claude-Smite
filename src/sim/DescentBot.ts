@@ -41,11 +41,17 @@ export class DescentBot implements Brain {
     const u = this.u;
     let best: Unit | null = null;
     let bs = Infinity;
+    // a beast out between the halves (a Shade blinked off to the middle) that no rival is nearer to either: anyone's
+    let spare: Unit | null = null;
+    let ss = Infinity;
     for (const t of this.sim.enemiesOf(u)) {
       if (t.kind === 'dummy' || t.stealth > 0 || !t.alive) continue;
       const d = hypot(t.x - u.x, t.z - u.z);
       // monsters on the rivals' side are theirs to fight, unless they come close
-      if (d > 6 && hypot(t.x - this.anchor.x, t.z - this.anchor.z) > 15) continue;
+      if (d > 6 && hypot(t.x - this.anchor.x, t.z - this.anchor.z) > 15) {
+        if (t.kind === 'monster' && d < ss && !this.run.gods.some((g) => g.team !== u.team && g.alive && hypot(g.x - t.x, g.z - t.z) < d)) [ss, spare] = [d, t];
+        continue;
+      }
       let score = d;
       if (t.kind === 'god') {
         // a rival worth turning on: one in our face, one nearly down, or one hitting us right now
@@ -57,7 +63,7 @@ export class DescentBot implements Brain {
       }
       if (score < bs) [bs, best] = [score, t];
     }
-    return best;
+    return best ?? spare;
   }
 
   private route(goal: Point): Point {

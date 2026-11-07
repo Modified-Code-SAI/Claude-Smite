@@ -86,7 +86,7 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | `relic.${RelicId}` | `hazard.${HazardCue}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | `relic.${RelicId}` | `hazard.${HazardCue}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -281,6 +281,7 @@ export class DescentView {
     this.kicks.update(dt);
     this.markBlows();
     this.stir(dt);
+    this.lurkers(dt);
     for (let i = this.sinking.length - 1; i >= 0; i--) {
       const s = this.sinking[i]!;
       if (this.clock < s.at) continue;
@@ -546,6 +547,52 @@ export class DescentView {
       }
       return;
     }
+  }
+
+  /** Tide Lurkers seen under the floor last frame, and when each last left a ripple. */
+  private readonly lurkUnder = new Map<Unit, number>();
+
+  /**
+   * The Tide Lurkers' swims: a plunge into the floor in a burst of spray,
+   * rings running out behind the fin as it cuts along, and an eruption of
+   * water where it bursts up.
+   */
+  private lurkers(dt: number): void {
+    const me = this.opts.me;
+    for (const u of this.run.monsters) {
+      if (!u.tag.endsWith(':tideLurker')) continue;
+      const under = u.alive && u.untargetable > 0;
+      const last = this.lurkUnder.get(u);
+      const gy = this.groundAt(u.x, u.z);
+      if (under && last === undefined) {
+        this.vfx.burst(SPLASH, u.x, gy + 0.2, u.z, 1.5);
+        this.vfx.billow('dust', u.x, gy + 0.5, u.z, 3.2, { tint: SPRAY, duration: 1.3, rise: 0.5 });
+        this.scars.mark(u.x, u.z, 1.6, true, false);
+        this.opts.cue?.('lurkDive', { x: u.x, y: gy + 0.4, z: u.z }, 0);
+        this.lurkUnder.set(u, 0);
+      } else if (under) {
+        const t = last! + dt;
+        if (t > 0.16) {
+          // rings behind the fin as it cuts along, a fleck of spray off it
+          this.scars.mark(u.x, u.z, 0.9, true, false);
+          if (Math.random() < 0.5) this.vfx.burst(SPLASH, u.x, gy + 0.1, u.z, 0.35);
+          this.lurkUnder.set(u, 0);
+        } else this.lurkUnder.set(u, t);
+      } else if (last !== undefined) {
+        this.lurkUnder.delete(u);
+        if (!u.alive) continue;
+        this.vfx.burst(SPLASH, u.x, gy + 0.4, u.z, 2.4);
+        this.vfx.billow('dust', u.x, gy + 0.8, u.z, 5, { tint: SPRAY, duration: 1.8, rise: 1.4 });
+        this.vfx.billow('smoke', u.x, gy + 1.6, u.z, 4, { tint: SPRAY, duration: 2.2, rise: 1.8, delay: 0.1, opacity: 0.5 });
+        this.scars.mark(u.x, u.z, 2.3, true, false);
+        if (me && this.opts.shake) {
+          const d = Math.hypot(me.x - u.x, me.z - u.z);
+          if (d < 9) this.opts.shake(0.22 * (1 - d / 9));
+        }
+        this.opts.cue?.('lurkBurst', { x: u.x, y: gy + 0.6, z: u.z }, 0);
+      }
+    }
+    if (this.lurkUnder.size) for (const u of this.lurkUnder.keys()) if (!this.run.monsters.includes(u)) this.lurkUnder.delete(u);
   }
 
   /**
