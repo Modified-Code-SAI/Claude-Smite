@@ -33,6 +33,8 @@ export interface NetPlayer {
   team: Side;
   /** Locked in on the god pick screen. */
   ready?: boolean;
+  /** A guest's round trip to the host in milliseconds, as the host last measured it in the lobby. */
+  ms?: number;
 }
 
 /** One of a match's ten god slots, played by a human (their player id) or a bot. */
