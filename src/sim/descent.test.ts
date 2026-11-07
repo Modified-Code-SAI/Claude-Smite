@@ -4,7 +4,7 @@ import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { CHAMBERS, chamberField, DEPTH_CHAMBERS, entranceSpot, exitSpot, underworldCave, underworldField, obstaclesOf } from '../map/UnderworldLayout';
 import { navOf } from '../map/ChamberNav';
-import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, KEEPER, KING, learnSkill, planRun, SHADE_BLINK } from './Descent';
+import { ALL_SLOTS, BRUTE, chamberWaves, CINDER, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, KEEPER, KING, learnSkill, planRun, SHADE_BLINK, type ChamberKind } from './Descent';
 import { CURSES } from './Siege';
 import { DescentBot } from './DescentBot';
 import { godUnit, monsterUnit } from './factory';
@@ -278,6 +278,108 @@ describe('Underworld Descent: the run', () => {
     run(1);
     expect(gap()).toBeGreaterThan(start + 1);
     expect(c.sd(keeper.x - c.x, keeper.z - c.z)).toBeGreaterThan(0);
+  });
+
+  it("gives the Ashen Depths beasts of its own: Cinderlings swarm and Slag Brutes anchor the packs, and they never leave the forge", () => {
+    const kinds: ChamberKind[] = ['pack', 'trap', 'elite', 'champion', 'treasure'];
+    const raised = (from: number, to: number) => {
+      const out = new Set<string>();
+      for (let n = from; n <= to; n++) for (const kind of kinds) for (const t of chamberWaves({ n, layout: 0, kind }).flat()) out.add(t);
+      return out;
+    };
+    const forge = raised(1, DESCENT.bossEvery - 1);
+    expect(forge.has('cinderling')).toBe(true);
+    expect(forge.has('slagBrute')).toBe(true);
+    expect(forge.has('thornback')).toBe(false);
+    expect(forge.has('thornbackAlpha')).toBe(false);
+    // the first chamber is all swarm and spit; the heavies come in from the fourth
+    expect(chamberWaves({ n: 1, layout: 0, kind: 'pack' }).flat().filter((t) => t === 'cinderling').length).toBeGreaterThanOrEqual(3);
+    expect(chamberWaves({ n: 1, layout: 0, kind: 'pack' }).flat()).not.toContain('slagBrute');
+    expect(chamberWaves({ n: 4, layout: 0, kind: 'pack' }).flat()).toContain('slagBrute');
+    expect(chamberWaves({ n: 3, layout: 0, kind: 'champion' })[0]![0]).toBe('slagBrute');
+    const deeper = raised(DESCENT.bossEvery + 1, DESCENT.chambers);
+    expect(deeper.has('cinderling')).toBe(false);
+    expect(deeper.has('slagBrute')).toBe(false);
+  });
+
+  it('bursts a fallen Cinderling into flame where it fell, after a moment to get clear, burning the gods in it', () => {
+    const { sim, run, team } = setup([zeus, thor], 2, 7);
+    step(sim, run, DESCENT.enterTime + 2.5);
+    const imp = run.monsters.find((m) => m.alive && m.tag.endsWith(':cinderling'))!;
+    expect(imp).toBeDefined();
+    const before = run.eruptions.length;
+    sim.strike(team[0]!, imp, 1e7, 'true');
+    const burst = run.eruptions.slice(before).find((e) => e.r === CINDER.radius)!;
+    expect(burst).toBeDefined();
+    expect(Math.hypot(burst.x - imp.x, burst.z - imp.z)).toBeLessThan(0.01);
+    expect(burst.left).toBe(CINDER.warn);
+    expect(burst.share).toBe(CINDER.damage);
+    // Thor stands in it; what soul fire burns him is the burst (a pack's other bursts may land on him too)
+    const burnt = new Map<Unit, number>();
+    sim.listeners.push((e) => {
+      if (e.type === 'damage' && e.source === null && e.target.kind === 'god') burnt.set(e.target, (burnt.get(e.target) ?? 0) + e.amount);
+    });
+    const god = team[1]!;
+    sim.teleport(god, burst.x, burst.z, undefined, true);
+    for (const m of run.monsters) m.combatant.cc.apply('stun', 5);
+    step(sim, run, CINDER.warn - 0.3);
+    expect(burnt.get(god) ?? 0).toBe(0);
+    sim.teleport(god, burst.x, burst.z, undefined, true);
+    step(sim, run, 0.4);
+    expect(run.eruptions).not.toContain(burst);
+    const c = god.combatant;
+    expect(burnt.get(god) ?? 0).toBeGreaterThanOrEqual(c.stats.maxHealth * CINDER.damage * (1 - Math.min(0.9, c.stats.damageReduction)) * 0.99);
+  });
+
+  it("winds up a Slag Brute's slam only with a god close, its circle on the ground, and lands it on every god inside; its warning goes if it dies first", () => {
+    const c = CHAMBERS[1]!;
+    const sim = new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(6));
+    const [sx, sz] = c.spawns[3]!;
+    const brute = sim.add(monsterUnit(zeus, 'slagBrute', { x: c.x + sx, z: c.z + sz, yaw: 0 }, 0));
+    brute.tag = 'descent-small-4.0.0:slagBrute';
+    const camp = { camp: { id: 'brute', kind: 'small' as const, team: null, at: [brute.x, brute.z] as [number, number] }, members: [brute], respawnAt: null, foe: null };
+    const brain = new DescentMonsterBrain(sim, brute, camp, c);
+    brute.brain = brain;
+    // rooted, so it can't walk up to the god itself
+    brute.combatant.cc.apply('root', 60);
+    const near = sim.add(godUnit(thor, 'order', { x: brute.x + 14, z: brute.z, yaw: 0 }));
+    const far = sim.add(godUnit(zeus, 'order', { x: brute.x + BRUTE.radius + 3.5, z: brute.z + 1, yaw: 0 }));
+    const run = (seconds: number) => {
+      for (let i = 0; i < seconds * 30; i++) sim.step(1 / 30);
+    };
+    const warning = () => sim.flashes.find((f) => f.owner === brute && f.warn);
+    // the gods are all out of reach: its slam waits
+    sim.teleport(far, brute.x + 14, brute.z + 3, undefined, true);
+    run(6);
+    expect(brain.specialProgress).toBe(0);
+    expect(warning()).toBeUndefined();
+    // a god comes close: it raises its fists, the circle it will strike on the ground under them
+    sim.teleport(far, brute.x + BRUTE.radius + 3.5, brute.z + 1, undefined, true);
+    sim.teleport(near, brute.x + 2.2, brute.z, undefined, true);
+    run(1 / 15);
+    expect(brain.specialProgress).toBeGreaterThan(0);
+    const w = warning()!;
+    expect(w).toBeDefined();
+    expect(w.act).toBe('special');
+    expect(w.shape).toMatchObject({ type: 'circle', radius: BRUTE.radius });
+    expect(Math.hypot((w.shape as { x: number }).x - brute.x, (w.shape as { z: number }).z - brute.z)).toBeLessThan(0.01);
+    const hit = new Set<Unit>();
+    sim.listeners.push((e) => {
+      if (e.type === 'damage' && e.source === brute) hit.add(e.target);
+    });
+    run(BRUTE.windup + 0.1);
+    expect(brain.specialProgress).toBe(0);
+    expect(warning()).toBeUndefined();
+    expect(sim.flashes.some((f) => f.owner === brute && !f.warn && f.shape.type === 'circle')).toBe(true);
+    expect(hit.has(near)).toBe(true);
+    expect(hit.has(far)).toBe(false);
+    // the next one: it falls mid-windup, and its warning goes with it
+    near.combatant.health = near.combatant.stats.maxHealth;
+    for (let guard = 0; guard < 400 && !warning(); guard++) run(1 / 30);
+    expect(warning()).toBeDefined();
+    sim.strike(near, brute, 1e7, 'true');
+    run(1 / 15);
+    expect(warning()).toBeUndefined();
   });
 
   it('crowns the bottom of the run with the Ossuary King: Soul Rain under every god, never while stunned, faster when hurt; a Grave Toll; Shades among its adds', () => {

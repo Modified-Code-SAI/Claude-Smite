@@ -103,6 +103,23 @@ export const SOUNDS: Record<string, Recipe> = {
   // the Gravekeeper: a flick of lantern fire, its scorch, and the murmur and rising shimmer of a mend
   'basic.keeper': { variants: 3, peak: 0.55, make: (r) => layer([fire(r, 0.35, { gain: 0.8 }), 0.7], [whoosh(r, 0.3, 900, 2200, { q: 1.3 }), 0.7, 0.02], [crackles(r, 0.3, 14), 0.25, 0.03]) },
   'hit.keeper': { variants: 2, peak: 0.5, make: (r) => layer([puff(r, 0.12, { tone: 1500 }), 0.7], [crackles(r, 0.25, 18), 0.4, 0.01]) },
+  // the Ashen Depths' own beasts: a Cinderling's hissing rake and its sizzle, its shriek as it falls and the burst of fire after;
+  // a Slag Brute's heavy swing, the rumbling roar as it raises both fists, and the slam
+  'basic.cinder': { variants: 3, peak: 0.55, make: (r) => layer([whoosh(r, 0.2, 900, 2400, { q: 1.2 }), 0.8], [vowel(r, 0.18, (t) => glide(560 + r() * 80, 400, t, 0.18), VOWELS.eh, { breath: 1.2, growl: 0.15, gain: 0.35 }), 0.7], [crackles(r, 0.3, 16), 0.35, 0.02]) },
+  'hit.cinder': { variants: 3, peak: 0.6, make: (r) => layer([hitFlesh(r, 0.7), 0.8], [filter(whoosh(r, 0.35, 2800, 1700, { q: 0.9 }), 'highpass', 1200), 0.45, 0.01], [crackles(r, 0.3, 22), 0.4, 0.02]) },
+  'cinder.death': { variants: 3, peak: 0.55, make: (r) => layer([vowel(r, 0.55, (t) => glide(640 + r() * 90, 260, t, 0.55), VOWELS.eh, { breath: 1.6, growl: 0.2, gain: 0.6, env: (t) => ahr(t, 0.02, 0.15, 0.38) }), 1], [filter(whoosh(r, 1, 1800, 3200, { q: 0.8 }), 'highpass', 900), 0.35, 0.15], [crackles(r, 1.1, 20), 0.45, 0.2]) },
+  'cinder.burst': {
+    variants: 3,
+    peak: 0.7,
+    make: (r) => layer([fire(r, 1.1, { roar: 0.8 }), 1], [thump(r, 0.35, 170, 75, { noise: 0.8, click: 0.3 }), 0.7], [crackles(r, 1.2, 34), 0.55, 0.05], [debris(r, 0.7, { density: 18, gain: 0.35, tone: 1500 }), 0.35, 0.04]),
+  },
+  'basic.brute': { variants: 3, peak: 0.8, make: (r) => layer([whoosh(r, 0.42, 150, 460, { q: 0.8, peak: 0.7, gain: 1.3 }), 1], [roar(r, 0.45, 82 + r() * 10, { open: 0.6 }), 0.45], [crackles(r, 0.35, 12), 0.25, 0.05]) },
+  'brute.windup': { variants: 2, peak: 0.75, make: (r) => layer([roar(r, 1, 70, { open: 0.85 }), 1], [rumble(r, 1.1, { tone: 150, attack: 0.5 }), 0.6], [fire(r, 1, { gain: 0.5, roar: 0.6 }), 0.35, 0.15]) },
+  'brute.slam': {
+    variants: 2,
+    peak: 0.9,
+    make: (r) => layer([impact(r, 1.5, { tone: 105, crunch: 1, sub: 0.8 }), 1], [thump(r, 0.9, 95, 42, { click: 0.4, noise: 0.9, drive: 2 }), 0.8], [debris(r, 1.5, { density: 30, gain: 0.55, tone: 800 }), 0.9, 0.06], [fire(r, 1.3, { gain: 0.55, roar: 1.4 }), 0.6, 0.04], [rumble(r, 1.8, { tone: 150 }), 0.5, 0.05]),
+  },
   // the Ossuary King: its great blade cleaving the air, the Grave Toll (a funeral bell under the slam), and its rising roar
   'basic.king': { variants: 2, peak: 0.95, make: (r) => layer([whoosh(r, 0.7, 90, 520, { q: 0.7, peak: 0.75, gain: 1.3 }), 1], [thump(r, 0.8, 55, 22, { click: 0.5, noise: 0.6, drive: 2.5 }), 0.9, 0.32], [clang(r, 0.7, 220, { decay: 0.35, gain: 0.3, bright: 0.3 }), 0.35, 0.33]) },
   'king.toll': {

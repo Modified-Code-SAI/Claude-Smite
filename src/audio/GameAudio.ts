@@ -167,6 +167,8 @@ export class GameAudio {
       // a relic going off: bursts and leaps where they happen (a pack's chain of bursts thinned out), a god's own relics at that god
       else if (name.startsWith('relic.')) this.engine.play(name, { at, gain: RELIC_GAIN[name] ?? 0.5, vary: 0.05, ref: 14 }, 2, name === 'relic.knell' ? 0.09 : name === 'relic.chain' ? 0.06 : 0.12);
       else if (name.startsWith('hazard.')) this.hazard(name, at);
+      // a fallen Cinderling bursting into flame (a pack of them bursting together shares a few voices)
+      else if (name === 'cinder') this.engine.play('cinder.burst', { at, gain: 0.7, vary: 0.07, ref: 10 }, 3, 0.08);
     };
   }
 
@@ -338,7 +340,7 @@ export class GameAudio {
         ref = 20;
         break;
       case 'monster':
-        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.name === 'Ossuary King' ? 'basic.king' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : 'basic.monster';
+        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.name === 'Ossuary King' ? 'basic.king' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : u.tag.endsWith(':cinderling') ? 'basic.cinder' : u.tag.endsWith(':slagBrute') ? 'basic.brute' : 'basic.monster';
         ref = u.radius > 2 ? 16 : 7;
         gain = u.radius > 2 ? 1.1 : 0.7;
         break;
@@ -367,7 +369,7 @@ export class GameAudio {
       name = t === 'brute' ? 'hit.blunt' : t === 'archer' ? 'hit.flesh' : 'hit.blade';
       gain *= 0.6;
       gap = 0.05;
-    } else if (src.kind === 'monster') name = src.radius > 2 ? 'hit.blunt' : src.tag.endsWith('thornSpitter') ? 'hit.acid' : src.tag.endsWith(':shade') ? 'hit.shade' : src.tag.endsWith(':gravekeeper') ? 'hit.keeper' : 'hit.monster';
+    } else if (src.kind === 'monster') name = src.radius > 2 ? 'hit.blunt' : src.tag.endsWith('thornSpitter') ? 'hit.acid' : src.tag.endsWith(':shade') ? 'hit.shade' : src.tag.endsWith(':gravekeeper') ? 'hit.keeper' : src.tag.endsWith(':cinderling') ? 'hit.cinder' : src.tag.endsWith(':slagBrute') ? 'hit.blunt' : 'hit.monster';
     else name = 'hit.flesh';
     const mine = src === this.me || target === this.me;
     this.at(name, target, { gain, vary: 0.08 }, src === this.me ? 4 : 2, gap, mine);
@@ -451,7 +453,8 @@ export class GameAudio {
             const what = u.name === 'Treasure Wyrm' ? "the Wyrm's hoard" : "the Colossus's fury";
             this.herald.say(ours ? `Our team claims ${what}.` : `The enemy claims ${what}.`, ours ? 'good' : 'bad', 3);
           }
-        } else this.at('monster.death', u, { gain: 0.8, vary: 0.08, ref: u.radius > 1 ? 9 : 6 }, 3);
+        } else if (u.tag.endsWith(':cinderling')) this.at('cinder.death', u, { gain: 0.6, vary: 0.08, ref: 7 }, 3, 0.06);
+        else this.at('monster.death', u, { gain: 0.8, vary: 0.08, ref: u.radius > 1 ? 9 : 6, rate: u.tag.endsWith(':slagBrute') ? 0.7 : 1 }, 3);
         break;
       case 'tower':
       case 'phoenix':
@@ -714,6 +717,7 @@ export class GameAudio {
       if (winding && !was) {
         const special = (brain?.specialProgress ?? 0) > 0;
         if (u.kind === 'titan') this.at('titan.windup', u, { gain: 1, ref: 18 }, 4);
+        else if (special && u.tag.endsWith(':slagBrute')) this.at('brute.windup', u, { gain: 0.85, ref: 14, vary: 0.06 }, 3, 0.3);
         else if (special) this.at(u.name === 'Treasure Wyrm' ? 'wyrm.roar' : 'boss.windup', u, { gain: 1, ref: 18, rate: u.name === 'Treasure Wyrm' ? 1.15 : 1 }, 4);
         else if (u.radius > 2 || u.tag.endsWith('warden')) this.at('monster.aggro', u, { gain: 0.7, rate: u.radius > 2 ? 0.6 : 0.8, ref: 10 }, 3, 1.2);
       }
@@ -724,6 +728,8 @@ export class GameAudio {
       if (this.seenFlash.has(f.id)) continue;
       this.seenFlash.add(f.id);
       const o = f.owner;
+      // (a Slag Brute's slam the same, smaller; not its warning circle)
+      if (o.kind === 'monster' && o.tag.endsWith(':slagBrute') && f.shape.type === 'circle' && !f.warn) this.engine.play('brute.slam', { at: { x: f.shape.x, z: f.shape.z }, gain: 1, ref: 14, vary: 0.05 }, 4, 0.15);
       if (o.kind === 'monster' && BOSSES.includes(o.name) && f.shape.type === 'circle') {
         this.engine.play(o.name === 'Treasure Wyrm' ? 'wyrm.sweep' : o.name === 'Ossuary King' ? 'king.toll' : 'colossus.stomp', { at: { x: f.shape.x, z: f.shape.z }, gain: 1.2, ref: 18 }, 6);
       }

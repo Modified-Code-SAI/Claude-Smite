@@ -79,24 +79,27 @@ export class ChamberNav {
    * Whether a straight walk from a to b keeps clear of every edge and
    * obstacle (close to either end it need only stay on the floor: a walker
    * pressed against a wall, or a foe standing at the brink, is still
-   * reached straight).
+   * reached straight). `strict`, for a walker that has stalled: close to it
+   * the way may get no tighter than where it stands, so it never tries to
+   * squeeze through a gap narrower than itself just ahead of it.
    */
-  clear(ax: number, az: number, bx: number, bz: number): boolean {
+  clear(ax: number, az: number, bx: number, bz: number, strict = false): boolean {
     const d = hypot(bx - ax, bz - az);
     const steps = Math.max(1, Math.ceil(d / STEP));
+    const start = strict ? Math.min(LINE_CLEAR, Math.max(0.3, this.room(ax, az) - 0.15)) : 0.3;
     for (let k = 1; k <= steps; k++) {
       const t = k / steps;
-      const ends = Math.min(t, 1 - t) * d < 1;
-      if (this.room(ax + (bx - ax) * t, az + (bz - az) * t) < (ends ? 0.3 : LINE_CLEAR)) return false;
+      const need = t * d < 1 ? start : (1 - t) * d < 1 ? 0.3 : LINE_CLEAR;
+      if (this.room(ax + (bx - ax) * t, az + (bz - az) * t) < need) return false;
     }
     return true;
   }
 
   /** The next point to walk toward on the way from (ax, az) to (bx, bz): the goal itself when the way is clear. */
-  next(ax: number, az: number, bx: number, bz: number, out: P = { x: 0, z: 0 }): P {
+  next(ax: number, az: number, bx: number, bz: number, out: P = { x: 0, z: 0 }, strict = false): P {
     out.x = bx;
     out.z = bz;
-    if (this.clear(ax, az, bx, bz)) return out;
+    if (this.clear(ax, az, bx, bz, strict)) return out;
     const cells = this.cells(ax, az, bx, bz);
     if (!cells || cells.length < 2) return out;
     // the farthest cell along the path still in sight (a few past the first one hidden, round a corner's other side)
@@ -104,7 +107,7 @@ export class ChamberNav {
     let misses = 0;
     for (let k = 1; k < cells.length && misses < 4; k++) {
       const p = this.center(cells[k]!);
-      if (this.clear(ax, az, p.x, p.z)) {
+      if (this.clear(ax, az, p.x, p.z, strict)) {
         best = k;
         misses = 0;
       } else misses++;
@@ -257,11 +260,30 @@ export class Route {
   private at = -Infinity;
   /** Whether the last answer was a waypoint on the way rather than the goal itself. */
   turning = false;
+  /** Where the walker was when last asked, and how long it has been asking without getting anywhere. */
+  private readonly last = { x: NaN, z: NaN, at: -Infinity };
+  private stalled = 0;
+  /** Until when the way is worked out strictly (see ChamberNav.clear), after the walker stalled against a narrow gap. */
+  private strictUntil = -Infinity;
 
   next(c: ChamberDef, from: P, goal: P, now: number): P {
     const nav = navOf(c);
     const out = this.out;
-    if (nav.clear(from.x, from.z, goal.x, goal.z)) {
+    // asked again and again without getting anywhere: wedged, so look for a way it truly fits through
+    const since = now - this.last.at;
+    if (since > 0 && since < 0.25) {
+      this.stalled = hypot(from.x - this.last.x, from.z - this.last.z) < since * 0.4 ? this.stalled + since : 0;
+      if (this.stalled > 0.6) {
+        this.strictUntil = now + 2.5;
+        this.stalled = 0;
+        this.at = -Infinity;
+      }
+    } else this.stalled = 0;
+    this.last.x = from.x;
+    this.last.z = from.z;
+    this.last.at = now;
+    const strict = now < this.strictUntil;
+    if (nav.clear(from.x, from.z, goal.x, goal.z, strict)) {
       this.turning = false;
       out.x = goal.x;
       out.z = goal.z;
@@ -273,7 +295,7 @@ export class Route {
       this.at = now;
       this.goal.x = goal.x;
       this.goal.z = goal.z;
-      nav.next(from.x, from.z, goal.x, goal.z, this.point);
+      nav.next(from.x, from.z, goal.x, goal.z, this.point, strict);
     }
     this.turning = this.point.x !== goal.x || this.point.z !== goal.z;
     out.x = this.point.x;
