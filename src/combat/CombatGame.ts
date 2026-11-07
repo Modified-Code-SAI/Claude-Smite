@@ -47,6 +47,7 @@ import { difficultyPerks, type Difficulty } from '../game/difficulty';
 import { clashBots, conquestBots, duelRival, seeded, siegeBots } from '../game/lineup';
 import { setXpDifficulty } from '../ui/ascension';
 import { Coach } from '../ui/Coach';
+import { carryNoSkills, rushIntro } from '../ui/rushPrompts';
 import { pitchTerrain, RUSH, type Rush } from '../sim/Rush';
 import { RushMode } from './RushMode';
 import { rushRoster, type RushSlot } from '../net/rushRoster';
@@ -520,7 +521,7 @@ export class CombatGame implements Updatable {
     this.rush = mode.rush;
     this.netHost = mode.host;
     this.netGuest = mode.guest;
-    this.startToast('Carry the Sun Relic through their gate. Left click passes it, Space jukes; stun the carrier to knock it loose. F calls for the pass.');
+    this.startToast(rushIntro());
   }
 
   /** Jötunn: one frost giant against four gods, round by round, everyone (you too) taking a turn as the giant. */
@@ -1040,7 +1041,7 @@ export class CombatGame implements Updatable {
       if (!input.actionPressed(action)) return;
       if (carrying) {
         this.hud.deny(slot);
-        this.hud.toast('Carrying the relic: no skills. Left click passes it, Space jukes.', 'warn');
+        this.hud.toast(carryNoSkills(), 'warn');
         return;
       }
       if (this.preview?.slot === slot) {

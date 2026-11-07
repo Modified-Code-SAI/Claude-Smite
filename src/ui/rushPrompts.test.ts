@@ -7,7 +7,7 @@ import { godUnit } from '../sim/factory';
 import { RUSH, rushBar } from '../sim/Rush';
 import { rebind } from '../settings/bindings';
 import { resetForTest, setSettings, settings } from '../settings/store';
-import { keyFor, pressing, Pressing, stoneName, tackleHint, tackleSlots } from './rushPrompts';
+import { carryNoSkills, keyFor, pressing, Pressing, rushIntro, stoneName, tackleHint, tackleSlots } from './rushPrompts';
 
 function player(def: GodDef, bar: readonly string[]): Combatant {
   const c = new Combatant(def, 'order', bar);
@@ -82,6 +82,24 @@ describe('Relic Rush prompts name the keys the player has bound', () => {
     setSettings({ bindings: rebind(b, 'jump', 0, null).bindings });
     expect(keyFor('callPass')).toBe('Q');
     expect(keyFor('jump')).toBe('V');
+    resetForTest();
+  });
+
+  it('the opening line and the no-skills warning name the keys as bound, and leave out an unbound one', () => {
+    resetForTest();
+    expect(rushIntro()).toBe('Carry the Sun Relic through their gate. Left click passes it, Space jukes; stun the carrier to knock it loose. F calls for the pass.');
+    expect(carryNoSkills()).toBe('Carrying the relic: no skills. Left click passes it, Space jukes.');
+    let b = rebind(settings().bindings, 'callPass', 0, 'KeyQ').bindings;
+    b = rebind(b, 'jump', 0, 'KeyV').bindings;
+    setSettings({ bindings: b });
+    expect(rushIntro()).toBe('Carry the Sun Relic through their gate. Left click passes it, V jukes; stun the carrier to knock it loose. Q calls for the pass.');
+    b = rebind(b, 'callPass', 0, null).bindings;
+    b = rebind(b, 'callPass', 1, null).bindings;
+    b = rebind(b, 'jump', 0, null).bindings;
+    b = rebind(b, 'jump', 1, null).bindings;
+    setSettings({ bindings: b });
+    expect(rushIntro()).toBe('Carry the Sun Relic through their gate. Left click passes it; stun the carrier to knock it loose.');
+    expect(carryNoSkills()).toBe('Carrying the relic: no skills. Left click passes it.');
     resetForTest();
   });
 
