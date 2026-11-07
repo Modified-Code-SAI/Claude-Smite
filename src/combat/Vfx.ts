@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
 import type { Billows, BillowOptions, BillowSheet } from '../scene/Billows';
 import {
-  attribute, cos, float, fract, hash, instanceIndex, mix, mx_noise_float, normalView, positionView, sin, smoothstep, time, uv, vec2,
+  attribute, cos, float, fract, hash, instanceIndex, mix, modelWorldMatrix, mx_noise_float, normalView, positionView, sin, smoothstep, time, uv, vec2,
   vec3, vec4,
 } from '../render/tsl';
-import { instancedSprite, objectUniforms, spriteQuads, useUniforms } from '../render/shared';
+import { cameraFade, instancedSprite, objectUniforms, spriteQuads, useUniforms } from '../render/shared';
 import type { Sim } from '../sim/Sim';
 import { PROJECTILE_HEIGHT } from '../sim/Sim';
 import { isStructure, WORLD_SCALE, type Unit, type Flash, type FlashShape, type Projectile, type SimEvent } from '../sim/Unit';
@@ -170,7 +170,8 @@ function makePuffMaterial(): THREE.SpriteNodeMaterial {
   const out = float(1).sub(float(1).sub(life).pow(3));
   const ang = h1.mul(6.283).add(life.mul(u.swirl).mul(3)).add(time.mul(u.swirl).mul(u.loop));
   const dist = mix(out.mul(h2.mul(1.6).add(0.6)).mul(u.power), h2.sqrt().mul(u.radius), u.loop);
-  mat.positionNode = vec3(cos(ang).mul(dist), life.mul(mix(float(1.1), float(2.2), u.loop)).add(h3.mul(0.5)).add(0.3), sin(ang).mul(dist));
+  const at = vec3(cos(ang).mul(dist), life.mul(mix(float(1.1), float(2.2), u.loop)).add(h3.mul(0.5)).add(0.3), sin(ang).mul(dist));
+  mat.positionNode = at;
   const size = mix(float(0.6), float(1.6), out).mul(h3.mul(0.6).add(0.7)).mul(mix(u.power, u.radius.mul(0.3).add(0.8).min(2.6), u.loop));
   mat.scaleNode = vec2(size, size);
   const p = uv().sub(0.5);
@@ -180,7 +181,9 @@ function makePuffMaterial(): THREE.SpriteNodeMaterial {
   // lit from above: tops a little lighter than undersides
   const shade = mix(float(0.75), float(1.25), uv().y);
   mat.colorNode = vec4(u.tint.mul(shade), 1);
-  mat.opacityNode = soft.mul(fadeLife).mul(u.fade).mul(0.9);
+  // (thinned away near the camera, see cameraFade)
+  const near = cameraFade(modelWorldMatrix.mul(vec4(at, 1)).xyz, size.mul(0.4));
+  mat.opacityNode = soft.mul(fadeLife).mul(u.fade).mul(near).mul(0.9);
   return mat;
 }
 
