@@ -8,6 +8,7 @@ import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { Flash, SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
 import { CLEAR_WAVE, clearWave, DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
+import { DepthKicks } from '../scene/underworld/kicks';
 import { DepthTracks } from '../scene/underworld/prints';
 import { DepthScars, scarsFor } from '../scene/underworld/scars';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
@@ -132,6 +133,8 @@ export class DescentView {
   /** Where the big blows have struck the depth's floor, and the newest flash already marked. */
   private readonly scars: DepthScars;
   private lastFlash = 0;
+  /** What the gods' feet throw up off the floor (fed by `step`). */
+  private readonly kicks = new DepthKicks();
   /** Seconds until the next small thing stirs near the team (see `stir`). */
   private stirIn = 3;
   /** Where the latest foe fell this chamber, and how long since the chamber was cleared (the wave it sends out; below 0, none running). */
@@ -206,13 +209,17 @@ export class DescentView {
     world.vfx.add(this.tracks.mesh);
     this.scars = new DepthScars(groundAt);
     world.vfx.add(this.scars.mesh);
+    world.vfx.add(this.kicks.sprite);
   }
 
   /** A god's foot came down (UnitViews.onFootfall): it marks the depth's floor. */
   step(x: number, z: number, dx: number, dz: number, right: boolean, size: number): void {
     if (this.run.phase === 'descend') return;
+    const palette = DEPTHS[this.run.depth]!.palette;
     // (on the Drowned Halls' wet stone each step rings out)
-    this.tracks.step(x, z, dx, dz, right, size, DEPTHS[this.run.depth]!.palette === 'soul');
+    this.tracks.step(x, z, dx, dz, right, size, palette === 'soul');
+    // and throws up what the floor holds
+    this.kicks.step(x, this.groundAt(x, z), z, dx, dz, size, palette);
   }
 
   frame(dt: number, time: number): void {
@@ -226,6 +233,7 @@ export class DescentView {
       this.sinking.length = 0;
       this.tracks.clear();
       this.scars.clear();
+      this.kicks.clear();
       this.lastFall.set = false;
       this.cleared = -1;
       clearWave.value.w = 0;
@@ -258,6 +266,7 @@ export class DescentView {
     this.clock += dt;
     this.tracks.update(dt);
     this.scars.update(dt);
+    this.kicks.update(dt);
     this.markBlows();
     this.stir(dt);
     for (let i = this.sinking.length - 1; i >= 0; i--) {
@@ -805,12 +814,14 @@ export class DescentView {
     const all = [...this.eruptions, ...this.revives, this.door, ...this.knellRings];
     for (const d of all) d.mesh.visible = true;
     const wisps = this.wisps.prime();
+    const kicks = this.kicks.prime();
     // a bolt of Chain of Souls, so its shader is ready before the first leap
     this.chainArc.group.visible = true;
     this.chainArc.bolt(new THREE.Vector3(0, 1, 0), new THREE.Vector3(2, 1, 0), 0.1);
     return () => {
       for (const d of all) d.mesh.visible = false;
       wisps();
+      kicks();
       this.chainArc.clear();
       this.chainArc.group.visible = false;
     };
