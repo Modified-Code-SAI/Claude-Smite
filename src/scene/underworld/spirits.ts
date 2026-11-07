@@ -177,7 +177,7 @@ export function fitOval(c: ChamberDef): [number, number] {
   const reach = (dx: number, dz: number): number => {
     let last = 0;
     for (let r = 0; r < 40; r += 0.25) {
-      if (c.sd(dx * r, dz * r) > MARGIN) last = r;
+      if (c.cave(dx * r, dz * r) > MARGIN) last = r;
       else if (last > 0) break;
     }
     return last;
@@ -188,7 +188,7 @@ export function fitOval(c: ChamberDef): [number, number] {
   let s = 1;
   for (let k = 0; k < 64; k++) {
     const a = (k / 64) * Math.PI * 2;
-    while (s > 0.2 && c.sd(Math.cos(a) * rx * s, Math.sin(a) * rz * s) <= MARGIN && (!c.pit || Math.hypot(Math.cos(a) * rx * s, Math.sin(a) * rz * s) > c.pit + MARGIN)) s -= 0.02;
+    while (s > 0.2 && c.cave(Math.cos(a) * rx * s, Math.sin(a) * rz * s) <= MARGIN) s -= 0.02;
   }
   return [rx * s, rz * s];
 }

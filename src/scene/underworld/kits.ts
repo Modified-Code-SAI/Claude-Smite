@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { fbm2, rng, simplex2, smoothstep } from '../../core/random';
-import { chamberField, GATE, type ChamberDef } from '../../map/UnderworldLayout';
+import { caveField, chamberField, GATE, type ChamberDef } from '../../map/UnderworldLayout';
 import { boulder, brokenCap, brokenShaft, chippedBlock, columnBase, columnCapital, flutedShaft, lathe, merge } from '../Architecture';
 
 /** The materials a chamber's dressing can use (see underworldMaterials). */
@@ -54,11 +54,8 @@ export const FLAME_Y = 1.5;
 export const PYLON_H = 7.2;
 export const LINTEL_Y = 6.4;
 
-/** The floor plans with a landmark of their own, by their place in CHAMBERS (the Burning Pit is known by its pit). */
-const PLAN = { hall: 0, nave: 1, crossroads: 2, sanctums: 4 } as const;
-
-/** Whether a pier is one of the Twin Sanctums' two hearts (the broad ones in the middle of each), where each depth sets its own shrine. */
-const shrineAt = (index: number, r: number): boolean => index === PLAN.sanctums && r > 1.3;
+/** Whether a pier is one of a twin hall's two hearts (the broad ones in the middle of each), where each depth sets its own shrine. */
+const shrineAt = (c: ChamberDef, r: number): boolean => c.plan === 'sanctums' && r > 1.3;
 
 /** A spot at the foot of the wall: where it is, the way out into the rock, and its angle round the chamber. */
 interface WallSpot {
@@ -70,18 +67,31 @@ interface WallSpot {
   r: number;
 }
 
-/** The foot of the wall at an angle round the chamber (radians, 0 = east), or null in a gate's doorway or by the pit. */
-function wallAt(c: ChamberDef, a: number): WallSpot | null {
+/**
+ * The foot of the wall at an angle round the chamber (radians, 0 = east), or
+ * null in a gate's doorway or where lava, water or the void runs up to the
+ * rock. With `brink`, a spot there at the edge of the floor instead, where it
+ * is broad enough (heaps of rock and bone stand at the drop, never on a
+ * bridge).
+ */
+function wallAt(c: ChamberDef, a: number, brink = false): WallSpot | null {
   const dx = Math.cos(a);
   const dz = Math.sin(a);
-  // walk out from the middle to the wall
+  // walk out from the middle to the rock
   let r = 2;
-  while (r < 40 && chamberField(c, dx * r, dz * r) > -0.4) r += 0.35;
-  const x = dx * r;
-  const z = dz * r;
-  if (Math.abs(x) < GATE.halfWidth + 2.5 && Math.abs(z) > c.extent - 6) return null;
-  if (c.pit && r < c.pit + 1) return null;
-  return { x, z, dx, dz, a, r };
+  while (r < 40 && caveField(c, dx * r, dz * r) > -0.4) r += 0.35;
+  if (Math.abs(dx * r) < GATE.halfWidth + 2.5 && Math.abs(dz * r) > c.extent - 6) return null;
+  if (chamberField(c, dx * (r - 1.2), dz * (r - 1.2)) < 0.3) {
+    if (!brink) return null;
+    let e = r - 1.2;
+    while (e > 2 && chamberField(c, dx * e, dz * e) < 0.3) e -= 0.35;
+    if (e <= 2.5 || chamberField(c, dx * (e - 3), dz * (e - 3)) < 2.5) return null;
+    // (and not on a narrow tongue of floor)
+    if (chamberField(c, dx * e - dz * 2, dz * e + dx * 2) < 0.2 || chamberField(c, dx * e + dz * 2, dz * e - dx * 2) < 0.2) return null;
+    r = e - 0.5;
+    if (Math.abs(dx * r) < GATE.halfWidth + 2.5 && Math.abs(dz * r) > c.extent - 6) return null;
+  }
+  return { x: dx * r, z: dz * r, dx, dz, a, r };
 }
 
 /** Turns a part whose front faces +z to face the chamber's middle from a wall spot. */
@@ -148,9 +158,9 @@ const COALS = new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 
 export const forgeKit: Kit = (k) => {
   const { c, index, random, mats, add } = k;
   // piers: a plinth, four drums of basalt bound with iron at two joints, a wide capital
-  const nave = index === PLAN.nave;
+  const nave = c.plan === 'nave';
   for (const [x, z, r] of c.pillars) {
-    if (shrineAt(index, r)) {
+    if (shrineAt(c, r)) {
       flameAltar(k, x, z);
       continue;
     }
@@ -188,16 +198,18 @@ export const forgeKit: Kit = (k) => {
   const used: number[] = [];
   const near = (a: number, gap: number) => used.some((b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < gap);
   for (const a of [0, Math.PI]) {
-    const spot = wallAt(c, a + (random() - 0.5) * 0.3);
+    // (a little round the wall, where lava or water runs up to it)
+    const jitter = (random() - 0.5) * 0.3;
+    const spot = [0, 0.4, -0.4, 0.8, -0.8].map((t) => wallAt(c, a + jitter + t)).find((s) => s);
     if (!spot) continue;
     furnace(k, spot);
     used.push(spot.a);
   }
   if (c.boss) hoard(k, used);
-  if (c.pit) chainedHeart(k);
+  if (c.plan === 'pit') chainedHeart(k);
   if (nave) forgeArches(k);
-  if (index === PLAN.hall) hangingAnvil(k);
-  if (index === PLAN.crossroads) burningCrown(k);
+  if (c.plan === 'hall') hangingAnvil(k);
+  if (c.plan === 'crossroads') burningCrown(k);
   dressGates(k, (part) => forgeGate(k, part));
   const smithies = c.boss ? 2 : 3;
   for (let s = 0, tries = 0; s < smithies && tries < 40; tries++) {
@@ -210,7 +222,7 @@ export const forgeKit: Kit = (k) => {
   const rocks = Array.from({ length: 5 }, (_, i) => boulder(1, 5300 + i * 17, 3));
   const steps = 64;
   for (let s = 0; s < steps; s++) {
-    const spot = wallAt(c, (s / steps) * Math.PI * 2 + random() * 0.05);
+    const spot = wallAt(c, (s / steps) * Math.PI * 2 + random() * 0.05, true);
     if (!spot || near(spot.a, 0.22)) continue;
     const { x, z, dx, dz } = spot;
     // every fourth heap is slag still glowing from the furnaces
@@ -956,7 +968,7 @@ export const drownedKit: Kit = (k) => {
   const { c, index, random, mats, add } = k;
   // columns on moulded bases, the broken ones with their drums in pieces at their feet
   c.pillars.forEach(([x, z, r], i) => {
-    if (shrineAt(index, r)) return fountain(k, x, z);
+    if (shrineAt(c, r)) return fountain(k, x, z);
     const cr = r * 0.85;
     const seed = 6000 + index * 97 + i * 13;
     add(columnBase(cr), mats.tideStone, x, 0, z);
@@ -993,7 +1005,9 @@ export const drownedKit: Kit = (k) => {
   const used: number[] = [];
   const near = (a: number, gap: number) => used.some((b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < gap);
   for (const a of [0, Math.PI]) {
-    const spot = wallAt(c, a + (random() - 0.5) * 0.3);
+    // (a little round the wall, where lava or water runs up to it)
+    const jitter = (random() - 0.5) * 0.3;
+    const spot = [0, 0.4, -0.4, 0.8, -0.8].map((t) => wallAt(c, a + jitter + t)).find((s) => s);
     if (!spot) continue;
     waterfall(k, spot);
     used.push(spot.a);
@@ -1008,13 +1022,13 @@ export const drownedKit: Kit = (k) => {
     }
   };
   if (c.boss) foundry(k, used);
-  if (c.pit) drownedBell(k);
-  if (index === PLAN.nave) weepingColossi(k, used);
-  if (index === PLAN.hall) {
+  if (c.plan === 'pit') drownedBell(k);
+  if (c.plan === 'nave') weepingColossi(k, used);
+  if (c.plan === 'hall') {
     hangingAnchor(k);
     drownedTomb(k, used);
   }
-  if (index === PLAN.crossroads) armillary(k);
+  if (c.plan === 'crossroads') armillary(k);
   dressGates(k, (part) => drownedGate(k, part));
   place(c.boss ? 3 : 2, 0.5, (s) => mourner(k, s));
   place(c.boss ? 1 : 3, 0.45, (s) => sarcophagus(k, s));
@@ -1022,7 +1036,7 @@ export const drownedKit: Kit = (k) => {
   const urns = [urn(0.55, 1.1), urn(0.4, 0.8), urn(0.32, 1.0)];
   const steps = 48;
   for (let s = 0; s < steps; s++) {
-    const spot = wallAt(c, (s / steps) * Math.PI * 2 + random() * 0.05);
+    const spot = wallAt(c, (s / steps) * Math.PI * 2 + random() * 0.05, true);
     if (!spot || near(spot.a, 0.2)) continue;
     const { x, z, dx, dz } = spot;
     if (s % 5 === 2) {
@@ -1753,7 +1767,7 @@ export const abyssKit: Kit = (k) => {
   const { c, index, random, mats, add } = k;
   // spines: a black plinth, vertebrae stacked and tapering, a crown of horns
   c.pillars.forEach(([x, z, r], i) => {
-    if (shrineAt(index, r)) return skullObelisk(k, x, z);
+    if (shrineAt(c, r)) return skullObelisk(k, x, z);
     const seed = 7000 + index * 89 + i * 17;
     const h = 8.5 + random() * 3;
     add(chippedBlock(r * 2.6, 0.8, r * 2.6, seed, 0.05), mats.obsidian, x, 0.4, z).rotation.y = random() * Math.PI;
@@ -1776,16 +1790,16 @@ export const abyssKit: Kit = (k) => {
   {
     const spot = wallAt(c, (index % 2 ? 0 : Math.PI) + (random() - 0.5) * 0.3);
     // (the nave is already inside a ribcage)
-    if (spot && index !== PLAN.nave) {
+    if (spot && c.plan !== 'nave') {
       ribcage(k, spot);
       used.push(spot.a);
     }
   }
   if (c.boss) court(k, used);
-  if (c.pit) reachingHand(k);
-  if (index === PLAN.nave) leviathan(k);
-  if (index === PLAN.hall) boneChandelier(k);
-  if (index === PLAN.crossroads) coiledSerpent(k);
+  if (c.plan === 'pit') reachingHand(k);
+  if (c.plan === 'nave') leviathan(k);
+  if (c.plan === 'hall') boneChandelier(k);
+  if (c.plan === 'crossroads') coiledSerpent(k);
   // (the Ossuary King's way on runs through its skull's mouth)
   dressGates(k, (part) => abyssGate(k, part), !c.boss);
   for (let n = 0, tries = 0; n < (c.boss ? 2 : 3) && tries < 60; tries++) {
@@ -1800,7 +1814,7 @@ export const abyssKit: Kit = (k) => {
   const rocks = Array.from({ length: 4 }, (_, i) => boulder(1, 7300 + i * 23, 3));
   const steps = 56;
   for (let s = 0; s < steps; s++) {
-    const spot = wallAt(c, (s / steps) * Math.PI * 2 + random() * 0.05);
+    const spot = wallAt(c, (s / steps) * Math.PI * 2 + random() * 0.05, true);
     if (!spot || near(spot.a, 0.2)) continue;
     const { x, z, dx, dz } = spot;
     if (s % 3 === 0) {
@@ -2347,7 +2361,7 @@ const GREAT_SOCKETS = SOCKETS.clone().scale(0.9, 0.9, 0.9);
 function court(k: KitBuild, used: number[]): void {
   maw(k);
   for (const deg of [-146, -34, 146, 34]) {
-    const s = wallAt(k.c, (deg * Math.PI) / 180);
+    const s = wallAt(k.c, (deg * Math.PI) / 180, true);
     if (!s) continue;
     skullPyramid(k, s);
     used.push(s.a);

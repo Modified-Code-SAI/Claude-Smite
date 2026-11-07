@@ -14,8 +14,8 @@ describe('the spirits over the underworld chambers', () => {
         for (const reach of [0.5, 0.75, 1]) {
           const x = Math.cos(a) * rx * reach;
           const z = Math.sin(a) * rz * reach;
-          const overPit = c.pit !== undefined && Math.hypot(x, z) < c.pit + 1.2;
-          expect(overPit || c.sd(x, z) > 0.5, `${c.name} at ${x.toFixed(1)}, ${z.toFixed(1)}`).toBe(true);
+          // (over the floor, or its lava, water or void: anywhere in the cavern, clear of the rock)
+          expect(c.cave(x, z), `${c.name} at ${x.toFixed(1)}, ${z.toFixed(1)}`).toBeGreaterThan(0.5);
         }
       }
     }

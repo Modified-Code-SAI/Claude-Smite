@@ -2,11 +2,11 @@ import * as THREE from 'three/webgpu';
 import { rng } from '../../core/random';
 import { slice } from '../../core/slices';
 import {
-  addUnderworldColliders, CHAMBERS, entranceSpot, GATE, type ChamberDef, type Palette,
+  addUnderworldColliders, CHAMBERS, chamberField, entranceSpot, GATE, type ChamberDef, type Palette,
 } from '../../map/UnderworldLayout';
 import {
   abs, atan, cameraPosition, cos, dot, exp, float, fract, length, mix, mx_fractal_noise_float, mx_noise_float, mx_worley_noise_float, normalWorld, positionWorld, pow, sin, smoothstep, time,
-  transformNormalToView, uv, vec2, vec3, vec4,
+  texture, transformNormalToView, uv, vec2, vec3, vec4,
 } from '../../render/tsl';
 import type { QualitySettings } from '../../render/Quality';
 import { chippedBlock } from '../Architecture';
@@ -20,21 +20,19 @@ import { DEPTH_COLORS, depthLook, depthWeights, flameHot, gateOpen, underworldGl
 import { Mist } from './mist';
 import { Shafts } from './shafts';
 import { Spirits } from './spirits';
-import { showRunes } from './UnderworldTerrain';
+import { LAVA_Y, showRunes, WATER_Y } from './UnderworldTerrain';
 
 /**
- * The underworld's scenery. Each of the six chambers has a shell shared by
- * every depth (its gates, their veils and flames, the fires at its brazier
- * spots and the Burning Pit's lake) and a dressing for each depth, built from
- * that depth's kit (see kits.ts): the same hall is a forge in the Ashen
- * Depths and something else further down. Only the chamber the team is in
- * shows, in the current depth's dressing (the walls hide the rest), and each
- * is baked into a handful of draws, one per material.
+ * The underworld's scenery. Each of the eighteen chambers has a shell (its
+ * gates, their veils and flames, the fires at its brazier spots, and the
+ * surface of its lava or water) and a dressing built from its depth's kit
+ * (see kits.ts). Only the chamber the team is in shows (the walls hide the
+ * rest), and each is baked into a handful of draws, one per material.
  */
 export class UnderworldMap implements MapContent {
   readonly group = new THREE.Group();
   readonly fires: Fire[] = [];
-  /** The Burning Pit's light from below, in the depth's glow. */
+  /** The light rising off the lava and the water, in the depth's glow. */
   private readonly lakeLights: THREE.PointLight[] = [];
   readonly lights: THREE.PointLight[] = [];
   /** Lights that beat like a heart, each with its full strength. */
@@ -45,8 +43,8 @@ export class UnderworldMap implements MapContent {
   readonly groundColor = new THREE.Color(0.05, 0.045, 0.055);
   /** Each chamber's shell, in CHAMBERS order. */
   readonly chambers: THREE.Group[] = [];
-  /** Each depth's dressing of each chamber: dressings[depth][chamber]. */
-  readonly dressings: THREE.Group[][] = KITS.map(() => []);
+  /** Each chamber's dressing, from its depth's kit, in CHAMBERS order. */
+  readonly dressings: THREE.Group[] = [];
   /** The creatures gliding high over the shown chamber. */
   private readonly spirits = new Spirits();
   /** The light falling slantwise into the shown chamber. */
@@ -71,10 +69,8 @@ export class UnderworldMap implements MapContent {
     for (let i = 0; i < CHAMBERS.length; i++) {
       m.chambers.push(m.buildShell(CHAMBERS[i]!, i));
       await slice();
-      for (let d = 0; d < KITS.length; d++) {
-        m.dressings[d]!.push(m.buildDressing(CHAMBERS[i]!, i, d));
-        await slice();
-      }
+      m.dressings.push(m.buildDressing(CHAMBERS[i]!, i));
+      await slice();
     }
     m.show(0);
     return m;
@@ -87,7 +83,7 @@ export class UnderworldMap implements MapContent {
     this.updateShown();
   }
 
-  /** Relights the underworld in a depth's colors and dresses its chambers in that depth's kit: the glow, the fires and their lights. */
+  /** Relights the underworld in a depth's colors: the glow, the fires and their lights. */
   setPalette(p: Palette): boolean {
     if (p === this.palette) return false;
     this.palette = p;
@@ -112,16 +108,15 @@ export class UnderworldMap implements MapContent {
   }
 
   private updateShown(): void {
-    const depth = PALETTES.indexOf(this.palette);
     this.chambers.forEach((g, k) => (g.visible = k === this.shown));
-    this.dressings.forEach((list, d) => list.forEach((g, k) => (g.visible = k === this.shown && d === depth)));
+    this.dressings.forEach((g, k) => (g.visible = k === this.shown));
     showRunes(this.shown);
     this.spirits.showChamber(CHAMBERS[this.shown]!);
     this.shafts.showChamber(CHAMBERS[this.shown]!);
     this.mist.showChamber(CHAMBERS[this.shown]!);
   }
 
-  /** What every depth shares in a chamber: its gates, the fires at its brazier spots, and the pit. */
+  /** A chamber's shell: its gates, the fires at its brazier spots, and its lava's or water's surface. */
   private buildShell(c: ChamberDef, index: number): THREE.Group {
     const g = new THREE.Group();
     g.name = `chamber-${index}`;
@@ -178,7 +173,7 @@ export class UnderworldMap implements MapContent {
       }
     }
 
-    if (c.pit) keep.push(this.buildPit(g, c.pit));
+    keep.push(...this.buildSurface(g, c, add));
 
     mergeStatic(g, keep);
     g.position.set(c.x, 0, c.z);
@@ -186,8 +181,9 @@ export class UnderworldMap implements MapContent {
     return g;
   }
 
-  /** One depth's dressing of a chamber, from that depth's kit. */
-  private buildDressing(c: ChamberDef, index: number, depth: number): THREE.Group {
+  /** A chamber's dressing, from its depth's kit. */
+  private buildDressing(c: ChamberDef, index: number): THREE.Group {
+    const depth = c.depth;
     const g = new THREE.Group();
     g.name = `chamber-${index}-${PALETTES[depth]}`;
     g.userData.shownLater = true;
@@ -222,20 +218,41 @@ export class UnderworldMap implements MapContent {
     return g;
   }
 
-  /** The Burning Pit's lake of fire, lit from below. */
-  private buildPit(g: THREE.Group, r: number): THREE.Object3D {
-    const lake = new THREE.Mesh(new THREE.CircleGeometry(r + 0.4, 64).rotateX(-Math.PI / 2), this.mats.lava);
-    lake.position.y = -0.9;
-    lake.receiveShadow = false;
-    lake.castShadow = false;
-    const light = new THREE.PointLight(DEPTH_COLORS.ember.glow, 60, 26, 2);
-    light.position.y = 1.2;
-    light.castShadow = false;
-    lake.add(light);
-    this.lights.push(light);
-    this.lakeLights.push(light);
-    g.add(lake);
-    return lake;
+  /**
+   * Under a forge hall's floor, the lava filling its channels and pits, lit
+   * from below where it pools; under a Drowned hall's, the standing water,
+   * a cold light rising out of it; and every column that stands in either
+   * on a footing of black stone. (The Abyss's void has no surface at all.)
+   * One plane over the whole chamber, shown only where the ground dips under
+   * it.
+   */
+  private buildSurface(g: THREE.Group, c: ChamberDef, add: (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast?: boolean) => THREE.Mesh): THREE.Object3D[] {
+    const keep: THREE.Object3D[] = [];
+    for (const [x, z, r] of c.pillars) {
+      if (c.depth === 2 || chamberField(c, x, z) > r + 0.3) continue;
+      add(chippedBlock(r * 2.6, 3.4, r * 2.6, 4600 + Math.round(x * 7 + z * 13), 0.05), this.mats.obsidian, x, -1.75, z);
+    }
+    if (c.depth === 2) return keep;
+    const lava = c.depth === 0;
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(64, (c.extent + 6) * 2).rotateX(-Math.PI / 2), lava ? this.mats.lava : this.mats.flood);
+    sheet.position.y = lava ? LAVA_Y : WATER_Y;
+    sheet.receiveShadow = false;
+    sheet.castShadow = false;
+    if (!lava) sheet.renderOrder = 2;
+    g.add(sheet);
+    keep.push(sheet);
+    c.wells.forEach(([x, z], i) => {
+      const light = lava
+        ? new THREE.PointLight(DEPTH_COLORS.ember.glow, i === 0 ? 50 : 34, i === 0 ? 24 : 17, 2)
+        : new THREE.PointLight(DEPTH_COLORS.soul.glow, 16, 13, 2);
+      light.position.set(x, lava ? 1.1 : 0.4, z);
+      light.castShadow = false;
+      g.add(light);
+      keep.push(light);
+      this.lights.push(light);
+      if (lava) this.lakeLights.push(light);
+    });
+    return keep;
   }
 
   applyQuality(_q: QualitySettings): void {}
@@ -478,6 +495,26 @@ function underworldMaterials(lib: MaterialLibrary) {
     pool.name = 'pool';
   }
 
+  // the Drowned Halls' standing water: black and still but for slow ripples
+  // crossing it, a sheen of the depth's light at a glancing angle, threads of
+  // caustic light wandering over it, and the soul light under it showing
+  // faintly through
+  const flood = new THREE.MeshStandardNodeMaterial({ roughness: 0.03, metalness: 0, transparent: true, depthWrite: false });
+  {
+    const xz = positionWorld.xz;
+    const ripple = tex.get('dirt').nr;
+    const r1 = texture(ripple, xz.mul(0.09).add(vec2(time.mul(0.012), time.mul(0.007)))).xy;
+    const r2 = texture(ripple, xz.mul(0.13).sub(vec2(time.mul(0.006), time.mul(0.011)))).xy;
+    flood.normalNode = transformNormalToView(vec3(r1.x.add(r2.x).sub(1).mul(0.16), 1, r1.y.add(r2.y).sub(1).mul(0.16)).normalize());
+    flood.colorNode = vec3(0.004, 0.01, 0.016);
+    const view = cameraPosition.sub(positionWorld).normalize();
+    const sheen = pow(float(1).sub(view.y.clamp(0, 1)), float(3));
+    const caustic = pow(float(1).sub(abs(mx_noise_float(vec3(xz.mul(0.55), time.mul(0.25))))), float(9));
+    flood.emissiveNode = underworldGlow.mul(sheen.mul(0.3).add(caustic.mul(0.22)).add(0.012));
+    flood.opacityNode = float(0.82).add(sheen.mul(0.15));
+    flood.name = 'flood';
+  }
+
   // old bone: ivory gone yellow, brown in its pits and cracks, dull and dry
   const bone = new THREE.MeshStandardNodeMaterial();
   {
@@ -536,5 +573,5 @@ function underworldMaterials(lib: MaterialLibrary) {
     molten.name = 'molten';
   }
 
-  return { obsidian, forgeStone, coals, lava, portal, sealed, iron, slag, furnace, flameBed, tideStone, verdigris, waterfall, pool, bone, gold, molten, bronze };
+  return { obsidian, forgeStone, coals, lava, portal, sealed, iron, slag, furnace, flameBed, tideStone, verdigris, waterfall, pool, flood, bone, gold, molten, bronze };
 }

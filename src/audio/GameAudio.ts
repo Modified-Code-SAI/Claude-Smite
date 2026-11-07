@@ -1275,11 +1275,12 @@ export class GameAudio {
       this.crowIn = wait(life.far);
       stir(life.far);
     }
-    // the lava pit bubbles where there is one; the loop drifts far off where there isn't
+    // the forge's lava bubbles where its light rises; the loop drifts far off in the depths without lava
     const c = run.layout;
     if (!this.lava || !this.lava.alive) this.lava = this.engine.loop('amb.fire', { bus: 'ambience', gain: 0.9, rate: 0.45, at: { x: c.x, y: -1, z: c.z }, ref: 9 });
     if (this.lava) {
-      if (c.pit) this.lava.setPosition(c.x, -1, c.z);
+      const w = c.depth === 0 ? c.wells[0] : undefined;
+      if (w) this.lava.setPosition(c.x + w[0], -1, c.z + w[1]);
       else this.lava.setPosition(c.x, -400, c.z);
     }
   }

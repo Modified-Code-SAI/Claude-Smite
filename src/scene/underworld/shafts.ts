@@ -179,12 +179,13 @@ export class Shafts {
  */
 export function placeShafts(c: ChamberDef, count: number, radius: number): [number, number, number][] {
   const sizes = [1, 0.85, 1.15, 0.92, 1.08, 0.8];
-  const middle = c.pit !== undefined ? c.pit + 3 : 4.5;
+  const middle = 4.5;
   const clear = (x: number, z: number, r: number): boolean => {
     if (Math.hypot(x, z) < middle + r) return false;
-    if (c.sd(x, z) < r + 2.2) return false;
-    // (the walls lean outward above the floor, so partway up is enough)
-    if (c.sd(x + SHAFT_TILT[0] * 6, z + SHAFT_TILT[1] * 6) < 0.5) return false;
+    // (its pool of light all on the floor, well clear of the walls; it may fall beside the lava or the drop)
+    if (c.sd(x, z) < r + 0.4 || c.cave(x, z) < r + 2.2) return false;
+    // (the walls lean outward above the floor, so partway up is enough; over lava, water or void it falls freely)
+    if (c.cave(x + SHAFT_TILT[0] * 6, z + SHAFT_TILT[1] * 6) < 0.5) return false;
     // the way in and out stays dark, so the gates read
     if (Math.abs(x) < 3.5 + r && Math.abs(z) > c.extent - 9) return false;
     for (const [fx, fz] of c.fires) if (Math.hypot(x - fx, z - fz) < r + 2) return false;

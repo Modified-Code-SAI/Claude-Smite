@@ -11,8 +11,9 @@ describe('the light shafts in the underworld chambers', () => {
         expect(at.length).toBeLessThanOrEqual(Math.min(count, MAX_SHAFTS));
         for (const [x, z, r] of at) {
           const where = `${c.name} at ${x.toFixed(1)}, ${z.toFixed(1)}`;
-          expect(c.sd(x, z), where).toBeGreaterThan(r + 2);
-          expect(Math.hypot(x, z), where).toBeGreaterThan((c.pit ?? 1.5) + r);
+          expect(c.sd(x, z), where).toBeGreaterThan(r);
+          expect(c.cave(x, z), where).toBeGreaterThan(r + 2);
+          expect(Math.hypot(x, z), where).toBeGreaterThan(4.5 + r);
           expect(Math.abs(x) < 3.5 && Math.abs(z) > c.extent - 9, where).toBe(false);
           for (const [px, pz, pr] of c.pillars) {
             for (let h = 0; h <= 12; h += 1) expect(Math.hypot(x + SHAFT_TILT[0] * h - px, z + SHAFT_TILT[1] * h - pz), where).toBeGreaterThan(pr + r);

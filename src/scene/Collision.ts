@@ -39,6 +39,8 @@ export class CollisionWorld {
   private readonly surfaces: GroundSurface[] = [];
   /** Signed distance to the edge of the walkable area (positive inside), if the map has walls. */
   private walkable: ((x: number, z: number) => number) | null = null;
+  /** What confines things this high over their ground or more instead (a shot over a chasm the walkable area stops short of). */
+  private over: { field: (x: number, z: number) => number; above: number } | null = null;
   /** Indices of the colliders whose bounds touch each cell, so a query only visits its neighbours. */
   private readonly cells = new Map<number, number[]>();
   /** Last query that visited each collider (dedupes colliders spanning several cells). */
@@ -114,9 +116,15 @@ export class CollisionWorld {
     return c;
   }
 
-  /** Confines movement to where `field` is positive (meters to the nearest wall). */
-  setWalkable(field: (x: number, z: number) => number): void {
+  /**
+   * Confines movement to where `field` is positive (meters to the nearest
+   * wall). With `over`, anything whose feet plus step reach `above` is
+   * confined by `over.field` instead: the floor's edge stops walkers at a
+   * chasm or a lake, while shots and leaping gods pass over it.
+   */
+  setWalkable(field: (x: number, z: number) => number, over?: { field: (x: number, z: number) => number; above: number }): void {
     this.walkable = field;
+    this.over = over ?? null;
   }
 
   addSurface(s: GroundSurface): void {
@@ -190,12 +198,13 @@ export class CollisionWorld {
         }
       }
       if (this.walkable) {
-        const f = this.walkable(x, z);
+        const field = this.over && feetY + stepHeight >= this.over.above ? this.over.field : this.walkable;
+        const f = field(x, z);
         if (f < radius) {
           // push out along the field's gradient
           const e = 0.3;
-          const gx = this.walkable(x + e, z) - this.walkable(x - e, z);
-          const gz = this.walkable(x, z + e) - this.walkable(x, z - e);
+          const gx = field(x + e, z) - field(x - e, z);
+          const gz = field(x, z + e) - field(x, z - e);
           const g = hypot(gx, gz);
           if (g > 1e-6) {
             x += (gx / g) * (radius - f);
