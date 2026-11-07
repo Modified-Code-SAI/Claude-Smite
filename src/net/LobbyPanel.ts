@@ -1,4 +1,6 @@
 import { GODS } from '../game/gods';
+import { paletteFor } from '../combat/palette';
+import { heroFace, HEROES } from '../ui/heroArt';
 import { NetSession, PICK_SECONDS } from './Session';
 import { NAME_MAX, type NetGameInfo, type NetMode, type NetPlayer } from './roster';
 import './lobby.css';
@@ -24,7 +26,13 @@ function saveName(name: string): void {
 }
 
 /** A seat's portrait: the god the player last chose (a known god only: the id comes over the network). */
-const face = (god: string) => `${BASE}portraits/${GODS.some((g) => g.id === god) ? god : GODS[0]!.id}.jpg`;
+const known = (god: string) => (GODS.some((g) => g.id === god) ? god : GODS[0]!.id);
+/** A seat's picture: the god's head and shoulders from its hero render in its own light, else the bust. */
+const faceStyle = (god: string) => {
+  const id = known(god);
+  if (!HEROES.has(id)) return `background-image:url(${BASE}portraits/${id}.jpg)`;
+  return `background-image:url(${heroFace(id)}), radial-gradient(circle at 50% 40%, #${paletteFor(id).vfx.toString(16).padStart(6, '0')}73, transparent 80%)`;
+};
 
 const MODE_NAMES: Record<NetMode, string> = { coop: 'Co-op', versus: 'Versus' };
 
@@ -208,7 +216,7 @@ export function mountLobby(
       const me = p.id === s.me;
       return `<div class="lb-seat lb-player${me ? ' me' : ''}${fresh.has(p.id) ? ' new' : ''}" style="--i:${i}">
         ${p.id === hostId ? '' : pingHtml(p.ms)}
-        <div class="lb-face" style="background-image:url(${face(p.god)})">${p.id === hostId ? '<i class="lb-crown" title="Host">♛</i>' : ''}</div>
+        <div class="lb-face${HEROES.has(known(p.god)) ? ' hero' : ''}" style="${faceStyle(p.god)}">${p.id === hostId ? '<i class="lb-crown" title="Host">♛</i>' : ''}</div>
         <b>${esc(p.name)}</b><span>${me ? 'You' : p.id === hostId ? 'Host' : 'Friend'}</span>
       </div>`;
     };

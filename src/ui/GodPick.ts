@@ -9,7 +9,7 @@ import { PICK_SECONDS, type NetSession } from '../net/Session';
 import { paletteFor } from '../combat/palette';
 import { skillIcon } from './icons';
 import { embersHtml, parallax } from './menuFx';
-import { heroArt, HEROES } from './heroArt';
+import { heroArt, heroFace, HEROES } from './heroArt';
 import { modeArt, modeBlur, modeInfo, type GameMode } from './modes';
 import './godpick.css';
 
@@ -76,6 +76,10 @@ const splash = (id: string) => `${BASE}splash/${id}.jpg`;
 const hero = heroArt;
 /** A god's full-length art: the hero render where there is one, else the splash. */
 const fullArt = (id: string) => (HEROES.has(id) ? hero(id) : splash(id));
+/** A god's card picture: the head and shoulders of the hero render where there is one, else the bust. */
+const cardArt = (id: string) => (HEROES.has(id) ? heroFace(id) : portrait(id));
+/** A team slot's picture as a CSS background: a hero card stands in its god's light. */
+const cardBg = (id: string) => (HEROES.has(id) ? `url(${heroFace(id)}), radial-gradient(circle at 50% 38%, ${alpha(godColor(id), 0.45)}, transparent 80%)` : `url(${portrait(id)})`);
 /** Two-digit hex alpha for a #rrggbb color. */
 const alpha = (hex: string, a: number) => `${hex}${Math.round(a * 255).toString(16).padStart(2, '0')}`;
 
@@ -138,7 +142,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
     </div>
     <footer class="gp-foot">
       <div class="gp-strip" style="--n:${gods.length}">${gods
-        .map((g, i) => `<button class="gp-god" data-god="${g.id}" style="--i:${i}"><img src="${portrait(g.id)}" alt="" onerror="this.remove()"><span>${g.name}</span></button>`)
+        .map((g, i) => `<button class="gp-god${HEROES.has(g.id) ? ' hero' : ''}" data-god="${g.id}" style="--i:${i};--god:${godColor(g.id)}"><img src="${cardArt(g.id)}" alt="" onerror="this.remove()"><span>${g.name}</span></button>`)
         .join('')}</div>
       <div class="gp-go">
         <button class="gp-ready" data-sound="none"><span>Ready</span><small>Enter</small></button>
@@ -251,7 +255,7 @@ export function showGodPick(setup: PickSetup): PickScreen {
   };
   const slotHtml = (v: SlotView, i: number) => `
     <div class="gp-slot${v.me ? ' me' : ''}${v.ready ? ' ready' : ''}${v.god ? '' : ' hidden'}" style="--i:${i}">
-      <div class="gp-face" ${v.god ? `style="background-image:url(${portrait(v.god)})"` : ''}>${v.god ? '' : MYSTERY}</div>
+      <div class="gp-face${v.god && HEROES.has(v.god) ? ' hero' : ''}" ${v.god ? `style="background-image:${cardBg(v.god)}"` : ''}>${v.god ? '' : MYSTERY}</div>
       <div class="gp-who"><b>${v.name}</b><span>${v.sub}${v.tag ? ` · <em>${v.tag}</em>` : ''}</span></div>
       <div class="gp-state">${v.ready ? 'Ready' : 'Picking'}</div>
     </div>`;

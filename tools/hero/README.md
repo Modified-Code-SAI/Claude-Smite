@@ -21,6 +21,15 @@ node tools/hero/dump.cjs [zeus,thor,...]   # -> tools/hero/out/<god>.json
 blender -b --factory-startup -P tools/hero/render.py -- <god>
 ```
 
+Then cut the god's card picture (head and shoulders, 320x400, for the god strip,
+the team slots and the lobby seats) from the new render:
+
+```sh
+python3 tools/hero/faces.py <god>          # -> public/hero/face/<god>.webp
+```
+
+Check it on a contact sheet; a god whose face sits off-centre gets a `NUDGE`.
+
 The dump takes a few seconds per god; a render about six minutes on four CPU
 cores. `--preview` renders a 40% size PNG in about 20 seconds to check the
 look (`tools/hero/out/<god>-preview.png`), `--crop x0,y0,x1,y1` renders one
