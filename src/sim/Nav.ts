@@ -9,6 +9,8 @@ const CLEARANCE = 0.75;
 /** A god's own size, for checking a cell center can be walked to straight from a point in a closed cell (and the step between checks). */
 const BODY = 0.55;
 const STEP = 0.4;
+/** How wide a god cutting a corner past stone must find the way (a god is 0.6 m round, see GOD_RADIUS; a little to spare). */
+const SQUEEZE = 0.65;
 /** A walk counts as reaching a point once within this of it (a god reaching for the relic there, say). */
 const NEAR = 1.2;
 
@@ -20,6 +22,8 @@ const NEAR = 1.2;
  */
 export class Nav {
   private open: Uint8Array | null = null;
+  /** Per cell, whether a god walks straight to its diagonal neighbor past a closed corner: 0 not yet known, 1 yes, -1 no (two slots, ↗ and ↖). */
+  private diagonals: Int8Array | null = null;
   private readonly probe = { x: 0, z: 0 };
   private readonly size: number;
   private readonly origin: number;
@@ -95,6 +99,7 @@ export class Nav {
     const lo = (v: number) => Math.max(0, Math.floor((v - r - this.origin) / CELL));
     const hi = (v: number) => Math.min(n - 1, Math.floor((v + r - this.origin) / CELL));
     for (let j = lo(p.z); j <= hi(p.z); j++) for (let i = lo(p.x); i <= hi(p.x); i++) open[j * n + i] = this.sample(i, j);
+    this.diagonals?.fill(0);
   }
 
   private sample(i: number, j: number): number {
@@ -151,18 +156,28 @@ export class Nav {
     return this.firstOpen(ci, cj);
   }
 
-  /** Whether a god walks straight from `a` to within reach of `b` without stone in the way. */
-  private reaches(a: Point, b: Point): boolean {
+  /** Whether a god (`body` m round) walks straight from `a` to within `near` of `b` without stone in the way. */
+  private reaches(a: Point, b: Point, near = NEAR, body = BODY): boolean {
     const d = hypot(b.x - a.x, b.z - a.z);
-    const steps = Math.ceil(Math.max(0, d - NEAR) / STEP);
+    const steps = Math.ceil(Math.max(0, d - near) / STEP);
     for (let k = 1; k <= steps; k++) {
-      const t = (k * STEP) / d;
+      const t = Math.min(1, (k * STEP) / d);
       const x = a.x + (b.x - a.x) * t;
       const z = a.z + (b.z - a.z) * t;
-      const r = this.terrain.resolve(x, z, BODY, this.terrain.groundAt(x, z), undefined, this.probe);
+      const r = this.terrain.resolve(x, z, body, this.terrain.groundAt(x, z), undefined, this.probe);
       if (hypot(r.x - x, r.z - z) > 0.05) return false;
     }
     return true;
+  }
+
+  /** Whether a god walks straight between the centers of the diagonal neighbors `a` and `b` (sampled once, see `diagonals`). */
+  private diagonal(a: number, b: number): boolean {
+    const n = this.size;
+    const lo = Math.min(a, b);
+    const slot = lo * 2 + (Math.abs(a - b) === n + 1 ? 0 : 1);
+    const known = (this.diagonals ??= new Int8Array(n * n * 2));
+    if (!known[slot]) known[slot] = this.reaches(this.center(a), this.center(b), 0, SQUEEZE) ? 1 : -1;
+    return known[slot] === 1;
   }
 
   private firstOpen(ci: number, cj: number): number {
@@ -218,8 +233,9 @@ export class Nav {
           if (i < 0 || j < 0 || i >= n || j >= n) continue;
           const k = j * n + i;
           if (!grid[k] || closed.has(k)) continue;
-          // no cutting corners past walls
-          if (di && dj && (!grid[cj * n + i] || !grid[j * n + ci])) continue;
+          // no cutting corners past walls, unless a god fits between the two cells: a strip along a slanted wall
+          // can be the only way somewhere and still be narrower than a cell (the pocket behind Relic Rush's fallen lintel)
+          if (di && dj && (!grid[cj * n + i] || !grid[j * n + ci]) && !this.diagonal(c, k)) continue;
           const g = cost.get(c)! + (di && dj ? Math.SQRT2 : 1);
           if (g >= (cost.get(k) ?? Infinity)) continue;
           cost.set(k, g);

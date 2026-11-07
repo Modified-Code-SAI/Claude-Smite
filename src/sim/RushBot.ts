@@ -337,7 +337,7 @@ export class RushBot implements Brain {
     // run at the gate's mouth, steering around defenders in the way
     const aim = this.mouth(gate);
     if (this.wedged()) {
-      this.walkTo(aim, 0.4, { face: true });
+      this.walkTo(aim, 0.4, { face: true, bodies: true });
       return;
     }
     let dx = aim.x - u.x;
@@ -796,9 +796,10 @@ export class RushBot implements Brain {
    * Walks toward `goal` until within `stopAt`, by the pathfinder unless
    * `direct`, turning to face the way it walks if `face`. A `shared` spot (a
    * role's, which a teammate may hold already) also counts as reached when a
-   * teammate stands on it.
+   * teammate stands on it. With `bodies`, the pathfinder's way also goes round
+   * enemy gods standing in it (see pastBodies).
    */
-  private walkTo(goal: Point, stopAt: number, { face = false, shared = false, direct = false } = {}): void {
+  private walkTo(goal: Point, stopAt: number, { face = false, shared = false, direct = false, bodies = false } = {}): void {
     const { u } = this;
     const room = this.elbowRoom();
     if (dist(goal, u) <= stopAt || (shared && this.taken(goal, stopAt))) {
@@ -818,7 +819,7 @@ export class RushBot implements Brain {
     if (this.nav && !direct) {
       const r = this.route;
       if (!r || dist(r.goal, goal) > 1.5 || this.sim.time - r.at > 0.4) this.route = { goal: { ...goal }, next: this.nav.next(u, goal), at: this.sim.time };
-      p = this.route!.next;
+      p = bodies ? this.pastBodies(this.route!.next, goal) : this.route!.next;
     }
     const dx = p.x - u.x;
     const dz = p.z - u.z;
@@ -826,6 +827,49 @@ export class RushBot implements Brain {
     if (d < 0.05) return;
     u.move = unit(dx / d + room.x, dz / d + room.z);
     if (face || !this.facingTarget()) u.body.yaw = Math.atan2(-dx, -dz);
+  }
+
+  /**
+   * Where to walk instead of straight at `p` when an enemy god stands in the
+   * way: beside them, round the side that is clear of stone (the side away
+   * from them first). The pathfinder sees only stone, and with gods blocking
+   * each other a carrier wedged by a pillar walked its way out straight into
+   * the defender sealing it in. A god standing at `goal` is what the walk is
+   * for, so it never counts. (Only for that way out: every bot walking round
+   * bodies on its paths kept carriers beside the gate pillars twice as long
+   * in bot matches.)
+   */
+  private pastBodies(p: Point, goal: Point): Point {
+    const { u, sim } = this;
+    if (!sim.foesBlock) return p;
+    const d = dist(u, p);
+    if (d < 1e-3) return p;
+    const fx = (p.x - u.x) / d;
+    const fz = (p.z - u.z) / d;
+    let block: Unit | null = null;
+    let first = Infinity;
+    let offset = 0;
+    for (const e of this.rush.team(other(u.team as Side))) {
+      if (!e.alive || dist(e, goal) < e.radius + 0.5) continue;
+      const ex = e.x - u.x;
+      const ez = e.z - u.z;
+      const along = ex * fx + ez * fz;
+      const across = ex * -fz + ez * fx;
+      if (along <= 0 || along > d + e.radius || Math.abs(across) >= u.radius + e.radius || along >= first) continue;
+      block = e;
+      first = along;
+      offset = across;
+    }
+    if (!block) return p;
+    const r = u.radius + block.radius + 0.25;
+    const away = offset > 0 ? -1 : 1;
+    for (const side of [away, -away]) {
+      const x = block.x - fz * r * side;
+      const z = block.z + fx * r * side;
+      const at = sim.solid(x, z, u.radius, u.body.y + u.stepOver, u, sim.terrain, u);
+      if (hypot(at.x - x, at.z - z) < 0.05) return { x, z };
+    }
+    return p;
   }
 
   /** A teammate already stands on the spot and this bot is as near it as elbow room lets it get (two cutters, say): stop here. */
