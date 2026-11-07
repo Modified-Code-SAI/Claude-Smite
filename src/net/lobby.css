@@ -50,6 +50,8 @@
 .lb-seat b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 100%; overflow: hidden; overflow-wrap: anywhere; line-height: 1.15; font-size: 13.5px; font-weight: 500; letter-spacing: 0.04em; color: #fbe9c2; }
 .lb-seat > span { font-family: Georgia, serif; font-size: 11.5px; opacity: 0.65; }
 .lb-face { position: relative; width: 52px; height: 52px; margin-bottom: 3px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #15100b 50% 22% / 150% no-repeat; box-shadow: 0 0 0 2px rgba(231, 194, 122, 0.55), 0 4px 10px rgba(0, 0, 0, 0.5); }
+/* a hero card: the head and shoulders in the god's own light */
+.lb-face.hero { background-position: 50% 4%, center; background-size: 100% auto, cover; }
 .lb-side.lb-order .lb-player .lb-face { box-shadow: 0 0 0 2px rgba(120, 190, 255, 0.75), 0 4px 10px rgba(0, 0, 0, 0.5); }
 .lb-side.lb-chaos .lb-player .lb-face { box-shadow: 0 0 0 2px rgba(255, 130, 105, 0.75), 0 4px 10px rgba(0, 0, 0, 0.5); }
 .lb-seat.me { border-color: rgba(255, 220, 150, 0.6); background: linear-gradient(180deg, rgba(70, 52, 26, 0.75), rgba(16, 12, 8, 0.75)); }
