@@ -42,7 +42,11 @@ export interface Stir {
   ref: number;
 }
 
-/** What stirs at each depth: small sounds close by (hushed while the fighting is loud), and big ones far off. */
+/**
+ * What stirs at each depth: small sounds close by (hushed while the fighting
+ * is loud), each shown where it's heard (DescentView.stir picks the spot and
+ * cues it, so its `y` goes unused), and big ones far off.
+ */
 export const UNDERWORLD_LIFE: Record<Palette, { near: Stir; far: Stir }> = {
   // the Ashen Depths: steam venting from the hot rock, a smith's hammer somewhere below, the rock settling
   ember: {
@@ -51,7 +55,7 @@ export const UNDERWORLD_LIFE: Record<Palette, { near: Stir; far: Stir }> = {
   },
   // the Drowned Halls: water dripping into black pools all around, and a sunken bell tolling
   soul: {
-    near: { every: [1.2, 4.5], sounds: ['amb.drip'], dist: [7, 24], y: 8, gain: 0.6, ref: 8 },
+    near: { every: [1.2, 4.5], sounds: ['amb.drip'], dist: [5, 18], y: 8, gain: 0.6, ref: 8 },
     far: { every: [20, 38], sounds: ['amb.toll', 'amb.toll', 'amb.souls'], dist: [32, 48], y: 6, gain: 0.9, ref: 24 },
   },
   // the Abyss: whispers in the dark, the souls' moan, and the rock groaning over the drop
