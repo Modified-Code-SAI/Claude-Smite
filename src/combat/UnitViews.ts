@@ -722,7 +722,8 @@ export class UnitViews {
       if (v.model.reaching) v.model.reachTo.copy(this.catchAt);
     }
 
-    const liftGoal = u.untargetable > 0 && u.alive ? 5 : 0;
+    // (out of reach in a leap it rises; a beast that dives goes down under the floor itself)
+    const liftGoal = u.untargetable > 0 && u.alive && !v.monster?.dives ? 5 : 0;
     v.lift += (liftGoal - v.lift) * (1 - Math.exp(-dt * 4));
 
     if (!u.alive) {

@@ -57,7 +57,7 @@ export const KEEPER_CORE = 0xfff0c8;
  * Seconds after death each body starts going down into the ground (the rigs
  * below sink on these), so whatever marks the ground taking it lands as it goes.
  */
-const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5, drownedThrall: 1.5, lanternJelly: 1.2, tideLurker: 1.6, gravehound: 1.3, packleader: 1.6, soulForge: 1.4 } as const;
+const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5, drownedThrall: 1.5, lanternJelly: 1.2, tideLurker: 1.6, gravehound: 1.3, packleader: 1.6, soulForge: 1.4, ashsmith: 2.4, tidemaw: 2.2 } as const;
 
 /** When a monster's body starts sinking into the ground, in seconds after it died. */
 export function sinksAfter(tag: string): number {
@@ -71,6 +71,8 @@ export interface MonsterView {
   height: number;
   /** Seconds the body stays after death (3 if unset). */
   linger?: number;
+  /** Out of reach, it goes down under the floor itself (a Tide Lurker, the Tidemaw), so it isn't lifted like a god in a leap. */
+  dives?: boolean;
   /** Pose for this frame. `windup` is the sim's slam windup, `wobble` the hit spring. */
   animate(u: Unit, dt: number, deathTime: number, wobble: number): void;
 }
@@ -1385,6 +1387,7 @@ function tideLurker(): MonsterView {
   let was: 'up' | 'under' | 'rising' = 'up';
   return {
     root,
+    dives: true,
     height: 1.7,
     animate(u, dt, deathTime, wobble) {
       clock += dt;
@@ -2389,6 +2392,414 @@ function ossuaryKing(): MonsterView {
   };
 }
 
+// ---------------------------------------------------------------------------
+// The Ashsmith (the Ashen Depths' boss)
+
+/**
+ * The master of the forge: a hunched giant smith of cooled slag, the furnace
+ * of its chest showing through an iron grate, two chimneys on its back
+ * spitting fire and sparks, an iron smith's mask with a slit of white heat
+ * for eyes, a scorched leather apron and iron greaves. Its right hand swings
+ * a great sledge whose faces glow white-hot; its left holds a red ingot in
+ * a pair of tongs. It swings the hammer over its shoulder and down, lifts it
+ * high for its Hammerfall and brings it down, and hauls it back low and
+ * drags it through the floor to send the cracks of fire out. Every material
+ * is one the forge's beasts already use, so it builds no shader as it rises.
+ */
+function ashsmith(): MonsterView {
+  const crust = lavaStone();
+  const { hoof: iron, hide } = mats();
+  const fire = glow(CINDER_GLOW, 4.5);
+  const white = glow(0xffd8a0, 5);
+  const flameMat = (cinderFlame ??= cinderFlameMaterial());
+  const root = new THREE.Group();
+  const S = 2.3;
+  const rig = pivot(root, 0, 0, 0);
+  rig.scale.setScalar(S);
+  const HIP = 0.8;
+  const hips = pivot(rig, 0, HIP, 0);
+  mesh(hips, geo('as-pelvis', () => rock(0.3, 61).scale(1.35, 0.75, 1)), crust);
+  mesh(hips, geo('as-belt', () => new THREE.TorusGeometry(0.36, 0.045, 6, 28).rotateX(Math.PI / 2).scale(1, 1, 0.85)), iron, 0, 0.06, 0);
+  // a scorched leather apron down the front to the knees, the legs showing either side
+  mesh(hips, geo('as-apron', () => new THREE.CylinderGeometry(0.36, 0.42, 0.46, 12, 1, true, -0.65, 1.3)), hide, 0, -0.2, 0.04);
+  const thighs: THREE.Group[] = [];
+  const knees: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const hip = pivot(hips, sx * 0.24, -0.06, 0);
+    mesh(hip, geo('as-thigh', () => rock(0.17, 62).scale(1, 1.55, 1)), crust, 0, -0.2, 0);
+    const knee = pivot(hip, 0, -0.38, 0);
+    mesh(knee, geo('as-greave', () => new THREE.CylinderGeometry(0.135, 0.115, 0.3, 10)), iron, 0, -0.13, 0.01);
+    mesh(knee, geo('as-foot', () => rock(0.17, 63).scale(1.15, 0.55, 1.55)), crust, 0, -0.3, 0.07);
+    thighs.push(hip);
+    knees.push(knee);
+  }
+  // a barrel of a chest pitched forward over a heavy gut
+  const torso = pivot(hips, 0, 0.1, 0);
+  mesh(torso, geo('as-gut', () => rock(0.42, 64).scale(1.15, 0.9, 0.95)), crust, 0, 0.3, 0.04);
+  mesh(torso, geo('as-chest', () => rock(0.5, 65).scale(1.4, 0.85, 1)), crust, 0, 0.7, -0.04);
+  // the furnace in its chest, behind an iron grate
+  const furnace = mesh(torso, geo('as-furnace', () => new THREE.SphereGeometry(0.2, 16, 12).scale(1.1, 1, 0.45)), fire, 0, 0.6, 0.41, 0, 0, 0, false);
+  mesh(torso, geo('as-grate', () => new THREE.TorusGeometry(0.22, 0.035, 6, 20)), iron, 0, 0.6, 0.47);
+  for (let i = -2; i <= 2; i++) {
+    const h = 2 * Math.sqrt(0.22 * 0.22 - (i * 0.085) ** 2);
+    mesh(torso, geo(`as-bar-${i}`, () => new THREE.BoxGeometry(0.028, h, 0.03)), iron, i * 0.085, 0.6, 0.49);
+  }
+  // an iron pauldron over the hammer shoulder
+  mesh(torso, geo('as-pauldron', () => new THREE.SphereGeometry(0.27, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55).scale(1.15, 0.8, 1.1)), iron, 0.62, 1.0, 0, 0, 0, -0.35);
+  // two chimneys on its back, fire and sparks spitting from them
+  const flames: THREE.Mesh[] = [];
+  const tongue = geo('as-tongue', () => new THREE.ConeGeometry(0.07, 0.34, 8, 1, true).translate(0, 0.17, 0));
+  for (const sx of [-1, 1]) {
+    const c = pivot(torso, sx * 0.24, 0.98, -0.38);
+    c.rotation.set(-0.35, 0, -sx * 0.18);
+    mesh(c, geo('as-stack', () => new THREE.CylinderGeometry(0.075, 0.1, 0.5, 10, 1, true)), iron, 0, 0.1, 0);
+    mesh(c, geo('as-stack-lip', () => new THREE.TorusGeometry(0.08, 0.025, 6, 14).rotateX(Math.PI / 2)), iron, 0, 0.35, 0);
+    mesh(c, geo('as-stack-fire', () => new THREE.CircleGeometry(0.075, 12).rotateX(-Math.PI / 2)), fire, 0, 0.33, 0, 0, 0, 0, false);
+    flames.push(mesh(c, tongue, flameMat, 0, 0.34, 0, 0, 0, 0, false));
+  }
+  // its head sunk low between the shoulders in a smith's iron mask, a slit of white heat for its eyes
+  const head = pivot(torso, 0, 1.04, 0.26);
+  mesh(head, geo('as-skull', () => rock(0.17, 66)), crust);
+  mesh(head, geo('as-mask', () => new THREE.CylinderGeometry(0.165, 0.18, 0.24, 14)), iron, 0, 0.05, 0.02);
+  mesh(head, geo('as-crest', () => new THREE.BoxGeometry(0.035, 0.07, 0.3)), iron, 0, 0.19, 0.02);
+  mesh(head, geo('as-slit', () => new THREE.BoxGeometry(0.2, 0.028, 0.03)), white, 0, 0.07, 0.2, 0, 0, 0, false);
+  const jaw = pivot(head, 0, -0.08, 0.04);
+  mesh(jaw, geo('as-jaw', () => rock(0.13, 67).scale(1.2, 0.6, 1)), crust, 0, -0.05, 0.05);
+  mesh(jaw, geo('as-maw', () => new THREE.SphereGeometry(0.06, 10, 8).scale(1.6, 0.5, 0.8)), fire, 0, -0.03, 0.15, 0, 0, 0, false);
+  // arms like a smith's, thick with work, in iron bracers
+  const shoulders: THREE.Group[] = [];
+  const elbows: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    mesh(torso, geo('as-shoulder', () => rock(0.27, 68)), crust, sx * 0.58, 0.88, 0);
+    const sh = pivot(torso, sx * 0.64, 0.86, 0.02);
+    mesh(sh, geo('as-upper', () => rock(0.17, 69).scale(1, 1.7, 1)), crust, 0, -0.26, 0);
+    const el = pivot(sh, 0, -0.52, 0);
+    mesh(el, geo('as-fore', () => rock(0.16, 70).scale(1, 1.55, 1)), crust, 0, -0.2, 0.02);
+    mesh(el, geo('as-bracer', () => new THREE.CylinderGeometry(0.15, 0.13, 0.2, 10, 1, true)), iron, 0, -0.27, 0.02);
+    mesh(el, geo('as-hand', () => rock(0.14, 71).scale(1.1, 0.9, 1.1)), crust, 0, -0.48, 0.03);
+    shoulders.push(sh);
+    elbows.push(el);
+  }
+  // the sledge: +y runs up its haft from the grip to the head, both faces glowing from the forge
+  const hammer = pivot(elbows[1]!, 0, -0.5, 0.04);
+  mesh(hammer, geo('as-haft', () => new THREE.CylinderGeometry(0.035, 0.042, 1.15, 8).translate(0, 0.38, 0)), iron);
+  mesh(hammer, geo('as-head', () => new THREE.BoxGeometry(0.3, 0.3, 0.62)), iron, 0, 0.98, 0);
+  mesh(hammer, geo('as-band', () => new THREE.BoxGeometry(0.34, 0.34, 0.09)), crust, 0, 0.98, 0);
+  for (const sz of [-1, 1]) mesh(hammer, geo('as-face', () => new THREE.BoxGeometry(0.22, 0.22, 0.03)), fire, 0, 0.98, sz * 0.315, 0, 0, 0, false);
+  // the tongs, and the ingot in them
+  const tongs = pivot(elbows[0]!, 0, -0.52, 0.05);
+  for (const sx of [-1, 1]) mesh(tongs, geo('as-tong', () => new THREE.BoxGeometry(0.025, 0.025, 0.5).translate(0, 0, 0.25)), iron, sx * 0.03, 0, 0, 0.5, sx * 0.06, 0);
+  mesh(tongs, geo('as-ingot', () => new THREE.BoxGeometry(0.16, 0.07, 0.11)), fire, 0, -0.23, 0.43, 0.5, 0, 0, false);
+  const embers = makeEmbers(rig);
+  skinRigid(root, 'ashsmith', rig, [furnace, ...flames], bounds(2.4 * S));
+
+  let clock = Math.random() * 10;
+  let phase = Math.random() * 10;
+  let raise = 0;
+  let lift = 0;
+  let drag = 0;
+  let slamAt = -9;
+  let sweepAt = -9;
+  let tolling = false;
+  let loosed = -1;
+  const mx = (a: number, b: number, t: number) => a + (b - a) * t;
+  return {
+    root,
+    height: 2.2 * S,
+    linger: 4.5,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      const speed = hypot(u.vx, u.vz);
+      phase += dt * (1.4 + speed * 1.1);
+      const gait = Math.min(1, speed / 1.4);
+      const brain = u.brain instanceof DescentMonsterBrain ? u.brain : null;
+      // Hammerfall: the hammer lifts high through the windup (the host's brain knows it; guests see it land), then comes down
+      const special = u.brain instanceof MonsterBrain ? u.brain.specialProgress : 0;
+      if (tolling && special <= 0) slamAt = clock;
+      tolling = special > 0;
+      lift += ((tolling ? 1 : 0) - lift) * (1 - Math.exp(-dt * (tolling ? 5 : 30)));
+      const st = clock - slamAt;
+      const slam = st < 1.2 ? Math.min(1, st / 0.1) * (st < 0.7 ? 1 : 1 - (st - 0.7) / 0.5) : 0;
+      // the Fissure: hauled back low to its side through the windup, then dragged forward through the floor
+      const gathering = brain?.gathering ?? 0;
+      const n = brain?.loosed ?? 0;
+      if (loosed >= 0 && n > loosed) sweepAt = clock;
+      loosed = n;
+      drag += ((gathering > 0 ? 1 : 0) - drag) * (1 - Math.exp(-dt * (gathering > 0 ? 7 : 25)));
+      const wt = clock - sweepAt;
+      const sweep = wt < 0.9 ? Math.min(1, wt / 0.12) * (wt < 0.45 ? 1 : 1 - (wt - 0.45) / 0.45) : 0;
+      const back = drag * (1 - sweep);
+      // a basic blow: over the shoulder through the windup, then down
+      const goal = u.windup > 0 ? 1 : 0;
+      raise += (goal - raise) * (1 - Math.exp(-dt * (goal ? 8 : 20)));
+      const a = u.sinceAction;
+      const strike = slam > 0 || sweep > 0 ? 0 : a < 0.5 ? Math.sin(Math.min(1, a / 0.5) * Math.PI * 0.5) * (1 - Math.max(0, a - 0.3) / 0.2) : 0;
+      const walk = Math.sin(phase);
+      const crouch = Math.max(slam, sweep * 0.7, back * 0.5);
+      // a slow, heavy stride; braced for the Hammerfall, down into the blow
+      thighs.forEach((t, i) => {
+        const sw = Math.sin(phase + i * Math.PI);
+        t.rotation.x = mx(mx(sw * 0.4 * gait, -0.15, lift), -0.45, crouch);
+        knees[i]!.rotation.x = mx(mx(Math.max(0, -sw) * 0.5 * gait + 0.08, 0.3, lift), 0.75, crouch);
+      });
+      hips.position.y = HIP + Math.abs(Math.cos(phase)) * 0.025 * gait + Math.sin(clock * 1.1) * 0.006 - lift * 0.03 - crouch * 0.14;
+      torso.rotation.x = mx(mx(mx(0.18 + Math.sin(clock * 1.1) * 0.015 + wobble * 0.04 - raise * 0.12 + strike * 0.25, -0.05, lift), 0.5, slam), 0.42, Math.max(back, sweep));
+      torso.rotation.y = (raise * 0.35 - strike * 0.4) * (1 - lift) * (1 - slam) + back * 0.55 - sweep * 0.5;
+      torso.rotation.z = walk * 0.04 * gait;
+      head.rotation.x = mx(mx(-0.1 + Math.sin(clock * 0.6) * 0.04 - raise * 0.1, -0.3, lift), -0.3, slam);
+      head.rotation.y = Math.sin(clock * 0.37) * 0.25 * (1 - gait) * (1 - raise) * (1 - lift) * (1 - drag);
+      jaw.rotation.x = 0.05 + raise * 0.2 + lift * 0.3 + slam * 0.4 + sweep * 0.3;
+      const sh = shoulders[1]!;
+      const el = elbows[1]!;
+      const off = shoulders[0]!;
+      const oel = elbows[0]!;
+      sh.rotation.x = mx(mx(mx(mx(-0.3 + walk * 0.15 * gait - raise * 2.2 + strike * 1.6, -2.75, lift), -1.1, slam), 0.5, back), -0.9, sweep);
+      sh.rotation.z = mx(mx(mx(0.15 + raise * 0.35, -0.1, lift), -0.1, slam), 0.25, back) - sweep * 0.35;
+      el.rotation.x = mx(mx(mx(-0.5 - raise * 0.6 + strike * 0.5, -0.3, lift), -0.25, slam), -0.2, Math.max(back, sweep));
+      off.rotation.x = mx(mx(-0.35 - walk * 0.15 * gait + raise * 0.2, -1.7, lift), -0.9, slam);
+      off.rotation.z = mx(-0.15, 0.35, lift) - back * 0.2;
+      oel.rotation.x = mx(-0.6, -0.5, lift);
+      // the hammer's angle in the body (0 points straight up, pi straight down), whatever the arm does:
+      // at rest its head on the floor before it, through the Fissure's windup trailing on the floor behind
+      const angle = mx(mx(mx(mx(2.45 - raise * 3.0 + strike * 2.7, -0.15, lift), 2.4, slam), 3.3, back), 2.2, sweep);
+      hammer.rotation.x = angle - (torso.rotation.x + sh.rotation.x + el.rotation.x);
+      const heat = 1 + Math.sin(clock * 2.2) * 0.07 + raise * 0.15 + lift * 0.4 + slam * 0.7 + drag * 0.3 + sweep * 0.5;
+      furnace.scale.setScalar(heat);
+      flames.forEach((f, i) => f.scale.set(1, 0.8 + Math.sin(clock * 9 + i * 2) * 0.2 + (heat - 1) * 1.2, 1));
+      embers.step(dt, deathTime >= 0 ? 0 : 0.7 + (heat - 1) * 3);
+      if (deathTime >= 0) {
+        // it sinks to its knees over its hammer, the furnace going out, and goes down into the ash
+        const t = Math.min(1, deathTime / 1.4);
+        const k = t * t * (3 - 2 * t);
+        hips.position.y = HIP * (1 - k * 0.45) - Math.max(0, deathTime - SINKS.ashsmith) * 0.35;
+        for (const th of thighs) th.rotation.x = -k * 1.3;
+        for (const kn of knees) kn.rotation.x = k * 2.0;
+        torso.rotation.set(0.18 + k * 0.55, 0, 0);
+        head.rotation.x = -0.1 + k * 0.5;
+        sh.rotation.set(-0.3 - k * 0.3, 0, 0.15);
+        off.rotation.x = -0.35 + k * 0.1;
+        hammer.rotation.x = 2.9 - (torso.rotation.x + sh.rotation.x + el.rotation.x);
+        const out = Math.max(0.01, 1 - Math.max(0, deathTime - 0.5) / 1.2);
+        furnace.scale.setScalar(out);
+        for (const f of flames) f.scale.setScalar(out);
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The Tidemaw (the Drowned Halls' boss)
+
+/** How far under the floor the Tidemaw goes when it dives: only the shrine on its back shows. */
+const MAW_DEPTH = 2.6;
+
+/**
+ * The great crab of the Drowned Halls: a vast low shell of dark deep-water
+ * hide crusted with pale barnacles, a sunken shrine of verdigris bronze
+ * riding its back with a cold lantern burning under the dome, kelp trailing
+ * off its rim; eyes glowing on stalks over working mandibles; two great
+ * claws, the right a crusher bigger than the left; eight jointed legs. It
+ * snaps a claw at whoever is in front of it, rears up and brings both claws
+ * down for its Claw Crush, and sinks into the floor to swim under it with
+ * only the shrine showing, bursting up beneath its prey. Every material is
+ * one the Drowned Halls' beasts and the grave bells already use.
+ */
+function tidemaw(): MonsterView {
+  const skin = (lurkerSkin ??= lurkerSkinMaterial());
+  const { bone: shell, stone } = mats();
+  const metal = (bronze ??= bellBronzeMaterial());
+  const kelp = (thrallSkin ??= thrallSkinMaterial());
+  const eye = glow(DROWNED_CORE, 5);
+  const lamp = glow(DROWNED_GLOW, 3);
+  const root = new THREE.Group();
+  const rig = pivot(root, 0, 0, 0);
+  const BODY = 1.7;
+  const body = pivot(rig, 0, BODY, 0);
+  // the shell: broad and domed, a lip round its rim, a pale belly under it, a row of spines along its front edge
+  mesh(body, geo('tm-shell', () => new THREE.SphereGeometry(1.6, 28, 16).scale(1.45, 0.62, 1.15)), skin);
+  mesh(body, geo('tm-belly', () => new THREE.SphereGeometry(1.35, 20, 12).scale(1.4, 0.42, 1.1)), shell, 0, -0.32, 0);
+  mesh(body, geo('tm-rim', () => new THREE.TorusGeometry(1.6, 0.13, 8, 36).rotateX(Math.PI / 2).scale(1.45, 1, 1.15)), skin, 0, -0.08, 0);
+  const spine = geo('tm-spine', () => new THREE.ConeGeometry(0.11, 0.5, 8).rotateX(Math.PI / 2).translate(0, 0, 0.2));
+  for (const a of [-1.15, -0.85, -0.55, 0.55, 0.85, 1.15]) {
+    const sp = mesh(body, spine, shell, Math.sin(a) * 2.3, -0.05, Math.cos(a) * 1.82, 0.15, a, 0);
+    sp.scale.setScalar(1.25 - Math.abs(a) * 0.35);
+  }
+  // barnacles crusted over it (clear of the shrine's footing)
+  const barnacle = geo('tm-barnacle', () => new THREE.CylinderGeometry(0.05, 0.11, 0.13, 7));
+  for (let i = 0; i < 30; i++) {
+    const th = i * 2.399 + 0.5;
+    const ph = 0.5 + ((i * 0.618) % 1) * 0.9;
+    const nx = Math.sin(ph) * Math.cos(th);
+    const nz = Math.sin(ph) * Math.sin(th);
+    const x = 2.32 * nx;
+    const z = 1.84 * nz;
+    if (hypot(x, z + 0.2) < 1.1) continue;
+    const s = 0.7 + ((i * 0.37) % 1) * 0.8;
+    const b = mesh(body, barnacle, shell, x, 0.97 * Math.cos(ph) - 0.03, z, nz * 0.7, 0, -nx * 0.7);
+    b.scale.setScalar(s);
+  }
+  // the sunken shrine on its back, settled askew as it sank: columns round a lantern under a bronze dome
+  const shrine = pivot(body, 0, 0.86, -0.2);
+  shrine.rotation.set(0.12, 0.3, -0.1);
+  mesh(shrine, geo('tm-plinth', () => new THREE.CylinderGeometry(0.85, 0.97, 0.2, 8)), stone);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+    mesh(shrine, geo('tm-column', () => new THREE.CylinderGeometry(0.075, 0.09, 0.85, 8)), stone, Math.cos(a) * 0.68, 0.52, Math.sin(a) * 0.68);
+  }
+  mesh(shrine, geo('tm-lintel', () => new THREE.CylinderGeometry(0.84, 0.82, 0.12, 12)), stone, 0, 0.98, 0);
+  mesh(shrine, geo('tm-dome', () => new THREE.SphereGeometry(0.8, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2)), metal, 0, 1.02, 0);
+  mesh(shrine, geo('tm-finial', () => new THREE.ConeGeometry(0.1, 0.36, 8)), metal, 0, 1.98, 0);
+  const lantern = mesh(shrine, geo('tm-lantern', () => new THREE.SphereGeometry(0.22, 14, 10)), lamp, 0, 0.5, 0, 0, 0, 0, false);
+  // kelp trailing off the rim, round the sides and back
+  const strands: THREE.Group[] = [];
+  const weed = geo('tm-kelp', () => new THREE.ConeGeometry(0.18, 1.2, 5, 3, true).translate(0, -0.6, 0).scale(1, 1, 0.25));
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI * 0.35 + (i / 8) * Math.PI * 1.3 + Math.PI;
+    const p = pivot(body, Math.cos(a) * 2.28, -0.08, Math.sin(a) * 1.8);
+    mesh(p, weed, kelp, 0, 0, 0, 0, -a, 0);
+    strands.push(p);
+  }
+  // eyes on stalks over a mouth of working mandibles
+  const head = pivot(body, 0, -0.05, 1.78);
+  mesh(head, geo('tm-maw', () => new THREE.SphereGeometry(0.2, 12, 8).scale(1.6, 0.8, 0.6)), lamp, 0, -0.12, 0.02, 0, 0, 0, false);
+  const stalks: THREE.Group[] = [];
+  const eyes: THREE.Mesh[] = [];
+  for (const sx of [-1, 1]) {
+    const st = pivot(head, sx * 0.36, 0.2, 0);
+    mesh(st, geo('tm-stalk', () => new THREE.CylinderGeometry(0.055, 0.08, 0.6, 8).translate(0, 0.3, 0)), skin);
+    eyes.push(mesh(st, geo('tm-eye', () => new THREE.SphereGeometry(0.11, 12, 8)), eye, 0, 0.62, 0.02, 0, 0, 0, false));
+    stalks.push(st);
+  }
+  const mandibles = [-1, 1].map((sx) => {
+    const m = pivot(head, sx * 0.17, -0.12, 0.1);
+    mesh(m, geo('tm-mandible', () => new THREE.BoxGeometry(0.16, 0.32, 0.07).translate(0, -0.16, 0)), shell);
+    return m;
+  });
+  // two great claws reaching out and round in front, the right a crusher
+  const arms: THREE.Group[] = [];
+  const fores: THREE.Group[] = [];
+  const fingers: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const arm = pivot(body, sx * 1.35, -0.15, 1.35);
+    mesh(arm, geo('tm-upper', () => new THREE.CylinderGeometry(0.2, 0.25, 1.1, 10).rotateX(Math.PI / 2).translate(0, 0, 0.55)), skin);
+    const fore = pivot(arm, 0, 0, 1.05);
+    mesh(fore, geo('tm-elbow', () => new THREE.SphereGeometry(0.25, 12, 8)), shell);
+    mesh(fore, geo('tm-fore', () => new THREE.CylinderGeometry(0.18, 0.22, 0.9, 10).rotateX(Math.PI / 2).translate(0, 0, 0.45)), skin);
+    const claw = pivot(fore, 0, 0, 0.9);
+    claw.scale.setScalar(sx > 0 ? 1.3 : 1);
+    mesh(claw, geo('tm-palm', () => new THREE.SphereGeometry(0.38, 16, 12).scale(0.85, 0.75, 1.25)), skin, 0, 0, 0.3);
+    mesh(claw, geo('tm-thumb', () => new THREE.ConeGeometry(0.2, 0.9, 10).rotateX(Math.PI / 2).scale(0.8, 1, 1)), shell, 0, -0.12, 0.95);
+    const finger = pivot(claw, 0, 0.12, 0.55);
+    mesh(finger, geo('tm-finger', () => new THREE.ConeGeometry(0.18, 0.85, 10).rotateX(Math.PI / 2).translate(0, 0, 0.42).scale(0.8, 1, 1)), shell);
+    arms.push(arm);
+    fores.push(fore);
+    fingers.push(finger);
+  }
+  // eight legs, four a side, broad and flattened like a crab's: up and out to the knee, then down to the floor
+  const legs: { hip: THREE.Group; knee: THREE.Group; sx: number; i: number; yaw: number }[] = [];
+  const upper = geo('tm-leg-upper', () => new THREE.CylinderGeometry(0.15, 0.21, 1.14, 8).scale(1, 1, 0.7).translate(0, 0.57, 0).rotateZ(-(Math.PI / 2 - 0.5)));
+  const lower = geo('tm-leg-lower', () => new THREE.CylinderGeometry(0.17, 0.05, 2.2, 8).scale(1, 1, 0.7).translate(0, -1.1, 0).rotateZ(0.36));
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      const hip = pivot(body, sx * 1.95, -0.22, 0.85 - i * 0.6);
+      const yaw = (sx > 0 ? 0 : Math.PI) + sx * (i - 1.5) * -0.32;
+      hip.rotation.y = yaw;
+      mesh(hip, upper, skin);
+      const knee = pivot(hip, 1.0, 0.55, 0);
+      mesh(knee, geo('tm-knee', () => new THREE.SphereGeometry(0.2, 10, 8)), shell);
+      mesh(knee, lower, skin);
+      legs.push({ hip, knee, sx, i, yaw });
+    }
+  }
+  skinRigid(root, 'tidemaw', rig, [lantern, ...eyes], bounds(5.2));
+
+  let clock = Math.random() * 10;
+  let phase = Math.random() * 10;
+  let under = 0;
+  let leapt = 9;
+  let rear = 0;
+  let crushAt = -9;
+  let crushing = false;
+  let snap = 0;
+  let side = 1;
+  let winding = false;
+  let was: 'up' | 'under' | 'rising' = 'up';
+  return {
+    root,
+    dives: true,
+    height: 4.6,
+    linger: 4.5,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      const state = u.brain instanceof DescentMonsterBrain ? u.brain.lurkState : u.untargetable > 0 ? 'under' : 'up';
+      if (was !== 'up' && state === 'up') leapt = 0;
+      was = state;
+      leapt += dt;
+      const goal = state === 'up' ? 0 : 1;
+      under += (goal - under) * Math.min(1, dt * (goal ? 2.5 : 30));
+      const speed = hypot(u.vx, u.vz);
+      const gait = Math.min(1, speed / 1.5) * (1 - under);
+      phase += dt * (2 + speed * 1.4);
+      // the Claw Crush: it rears through the windup (the host's brain knows it; guests see it land), then slams down
+      const special = u.brain instanceof MonsterBrain ? u.brain.specialProgress : 0;
+      if (crushing && special <= 0) crushAt = clock;
+      crushing = special > 0;
+      rear += ((crushing ? 1 : 0) - rear) * (1 - Math.exp(-dt * (crushing ? 5 : 30)));
+      const ct = clock - crushAt;
+      const crush = ct < 1.1 ? Math.min(1, ct / 0.1) * (ct < 0.6 ? 1 : 1 - (ct - 0.6) / 0.5) : 0;
+      // a snap: each windup takes the other claw
+      if (u.windup > 0 && !winding) side = -side;
+      winding = u.windup > 0;
+      snap += ((winding ? 1 : 0) - snap) * (1 - Math.exp(-dt * (winding ? 8 : 20)));
+      const a = u.sinceAction;
+      const leap = leapt < 0.6 ? Math.sin((leapt / 0.6) * Math.PI) : 0;
+      const bite = crush > 0 || leap > 0 ? 0 : a < 0.35 ? Math.sin((a / 0.35) * Math.PI) : 0;
+      const tremble = state === 'rising' ? Math.sin(clock * 45) * 0.06 : 0;
+      rig.position.y = -under * MAW_DEPTH + leap * 1.0 + tremble;
+      body.position.y = BODY + Math.abs(Math.sin(phase * 2)) * 0.05 * gait + Math.sin(clock * 0.9) * 0.03 - crush * 0.35;
+      body.rotation.set(-rear * 0.45 + crush * 0.2 - leap * 0.3 + wobble * 0.04, Math.sin(phase) * 0.03 * gait, Math.sin(phase) * 0.04 * gait + wobble * 0.05);
+      // a scuttle: alternate legs reach and plant, swinging fore and aft; tucked in under the floor; braced as it rears
+      for (const l of legs) {
+        const ph = phase + ((l.i + (l.sx > 0 ? 0 : 1)) % 2) * Math.PI;
+        const lift = Math.max(0, Math.cos(ph)) * gait;
+        l.hip.rotation.set(0, l.yaw + Math.sin(ph) * 0.28 * gait, lift * 0.3 + under * 0.55 + rear * (l.i < 2 ? 0.25 : -0.1) - crush * 0.15);
+        l.knee.rotation.z = -lift * 0.15 - under * 0.7 + crush * 0.2;
+      }
+      arms.forEach((arm, k) => {
+        const sx = k ? 1 : -1;
+        const mine = sx === side;
+        const reach = mine ? snap * 0.6 + bite : 0;
+        arm.rotation.set(-rear * 1.1 + crush * 0.9 - reach * 0.15 + Math.sin(clock * 1.3 + k) * 0.05 + under * 0.25, sx * (0.5 - reach * 0.35 + under * 0.4), 0);
+        fores[k]!.rotation.y = -sx * (0.9 - reach * 0.7 + rear * 0.3 + under * 0.5);
+        fingers[k]!.rotation.x = -(0.12 + (mine ? snap * 0.55 : 0) + rear * 0.45);
+      });
+      stalks.forEach((s, k) => {
+        const sx = k ? 1 : -1;
+        s.rotation.set(0.25 + under * 0.8 + Math.sin(clock * 0.8 + k) * 0.08, Math.sin(clock * 1.3 + sx) * 0.2, -sx * 0.25);
+      });
+      mandibles.forEach((m, k) => (m.rotation.z = (k ? -1 : 1) * (0.1 + Math.sin(clock * 6 + k) * 0.08 + bite * 0.3)));
+      strands.forEach((s, k) => s.rotation.set(Math.sin(clock * 1.2 + k) * 0.15 + gait * 0.1, 0, Math.cos(clock * 0.9 + k * 1.7) * 0.12));
+      lantern.scale.setScalar(1 + Math.sin(clock * 2) * 0.1 + under * 0.35 + rear * 0.3);
+      if (deathTime >= 0) {
+        // its legs give way and splay, the shell settles, the lantern and its eyes go out, and it sinks
+        const t = Math.min(1, deathTime / 1.2);
+        const k = t * t * (3 - 2 * t);
+        body.position.y = BODY * (1 - k * 0.6);
+        body.rotation.set(k * 0.12, 0, k * 0.1);
+        rig.position.y = -Math.max(0, deathTime - SINKS.tidemaw) * 0.5;
+        for (const l of legs) {
+          l.hip.rotation.set(0, l.yaw, -k * 0.5);
+          l.knee.rotation.z = k * 0.6;
+        }
+        for (const arm of arms) arm.rotation.x = k * 0.35;
+        const out = Math.max(0.01, 1 - k);
+        lantern.scale.setScalar(out);
+        for (const e of eyes) e.scale.setScalar(out);
+      }
+    },
+  };
+}
+
 /** The camp kind is encoded in the monster's tag: `<team>-<kind>-<i>:<type>`. */
 function campKindOf(u: Pick<Unit, 'tag'>): CampKind {
   return u.tag.split(':')[0]!.split('-')[1] as CampKind;
@@ -2411,6 +2822,8 @@ export function monsterWarmup(): THREE.Object3D[] {
     shade(),
     gravekeeper(),
     ossuaryKing(),
+    ashsmith(),
+    tidemaw(),
     cinderling(),
     slagBrute(),
     drownedThrall(),
@@ -2453,6 +2866,8 @@ function createView(u: Pick<Unit, 'tag'>): MonsterView {
   if (type === 'shade') return shade();
   if (type === 'gravekeeper') return gravekeeper();
   if (type === 'ossuaryKing') return ossuaryKing();
+  if (type === 'ashsmith') return ashsmith();
+  if (type === 'tidemaw') return tidemaw();
   if (type === 'cinderling') return cinderling();
   if (type === 'slagBrute') return slagBrute();
   if (type === 'drownedThrall') return drownedThrall();

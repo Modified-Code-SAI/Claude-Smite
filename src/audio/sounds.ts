@@ -174,6 +174,32 @@ export const SOUNDS: Record<string, Recipe> = {
     peak: 0.9,
     make: (r) => layer([impact(r, 1.5, { tone: 105, crunch: 1, sub: 0.8 }), 1], [thump(r, 0.9, 95, 42, { click: 0.4, noise: 0.9, drive: 2 }), 0.8], [debris(r, 1.5, { density: 30, gain: 0.55, tone: 800 }), 0.9, 0.06], [fire(r, 1.3, { gain: 0.55, roar: 1.4 }), 0.6, 0.04], [rumble(r, 1.8, { tone: 150 }), 0.5, 0.05]),
   },
+  // the Ashsmith: its sledge on the swing and ringing as it lands, the Hammerfall (an anvil struck under the quake), the drag that sends its fissures out, and its furnace roar
+  'basic.ashsmith': { variants: 2, peak: 0.95, make: (r) => layer([whoosh(r, 0.6, 100, 480, { q: 0.75, peak: 0.75, gain: 1.3 }), 1], [thump(r, 0.8, 58, 24, { click: 0.6, noise: 0.7, drive: 2.5 }), 0.9, 0.3], [clang(r, 1.1, 196, { decay: 0.7, gain: 0.45, bright: 0.5 }), 0.5, 0.31], [crackles(r, 0.5, 14), 0.25, 0.32]) },
+  'ashsmith.slam': {
+    peak: 1,
+    make: (r) =>
+      layer(
+        [thump(r, 1.5, 46, 18, { click: 0.8, noise: 1, drive: 3 }), 1],
+        [clang(r, 2.6, 147, { decay: 1.8, bright: 0.65, gain: 0.85 }), 0.85, 0.01],
+        [clang(r, 2, 293, { decay: 1.2, bright: 0.5, gain: 0.4 }), 0.4, 0.015],
+        [fire(r, 1.8, { gain: 0.6, roar: 2.2 }), 0.8, 0.04],
+        [debris(r, 1.8, { density: 32, gain: 0.55, tone: 700 }), 0.8, 0.08],
+        [rumble(r, 2.4, { tone: 120 }), 0.8, 0.05],
+      ),
+  },
+  'ashsmith.fissure': {
+    peak: 0.95,
+    make: (r) => layer([impact(r, 1.2, { tone: 90, crunch: 1.2, sub: 0.6 }), 0.9], [debris(r, 1.6, { density: 40, gain: 0.6, tone: 900 }), 0.9, 0.05], [fire(r, 1.8, { gain: 0.7, roar: 2.8 }), 1, 0.1], [crackles(r, 1.6, 22), 0.5, 0.15], [rumble(r, 2, { tone: 160, attack: 0.3 }), 0.6, 0.1]),
+  },
+  'ashsmith.roar': { peak: 0.95, make: (r) => layer([roar(r, 2.8, 52, { open: 0.85 }), 1], [fire(r, 2.8, { gain: 0.6, roar: 3 }), 0.9], [clang(r, 2.6, 98, { decay: 2.2, bright: 0.3, gain: 0.35 }), 0.35, 0.25], [rumble(r, 2.8, { tone: 95 }), 0.8]) },
+  // the Tidemaw: a claw snapping shut, the Claw Crush (both claws into the wet stone), and its bubbling bellow
+  'basic.tidemaw': { variants: 2, peak: 0.9, make: (r) => layer([whoosh(r, 0.45, 140, 520, { q: 0.8, peak: 0.6, gain: 1.1 }), 0.8], [knock(r, 0.12, 700 + r() * 150), 1, 0.3], [thump(r, 0.6, 70, 30, { click: 0.6, noise: 0.5, drive: 2 }), 0.7, 0.3], [splash(r, 0.4), 0.35, 0.32]) },
+  'tidemaw.crush': {
+    peak: 1,
+    make: (r) => layer([thump(r, 1.5, 44, 18, { click: 0.6, noise: 1, drive: 3 }), 1], [splash(r, 1.6), 1, 0.02], [knock(r, 0.2, 520), 0.7, 0.01], [knock(r, 0.2, 610), 0.6, 0.05], [rumble(r, 2.4, { tone: 110 }), 0.8, 0.05], [bubble(r), 0.3, 0.5], [bubble(r), 0.25, 0.7]),
+  },
+  'tidemaw.roar': { peak: 0.95, make: (r) => layer([roar(r, 2.8, 46, { open: 0.7 }), 1], [vowel(r, 2.4, (t) => glide(70, 50, t, 2.4), VOWELS.oh, { breath: 1, growl: 0.8, gain: 0.6 }), 0.6, 0.15], [rumble(r, 2.8, { tone: 80 }), 0.8], [bubble(r), 0.4, 0.4], [bubble(r), 0.35, 0.9], [bubble(r), 0.3, 1.5], [splash(r, 1.2), 0.4, 0.2]) },
   // the Ossuary King: its great blade cleaving the air, the Grave Toll (a funeral bell under the slam), and its rising roar
   'basic.king': { variants: 2, peak: 0.95, make: (r) => layer([whoosh(r, 0.7, 90, 520, { q: 0.7, peak: 0.75, gain: 1.3 }), 1], [thump(r, 0.8, 55, 22, { click: 0.5, noise: 0.6, drive: 2.5 }), 0.9, 0.32], [clang(r, 0.7, 220, { decay: 0.35, gain: 0.3, bright: 0.3 }), 0.35, 0.33]) },
   'king.toll': {

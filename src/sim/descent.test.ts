@@ -4,7 +4,8 @@ import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { CHAMBERS, chamberField, DEPTH_CHAMBERS, entranceSpot, exitSpot, underworldCave, underworldField, obstaclesOf } from '../map/UnderworldLayout';
 import { navOf } from '../map/ChamberNav';
-import { ALL_SLOTS, BRUTE, CHALLENGE, challengeSpots, chamberWaves, CINDER, CURSE_AT, DEPTH_CHALLENGE, Descent, DESCENT, DescentMonsterBrain, draftFor, GRIP, HOWL, KEEPER, KING, learnSkill, LURK, planRun, POUNCE, SHADE_BLINK, type ChamberKind } from './Descent';
+import { ALL_SLOTS, ASHSMITH, BRUTE, CHALLENGE, challengeSpots, chamberWaves, CINDER, CURSE_AT, DEPTH_CHALLENGE, Descent, DESCENT, DescentMonsterBrain, draftFor, GRIP, HOWL, KEEPER, KING, learnSkill, LURK, planRun, POUNCE, SHADE_BLINK, TIDEMAW, type ChamberKind } from './Descent';
+import { HAZARDS } from './DescentHazards';
 import { CURSES } from './Siege';
 import { DescentBot } from './DescentBot';
 import { godUnit, monsterUnit } from './factory';
@@ -173,8 +174,11 @@ describe('Underworld Descent: the run', () => {
     const size = (n: number) => chamberWaves({ n, layout: 0, kind: 'pack' }).flat().length;
     expect(size(1)).toBeLessThan(size(6));
     expect(size(6)).toBeLessThanOrEqual(size(13));
-    expect(chamberWaves({ n: 5, layout: DEPTH_CHAMBERS[0]!.boss, kind: 'boss' })[0]).toContain('treasureWyrm');
-    expect(chamberWaves({ n: 10, layout: DEPTH_CHAMBERS[1]!.boss, kind: 'boss' })[0]).toContain('moltenColossus');
+    // each depth's own: the forge's smith, the Drowned Halls' great crab, the Abyss's king (the jungle's bosses stay in the jungle)
+    expect(chamberWaves({ n: 5, layout: DEPTH_CHAMBERS[0]!.boss, kind: 'boss' })[0]).toContain('ashsmith');
+    expect(chamberWaves({ n: 10, layout: DEPTH_CHAMBERS[1]!.boss, kind: 'boss' })[0]).toContain('tidemaw');
+    for (const n of [5, 10, 15]) expect(chamberWaves({ n, layout: 0, kind: 'boss' }).flat()).not.toContain('treasureWyrm');
+    for (const n of [5, 10, 15]) expect(chamberWaves({ n, layout: 0, kind: 'boss' }).flat()).not.toContain('moltenColossus');
     expect(chamberWaves({ n: 15, layout: DEPTH_CHAMBERS[2]!.boss, kind: 'boss' })[0]).toContain('ossuaryKing');
     expect(chamberWaves({ n: 4, layout: 0, kind: 'elite' })[0]).toContain('warden');
   });
@@ -634,6 +638,138 @@ describe('Underworld Descent: the run', () => {
     const adds = run.monsters.map((m) => m.tag.split(':')[1]);
     expect(adds).toContain('shade');
     expect(adds).not.toContain('gravekeeper');
+  });
+
+  /** The team taken to the `n`th chamber (a boss's) and through its boss's entrance. */
+  const bossFight = (n: number) => {
+    const { sim, run, team } = setup([zeus, thor], 2, 11);
+    const jump = run as unknown as { chamber: number; nextChamber(): void };
+    jump.chamber = n - 1;
+    jump.nextChamber();
+    step(sim, run, DESCENT.enterTime + 0.1 + DESCENT.bossIntro);
+    expect(run.intro).toBe(0);
+    const b = run.boss!;
+    const full = () => team.forEach((g) => (g.combatant.health = g.combatant.stats.maxHealth));
+    return { sim, run, team, b, brain: b.brain as DescentMonsterBrain, full };
+  };
+
+  it("raises the Ashsmith at the bottom of the Ashen Depths: cracks of fire run out at the nearest gods over the floor, never while it's stunned, faster once it's hurt; a Hammerfall behind its circle", () => {
+    const { sim, run, team, b, brain, full } = bossFight(DESCENT.bossEvery);
+    const F = ASHSMITH.fissure;
+    expect(b.name).toBe('Ashsmith');
+    expect(brain.bossKey).toBe('ashsmith');
+    const c = run.layout;
+    /** Seconds until it next cracks the floor (or null), and the cracks it sent, with where it stood. */
+    const nextCrack = (limit: number, each?: () => void) => {
+      const was = run.fissures;
+      const newest = Math.max(0, ...run.eruptions.map((e) => e.id));
+      let gathered = false;
+      for (let i = 1; i <= Math.round(limit * 30); i++) {
+        full();
+        each?.();
+        step(sim, run, 1 / 30);
+        if (brain.gathering > 0) gathered = true;
+        if (run.fissures > was) return { at: i / 30, gathered, cracks: run.eruptions.filter((e) => e.id > newest && e.r === F.radius), from: { x: b.x, z: b.z } };
+      }
+      return null;
+    };
+    const first = nextCrack(F.first + 3)!;
+    expect(first).not.toBe(null);
+    expect(first.gathered).toBe(true);
+    expect(first.cracks.length).toBeGreaterThan(2);
+    // each burst lies on a line from it toward one of the gods, a step at a time, over the floor
+    for (const e of first.cracks) {
+      expect(c.sd(e.x - c.x, e.z - c.z)).toBeGreaterThan(0.5);
+      expect(e.share).toBe(F.damage);
+      const off = Math.min(
+        ...team.map((g) => {
+          const [dx, dz] = [g.x - first.from.x, g.z - first.from.z];
+          const d = Math.hypot(dx, dz);
+          return Math.abs((e.x - first.from.x) * (dz / d) - (e.z - first.from.z) * (dx / d));
+        }),
+      );
+      expect(off).toBeLessThan(0.8);
+    }
+    // (they burst one after another down the line, the nearest first)
+    const lefts = first.cracks.map((e) => e.left).sort((p, q) => p - q);
+    expect(lefts[lefts.length - 1]! - lefts[0]!).toBeGreaterThan(F.travel);
+    // a god standing on a crack is burned as it bursts
+    const g = team[0]!;
+    const e0 = first.cracks[0]!;
+    sim.teleport(g, e0.x, e0.z);
+    const hp = (g.combatant.health = g.combatant.stats.maxHealth);
+    for (let i = 0; i < 30 * 1.5; i++) {
+      [g.body.x, g.body.z, g.move] = [e0.x, e0.z, null];
+      step(sim, run, 1 / 30);
+    }
+    expect(g.combatant.health).toBeLessThan(hp);
+    // stunned, it can't; free again, hurt, the next comes sooner than its usual pace
+    b.combatant.cc.apply('stun', 60);
+    expect(nextCrack(F.every + 2)).toBe(null);
+    b.combatant.cc.cleanse();
+    const low = () => (b.combatant.health = b.combatant.stats.maxHealth * (ASHSMITH.enrage - 0.05));
+    expect(nextCrack(F.every + 2, low)).not.toBe(null);
+    expect(nextCrack(F.every + 2, low)!.at).toBeLessThan(F.every - 1.5);
+    // its Hammerfall: the circle on the ground through the windup, then the blow
+    let warned = false;
+    let fell = false;
+    // (its clock runs only between its blows and cracks)
+    for (let i = 0; i < 30 * (2 * ASHSMITH.slam.every + 4) && !fell; i++) {
+      full();
+      step(sim, run, 1 / 30);
+      if (sim.flashes.some((f) => f.owner === b && f.warn && f.act === 'special' && f.shape.type === 'circle' && f.shape.radius === ASHSMITH.slam.radius)) warned = true;
+      fell = sim.flashes.some((f) => f.owner === b && !f.warn && f.shape.type === 'circle' && f.shape.radius === ASHSMITH.slam.radius);
+    }
+    expect(warned).toBe(true);
+    expect(fell).toBe(true);
+    // its adds are the forge's own
+    expect(run.monsters.map((m) => m.tag.split(':')[1])).toContain('cinderling');
+  });
+
+  it('raises the Tidemaw at the bottom of the Drowned Halls: it dives out of reach and the tide comes in with it, then bursts up under its foe behind a circle, stunning every god there; a Claw Crush', () => {
+    const { sim, run, team, b, brain, full } = bossFight(2 * DESCENT.bossEvery);
+    const D = TIDEMAW.dive;
+    expect(b.name).toBe('Tidemaw');
+    expect(brain.bossKey).toBe('tidemaw');
+    // (the gods stand together, out of its reach)
+    const [g0, g1] = team as [Unit, Unit];
+    let crushed = false;
+    const until = (limit: number, done: () => boolean) => {
+      for (let i = 0; i < Math.round(limit * 30) && !done(); i++) {
+        full();
+        for (const g of team) g.move = null;
+        step(sim, run, 1 / 30);
+        if (sim.flashes.some((f) => f.owner === b && !f.warn && f.shape.type === 'circle' && f.shape.radius === TIDEMAW.crush.radius)) crushed = true;
+      }
+      return done();
+    };
+    sim.teleport(g0, b.x + 14, b.z + 6);
+    sim.teleport(g1, b.x + 15, b.z + 7);
+    expect(until(D.first + 4, () => brain.lurkState === 'under')).toBe(true);
+    expect(b.targetable).toBe(false);
+    const hp = b.combatant.health;
+    sim.strike(g0, b, 1e5, 'true');
+    expect(b.combatant.health).toBe(hp);
+    // the tide comes in with it
+    step(sim, run, 1 / 30);
+    expect(run.hazards.tide).toBeGreaterThanOrEqual(HAZARDS.tide.calm);
+    // up beneath its foe, its circle on the ground first
+    expect(until(D.under + 1, () => brain.lurkState === 'rising')).toBe(true);
+    const w = sim.flashes.find((f) => f.owner === b && f.warn && f.act === 'special')!;
+    expect(w.shape).toMatchObject({ type: 'circle', radius: D.radius });
+    const foe = [g0, g1].sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0]!;
+    expect(Math.hypot(foe.x - b.x, foe.z - b.z)).toBeLessThan(D.radius);
+    let struck = 0;
+    sim.listeners.push((e) => {
+      if (e.type === 'damage' && e.source === b && team.includes(e.target)) struck++;
+    });
+    expect(until(D.warn + 0.5, () => brain.lurkState === 'up')).toBe(true);
+    expect(b.targetable).toBe(true);
+    expect(struck).toBeGreaterThan(0);
+    expect(foe.combatant.cc.locks().move).toBe(true);
+    // and its Claw Crush, sooner or later
+    until(TIDEMAW.crush.every + 4, () => crushed);
+    expect(crushed).toBe(true);
   });
 
   it('starts every god with one skill, the rest sealed', () => {

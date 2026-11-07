@@ -2,6 +2,8 @@
 export const BOSS_EPITHET: Record<string, string> = {
   treasureWyrm: 'Coiled Keeper of the Hoard',
   moltenColossus: 'Heart of the Sunken Forge',
+  ashsmith: 'Master of the Ashen Forge',
+  tidemaw: 'Shell of the Drowned Shrine',
   ossuaryKing: 'Lord of the Abyss',
 };
 
@@ -9,6 +11,8 @@ export const BOSS_EPITHET: Record<string, string> = {
 export const BOSS_FALL_LINE: Record<string, string> = {
   treasureWyrm: 'The hoard lies open',
   moltenColossus: 'The forge goes cold',
+  ashsmith: 'The forge fires die',
+  tidemaw: 'The tide goes out',
   ossuaryKing: 'The Abyss is broken',
 };
 
@@ -16,5 +20,7 @@ export const BOSS_FALL_LINE: Record<string, string> = {
 export const BOSS_CALL_LINE: Record<string, readonly [string, string]> = {
   treasureWyrm: ['The Wyrm calls its brood!', 'More of its brood claw up from the hoard!'],
   moltenColossus: ['The Colossus calls up the dead of the forge!', 'The forge gives up more of its dead!'],
+  ashsmith: ['The Ashsmith stokes its forge, and the cinders come!', 'The forge roars again! More of them!'],
+  tidemaw: ['The Tidemaw calls the drowned up from the deep!', 'The water gives up more of its dead!'],
   ossuaryKing: ['The King summons his court!', 'His court rises again! Break them!'],
 };

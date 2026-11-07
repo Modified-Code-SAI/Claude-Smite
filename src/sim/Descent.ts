@@ -6,7 +6,7 @@ import type { GodDef, SkillDef, StatKey } from '../game/types';
 import type { CampKind } from '../map/ConquestLayout';
 import { navOf, Route } from '../map/ChamberNav';
 import { CHAMBERS, DEPTH_CHAMBERS, entranceSpot, exitSpot, obstaclesOf, type ChamberDef, type Palette } from '../map/UnderworldLayout';
-import { Hazards, type HazardsNet } from './DescentHazards';
+import { HAZARDS, Hazards, type HazardsNet } from './DescentHazards';
 import { monsterName, monsterUnit, type MonsterType } from './factory';
 import { MonsterBrain, type BossSpecial, type CampState } from './Jungle';
 import { Relics, relicById, type Relic, type RelicNet } from './Relics';
@@ -167,6 +167,32 @@ export const DEPTH_BEASTS: readonly { body: MonsterType; ranged: MonsterType; he
   { body: 'gravehound', ranged: 'shade', heavy: 'packleader' },
 ];
 
+/** Each depth's boss, waiting in its last chamber: the forge's smith, the Drowned Halls' great crab, the Abyss's king. */
+export const DEPTH_BOSS: readonly MonsterType[] = ['ashsmith', 'tidemaw', 'ossuaryKing'];
+
+/** The Ashsmith, master of the Ashen Depths' forge and the run's first boss. */
+export const ASHSMITH = {
+  /** Hammerfall: it lifts its hammer in both hands and brings it down, striking everything round it (its circle shows as it winds up). */
+  slam: { every: 9, windup: 1.2, radius: 6, scale: 1.5, warn: true } satisfies BossSpecial,
+  /**
+   * Fissure: it drags its hammer back through the floor (`windup`), and a
+   * crack of fire runs out toward each of the `lines` nearest gods within
+   * `reach`, bursting a step at a time (`step` apart, from `from` out to just
+   * past the god, never more than `length`) for a share of their health.
+   */
+  fissure: { first: 6, every: 11, enraged: 7.5, windup: 0.75, reach: 32, lines: 3, from: 2.6, step: 2.5, past: 3, length: 16, radius: 1.5, warn: 1, travel: 0.08, damage: 0.1 },
+  /** Below this share of its health the cracks come faster. */
+  enrage: 0.35,
+} as const;
+
+/** The Tidemaw, the great crab of the Drowned Halls and the run's second boss. */
+export const TIDEMAW = {
+  /** Claw Crush: it rears up and brings both claws down round itself (its circle shows as it winds up). */
+  crush: { every: 10, windup: 1.2, radius: 5.5, scale: 1.5, warn: true } satisfies BossSpecial,
+  /** The Dive: like a Tide Lurker's (see LURK), bigger: it goes under, out of reach, swims at its foe and bursts up under them. The tide comes in with it. */
+  dive: { first: 8, up: 14, under: 2.4, warn: 1.25, radius: 4.2, scale: 1.6, lift: 0.75, haste: 0.5 },
+} as const;
+
 /** The Ossuary King, lord of the Abyss and the run's last boss. */
 export const KING = {
   /** Grave Toll: it drives its blade into the floor and a ring of soul fire bursts out around it. */
@@ -203,6 +229,8 @@ export const SOULS: Record<MonsterType, number> = {
   gildedThornback: 5,
   treasureWyrm: 15,
   moltenColossus: 15,
+  ashsmith: 15,
+  tidemaw: 15,
   ossuaryKing: 20,
 };
 
@@ -354,8 +382,8 @@ export const DESCENT_TUNING = {
   scalePer: 0.2,
   /** And in the last depth this much more per chamber past the second boss, squared (the run's climax). */
   lateRamp: 0.06,
-  /** The second boss (the Molten Colossus) comes in at this share of its health. */
-  secondBoss: 0.8,
+  /** The second boss (the Tidemaw) comes in at this share of its health (it spends a fifth of the fight under the floor). */
+  secondBoss: 0.7,
   /** Monster damage on top of the growth. */
   power: 0.85,
   /** Monster health on top of the growth. */
@@ -392,7 +420,7 @@ export const teamScale = (gods: number): number => 0.4 + 0.2 * Math.max(1, gods)
 /** How many monsters come for a team of this many gods. */
 export const teamCount = (gods: number): number => [0.5, 0.75, 1, 1.3, 1.45, 1.6][Math.min(6, Math.max(1, gods)) - 1]!;
 
-const isBossType = (t: string): boolean => t === 'treasureWyrm' || t === 'moltenColossus' || t === 'ossuaryKing';
+const isBossType = (t: string): boolean => DEPTH_BOSS.includes(t as MonsterType);
 
 /** The monsters of one chamber, wave by wave. */
 export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
@@ -446,7 +474,7 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     case 'treasure':
       return split(pack(0.7));
     case 'boss':
-      return [[n >= DESCENT.chambers ? 'ossuaryKing' : n % 10 === 5 ? 'treasureWyrm' : 'moltenColossus', ...(n >= 10 ? [beasts.ranged, beasts.ranged] : [])]];
+      return [[DEPTH_BOSS[depthOf(n)]!, ...(n >= 10 ? [beasts.ranged, beasts.ranged] : [])]];
   }
 }
 
@@ -545,7 +573,10 @@ export class DescentMonsterBrain extends MonsterBrain {
   /** A Packleader's next howl, in seconds, and the windup of one under way. */
   private howlIn: number = HOWL.first;
   private howlLeft = 0;
-  /** How many times it has pounced or howled (for the view's cues). */
+  /** The Ashsmith's next fissure, in seconds, and the windup of one under way. */
+  private riftIn: number = ASHSMITH.fissure.first;
+  private riftLeft = 0;
+  /** How many times it has pounced, howled or cracked the floor (for the view's cues). */
   private acts = 0;
   /** Its way to its foe round the chamber's lava, water or void. */
   private readonly route = new Route();
@@ -560,20 +591,32 @@ export class DescentMonsterBrain extends MonsterBrain {
     private readonly chamber: ChamberDef | null = null,
     /** While true (a boss's entrance, or its fall), it only turns to face its foe. */
     private readonly held: () => boolean = () => false,
+    /** The Ashsmith's hammer coming through the floor: the run sends the cracks of fire out (see Descent.fissure). */
+    private readonly rift: (u: Unit) => void = () => {},
   ) {
     super(s, self, camp);
     this.at = camp.camp.at as unknown as [number, number];
     this.obstacles = chamber ? obstaclesOf(chamber) : [];
+    if (self.tag.endsWith(':tidemaw')) this.lurkLeft = TIDEMAW.dive.first;
   }
 
   override get bossKey(): string | null {
-    return this.self.tag.endsWith(':ossuaryKing') ? 'ossuaryKing' : super.bossKey;
+    const t = this.self.tag;
+    return DEPTH_BOSS.find((b) => t.endsWith(`:${b}`)) ?? super.bossKey;
   }
 
-  /** The Ossuary King's Grave Toll and the Slag Brute's slam, in place of a jungle boss's. */
+  /** Each Descent boss's own slam, and the Slag Brute's, in place of a jungle boss's. */
   protected override get specialSpec(): BossSpecial | null {
     const t = this.self.tag;
-    return t.endsWith(':ossuaryKing') ? KING.toll : t.endsWith(':slagBrute') ? BRUTE : super.specialSpec;
+    if (t.endsWith(':ossuaryKing')) return KING.toll;
+    if (t.endsWith(':ashsmith')) return ASHSMITH.slam;
+    if (t.endsWith(':tidemaw')) return TIDEMAW.crush;
+    return t.endsWith(':slagBrute') ? BRUTE : super.specialSpec;
+  }
+
+  /** A Tide Lurker's dive, or the Tidemaw's. */
+  private get dive(): typeof LURK | typeof TIDEMAW.dive {
+    return this.self.tag.endsWith(':tidemaw') ? TIDEMAW.dive : LURK;
   }
 
   override update(dt: number): void {
@@ -602,7 +645,8 @@ export class DescentMonsterBrain extends MonsterBrain {
       if (f) u.body.yaw = Math.atan2(-(f.x - u.x), -(f.z - u.z));
       return;
     }
-    if (u.tag.endsWith(':tideLurker') && this.lurking(dt)) return;
+    if ((u.tag.endsWith(':tideLurker') || u.tag.endsWith(':tidemaw')) && this.lurking(dt)) return;
+    if (u.tag.endsWith(':ashsmith') && this.cracking(dt)) return;
     if (u.tag.endsWith(':gravehound') && this.pouncing(dt)) return;
     if (u.tag.endsWith(':packleader') && this.howling(dt)) return;
     if (u.tag.endsWith(':shade') && (this.blinkIn -= dt) <= 0 && this.blink()) this.blinkIn = SHADE_BLINK.every;
@@ -628,12 +672,13 @@ export class DescentMonsterBrain extends MonsterBrain {
 
   /** Share of a Gravehound's crouch before a pounce, or of a Packleader's howl, done; 0 when neither (for the view). */
   get gathering(): number {
+    if (this.riftLeft > 0) return 1 - this.riftLeft / ASHSMITH.fissure.windup;
     if (this.crouch > 0) return 1 - this.crouch / POUNCE.crouch;
     if (this.howlLeft > 0) return 1 - this.howlLeft / HOWL.windup;
     return 0;
   }
 
-  /** How many pounces or howls it has let loose (for the view's cues). */
+  /** How many pounces, howls or fissures it has let loose (for the view's cues). */
   get loosed(): number {
     return this.acts;
   }
@@ -740,7 +785,7 @@ export class DescentMonsterBrain extends MonsterBrain {
 
   /** Share of a Tide Lurker's rise done, 0 when not rising (for the view). */
   get riseProgress(): number {
-    return this.lurk === 'rising' ? 1 - Math.max(0, this.lurkLeft) / LURK.warn : 0;
+    return this.lurk === 'rising' ? 1 - Math.max(0, this.lurkLeft) / this.dive.warn : 0;
   }
 
   /**
@@ -753,11 +798,12 @@ export class DescentMonsterBrain extends MonsterBrain {
     const u = this.self;
     const s = this.s;
     const foe = this.camp.foe;
+    const L = this.dive;
     if (this.lurk === 'up') {
       this.lurkLeft -= dt;
-      if (this.lurkLeft > 0 || !foe || !this.chamber || u.windup > 0 || !s.canMove(u) || u.combatant.cc.locks().cast) return false;
+      if (this.lurkLeft > 0 || !foe || !this.chamber || u.windup > 0 || this.special > 0 || !s.canMove(u) || u.combatant.cc.locks().cast) return false;
       this.lurk = 'under';
-      this.lurkLeft = LURK.under;
+      this.lurkLeft = L.under;
       u.sinceAction = 0;
     }
     // out of reach while it's under the floor and rising
@@ -768,7 +814,7 @@ export class DescentMonsterBrain extends MonsterBrain {
       u.move = null;
       const near = foe && foe.alive ? hypot(foe.x - u.x, foe.z - u.z) - foe.radius - u.radius : Infinity;
       if (foe && foe.alive && near > 0.4 && this.chamber) {
-        u.combatant.refreshTimedMod('bonusMoveSpeed', LURK.haste, 0.25);
+        u.combatant.refreshTimedMod('bonusMoveSpeed', L.haste, 0.25);
         const p = this.route.next(this.chamber, u, foe, s.time);
         const dx = p.x - u.x;
         const dz = p.z - u.z;
@@ -778,9 +824,9 @@ export class DescentMonsterBrain extends MonsterBrain {
       }
       if (near <= 0.4 || this.lurkLeft <= 0) {
         this.lurk = 'rising';
-        this.lurkLeft = LURK.warn;
+        this.lurkLeft = L.warn;
         u.move = null;
-        s.warnAt(u, { type: 'circle', x: u.x, z: u.z, radius: LURK.radius }, LURK.warn);
+        s.warnAt(u, { type: 'circle', x: u.x, z: u.z, radius: L.radius }, L.warn);
       }
       return true;
     }
@@ -790,15 +836,49 @@ export class DescentMonsterBrain extends MonsterBrain {
     if (this.lurkLeft > 0) return true;
     u.untargetable = 0;
     this.lurk = 'up';
-    this.lurkLeft = LURK.up;
+    this.lurkLeft = L.up;
     u.sinceAction = 0;
-    s.flashAt(u, { type: 'circle', x: u.x, z: u.z, radius: LURK.radius });
-    const raw = u.combatant.stats.attackPower * LURK.scale;
+    s.flashAt(u, { type: 'circle', x: u.x, z: u.z, radius: L.radius });
+    const raw = u.combatant.stats.attackPower * L.scale;
     for (const t of s.enemiesOf(u)) {
-      if (t.kind !== 'god' || !t.alive || hypot(t.x - u.x, t.z - u.z) > LURK.radius + t.radius) continue;
+      if (t.kind !== 'god' || !t.alive || hypot(t.x - u.x, t.z - u.z) > L.radius + t.radius) continue;
       s.strike(u, t, raw, 'physical');
-      if (t.alive) t.combatant.receiveCC('stun', LURK.lift, 0, 'descent:lurker');
+      if (t.alive) t.combatant.receiveCC('stun', L.lift, 0, u.tag.endsWith(':tidemaw') ? 'descent:tidemaw' : 'descent:lurker');
     }
+    return true;
+  }
+
+  /**
+   * The Ashsmith's Fissure (see ASHSMITH.fissure): it stops and drags its
+   * hammer back through the floor, and the run sends a crack of fire out
+   * toward the gods. True while it winds up, when this does all it does.
+   * Stunned or silenced, it can't, and one cut short is lost.
+   */
+  private cracking(dt: number): boolean {
+    const u = this.self;
+    const F = ASHSMITH.fissure;
+    const locked = u.combatant.cc.locks().cast || u.combatant.cc.locks().move;
+    if (this.riftLeft > 0) {
+      if (locked) {
+        this.riftLeft = 0;
+        return false;
+      }
+      u.move = null;
+      const f = this.camp.foe;
+      if (f) u.body.yaw = Math.atan2(-(f.x - u.x), -(f.z - u.z));
+      this.riftLeft -= dt;
+      if (this.riftLeft > 0) return true;
+      this.riftLeft = 0;
+      this.acts++;
+      this.rift(u);
+      return true;
+    }
+    this.riftIn -= dt;
+    const foe = this.camp.foe;
+    if (this.riftIn > 0 || !foe || !foe.alive || u.windup > 0 || this.special > 0 || locked) return false;
+    this.riftIn = u.combatant.health / u.combatant.stats.maxHealth < ASHSMITH.enrage ? F.enraged : F.every;
+    this.riftLeft = F.windup;
+    u.move = null;
     return true;
   }
 
@@ -1034,6 +1114,8 @@ export class Descent {
   /** Set once an obol lifts the team (for the herald and HUD). */
   obolUsed = 0;
   readonly eruptions: Eruption[] = [];
+  /** How many times the Ashsmith has cracked the floor (for the view's cues). */
+  fissures = 0;
   private eruptIn = 0;
   /** Seconds until the Ossuary King's next Soul Rain. */
   private rainIn = 0;
@@ -1500,10 +1582,11 @@ export class Descent {
     for (const m of this.monsters) if (m.alive && m !== this.gilded && hypot(m.x - b.x, m.z - b.z) <= reach) this.sim.slay(by, m);
   }
 
-  /** A boss calls its adds as it weakens. */
+  /** A boss calls its adds as it weakens; the Tidemaw going under calls the tide in with it. */
   private stepBoss(): void {
     const b = this.boss;
     if (!b || !b.alive) return;
+    if (b.untargetable > 0 && b.tag.endsWith(':tidemaw') && this.hazards.tide < HAZARDS.tide.calm) this.hazards.tide = HAZARDS.tide.calm;
     const share = b.combatant.health / b.combatant.stats.maxHealth;
     const due = DESCENT.bossAdds[this.bossAddsCalled];
     if (due === undefined || share > due) return;
@@ -1571,13 +1654,11 @@ export class Descent {
   /** The title and camp of the `i`th monster of a wave, and its tag, which tells the views what to draw. */
   private look(type: MonsterType, i: number, label: string): { title: string; champion: boolean; campKind: CampKind; tag: string } {
     const n = this.chamber;
-    const boss = isBossType(type);
-    const king = type === 'ossuaryKing';
     // the champion of a Champion chamber is the first monster of its first wave
     const champion = this.current.kind === 'champion' && label === 'w1' && i === 0;
-    const title = champion ? 'Champion' : boss && !king && n === DESCENT.chambers ? 'Abyssal' : '';
-    // (the King's slam is its own, so it fights from a plain camp: see DescentMonsterBrain.specialSpec)
-    const campKind: CampKind = type === 'warden' ? WARDEN_GLOWS[(n + i) % 4]! : boss && !king ? (type as CampKind) : 'small';
+    const title = champion ? 'Champion' : '';
+    // (a boss's slam is its own, so it fights from a plain camp: see DescentMonsterBrain.specialSpec)
+    const campKind: CampKind = type === 'warden' ? WARDEN_GLOWS[(n + i) % 4]! : 'small';
     return { title, champion, campKind, tag: `descent-${campKind}-${n}.${label}.${i}:${type}` };
   }
 
@@ -1662,7 +1743,7 @@ export class Descent {
       u.home.z = z;
       const camp: CampState = { camp: { id: `descent:${n}:${label}:${i}`, kind: campKind, team: null, at: [x, z] }, members: [u], respawnAt: null, foe: null };
       // (held through a boss's entrance, and as their master falls: they falter, and crumble where they stand)
-      u.brain = new DescentMonsterBrain(this.sim, u, camp, c, () => this.introLeft > 0 || this.fallLeft > 0);
+      u.brain = new DescentMonsterBrain(this.sim, u, camp, c, () => this.introLeft > 0 || this.fallLeft > 0, (b) => this.fissure(b));
       if (boss) this.boss = u;
       if (king) this.rainIn = KING.rain.first;
       u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : champion ? 'champion' : '' } satisfies DescentSpawn };
@@ -2051,6 +2132,32 @@ export class Descent {
       const z = k.z + Math.cos(a) * r;
       if (c.sd(x - c.x, z - c.z) > 1.5) this.erupt(x, z);
     }
+  }
+
+  /**
+   * The Ashsmith's Fissure lands (its hammer through the floor): a crack of
+   * fire runs out toward each of the nearest gods, bursting a step at a time,
+   * and stops where the floor does.
+   */
+  private fissure(b: Unit): void {
+    const F = ASHSMITH.fissure;
+    const c = this.layout;
+    const near = this.gods
+      .filter((g) => g.alive && hypot(g.x - b.x, g.z - b.z) < F.reach)
+      .sort((p, q) => hypot(p.x - b.x, p.z - b.z) - hypot(q.x - b.x, q.z - b.z))
+      .slice(0, F.lines);
+    for (const g of near) {
+      const d = Math.max(0.1, hypot(g.x - b.x, g.z - b.z));
+      const [ux, uz] = [(g.x - b.x) / d, (g.z - b.z) / d];
+      const end = Math.min(F.length, d + F.past);
+      for (let at = F.from, k = 0; at <= end; at += F.step, k++) {
+        const x = b.x + ux * at;
+        const z = b.z + uz * at;
+        if (c.sd(x - c.x, z - c.z) < 0.6) break;
+        this.eruptions.push({ id: this.nextEruption++, x, z, r: F.radius, left: F.warn + k * F.travel, share: F.damage });
+      }
+    }
+    this.fissures++;
   }
 
   private erupt(x: number, z: number): void {

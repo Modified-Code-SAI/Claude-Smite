@@ -143,6 +143,8 @@ export type MonsterType =
   | 'warden'
   | 'treasureWyrm'
   | 'moltenColossus'
+  | 'ashsmith'
+  | 'tidemaw'
   | 'ossuaryKing';
 
 /** Jungle monsters, neutral to both sides. Bounty is XP and favor for the god who kills one. */
@@ -175,13 +177,17 @@ const MONSTERS: Record<MonsterType, { name: string; health: number; power: numbe
   gildedThornback: { name: 'Gilded Thornback', health: 900, power: 0, speed: 345, prot: 25, range: 1.4, radius: 0.6, rate: 0.5, xp: 120, favor: 40 },
   treasureWyrm: { name: 'Treasure Wyrm', health: 5200, power: 70, speed: 280, prot: 35, range: 3.2, radius: 2.6, rate: 0.5, xp: 300, favor: 0 },
   moltenColossus: { name: 'Molten Colossus', health: 8500, power: 95, speed: 240, prot: 45, range: 3.6, radius: 3.4, rate: 0.4, xp: 400, favor: 0 },
+  // Underworld Descent's first boss, master of the Ashen Depths: a hunched giant smith of slag with a hammer and a furnace in its chest
+  ashsmith: { name: 'Ashsmith', health: 5200, power: 70, speed: 270, prot: 36, range: 3.4, radius: 2.4, rate: 0.48, xp: 300, favor: 0 },
+  // the second, under the Drowned Halls: a vast barnacled crab with a sunken shrine for a shell, that dives under the water and bursts up under the gods
+  tidemaw: { name: 'Tidemaw', health: 8500, power: 95, speed: 250, prot: 45, range: 3.6, radius: 3.0, rate: 0.4, xp: 400, favor: 0 },
   // Underworld Descent's last boss: a crowned giant of bones at the bottom of the Abyss
   ossuaryKing: { name: 'Ossuary King', health: 5200, power: 70, speed: 260, prot: 38, range: 3.8, radius: 2.6, rate: 0.45, xp: 500, favor: 0 },
   warden: { name: 'Warden', health: 950, power: 30, speed: 300, prot: 20, range: 2, radius: 1.25, rate: 0.55, xp: 220, favor: FAVOR_REWARDS.buffCamp },
 };
 
 /** A jungle monster; camps that grow back later in the match are tougher. */
-/** A monster's name, with a title (Champion, Abyssal) when it has one. */
+/** A monster's name, with a title (Champion) when it has one. */
 export function monsterName(type: MonsterType, title = ''): string {
   return title ? `${title} ${MONSTERS[type].name}` : MONSTERS[type].name;
 }
