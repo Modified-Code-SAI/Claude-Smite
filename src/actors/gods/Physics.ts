@@ -3,12 +3,14 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ClothSpec, GodMeta } from './assets';
 import { clothScale, writeClothScale } from './clothScale';
 
-/** One capsule collider in a bone's space (a == b makes a sphere). */
+/** One capsule collider in a bone's space (a == b makes a sphere), radius `r` at a tapering to `rb` at b. */
 interface Collider {
   bone: THREE.Object3D;
   a: THREE.Vector3;
   b: THREE.Vector3;
   r: number;
+  /** The radius at b: a capsule down the back of a skirt widens toward the hem. */
+  rb: number;
   wa: THREE.Vector3;
   wb: THREE.Vector3;
 }
@@ -31,6 +33,7 @@ class Sheet {
   private readonly targets: Float32Array;
   private readonly rows: number;
   private readonly cols: number;
+  private readonly pad: number;
   private readonly target = new THREE.Vector3();
   /** This sheet's vertices in its mesh, shared with the god's other sheets of the same material. */
   private positions!: Float32Array;
@@ -48,6 +51,7 @@ class Sheet {
     const { rows, cols } = spec;
     this.rows = rows;
     this.cols = cols;
+    this.pad = spec.pad ?? 0;
     this.n = rows * cols;
     this.pos = new Float32Array(this.n * 3);
     this.prev = new Float32Array(this.n * 3);
@@ -188,9 +192,10 @@ class Sheet {
         const t = Math.min(1, Math.max(0, (px * ex + py * ey + pz * ez) / ee));
         const dx = px - ex * t, dy = py - ey * t, dz = pz - ez * t;
         const d2 = dx * dx + dy * dy + dz * dz;
-        if (d2 < c.r * c.r) {
+        const r = c.r + (c.rb - c.r) * t + this.pad;
+        if (d2 < r * r) {
           const d = Math.sqrt(d2) || 1e-6;
-          const push = (c.r - d) / d;
+          const push = (r - d) / d;
           p[o] = p[o]! + dx * push; p[o + 1] = p[o + 1]! + dy * push; p[o + 2] = p[o + 2]! + dz * push;
         }
       }
@@ -325,7 +330,7 @@ export class SecondaryPhysics {
       if (!bone) continue;
       const m = bind(bone);
       this.colliders.push({
-        bone, r: c.r,
+        bone, r: c.r, rb: c.rb ?? c.r,
         a: v.fromArray(c.a).applyMatrix4(m).clone(),
         b: v.fromArray(c.b).applyMatrix4(m).clone(),
         wa: new THREE.Vector3(), wb: new THREE.Vector3(),

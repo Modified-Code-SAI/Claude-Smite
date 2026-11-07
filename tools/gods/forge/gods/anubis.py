@@ -41,10 +41,11 @@ class Anubis(God):
         belt, W = shell.plate(b, belt_f * (1 - arm), offset=0.06, thickness=0.012, rim=0.006, smooth=6)
         self.add('belt', 'gold', belt, W)
         armmask = arm > 0.3
-        self.meta['colliders'] = physics.colliders(b)
+        under = self.verts_of('kilt')
+        self.meta['colliders'] = physics.colliders(b, over=under)
         self.meta['cloths'] += [
-            physics.panel(b, 'apron', 'cloth2', hips[1] + 0.05, True, 0.2, 0.55, arm_mask=armmask, clearance=0.08),
-            physics.cape(b, 'cape', 'cloth2', width=0.5, length=1.5, arm_mask=armmask, clearance=0.07),
+            physics.panel(b, 'apron', 'cloth2', hips[1] + 0.05, True, 0.2, 0.55, arm_mask=armmask, clearance=0.08, over=under),
+            physics.cape(b, 'cape', 'cloth2', width=0.5, length=1.5, arm_mask=armmask, clearance=0.07, over=under),
         ]
 
         # ---- arm bands, bracers, greaves
