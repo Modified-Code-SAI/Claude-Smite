@@ -59,9 +59,10 @@ MATERIALS = {
         contrast=1.0, normal=0.35, rough=1.0, seed=0),
     'sandstone_blocks': dict(
         prompt='An ancient sandstone block wall seen straight on: four horizontal courses of large rectangular ashlar blocks, '
-               'staggered joints, warm ochre and honey stone with block-to-block colour variation, thin mortar lines, '
-               'chipped bevelled block edges, light weathering streaks.',
-        init=0.75, contrast=1.25, normal=1.1, rough=1.5, seed=0),
+               'staggered joints, warm ochre, honey and pale sand stone varying block to block, each block richly hand-painted '
+               'with visible brushwork, fine layered sediment grain, soft speckles and pitting, worn rounded edges with small '
+               'chips, a few rain streaks, narrow earthy mortar joints.',
+        init=0.9, steps=8, contrast=1.25, normal=1.1, rough=1.5, seed=4),
     'rock': dict(
         prompt='The surface of a stylized cliff, rock everywhere: big chunky angular faceted stone planes and horizontal strata, '
                'cool grey and slate rock with warm grey patches, dark crevices between the facets, faint lichen.',
