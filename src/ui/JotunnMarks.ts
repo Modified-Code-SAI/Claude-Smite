@@ -95,6 +95,9 @@ export const THREAT_RANGE = 12;
 export const THREAT_HIT = 4;
 
 const ULT_NAMES: Record<string, string> = { rime: 'Frost Breath', avalanche: 'Avalanche', hail: 'Hailstorm' };
+/** The marks' keys, made once (pickMarks runs every frame). */
+const BRAZIER_KEY = JOTUNN.braziers.map((_, i) => `b${i}`);
+const SHRINE_KEY = SHRINES.map((_, i) => `s${i}`);
 
 /** The marks to show now. */
 export function pickMarks(s: MarkScene): MarkWant[] {
@@ -128,11 +131,11 @@ export function pickMarks(s: MarkScene): MarkWant[] {
       if (n) out.push({ key: 'bc', kind: 'smash', x: x / n, y: y / n, z: z / n, label: 'Smash' });
     } else {
       s.braziers.forEach((b, i) => {
-        if (b.alive) out.push({ key: `b${i}`, kind: 'smash', x: b.x, y: b.y, z: b.z, label: i === near ? 'Smash' : '' });
+        if (b.alive) out.push({ key: BRAZIER_KEY[i] ?? `b${i}`, kind: 'smash', x: b.x, y: b.y, z: b.z, label: i === near ? 'Smash' : '' });
       });
     }
     s.shrines.forEach((sh, i) => {
-      if (sh.ready) out.push({ key: `s${i}`, kind: 'shrine', x: sh.x, y: sh.y, z: sh.z, label: sh.contested ? 'Held' : sh.ult });
+      if (sh.ready) out.push({ key: SHRINE_KEY[i] ?? `s${i}`, kind: 'shrine', x: sh.x, y: sh.y, z: sh.z, label: sh.contested ? 'Held' : sh.ult });
     });
     return out;
   }
@@ -147,7 +150,7 @@ export function pickMarks(s: MarkScene): MarkWant[] {
     }
   });
   s.braziers.forEach((b, i) => {
-    if (b.alive && (i === near || b.hitAgo < THREAT_HIT)) out.push({ key: `b${i}`, kind: 'defend', x: b.x, y: b.y, z: b.z, label: 'Defend' });
+    if (b.alive && (i === near || b.hitAgo < THREAT_HIT)) out.push({ key: BRAZIER_KEY[i] ?? `b${i}`, kind: 'defend', x: b.x, y: b.y, z: b.z, label: 'Defend' });
   });
   return out;
 }
@@ -263,17 +266,19 @@ export class JotunnMarks {
     const m = this.mode;
     const g = m.giant;
     let nearest = Infinity;
-    m.braziers.forEach((b, i) => {
+    for (let i = 0; i < m.braziers.length; i++) {
+      const b = m.braziers[i]!;
       const k = this.brazierScene[i]!;
       k.alive = b.alive;
       k.hitAgo = this.t - this.hitAt[i]!;
       if (b.alive) nearest = Math.min(nearest, hypot(b.x - g.x, b.z - g.z));
-    });
-    m.shrines.forEach((s, i) => {
+    }
+    for (let i = 0; i < m.shrines.length; i++) {
+      const s = m.shrines[i]!;
       const k = this.shrineScene[i]!;
       k.ready = s.dormant <= 0;
       k.contested = s.contested;
-    });
+    }
     this.clustered = piloting && clusterBraziers(this.clustered, nearest);
     const sc = this.scene;
     sc.piloting = piloting;

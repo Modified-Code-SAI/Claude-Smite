@@ -334,17 +334,27 @@ export class Jotunn {
   }
 
   /** The gods fighting this round (every player's god but the giant's). */
-  get gods(): Unit[] {
+  get gods(): readonly Unit[] {
     const g = this.giantPlayer;
-    return this.players.filter((p) => p !== g).map((p) => p.god);
+    // kept from round to round: the bots and the shrines ask for it every frame
+    if (this.godsFor !== g) {
+      this.godsFor = g;
+      this.godsNow.length = 0;
+      for (const p of this.players) if (p !== g) this.godsNow.push(p.god);
+    }
+    return this.godsNow;
   }
+  private godsFor: JotunnPlayer | null = null;
+  private readonly godsNow: Unit[] = [];
 
   get rounds(): number {
     return this.order.length;
   }
 
   get braziersLeft(): number {
-    return this.braziers.filter((b) => b.alive).length;
+    let n = 0;
+    for (const b of this.braziers) if (b.alive) n++;
+    return n;
   }
 
   /** How much harder the giant hits now (fury plus shrines), as a fraction. */
@@ -527,7 +537,9 @@ export class Jotunn {
   }
 
   private stepParts(dt: number): void {
-    for (const [id, left] of this.regrow) {
+    for (const id of PART_IDS) {
+      const left = this.regrow.get(id);
+      if (left === undefined) continue;
       const t = left - dt;
       if (t > 0) {
         this.regrow.set(id, t);
@@ -575,19 +587,21 @@ export class Jotunn {
   /** Each weak point follows the body; the ones not exposed right now can't be hit. */
   private placeParts(dt = 0): void {
     const g = this.giant;
-    const f = g.forward;
+    const fx = -Math.sin(g.body.yaw);
+    const fz = -Math.cos(g.body.yaw);
     // how fast it walks, eased like the model blends its stride (a jump to a new round's spot is not a stride)
     const speed = dt > 0 ? hypot(g.x - this.last.x, g.z - this.last.z) / dt : 0;
     this.stride = dt > 0 && speed < 30 ? this.stride + (Math.min(1, speed) - this.stride) * Math.min(1, dt * 5) : 0;
     this.last.x = g.x;
     this.last.z = g.z;
-    for (const [id, p] of this.parts) {
+    for (const id of PART_IDS) {
+      const p = this.parts.get(id)!;
       const def = PARTS[id];
       const k = def.walk ? this.stride : 0;
       const right = def.right + ((def.walk?.right ?? 0) - def.right) * k;
       const fwd = def.fwd + ((def.walk?.fwd ?? 0) - def.fwd) * k;
-      let x = g.x + -f.z * right + f.x * fwd;
-      let z = g.z + f.x * right + f.z * fwd;
+      let x = g.x + -fz * right + fx * fwd;
+      let z = g.z + fx * right + fz * fwd;
       let exposed = g.alive && this.phase !== 'countdown';
       if (id === 'crown') exposed &&= this.kneeling > 0;
       if (id === 'wristL' || id === 'wristR') {
@@ -613,9 +627,10 @@ export class Jotunn {
         s.dormant = Math.max(0, s.dormant - dt);
         continue;
       }
-      const inside = (u: Unit) => u.alive && hypot(u.x - s.def.x, u.z - s.def.z) <= JOTUNN.shrineRadius + u.radius;
-      s.contested = this.gods.some(inside);
-      const claiming = inside(g) && this.kneeling <= 0;
+      let contested = false;
+      for (const u of this.gods) if (onShrine(u, s)) contested = true;
+      s.contested = contested;
+      const claiming = onShrine(g, s) && this.kneeling <= 0;
       if (!claiming) s.progress = Math.max(0, s.progress - dt / JOTUNN.claimTime);
       else if (!s.contested) s.progress = Math.min(1, s.progress + dt / JOTUNN.claimTime);
       if (s.progress >= 1) this.claim(s);
@@ -738,6 +753,11 @@ export class Jotunn {
 }
 
 /** Solo: a bot is the giant first, then you. With more people, each takes a turn. */
+/** Whether a living unit stands within the shrine's ring. */
+function onShrine(u: Unit, s: ShrineState): boolean {
+  return u.alive && hypot(u.x - s.def.x, u.z - s.def.z) <= JOTUNN.shrineRadius + u.radius;
+}
+
 function defaultOrder(players: readonly JotunnPlayer[], rounds?: number): number[] {
   const humans = players.map((p, i) => (p.id !== null ? i : -1)).filter((i) => i >= 0);
   const bots = players.map((p, i) => (p.id === null ? i : -1)).filter((i) => i >= 0);

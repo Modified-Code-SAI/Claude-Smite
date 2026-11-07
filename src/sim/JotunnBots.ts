@@ -29,6 +29,9 @@ export class GiantBot implements Brain {
   private held = 0;
   /** How far ahead a slam can land. */
   private readonly slamReach: number;
+  /** The gods it can strike this frame, and where it heads (kept, as it decides every frame). */
+  private readonly targets: Unit[] = [];
+  private readonly heading: { at: Point; brazier: Unit | null } = { at: { x: 0, z: 0 }, brazier: null };
 
   constructor(
     private readonly sim: Sim,
@@ -46,7 +49,9 @@ export class GiantBot implements Brain {
     if (!g.alive || mode.phase !== 'fight') return;
     const c = g.combatant;
     const locks = c.cc.locks();
-    const gods = mode.gods.filter((u) => u.targetable);
+    const gods = this.targets;
+    gods.length = 0;
+    for (const u of mode.gods) if (u.targetable) gods.push(u);
 
     // a shrine the gods keep holding isn't worth standing in
     const inShrine = mode.shrineAt(g);
@@ -55,10 +60,10 @@ export class GiantBot implements Brain {
     const goal = this.goal();
     const brazier = goal.brazier;
     const reach = c.god.basicAttack.range * WORLD_SCALE;
-    let want = goal.at;
-    if (brazier && hypot(brazier.x - g.x, brazier.z - g.z) <= reach + brazier.radius - 0.4) want = { x: g.x, z: g.z };
-    const dx = want.x - g.x;
-    const dz = want.z - g.z;
+    // (in reach of its brazier, it stands still)
+    const stay = brazier !== null && hypot(brazier.x - g.x, brazier.z - g.z) <= reach + brazier.radius - 0.4;
+    const dx = stay ? 0 : goal.at.x - g.x;
+    const dz = stay ? 0 : goal.at.z - g.z;
     const d = hypot(dx, dz);
     if (d > 0.6 && !locks.move && g.windup <= 0) g.move = { x: dx / d, z: dz / d };
 
@@ -66,9 +71,8 @@ export class GiantBot implements Brain {
     const focus = brazier && !g.move ? brazier : this.nearest(gods, 12) ?? (g.move ? { x: g.x + g.move.x, z: g.z + g.move.z } : null);
     if (focus && g.windup <= 0) this.turnToward(focus, dt);
     g.body.yaw = this.facing;
-    const f = { x: -Math.sin(this.facing), z: -Math.cos(this.facing) };
-    g.aim.x = g.x + f.x * 6;
-    g.aim.z = g.z + f.z * 6;
+    g.aim.x = g.x - Math.sin(this.facing) * 6;
+    g.aim.z = g.z - Math.cos(this.facing) * 6;
 
     this.decide -= dt;
     if (this.decide > 0 || g.windup > 0) return;
@@ -137,13 +141,13 @@ export class GiantBot implements Brain {
   }
 
   /** Where to go: a shrine on the way, else the nearest standing brazier (from outside the colonnade). */
-  private goal(): { at: Point; brazier: Unit | null } {
+  private goal(): { readonly at: Point; readonly brazier: Unit | null } {
     const { mode } = this;
     const g = mode.giant;
     for (const s of mode.shrines) {
       if (s.dormant > 0 || (this.skip.get(s.def.id) ?? 0) > this.sim.time) continue;
       const d = hypot(s.def.x - g.x, s.def.z - g.z);
-      if ((mode.claims === 0 && d < 45) || d < 16) return { at: { x: s.def.x, z: s.def.z }, brazier: null };
+      if ((mode.claims === 0 && d < 45) || d < 16) return this.head(s.def.x, s.def.z, null);
     }
     let best: Unit | null = null;
     let bestD = Infinity;
@@ -155,10 +159,9 @@ export class GiantBot implements Brain {
         bestD = d;
       }
     }
-    if (!best) return { at: { x: g.x, z: g.z }, brazier: null };
+    if (!best) return this.head(g.x, g.z, null);
     // the brazier sits between two columns: stand in that gap, just outside the ring
     const a = Math.atan2(best.z, best.x);
-    const stand = { x: Math.cos(a) * 16.5, z: Math.sin(a) * 16.5 };
     const r = hypot(g.x, g.z);
     if (r > 18) {
       // walk around the colonnade, not through it
@@ -169,10 +172,18 @@ export class GiantBot implements Brain {
       if (Math.abs(da) > 0.45) {
         const step = Math.sign(da) * Math.min(Math.abs(da), 0.5);
         const ring = Math.max(22, Math.min(r, 26));
-        return { at: { x: Math.cos(ga + step) * ring, z: Math.sin(ga + step) * ring }, brazier: best };
+        return this.head(Math.cos(ga + step) * ring, Math.sin(ga + step) * ring, best);
       }
     }
-    return { at: stand, brazier: best };
+    return this.head(Math.cos(a) * 16.5, Math.sin(a) * 16.5, best);
+  }
+
+  private head(x: number, z: number, brazier: Unit | null): { readonly at: Point; readonly brazier: Unit | null } {
+    const h = this.heading;
+    h.at.x = x;
+    h.at.z = z;
+    h.brazier = brazier;
+    return h;
   }
 
   private turnToward(p: Point, dt: number): void {
