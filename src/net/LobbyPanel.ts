@@ -28,6 +28,14 @@ const face = (god: string) => `${BASE}portraits/${GODS.some((g) => g.id === god)
 
 const MODE_NAMES: Record<NetMode, string> = { coop: 'Co-op', versus: 'Versus' };
 
+/** A guest's connection to the host as signal bars and milliseconds (nothing until the host has timed it). */
+function pingHtml(ms: number | undefined): string {
+  if (ms === undefined) return '';
+  const q = ms < 80 ? 'good' : ms < 160 ? 'fair' : 'poor';
+  const say = q === 'good' ? 'a fast connection' : q === 'fair' ? 'an average connection' : 'a slow connection: expect some lag';
+  return `<i class="lb-ping q-${q}" title="${ms} ms round trip to the host, ${say}"><b></b><b></b><b></b><em>${ms}</em></i>`;
+}
+
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 }
@@ -199,6 +207,7 @@ export function mountLobby(
       }
       const me = p.id === s.me;
       return `<div class="lb-seat lb-player${me ? ' me' : ''}${fresh.has(p.id) ? ' new' : ''}" style="--i:${i}">
+        ${p.id === hostId ? '' : pingHtml(p.ms)}
         <div class="lb-face" style="background-image:url(${face(p.god)})">${p.id === hostId ? '<i class="lb-crown" title="Host">♛</i>' : ''}</div>
         <b>${esc(p.name)}</b><span>${me ? 'You' : p.id === hostId ? 'Host' : 'Friend'}</span>
       </div>`;

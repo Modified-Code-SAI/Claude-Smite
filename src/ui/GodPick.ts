@@ -9,6 +9,7 @@ import { PICK_SECONDS, type NetSession } from '../net/Session';
 import { paletteFor } from '../combat/palette';
 import { skillIcon } from './icons';
 import { embersHtml, parallax } from './menuFx';
+import { heroArt, HEROES } from './heroArt';
 import { modeArt, modeBlur, modeInfo, type GameMode } from './modes';
 import './godpick.css';
 
@@ -67,13 +68,7 @@ const portrait = (id: string) => `${BASE}portraits/${id}.jpg`;
 /** A god's spell color as CSS: the light behind them on the pick screen. */
 const godColor = (id: string) => `#${paletteFor(id).vfx.toString(16).padStart(6, '0')}`;
 const splash = (id: string) => `${BASE}splash/${id}.jpg`;
-/**
- * The gods with a full-length hero render (public/hero, made in Blender by
- * tools/hero): transparent, so they stand straight on the pick screen's light.
- * A god without one yet shows their splash instead.
- */
-export const HEROES: ReadonlySet<string> = new Set(['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan', 'cthulhu', 'jotunn']);
-const hero = (id: string) => `${BASE}hero/${id}.webp`;
+const hero = heroArt;
 /** A god's full-length art: the hero render where there is one, else the splash. */
 const fullArt = (id: string) => (HEROES.has(id) ? hero(id) : splash(id));
 /** Two-digit hex alpha for a #rrggbb color. */

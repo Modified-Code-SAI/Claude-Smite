@@ -13,6 +13,8 @@ const PREFIX = 'ascendant-lobby-';
 /** No 0/O or 1/I, so a code read aloud or typed from a screenshot comes out right. */
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const JOIN_TIMEOUT = 45000;
+/** How often the host times each guest's round trip while the lobby is open. */
+const ECHO_EVERY = 2000;
 /** How long everyone has to pick a god once the host starts the match. */
 export const PICK_SECONDS = 20;
 
@@ -66,6 +68,9 @@ export class NetSession {
   /** The pick is over: the match starts, with everyone's god final. */
   onStart: () => void = () => undefined;
   private pickTimer: ReturnType<typeof setTimeout> | null = null;
+  private echoTimer: ReturnType<typeof setInterval> | null = null;
+  /** Each guest's last few round trips (host only). */
+  private readonly trips = new Map<string, number[]>();
   /** Someone left: a guest (on the host) or the host (on a guest, id 'host'). */
   onLeave: (id: string) => void = () => undefined;
   private handler: ((from: string, msg: Msg) => void) | null = null;
@@ -113,6 +118,7 @@ export class NetSession {
           s.cap = cap;
           s.players = [{ id: peer.id, name: cleanName(name, 'Player 1'), god, team: 'order' }];
           peer.on('connection', (c) => s.accept(c));
+          s.echoTimer = setInterval(() => s.measure(), ECHO_EVERY);
           resolve(s);
         });
         peer.on('error', (err) => {
@@ -187,9 +193,20 @@ export class NetSession {
     return this.selecting ? Math.max(0, (this.pickEnds - performance.now()) / 1000) : 0;
   }
 
+  /**
+   * Host: time each guest's round trip (an echo they send straight back).
+   * Runs every couple of seconds while the lobby is open; everyone sees the
+   * result on the guest's seat.
+   */
+  measure(): void {
+    if (!this.isHost || this.started || this.selecting) return;
+    for (const id of this.conns.keys()) this.send(id, { t: 'echo', at: performance.now() });
+  }
+
   /** Host: start the god pick for everyone in the lobby. */
   select(seconds = PICK_SECONDS): void {
     if (!this.isHost || this.started || this.selecting) return;
+    this.stopEcho();
     this.selecting = true;
     this.pickEnds = performance.now() + seconds * 1000;
     for (const p of this.players) p.ready = false;
@@ -237,6 +254,7 @@ export class NetSession {
     if (this.pickTimer) clearTimeout(this.pickTimer);
     this.started = true;
     this.selecting = false;
+    this.stopEcho();
     this.broadcast({ t: 'start', mode: this.mode, game: this.game, players: this.players, bots: this.bots });
     this.onStart();
   }
@@ -264,7 +282,13 @@ export class NetSession {
 
   close(): void {
     if (this.pickTimer) clearTimeout(this.pickTimer);
+    this.stopEcho();
     this.peer.destroy();
+  }
+
+  private stopEcho(): void {
+    if (this.echoTimer) clearInterval(this.echoTimer);
+    this.echoTimer = null;
   }
 
   // -------------------------------------------------------------------------
@@ -299,6 +323,23 @@ export class NetSession {
         if (!p) return;
         this.update(from, { ready: true, ...(typeof msg.god === 'string' && !p.ready ? { god: msg.god } : {}) });
         this.allReady();
+        return;
+      }
+      case 'echo':
+        // a guest answers the host's echo at once, with the host's own clock reading
+        if (!this.isHost && from === 'host') this.send('host', { t: 'echoed', at: msg.at });
+        return;
+      case 'echoed': {
+        const p = this.players.find((x) => x.id === from);
+        const at = Number(msg.at);
+        if (!this.isHost || !p || this.started || this.selecting || !Number.isFinite(at)) return;
+        // the best of the last few: a guest's page busy loading the match answers late, which isn't their connection
+        const trips = [...(this.trips.get(from) ?? []), Math.max(0, performance.now() - at)].slice(-4);
+        this.trips.set(from, trips);
+        const ms = Math.round(Math.min(...trips));
+        // shared only when it moves enough to read differently
+        if (p.ms === undefined || Math.abs(ms - p.ms) >= 5) this.update(from, { ms });
+        else p.ms = ms;
         return;
       }
       case 'name': {
@@ -366,6 +407,7 @@ export class NetSession {
 
   private lost(id: string): void {
     if (!this.conns.delete(id)) return;
+    this.trips.delete(id);
     if (this.isHost && !this.started) {
       this.players = this.players.filter((p) => p.id !== id);
       this.changed();
@@ -378,7 +420,7 @@ export class NetSession {
 
 /** The host's player list, names cleaned as the host cleans them. */
 function readPlayers(v: unknown): NetPlayer[] {
-  return (Array.isArray(v) ? (v as NetPlayer[]) : []).map((p, i) => ({ ...p, name: cleanName(p.name, `Player ${i + 1}`) }));
+  return (Array.isArray(v) ? (v as NetPlayer[]) : []).map((p, i) => ({ ...p, name: cleanName(p.name, `Player ${i + 1}`), ms: typeof p.ms === 'number' && Number.isFinite(p.ms) ? Math.max(0, Math.round(p.ms)) : undefined }));
 }
 
 function readBots(v: unknown): Record<Side, boolean> {

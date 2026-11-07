@@ -58,6 +58,19 @@
 /* a friend who just sat down lights up */
 .lb-seat.new { animation: lb-seat 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both, lb-arrive 1.2s ease-out; animation-delay: 0s; }
 @keyframes lb-arrive { 0%, 20% { box-shadow: 0 0 0 2px #ffe3a3, 0 0 26px rgba(255, 210, 120, 0.7); background-color: rgba(120, 90, 40, 0.5); } }
+/* a guest's connection to the host: three bars and the milliseconds, in the seat's corner */
+.lb-ping { position: absolute; top: 6px; right: 7px; display: flex; align-items: flex-end; gap: 2px; height: 12px; font-style: normal; }
+.lb-ping b { width: 3.5px; border-radius: 1px; background: rgba(255, 255, 255, 0.16); }
+.lb-ping b:nth-child(1) { height: 5px; }
+.lb-ping b:nth-child(2) { height: 8.5px; }
+.lb-ping b:nth-child(3) { height: 12px; }
+.lb-ping em { margin-left: 4px; font: 11px/1 Georgia, serif; font-style: normal; }
+.lb-ping.q-good b { background: #8fe39a; }
+.lb-ping.q-good em { color: #b8f0bf; }
+.lb-ping.q-fair b:nth-child(-n + 2) { background: #f2cd6e; }
+.lb-ping.q-fair em { color: #f6dc9a; }
+.lb-ping.q-poor b:nth-child(1) { background: #ff7d6b; }
+.lb-ping.q-poor em { color: #ffab9e; }
 .lb-seat.open { background: transparent; border-style: dashed; border-color: rgba(231, 194, 122, 0.22); }
 .lb-seat.open .lb-face { background: transparent; box-shadow: none; border: 1px dashed rgba(231, 194, 122, 0.35); color: rgba(231, 194, 122, 0.5); font-size: 22px; }
 .lb-seat.open b { font-family: Georgia, serif; font-style: italic; font-weight: 400; color: #cbb999; opacity: 0.8; }

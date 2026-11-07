@@ -59,6 +59,31 @@ describe('player names', () => {
     host.close();
   });
 
+  it("the host times each guest's round trip, and everyone sees it on that guest's seat", () => {
+    const { host, guests } = lobby(['Sam', 'Rae']);
+    expect(host.players.every((p) => p.ms === undefined)).toBe(true);
+    host.measure();
+    expect(host.players[0]!.ms).toBeUndefined();
+    for (const p of host.players.slice(1)) expect(p.ms).toBeGreaterThanOrEqual(0);
+    for (const g of guests) expect(g.players.map((p) => p.ms)).toEqual(host.players.map((p) => p.ms));
+    // no more echoes once the pick has begun
+    host.select();
+    const sent: string[] = [];
+    raw(host).conns.forEach((c) => {
+      (c as { send: (t: string) => void }).send = (t) => sent.push(t);
+    });
+    host.measure();
+    expect(sent).toEqual([]);
+    host.close();
+  });
+
+  it('a guest reads only a sane round trip from the host', () => {
+    const g = make('guest', 'g');
+    const player = (ms: unknown) => ({ id: 'g', name: 'Sam', god: 'thor', team: 'order', ms });
+    raw(g).receive('host', { t: 'lobby', mode: 'coop', game: 'rush', players: [player('fast'), player(-40), player(41.6)], bots: {} });
+    expect(g.players.map((p) => p.ms)).toEqual([undefined, 0, 42]);
+  });
+
   it('a guest cleans names a host sends', () => {
     const g = make('guest', 'g');
     raw(g).receive('host', { t: 'lobby', mode: 'coop', game: 'rush', players: [{ id: 'h', name: '<script>x</script>', god: 'zeus', team: 'order' }], bots: {} });

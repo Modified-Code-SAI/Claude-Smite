@@ -8,6 +8,8 @@ import type { NetSession } from '../net/Session';
 import './start.css';
 import { DIFFICULTIES, parseDifficulty, type Difficulty } from '../game/difficulty';
 import { recordLine } from './records';
+import { heroArt, HEROES } from './heroArt';
+import { paletteFor } from '../combat/palette';
 import { rankBadge } from './ascension';
 import type { JotunnRole } from '../combat/JotunnMode';
 import { MODES, modeArt, modeInfo, modeThumb, type GameMode } from './modes';
@@ -170,6 +172,7 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
     <div class="hm-art"><div class="hm-img fx-far"></div><div class="hm-img fx-far"></div></div>
     <div class="hm-shade"></div>
     <div class="hm-embers embers fx-mid">${embersHtml(28)}</div>
+    <div class="hm-hero fx-near" aria-hidden="true"><img alt=""><img alt=""></div>
     <div class="hm-flash"></div>
     <div class="hm-frame">
       <header class="hm-top">
@@ -236,6 +239,30 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
     img.src = url;
   };
 
+  // your god (the giant, in its own mode) stands in their light between the modes and the card
+  const heroBox = root.querySelector<HTMLDivElement>('.hm-hero')!;
+  const heroes = [...heroBox.querySelectorAll('img')];
+  let heroFront = 0;
+  let heroShown = '';
+  const showHero = (id: string) => {
+    if (heroShown === id) return;
+    heroShown = id;
+    if (!HEROES.has(id)) {
+      heroes.forEach((img) => img.classList.remove('show'));
+      return;
+    }
+    const next = heroes[1 - heroFront]!;
+    next.classList.remove('show');
+    next.onload = () => {
+      if (heroShown !== id) return;
+      heroBox.style.setProperty('--god', `#${paletteFor(id).vfx.toString(16).padStart(6, '0')}`);
+      heroes[heroFront]!.classList.remove('show');
+      next.classList.add('show');
+      heroFront = 1 - heroFront;
+    };
+    next.src = heroArt(id);
+  };
+
   const detail = root.querySelector<HTMLDivElement>('.hm-detail')!;
   const render = () => {
     const m = modeInfo(mode);
@@ -260,6 +287,7 @@ export function showStartMenu(graphics: Promise<GraphicsInfo>, defaultGod: strin
     void detail.offsetWidth;
     detail.classList.add('in');
     showArt(mode);
+    showHero(mode === 'jotunn' ? 'jotunn' : (load().god ?? defaultGod));
   };
   render();
 
