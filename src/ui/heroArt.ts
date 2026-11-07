@@ -10,3 +10,9 @@ export const HEROES: ReadonlySet<string> = new Set(['zeus', 'thor', 'odin', 'lok
 
 /** A god's hero render. */
 export const heroArt = (id: string) => `${BASE}hero/${id}.webp`;
+
+/**
+ * A god's head and shoulders cut from the hero render (tools/hero/faces.py), 320x400
+ * and transparent: the card picture on the god strip, the team slots and the lobby seats.
+ */
+export const heroFace = (id: string) => `${BASE}hero/face/${id}.webp`;

@@ -49,6 +49,8 @@
 .gp-slot.flash { animation: gp-lockin 0.7s ease-out; }
 @keyframes gp-lockin { 0% { box-shadow: 0 0 0 2px #ffe3a3, 0 0 28px rgba(255, 210, 120, 0.8); background-color: rgba(120, 90, 40, 0.5); } }
 .gp-face { width: 74px; height: 74px; display: flex; align-items: center; justify-content: center; background: #15100b 50% 24% / 150% no-repeat; color: rgba(231, 194, 122, 0.35); }
+/* a hero card: the head and shoulders in the god's own light (both layers come from GodPick.ts) */
+.gp-face.hero { background-position: 50% 6%, center; background-size: 100% auto, cover; }
 .gp-face svg { width: 42px; height: 52px; }
 .gp-slot.hidden .gp-face { background: radial-gradient(circle at 50% 40%, #2a2016, #0f0c09); }
 .gp-slot:not(.ready) .gp-face svg { animation: gp-think 1.6s ease-in-out infinite; }
@@ -146,6 +148,11 @@
 .gp-god span { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 2px 6px; font-size: clamp(8px, 14.5cqi, 13px); letter-spacing: min(0.08em, 1.2cqi); white-space: nowrap; text-align: center; color: #ffe9bd; background: linear-gradient(180deg, transparent, rgba(6, 5, 4, 0.92) 60%); }
 .gp-god:hover { transform: translateY(-4px); border-color: rgba(255, 227, 163, 0.8); }
 .gp-god:hover img, .gp-god.on img { filter: none; }
+/* a hero card stands in its god's light, brighter under the cursor and when chosen */
+.gp-god.hero { background: radial-gradient(ellipse 85% 70% at 50% 34%, color-mix(in srgb, var(--god) 24%, #1c150d), #0b0907 78%); }
+.gp-god.hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 80% 62% at 50% 34%, color-mix(in srgb, var(--god) 55%, transparent), transparent 74%); opacity: 0; transition: opacity 0.25s; }
+.gp-god.hero:hover::before, .gp-god.hero.on::before { opacity: 1; }
+.gp-god.hero img { object-position: 50% 0; }
 .gp-god.on { transform: translateY(-8px); border-color: #ffe3a3; box-shadow: 0 0 0 1px rgba(255, 238, 190, 0.6) inset, 0 0 26px rgba(255, 210, 120, 0.55), 0 12px 26px rgba(0, 0, 0, 0.6); }
 .gp.is-ready .gp-god:not(.on), .gp.giant .gp-god { opacity: 0.3; pointer-events: none; }
 /* the locked-in god's card takes a seal */

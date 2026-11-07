@@ -24,7 +24,7 @@ export interface LocomotionState {
  * glow edges are dense but too thin to change a god's cast shadow, and the
  * baked AO already darkens them in contact. Saves ~100k triangles per cascade.
  */
-const NO_SHADOW = new Set(['hair', 'eye', 'gem', 'glow']);
+const NO_SHADOW = new Set(['hair', 'eye', 'gem', 'glow', 'petal']);
 
 const lodViewport = new THREE.Vector2();
 /** Seconds a hit flash takes to fade. */
