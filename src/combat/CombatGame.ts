@@ -120,6 +120,8 @@ export class CombatGame implements Updatable {
   ownGod!: Unit;
   /** A mode's moment with its own sound (set by GameAudio): the Jötunn's footfalls; souls reaching the player and the dead climbing out of the floor in Underworld Descent. */
   onCue: ((name: 'step' | 'land' | DescentCue, at: { x: number; y: number; z: number }, k: number) => void) | null = null;
+  /** Underworld Descent: a god's foot came down at (x, z), read off its run animation (set by GameAudio, whose steps land with it). */
+  onFootfall: ((u: Unit, x: number, z: number) => void) | null = null;
   /** A ping went up for the player's team (set by GameAudio): its sound, and whether it was the player's own. */
   onPing: ((sound: PingSound, mine: boolean) => void) | null = null;
   bot: Unit | null = null;
@@ -679,8 +681,11 @@ export class CombatGame implements Updatable {
     this.descentMode = mode;
     this.descent = mode.run;
     this.views.emergeMonsters = true;
-    // the gods' footfalls mark each depth's floor
-    this.views.onFootfall = (x, z, dx, dz, right, size) => mode.view.step(x, z, dx, dz, right, size);
+    // the gods' footfalls mark each depth's floor, and are heard as they land
+    this.views.onFootfall = (u, x, z, dx, dz, right, size) => {
+      mode.view.step(x, z, dx, dz, right, size);
+      this.onFootfall?.(u, x, z);
+    };
     // the boss bar marks where the boss calls up its adds
     this.hud.bossPhases = (u) => (u === mode.run.boss ? DESCENT.bossAdds : null);
     this.netHost = mode.host;

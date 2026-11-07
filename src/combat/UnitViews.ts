@@ -251,6 +251,8 @@ interface UnitView {
   shadows?: boolean;
   /** Each foot's ball and whether it is planted, once a mode asks for footfalls (see `onFootfall`). */
   feet?: { bone: THREE.Bone; down: boolean }[];
+  /** The player's model's travel over the ground (where it was last frame and how fast it's going), since the sim keeps no velocity for it. */
+  travel?: { x: number; z: number; vx: number; vz: number };
 }
 
 /** A god's toe is planted below this height off the ground, and lifted again above the second (meters on the UAL mannequin). */
@@ -278,12 +280,12 @@ export class UnitViews {
   /** Underworld Descent: the dead claw their way up out of the floor instead of appearing on it. */
   emergeMonsters = false;
   /**
-   * Underworld Descent: a god's foot came down, the ball of it at (x, z), the
-   * god heading along (dx, dz), `size` its height against the mannequin's.
+   * Underworld Descent: god `u`'s foot came down, the ball of it at (x, z),
+   * the god heading along (dx, dz), `size` its height against the mannequin's.
    * Read off the run animation, so it lands as the foot does. Null: no mode
    * wants them, and the feet are never read.
    */
-  onFootfall: ((x: number, z: number, dx: number, dz: number, right: boolean, size: number) => void) | null = null;
+  onFootfall: ((u: Unit, x: number, z: number, dx: number, dz: number, right: boolean, size: number) => void) | null = null;
   /** Turns laid over how gods face (see `turn`), by god. */
   private readonly turns = new Map<Unit, { yaw: number; weight: number }>();
   private readonly prev = new Map<Unit, THREE.Vector3>();
@@ -736,8 +738,21 @@ export class UnitViews {
       v.root.visible = u.alive || lying || v.deathTime < GOD_CORPSE;
       v.root.position.y += v.lift;
       this.leanThrown(u, v, 0);
-      // (the controller animates the player's model; its feet are read all the same)
-      if (this.onFootfall && v.model) this.footfalls(u, v, hypot(u.vx, u.vz));
+      // (the controller animates the player's model, its feet read all the same; and moves it, so the sim keeps no velocity for it: it's read off the model's travel)
+      if (this.onFootfall && v.model) {
+        const p = v.root.position;
+        const r = (v.travel ??= { x: p.x, z: p.z, vx: 0, vz: 0 });
+        // (a blink or a respawn is no stride)
+        if (hypot(p.x - r.x, p.z - r.z) > 3) r.vx = r.vz = 0;
+        else if (dt > 0) {
+          const k = Math.min(1, dt * 15);
+          r.vx += ((p.x - r.x) / dt - r.vx) * k;
+          r.vz += ((p.z - r.z) / dt - r.vz) * k;
+        }
+        r.x = p.x;
+        r.z = p.z;
+        this.footfalls(u, v, r.vx, r.vz);
+      }
       return;
     }
 
@@ -813,11 +828,12 @@ export class UnitViews {
       every === 1 ? v.animDt : Math.min(v.animDt, 1 / 60),
     );
     v.animDt = 0;
-    if (this.onFootfall) this.footfalls(u, v, speed);
+    if (this.onFootfall) this.footfalls(u, v, u.vx, u.vz);
   }
 
   /** Watches a god's toes for the moment each comes down (see `onFootfall`); only gods seen walking on the ground leave a mark. */
-  private footfalls(u: Unit, v: UnitView, speed: number): void {
+  private footfalls(u: Unit, v: UnitView, vx: number, vz: number): void {
+    const speed = hypot(vx, vz);
     const model = v.model!;
     const feet = (v.feet ??= ['DEF-toe.L', 'DEF-toe.R'].flatMap((n) => {
       const bone = model.bone(n);
@@ -837,7 +853,7 @@ export class UnitViews {
       }
       if (h > FOOT_DOWN) continue;
       f.down = true;
-      if (walking) this.onFootfall!(e[12]!, e[14]!, u.vx / speed, u.vz / speed, i === 1, size);
+      if (walking) this.onFootfall!(u, e[12]!, e[14]!, vx / speed, vz / speed, i === 1, size);
     }
   }
 

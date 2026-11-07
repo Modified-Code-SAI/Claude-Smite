@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { attribute, float, length, max, min, mix, mx_noise_float, smoothstep, uniform, vec2, vec3 } from '../../render/tsl';
+import { attribute, float, length, max, min, mix, mx_noise_float, smoothstep, step, uniform, vec2, vec3 } from '../../render/tsl';
 import { depthLook } from './palettes';
 
 /**
@@ -16,6 +16,8 @@ export const TRACKS = {
   foot: { length: 0.44, width: 0.2, behind: 0.08 },
   /** Raised off the floor this much, so it never sinks into it. */
   lift: 0.03,
+  /** A step on wet stone sends rings out this far (meters on the mannequin) over `time` seconds; its print is drawn on a square that wide. */
+  ripple: { reach: 0.6, time: 0.9 },
 };
 
 const VERTS = 4;
@@ -29,8 +31,10 @@ const VERTS = 4;
  * - the Ashen Depths: a scuff pressed through the ash to the dark rock, its
  *   rim pushed up pale, the embers in it glowing a moment as the foot lands;
  * - the Drowned Halls: a wet print, dark and glossy with the soul-light
- *   caught round its edge, drying in from it;
- * - the Abyss: a print of faint green spirit light, brightest round its rim.
+ *   caught round its edge, drying in from it, the step sending a ripple or
+ *   two out across the wet stone;
+ * - the Abyss: a print of faint green spirit light, brightest round its rim,
+ *   flaring as the foot lands.
  */
 export class DepthTracks {
   readonly mesh: THREE.Mesh;
@@ -99,6 +103,16 @@ export class DepthTracks {
     const rim = smoothstep(-0.22, -0.04, sole).mul(smoothstep(0.12, -0.01, sole));
     const patchy = smoothstep(float(1).sub(left).sub(0.2), float(1).sub(left).add(0.2), grain.mul(0.8).add(0.2));
     const grow = smoothstep(0, 0.05, age);
+    // rings running out from a wet step (meters from the print's middle; only a rippling print's square reaches them)
+    const f = TRACKS.foot;
+    const out = length(vec2(p.x.mul(f.width / 2), p.y.mul(f.length / 2)));
+    const { reach, time } = TRACKS.ripple;
+    const ring = (delay: number, speed: number) => {
+      const a = age.sub(delay);
+      const r = a.mul(speed).add(0.1);
+      return smoothstep(a.mul(0.05).add(0.03), 0, out.sub(r).abs()).mul(smoothstep(time, 0, a)).mul(step(0, a));
+    };
+    const ripple = max(ring(0, 0.62), ring(0.16, 0.46).mul(0.6)).mul(smoothstep(reach, reach * 0.75, out));
 
     // -- the forge: the dark rock under the ash, a pale rim of ash pushed up, and embers in it glowing as it lands
     const hot = smoothstep(2, 0, age);
@@ -112,23 +126,25 @@ export class DepthTracks {
     // -- the Abyss: spirit light, brightest round the rim, drawing in as it fades
     const ghostA = inside.mul(0.4).add(rim.mul(0.7)).mul(patchy);
     const ghostColor = vec3(0.01, 0.03, 0.02);
-    const ghost = rim.mul(1.1).add(inside.mul(tread.mul(0.35).add(0.15))).mul(left.mul(0.7).add(0.3)).mul(patchy);
+    const flare = smoothstep(0.4, 0, age).mul(2.5).add(1);
+    const ghost = rim.mul(1.1).add(inside.mul(tread.mul(0.35).add(0.15))).mul(left.mul(0.7).add(0.3)).mul(patchy).mul(flare);
 
     m.colorNode = ashColor.mul(forge).add(wetColor.mul(drowned)).add(ghostColor.mul(abyss));
     m.roughnessNode = forge.mul(0.95).add(drowned.mul(0.08)).add(abyss.mul(0.6));
     m.emissiveNode = vec3(1, 0.36, 0.08)
       .mul(embers.mul(forge).mul(2.4))
-      .add(vec3(0.3, 0.62, 1).mul(sheen.mul(drowned).mul(0.5)))
+      .add(vec3(0.3, 0.62, 1).mul(sheen.mul(0.5).add(ripple.mul(0.95)).mul(drowned)))
       .add(vec3(0.25, 1, 0.55).mul(ghost.mul(abyss).mul(1.8)));
-    m.opacityNode = ashA.mul(forge).add(wetA.mul(drowned)).add(ghostA.mul(abyss)).mul(left).mul(grow).clamp(0, 1);
+    m.opacityNode = ashA.mul(forge).add(wetA.add(ripple.mul(0.4)).mul(drowned)).add(ghostA.mul(abyss)).mul(left).mul(grow).clamp(0, 1);
     return m;
   }
 
   /**
    * A foot came down with the ball of it at (x, z), the god heading along
    * (dx, dz) (a unit vector), `size` its height against the mannequin's.
+   * A `ripple` print (wet stone) is drawn on a square wide enough for its rings.
    */
-  step(x: number, z: number, dx: number, dz: number, right: boolean, size: number): void {
+  step(x: number, z: number, dx: number, dz: number, right: boolean, size: number, ripple = false): void {
     const f = TRACKS.foot;
     const cx = x - dx * f.behind * size;
     const cz = z - dz * f.behind * size;
@@ -137,8 +153,11 @@ export class DepthTracks {
     // across the print (its right) and along it
     const rx = -dz;
     const rz = dx;
-    const hw = (f.width / 2) * size;
-    const hl = (f.length / 2) * size;
+    // the square's half sides, and the boot's own across them (the shader draws the sole in -1..1 of those)
+    const hw = (ripple ? TRACKS.ripple.reach : f.width / 2) * size;
+    const hl = (ripple ? TRACKS.ripple.reach : f.length / 2) * size;
+    const lw = hw / ((f.width / 2) * size);
+    const ll = hl / ((f.length / 2) * size);
     const pos = this.position.array as Float32Array;
     const loc = this.local.array as Float32Array;
     const inf = this.info.array as Float32Array;
@@ -152,8 +171,8 @@ export class DepthTracks {
       pos[o * 3] = px;
       pos[o * 3 + 1] = this.ground(px, pz) + TRACKS.lift;
       pos[o * 3 + 2] = pz;
-      loc[o * 2] = u;
-      loc[o * 2 + 1] = v;
+      loc[o * 2] = u * lw;
+      loc[o * 2 + 1] = v * ll;
       inf[o * 3] = right ? 1 : 0;
       inf[o * 3 + 1] = this.clock;
       inf[o * 3 + 2] = seed;

@@ -21,6 +21,19 @@ describe("the gods' tracks in the Descent's floors", () => {
     for (const p of c) expect(p.y).toBeCloseTo(0.5 + p.x * 0.01 + TRACKS.lift, 5);
   });
 
+  it('draws a step on wet stone on a square wide enough for the rings it sends out', () => {
+    const t = new DepthTracks(() => 0);
+    t.step(0, 0, 1, 0, false, 1.5, true);
+    const c = corners(t, 0);
+    const span = (a: number, b: number) => Math.hypot(c[b]!.x - c[a]!.x, c[b]!.z - c[a]!.z);
+    expect(span(0, 1)).toBeCloseTo(TRACKS.ripple.reach * 2 * 1.5, 5);
+    expect(span(0, 2)).toBeCloseTo(TRACKS.ripple.reach * 2 * 1.5, 5);
+    // the boot itself still spans -1..1 of its own size inside the square
+    const loc = t.mesh.geometry.getAttribute('tLocal').array as Float32Array;
+    expect(loc[2]! - loc[0]!).toBeCloseTo((2 * TRACKS.ripple.reach) / (TRACKS.foot.width / 2), 5);
+    expect(loc[5]! - loc[1]!).toBeCloseTo((2 * TRACKS.ripple.reach) / (TRACKS.foot.length / 2), 5);
+  });
+
   it('makes room for new prints by reusing the oldest, and wipes them all for the next chamber', () => {
     const t = new DepthTracks(() => 0);
     for (let i = 0; i <= TRACKS.capacity; i++) t.step(i, 0, 1, 0, i % 2 === 1, 1);
