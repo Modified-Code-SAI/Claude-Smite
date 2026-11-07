@@ -434,7 +434,10 @@ function hairMaterial(root: number, tip: number): THREE.Material {
   const pattern = mix(strands, barbs.mul(float(1).sub(split.mul(0.6))), isFeather);
 
   // roots sit in the shadow of the clumps around them
-  const occl = smoothstep(0.0, 0.45, t).mul(0.55).add(0.45);
+  const occl = smoothstep(0.0, 0.45, t).mul(0.55).add(0.45)
+    // and each lock rounds off into shadow at its two edges (u 0.25 and 0.75 run along the
+    // edges of the flattened clump), so the locks read as bundles with depth between them
+    .mul(float(1).sub(pow(abs(sin(v.x.mul(6.283))), 3).mul(0.32).mul(float(1).sub(isFeather))));
   // painted shine band a third of the way down each lock, broken up by the strands (not on feathers)
   const shine = smoothstep(0.18, 0.3, t).mul(float(1).sub(smoothstep(0.38, 0.52, t))).mul(strands).mul(0.22).mul(float(1).sub(isFeather));
   const tone = mix(color(root), color(tip), t.mul(0.8));
