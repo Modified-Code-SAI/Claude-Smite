@@ -58,7 +58,15 @@ const RELIC_GAIN: Record<string, number> = { 'relic.knell': 0.75, 'relic.chain':
 /** Which god basic-hit sound each god makes. */
 const GOD_HIT: Record<string, string> = { zeus: 'hit.zap', thor: 'hit.blunt', odin: 'hit.blade', loki: 'hit.blade', anubis: 'hit.sand', thanatos: 'hit.soulblade', kukulkan: 'hit.jade', cthulhu: 'hit.ooze', jotunn: 'hit.jotunn' };
 const GOD_TRAVEL: Record<string, string> = { zeus: 'travel.zeus', anubis: 'travel.anubis', kukulkan: 'travel.kukulkan' };
-const BOSSES = ['Treasure Wyrm', 'Molten Colossus', 'Ossuary King'];
+/** Each boss's own sounds: its basic blow, its roar, the landing of its area attack, and the bed it idles over. */
+const BOSS_SOUND: Record<string, { basic: string; roar: string; slam: string; idle: string }> = {
+  'Treasure Wyrm': { basic: 'basic.wyrm', roar: 'wyrm.roar', slam: 'wyrm.sweep', idle: 'idle.wyrm' },
+  'Molten Colossus': { basic: 'basic.colossus', roar: 'colossus.roar', slam: 'colossus.stomp', idle: 'idle.lava' },
+  Ashsmith: { basic: 'basic.ashsmith', roar: 'ashsmith.roar', slam: 'ashsmith.slam', idle: 'idle.lava' },
+  Tidemaw: { basic: 'basic.tidemaw', roar: 'tidemaw.roar', slam: 'tidemaw.crush', idle: 'idle.beasts' },
+  'Ossuary King': { basic: 'basic.king', roar: 'king.roar', slam: 'king.toll', idle: 'idle.beasts' },
+};
+const BOSSES = Object.keys(BOSS_SOUND);
 
 /** Seconds after a hat trick's call that its scorer boasts (the herald's line goes first). */
 const HAT_BOAST = 2.3;
@@ -170,8 +178,11 @@ export class GameAudio {
       // a fallen Cinderling bursting into flame (a pack of them bursting together shares a few voices)
       else if (name === 'cinder') this.engine.play('cinder.burst', { at, gain: 0.7, vary: 0.07, ref: 10 }, 3, 0.08);
       // a Tide Lurker plunging into the floor, and bursting up out of it
-      else if (name === 'lurkDive') this.engine.play('lurk.dive', { at, gain: 0.7, vary: 0.06, ref: 12 }, 3, 0.1);
-      else if (name === 'lurkBurst') this.engine.play('lurk.burst', { at, gain: 1, vary: 0.05, ref: 16 }, 4, 0.1);
+      // (the Tidemaw's the same, deeper and heard across the hall)
+      else if (name === 'lurkDive') this.engine.play('lurk.dive', { at, gain: k ? 1.2 : 0.7, vary: 0.06, ref: k ? 30 : 12, rate: k ? 0.6 : 1 }, 3, 0.1);
+      else if (name === 'lurkBurst') this.engine.play('lurk.burst', { at, gain: k ? 1.4 : 1, vary: 0.05, ref: k ? 34 : 16, rate: k ? 0.6 : 1 }, 4, 0.1);
+      // the Ashsmith's hammer dragged through the floor, the cracks of fire running out of it
+      else if (name === 'fissure') this.engine.play('ashsmith.fissure', { at, gain: 1.2, ref: 30 }, 5);
       else if (name === 'pounce') this.engine.play('hound.pounce', { at, gain: 0.7, vary: 0.08, ref: 10 }, 3, 0.08);
       else if (name === 'pounceLand') this.engine.play('hound.land', { at, gain: 0.7, vary: 0.08, ref: 10 }, 3, 0.08);
       else if (name === 'howl') this.engine.play('pack.howl', { at, gain: 0.9, vary: 0.05, ref: 22 }, 2, 0.4);
@@ -350,7 +361,7 @@ export class GameAudio {
         ref = 20;
         break;
       case 'monster':
-        name = u.name === 'Treasure Wyrm' ? 'basic.wyrm' : u.name === 'Molten Colossus' ? 'basic.colossus' : u.name === 'Ossuary King' ? 'basic.king' : u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : u.tag.endsWith(':cinderling') ? 'basic.cinder' : u.tag.endsWith(':slagBrute') ? 'basic.brute' : u.tag.endsWith(':drownedThrall') ? 'basic.thrall' : u.tag.endsWith(':lanternJelly') ? 'basic.jelly' : u.tag.endsWith(':tideLurker') ? 'basic.lurker' : u.tag.endsWith(':gravehound') ? 'basic.hound' : u.tag.endsWith(':packleader') ? 'basic.packleader' : 'basic.monster';
+        name = BOSS_SOUND[u.name]?.basic ?? (u.tag.endsWith('warden') ? 'basic.warden' : u.tag.endsWith('thornSpitter') ? 'basic.spitter' : u.tag.endsWith(':shade') ? 'basic.shade' : u.tag.endsWith(':gravekeeper') ? 'basic.keeper' : u.tag.endsWith(':cinderling') ? 'basic.cinder' : u.tag.endsWith(':slagBrute') ? 'basic.brute' : u.tag.endsWith(':drownedThrall') ? 'basic.thrall' : u.tag.endsWith(':lanternJelly') ? 'basic.jelly' : u.tag.endsWith(':tideLurker') ? 'basic.lurker' : u.tag.endsWith(':gravehound') ? 'basic.hound' : u.tag.endsWith(':packleader') ? 'basic.packleader' : 'basic.monster');
         ref = u.radius > 2 ? 16 : 7;
         gain = u.radius > 2 ? 1.1 : 0.7;
         break;
@@ -456,9 +467,10 @@ export class GameAudio {
         break;
       case 'monster':
         if (BOSSES.includes(u.name)) {
-          this.at(u.name === 'Treasure Wyrm' ? 'wyrm.roar' : 'colossus.roar', u, { gain: 1.2, ref: 22, rate: 0.75 }, 6);
+          this.at(BOSS_SOUND[u.name]!.roar, u, { gain: 1.2, ref: 22, rate: 0.75 }, 6);
           this.at('structure.collapse', u, { gain: 0.6, ref: 20, delay: 0.6 }, 5);
-          if (killer && killer.team !== 'neutral') {
+          // (a battlefield boss's prize; a Descent boss's fall has its own words)
+          if (this.conquest && killer && killer.team !== 'neutral') {
             const ours = killer.team === me.team;
             const what = u.name === 'Treasure Wyrm' ? "the Wyrm's hoard" : "the Colossus's fury";
             this.herald.say(ours ? `Our team claims ${what}.` : `The enemy claims ${what}.`, ours ? 'good' : 'bad', 3);
@@ -719,7 +731,7 @@ export class GameAudio {
       // a boss arriving
       if (BOSSES.includes(u.name) && !this.seenBoss.has(u)) {
         this.seenBoss.add(u);
-        this.at(u.name === 'Treasure Wyrm' ? 'wyrm.roar' : u.name === 'Ossuary King' ? 'king.roar' : 'colossus.roar', u, { gain: 1, ref: 25 }, 5);
+        this.at(BOSS_SOUND[u.name]!.roar, u, { gain: 1, ref: 25 }, 5);
         if (this.conquest) this.herald.say(u.name === 'Treasure Wyrm' ? 'The Treasure Wyrm has awoken.' : 'The Molten Colossus rises from the deep.', 'epic', 2);
       }
       const brain = u.brain as { specialProgress?: number } | null;
@@ -742,7 +754,7 @@ export class GameAudio {
       // (a Slag Brute's slam the same, smaller; not its warning circle)
       if (o.kind === 'monster' && o.tag.endsWith(':slagBrute') && f.shape.type === 'circle' && !f.warn) this.engine.play('brute.slam', { at: { x: f.shape.x, z: f.shape.z }, gain: 1, ref: 14, vary: 0.05 }, 4, 0.15);
       if (o.kind === 'monster' && BOSSES.includes(o.name) && f.shape.type === 'circle') {
-        this.engine.play(o.name === 'Treasure Wyrm' ? 'wyrm.sweep' : o.name === 'Ossuary King' ? 'king.toll' : 'colossus.stomp', { at: { x: f.shape.x, z: f.shape.z }, gain: 1.2, ref: 18 }, 6);
+        this.engine.play(BOSS_SOUND[o.name]!.slam, { at: { x: f.shape.x, z: f.shape.z }, gain: 1.2, ref: 18 }, 6);
       }
     }
     if (this.seenFlash.size > 500) this.seenFlash.clear();
@@ -780,7 +792,7 @@ export class GameAudio {
     for (const u of want) {
       if (this.idle.has(u)) continue;
       const boss = BOSSES.includes(u.name);
-      const name = u.name === 'Treasure Wyrm' ? 'idle.wyrm' : u.name === 'Molten Colossus' ? 'idle.lava' : 'idle.beasts';
+      const name = BOSS_SOUND[u.name]?.idle ?? 'idle.beasts';
       const l = this.engine.loop(name, { at: { x: u.x, y: u.body.y + 1, z: u.z }, bus: 'ambience', gain: boss ? 0.9 : 0.6, ref: boss ? 12 : 5, variant: u.id, rate: boss ? 1 : u.radius > 1.2 ? 0.85 : 1.1 });
       if (l) this.idle.set(u, l);
     }
@@ -1653,7 +1665,7 @@ export class GameAudio {
   private bossCall(at: { x: number; y: number; z: number }, n: number): void {
     const boss = this.game.descent?.boss;
     if (!boss) return;
-    const roar = boss.name === 'Treasure Wyrm' ? 'wyrm.roar' : boss.name === 'Ossuary King' ? 'king.roar' : 'colossus.roar';
+    const roar = BOSS_SOUND[boss.name]?.roar ?? 'colossus.roar';
     this.engine.play(roar, { at: { x: at.x, y: at.y + 2, z: at.z }, gain: 1.15, rate: 0.88, ref: 30 }, 5);
     const key = (boss.brain as { bossKey?: string | null } | null)?.bossKey;
     const line = key ? BOSS_CALL_LINE[key]?.[Math.min(n, 2) - 1] : undefined;

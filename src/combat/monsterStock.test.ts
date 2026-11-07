@@ -35,6 +35,22 @@ describe('monster models built ahead of their monsters', () => {
     expect(views.spareCount).toBe(3);
   });
 
+  it('lets a diving beast go down under the floor instead of lifting it like a god in a leap', () => {
+    const views = new UnitViews(godUnit(zeus, 'order', at), {} as GodModel);
+    for (const type of ['tideLurker', 'tidemaw'] as const) {
+      const m = monsterUnit(zeus, type, at, 1);
+      m.tag = `descent-small-7.w1.0:${type}`;
+      views.frame([m], 1 / 60, 1);
+      const standing = views.headOf(m, new THREE.Vector3())!.y;
+      for (let i = 0; i < 120; i++) {
+        m.untargetable = 0.2;
+        views.frame([m], 1 / 60, 1);
+      }
+      // its root stays on the floor (its own rig takes it under)
+      expect(views.headOf(m, new THREE.Vector3())!.y - standing, type).toBeLessThan(0.1);
+    }
+  });
+
   it('keeps Champions and each Warden glow apart from the plain models', () => {
     expect(monsterViewKey({ tag: 'descent-small-6.w1.0:thornbackAlpha', name: 'Champion Thornback Alpha' })).not.toBe(monsterViewKey({ tag: 'descent-small-6.w1.1:thornbackAlpha', name: 'Thornback Alpha' }));
     expect(monsterViewKey({ tag: 'descent-might-4.w1.0:warden', name: 'Warden' })).not.toBe(monsterViewKey({ tag: 'descent-wisdom-4.w1.1:warden', name: 'Warden' }));

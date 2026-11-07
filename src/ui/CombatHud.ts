@@ -81,8 +81,8 @@ interface Floater {
   drift: number;
 }
 
-const SPECIAL_NAME: Record<string, string> = { treasureWyrm: 'Tail Sweep', moltenColossus: 'Eruption', ossuaryKing: 'Grave Toll' };
-const OBJECTIVE_COLOR: Record<string, string> = { treasureWyrm: '#f5c542', moltenColossus: '#ff6a1a', ossuaryKing: '#ffa83a' };
+const SPECIAL_NAME: Record<string, string> = { treasureWyrm: 'Tail Sweep', moltenColossus: 'Eruption', ashsmith: 'Hammerfall', tidemaw: 'Claw Crush', ossuaryKing: 'Grave Toll' };
+const OBJECTIVE_COLOR: Record<string, string> = { treasureWyrm: '#f5c542', moltenColossus: '#ff6a1a', ashsmith: '#ff7a1e', tidemaw: '#7fe0ff', ossuaryKing: '#ffa83a' };
 /** The objective bar shows the nearest boss or Warden within this range of the player. */
 const OBJECTIVE_RANGE = 38;
 

@@ -3,7 +3,7 @@ import { UNDERWORLD_LIFE } from '../audio/underworldAmbience';
 import type { Side } from '../game/combatant';
 import { exitSpot, obstaclesOf, underworldField } from '../map/UnderworldLayout';
 import type { CameraShot } from '../player/ThirdPersonCamera';
-import { bellsOf, CHALLENGE, CINDER, DESCENT, DescentMonsterBrain, DEPTHS, HOWL, SOULS, type Descent } from '../sim/Descent';
+import { ASHSMITH, bellsOf, CHALLENGE, CINDER, DESCENT, DescentMonsterBrain, DEPTHS, HOWL, SOULS, type Descent } from '../sim/Descent';
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { Flash, SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
@@ -21,7 +21,7 @@ import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
 
-const ERUPTIONS = 16;
+const ERUPTIONS = 28;
 /** The smoke over a fallen Cinderling's burst. */
 const CINDER_SMOKE = 0x4a3a32;
 /** The slain going into each depth's ground (DescentView.sink): forge ash and its cinders, the Drowned Halls' spray, the Abyss's ghost smoke. */
@@ -92,7 +92,7 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | 'pounce' | 'pounceLand' | 'howl' | 'forgeBreath' | 'toll' | 'drain' | `relic.${RelicId}` | `hazard.${HazardCue}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | 'pounce' | 'pounceLand' | 'howl' | 'forgeBreath' | 'toll' | 'drain' | 'fissure' | `relic.${RelicId}` | `hazard.${HazardCue}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -178,6 +178,8 @@ export class DescentView {
   private readonly forgeSeen = new Map<Unit, { since: number; smoke: number }>();
   /** Whether the flood was still rising last frame. */
   private flooding = false;
+  /** The Ashsmith's fissures seen so far. */
+  private fissuresSeen = 0;
 
   constructor(
     private readonly run: Descent,
@@ -324,6 +326,7 @@ export class DescentView {
     this.lurkers(dt);
     this.packs();
     this.forges();
+    this.fissures();
     this.bells(dt, time);
     this.flood();
     for (let i = this.sinking.length - 1; i >= 0; i--) {
@@ -371,7 +374,7 @@ export class DescentView {
       const d = this.eruptions[i];
       if (!d) return;
       d.mesh.visible = true;
-      d.values.fill = 1 - e.left / DESCENT.eruption.warn;
+      d.values.fill = Math.max(0, 1 - e.left / DESCENT.eruption.warn);
       d.values.opacity = 0.65 + d.values.fill * 0.35;
       d.place({ type: 'circle', radius: e.r }, e.x, e.z, 0, 0.09);
     });
@@ -392,6 +395,8 @@ export class DescentView {
           if (d < 7) this.opts.shake(0.12 * (1 - d / 7));
         }
         this.opts.cue?.('cinder', { x: e.x, y: gy + 0.5, z: e.z }, 0);
+        // (the Ashsmith's cracks of fire leave the floor scorched along them)
+        if (e.r === ASHSMITH.fissure.radius) this.scars.mark(e.x, e.z, e.r * 0.8);
         continue;
       }
       this.vfx.pillar(this.burst, e.x, e.z, 0.3, 1.3);
@@ -772,39 +777,66 @@ export class DescentView {
   private lurkers(dt: number): void {
     const me = this.opts.me;
     for (const u of this.run.monsters) {
-      if (!u.tag.endsWith(':tideLurker')) continue;
+      const maw = u.tag.endsWith(':tidemaw');
+      if (!maw && !u.tag.endsWith(':tideLurker')) continue;
+      // (the Tidemaw's the same, on its own scale)
+      const k = maw ? 2.2 : 1;
       const under = u.alive && u.untargetable > 0;
       const last = this.lurkUnder.get(u);
       const gy = this.groundAt(u.x, u.z);
       if (under && last === undefined) {
-        this.vfx.burst(SPLASH, u.x, gy + 0.2, u.z, 1.5);
-        this.vfx.billow('dust', u.x, gy + 0.5, u.z, 3.2, { tint: SPRAY, duration: 1.3, rise: 0.5 });
-        this.scars.mark(u.x, u.z, 1.6, true, false);
-        this.opts.cue?.('lurkDive', { x: u.x, y: gy + 0.4, z: u.z }, 0);
+        this.vfx.burst(SPLASH, u.x, gy + 0.2, u.z, 1.5 * k);
+        this.vfx.billow('dust', u.x, gy + 0.5 * k, u.z, 3.2 * k, { tint: SPRAY, duration: 1.3 * Math.sqrt(k), rise: 0.5 * k });
+        this.scars.mark(u.x, u.z, 1.6 * k, true, false);
+        this.opts.cue?.('lurkDive', { x: u.x, y: gy + 0.4, z: u.z }, maw ? 1 : 0);
         this.lurkUnder.set(u, 0);
       } else if (under) {
         const t = last! + dt;
         if (t > 0.16) {
           // rings behind the fin as it cuts along, a fleck of spray off it
-          this.scars.mark(u.x, u.z, 0.9, true, false);
-          if (Math.random() < 0.5) this.vfx.burst(SPLASH, u.x, gy + 0.1, u.z, 0.35);
+          this.scars.mark(u.x, u.z, 0.9 * k, true, false);
+          if (Math.random() < 0.5) this.vfx.burst(SPLASH, u.x, gy + 0.1, u.z, 0.35 * k);
           this.lurkUnder.set(u, 0);
         } else this.lurkUnder.set(u, t);
       } else if (last !== undefined) {
         this.lurkUnder.delete(u);
         if (!u.alive) continue;
-        this.vfx.burst(SPLASH, u.x, gy + 0.4, u.z, 2.4);
-        this.vfx.billow('dust', u.x, gy + 0.8, u.z, 5, { tint: SPRAY, duration: 1.8, rise: 1.4 });
-        this.vfx.billow('smoke', u.x, gy + 1.6, u.z, 4, { tint: SPRAY, duration: 2.2, rise: 1.8, delay: 0.1, opacity: 0.5 });
-        this.scars.mark(u.x, u.z, 2.3, true, false);
+        this.vfx.burst(SPLASH, u.x, gy + 0.4, u.z, 2.4 * Math.min(1.5, k));
+        this.vfx.billow('dust', u.x, gy + 0.8 * k, u.z, 5 * k, { tint: SPRAY, duration: 1.8 * Math.sqrt(k), rise: 1.4 * k });
+        this.vfx.billow('smoke', u.x, gy + 1.6 * k, u.z, 4 * k, { tint: SPRAY, duration: 2.2 * Math.sqrt(k), rise: 1.8 * k, delay: 0.1, opacity: 0.5 });
+        this.scars.mark(u.x, u.z, 2.3 * k, true, false);
         if (me && this.opts.shake) {
           const d = Math.hypot(me.x - u.x, me.z - u.z);
-          if (d < 9) this.opts.shake(0.22 * (1 - d / 9));
+          if (d < 9 * k) this.opts.shake(0.22 * Math.sqrt(k) * (1 - d / (9 * k)));
         }
-        this.opts.cue?.('lurkBurst', { x: u.x, y: gy + 0.6, z: u.z }, 0);
+        this.opts.cue?.('lurkBurst', { x: u.x, y: gy + 0.6, z: u.z }, maw ? 1 : 0);
       }
     }
     if (this.lurkUnder.size) for (const u of this.lurkUnder.keys()) if (!this.run.monsters.includes(u)) this.lurkUnder.delete(u);
+  }
+
+  /** The Ashsmith's hammer through the floor: a gout of fire and cinders where it drags, a jolt, and its crack (the cracks run out as eruptions). */
+  private fissures(): void {
+    const r = this.run;
+    const b = r.boss;
+    if (r.fissures < this.fissuresSeen) this.fissuresSeen = r.fissures;
+    if (r.fissures === this.fissuresSeen) return;
+    this.fissuresSeen = r.fissures;
+    if (!b?.alive) return;
+    const f = b.forward;
+    const x = b.x + f.x * 2.4;
+    const z = b.z + f.z * 2.4;
+    const gy = this.groundAt(x, z);
+    this.vfx.burst(this.burst, x, gy + 0.3, z, 1.6);
+    this.vfx.burst(CINDERS, x, gy + 0.4, z, 1.2);
+    this.vfx.billow('blast', x, gy + 0.6, z, 3, { tint: CINDER_SMOKE, duration: 1.1, rise: 0.8, flame: [0xff5a14, 0xffd890] });
+    this.scars.mark(x, z, 2);
+    const me = this.opts.me;
+    if (me && this.opts.shake) {
+      const d = Math.hypot(me.x - x, me.z - z);
+      if (d < 22) this.opts.shake(0.3 * (1 - d / 22));
+    }
+    this.opts.cue?.('fissure', { x, y: gy + 0.5, z }, 0);
   }
 
   /**

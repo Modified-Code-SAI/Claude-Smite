@@ -27,6 +27,8 @@ const HINT_TIME = 14;
 const HINTS: readonly (readonly [tag: string, hint: string])[] = [
   [':shade', 'Shades blink away when you close in: sidestep their slow bolts'],
   [':gravekeeper', 'Gravekeepers mend the monsters around them: take them down first'],
+  [':ashsmith', 'When the Ashsmith drags its hammer back, cracks of fire run at you: step off their line'],
+  [':tidemaw', 'When the Tidemaw goes under, it rises beneath you: move as its circle shows'],
   [':ossuaryKing', 'The King rains soul fire where you stand: keep moving'],
 ];
 

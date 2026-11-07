@@ -1042,9 +1042,10 @@ function monsterPalette(u: Unit, fire: GodPalette | null): GodPalette {
   const p = paletteOf(u);
   if (u.tag.endsWith('treasureWyrm') || u.tag.endsWith('gildedThornback')) return { ...p, vfx: 0xffc83a, core: 0xfff6d0 };
   if (u.tag.endsWith('moltenColossus')) return { ...p, vfx: 0xff4a10, core: 0xffd080 };
+  if (u.tag.endsWith(':ashsmith')) return { ...p, vfx: 0xff6a1a, core: 0xffd8a0 };
+  if (u.tag.endsWith(':tidemaw') || u.tag.endsWith(':lanternJelly')) return { ...p, vfx: DROWNED_GLOW, core: DROWNED_CORE };
   if (u.tag.endsWith('thornSpitter')) return { ...p, vfx: ACID, core: 0xe8ffc0 };
   if (u.tag.endsWith(':shade')) return { ...p, vfx: SHADE_GLOW, core: SHADE_CORE };
-  if (u.tag.endsWith(':lanternJelly')) return { ...p, vfx: DROWNED_GLOW, core: DROWNED_CORE };
   if (u.tag.endsWith(':gravekeeper') || u.tag.endsWith(':ossuaryKing')) return { ...p, vfx: KEEPER_GLOW, core: KEEPER_CORE };
   if (u.kind !== 'monster') return p;
   if (!u.tag.endsWith('warden')) return fire ?? p;
