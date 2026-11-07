@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { fbm2, simplex2, smoothstep as sstep } from '../../core/random';
-import { caveField, CHAMBERS, chamberAt, chamberField, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
+import { caveField, CHAMBERS, chamberAt, chamberField, underworldBrink, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
 import {
-  abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionWorld, pow, sin, smoothstep, step, texture, time, transformNormalToView, vec2, vec3,
+  abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionLocal, positionWorld, pow, sin, smoothstep, step, texture, time, transformNormalToView, vec2, vec3,
 } from '../../render/tsl';
 import { planar, triplanar, type TextureLibrary } from '../Materials';
 import type { Terrain, TerrainDef } from '../Terrain';
+import { BRINK_SCALE, darkReach, floodReach, gapLook, slagLook, ventLook } from './hazardLook';
 import { CLEAR_WAVE, clearWave, depthLook, gateOpen, runeRings, underworldGlow } from './palettes';
 
 /** Width (m) of one glyph's cell around a ring, and half the height of the band of glyphs. */
@@ -157,7 +158,9 @@ export function underworldTerrain(): TerrainDef {
       const ash = 1 - sstep(0.4, 3.6, f + edge * 1.1);
       const scorch = Math.max(0, fbm2(n2, x * 0.07, z * 0.07, 3)) * 0.9;
       const macro = fbm2(n3, x * 0.03 + 50, z * 0.03, 4) * 0.5 + 0.5;
-      return [ash, 0, scorch, macro];
+      // (green: how far the floor runs on to the lava, water or void, for the tide and the dark)
+      const brink = Math.max(0, Math.min(1, underworldBrink(x, z) / BRINK_SCALE));
+      return [ash, brink, scorch, macro];
     },
     material: underworldMaterial,
   };
@@ -434,6 +437,107 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   col = col.mul(float(1).sub(rim.mul(0.5)));
   rough = mix(rough, float(0.6), rim);
   const fissure = split.mul(2.3).add(rim.mul(0.1));
+  // the chamber's dangers (hazardLook, from the run's Hazards)
+  const brinkD = m.g.mul(BRINK_SCALE);
+  let hazardGlow: any = vec3(0);
+  // the forge's magma vents: a scorched mouth in the floor with cracks running
+  // out from it, the magma showing in them, glowing hotter as a blast builds
+  // and flaring white as it goes
+  for (const v of ventLook) {
+    const off = xz.sub(v.xy);
+    const d = length(off);
+    const apron = smoothstep(2.1, 1.1, d);
+    const ray = abs(sin(atan(off.y, off.x).mul(3.5).add(wornN.mul(2.4)).add(d.mul(0.9))));
+    const fissure = smoothstep(0.17, 0.0, ray).mul(smoothstep(2.0, 0.8, d)).mul(smoothstep(0.4, 0.65, d));
+    const mouth = smoothstep(0.62, 0.36, d);
+    const lip = smoothstep(0.3, 0.0, abs(d.sub(0.66)));
+    const heat = v.z;
+    const flash = v.w;
+    col = col.mul(float(1).sub(apron.mul(0.5)).sub(mouth.mul(0.4)));
+    rough = mix(rough, float(0.9), apron.mul(0.7));
+    // (a raised lip round the mouth)
+    nrm = nrm.add(vec3(off.x, 0, off.y).div(max(d, 0.05)).mul(smoothstep(0.95, 0.66, d).mul(smoothstep(0.4, 0.66, d)).mul(0.8)));
+    const hot = heat.mul(heat);
+    hazardGlow = hazardGlow
+      .add(vec3(1.0, 0.36, 0.08).mul(mouth.mul(hot.mul(4).add(0.45)).add(fissure.mul(heat.mul(2.6).add(0.3))).add(lip.mul(heat).mul(0.8)).add(apron.mul(flash).mul(2.5))))
+      .add(vec3(1.0, 0.82, 0.5).mul(mouth.mul(hot.mul(2.5).add(flash.mul(4)))));
+  }
+  // slag spat out of the lava: a puddle with a ragged edge, molten when it
+  // lands, a black crust forming over it as it cools with the glow only in its
+  // cracks
+  // (one set of noise shared by every puddle: the shader runs over the whole floor)
+  const churn = mx_noise_float(vec3(xz.x.mul(1.3), xz.y.mul(1.3), time.mul(0.35)));
+  const raggedN = mx_noise_float(xz.mul(1.4).add(31.7)).mul(0.35);
+  const crustN = mx_noise_float(xz.mul(1.1).add(57.3)).mul(0.3);
+  const seamN = smoothstep(0.08, 0.015, abs(mx_noise_float(xz.mul(2.2).add(83.1))));
+  for (const sl of slagLook) {
+    const off = xz.sub(sl.xy);
+    const d = length(off).add(raggedN);
+    const inside = smoothstep(sl.z, sl.z.sub(0.25), d).mul(step(0.01, sl.z));
+    const heat = sl.w;
+    // the crust closes in from the rim as it cools, in plates, the melt glowing in the seams between them
+    const within = smoothstep(0.0, 1.1, sl.z.sub(d));
+    const lip = smoothstep(0.35, 0.0, abs(d.sub(sl.z.sub(0.12)))).mul(step(0.01, sl.z));
+    const crustAt = float(1).sub(within).mul(0.55).add(crustN).add(0.2);
+    const open = smoothstep(0.06, -0.06, crustAt.sub(heat.mul(0.9))).mul(inside).mul(float(1).sub(lip.mul(0.6)));
+    const seam = seamN.mul(inside).mul(float(1).sub(open));
+    col = mix(col, vec3(0.045, 0.032, 0.027), inside.mul(0.95));
+    col = mix(col, vec3(0.4, 0.12, 0.03), open);
+    rough = mix(rough, float(0.85), inside);
+    rough = mix(rough, float(0.3), open);
+    nrm = nrm.add(vec3(off.x, 0, off.y).div(max(length(off), 0.05)).mul(lip.mul(0.5)));
+    hazardGlow = hazardGlow
+      .add(vec3(1.0, 0.3, 0.05).mul(open.mul(smoothstep(-0.4, 0.7, churn).mul(1.2).add(0.6)).add(seam.mul(heat.mul(1.6).add(0.25)))))
+      .add(vec3(1.0, 0.6, 0.2).mul(open.mul(heat.mul(heat)).mul(smoothstep(0.3, 0.8, churn)).mul(0.9)));
+  }
+  // (one fine drifting noise breaks up both the flood's lapping line and the dark's tendrils: no depth has both)
+  const edgeN = mx_noise_float(vec3(xz.x.mul(1.7), xz.y.mul(1.7), time.mul(0.6)));
+  // the Drowned Halls' flood: the floor near the water gone under it, glassy
+  // and rippling, deeper and darker toward the water, the soul light
+  // wavering over it, and a pale foaming line where it laps at the dry stone
+  const floodAt = brinkD.add(wornN.mul(0.35));
+  const flooding = step(0.01, floodReach).mul(floorW).mul(soul);
+  const flood = smoothstep(floodReach, floodReach.sub(0.25), floodAt).mul(flooding);
+  const deep = smoothstep(floodReach, float(0), floodAt).mul(flood);
+  const lap = exp(abs(floodAt.sub(floodReach).add(edgeN.mul(0.12))).mul(-10)).mul(flooding).mul(edgeN.mul(0.35).add(0.8));
+  const caustic = pow(float(1).sub(abs(churn)), 7);
+  col = mix(col, mix(col.mul(vec3(0.24, 0.32, 0.36)), vec3(0.01, 0.026, 0.032), deep.mul(0.75)), flood);
+  rough = mix(rough, float(0.02), flood);
+  nrm = mix(nrm, rippleN, flood);
+  hazardGlow = hazardGlow
+    .add(vec3(0.2, 0.55, 0.7).mul(flood.mul(caustic.mul(float(1).sub(deep.mul(0.6))).mul(0.4).add(0.04))))
+    .add(vec3(0.65, 0.88, 1.0).mul(lap.mul(0.55)));
+  // the Abyss's creeping dark: the floor going black from the void inward in
+  // curling tendrils, a sickly light just inside its edge
+  const curl = mx_noise_float(vec3(xz.x.mul(0.45), xz.y.mul(0.45), time.mul(0.25))).mul(0.9);
+  const darkEdge = darkReach.add(curl).add(edgeN.mul(0.45));
+  const creeping = step(0.01, darkReach).mul(floorW).mul(abyss);
+  const dark = smoothstep(darkEdge.add(0.2), darkEdge.sub(0.5), brinkD).mul(creeping);
+  const darkFront = exp(max(darkEdge.sub(brinkD), 0).mul(-4)).mul(dark);
+  col = col.mul(float(1).sub(dark.mul(0.97)));
+  rough = mix(rough, float(0.95), dark);
+  hazardGlow = hazardGlow.add(underworldGlow.mul(darkFront.mul(0.14)));
+  // the Abyss's brink cracking before it gives way: a ring split round the
+  // patch and cracks across it, the spirit light showing through
+  for (const g of gapLook) {
+    const off = xz.sub(g.xy);
+    const d = length(off);
+    const inside = smoothstep(g.z.add(0.15), g.z.sub(0.15), d).mul(step(0.01, g.z));
+    const crack = min(g.w, 1);
+    const across = smoothstep(0.12, 0.0, abs(sin(atan(off.y, off.x).mul(2.5).add(wornN.mul(3)).add(d.mul(1.6)))));
+    const ring = smoothstep(0.16, 0.0, abs(d.sub(g.z.mul(0.94))));
+    const split = max(across.mul(smoothstep(0.2, 0.6, crack)), ring).mul(inside).mul(smoothstep(0.0, 0.25, crack));
+    col = col.mul(float(1).sub(split.mul(0.75)));
+    hazardGlow = hazardGlow.add(underworldGlow.mul(split.mul(crack.mul(2.6))));
+  }
+  // and where it gave way, the ground falls into the void (a ragged edge, one vertex in)
+  let drop: any = float(0);
+  const dropN = mx_noise_float(positionLocal.xz.mul(2.1)).mul(0.4);
+  for (const g of gapLook) {
+    const d = length(positionLocal.xz.sub(g.xy)).add(dropN);
+    drop = max(drop, smoothstep(g.z.add(0.1), g.z.sub(0.2), d).mul(step(0.01, g.z)).mul(max(g.w.sub(1), 0)));
+  }
+  mat.positionNode = positionLocal.sub(vec3(0, drop, 0));
   mat.colorNode = col.mul(float(1).sub(sunk.mul(0.92)));
   mat.normalNode = transformNormalToView(nrm.normalize());
   mat.roughnessNode = rough;
@@ -447,6 +551,10 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const crest = exp(behind.mul(-0.35)).mul(fading);
   const edge = exp(behind.mul(-1.4)).mul(fading).mul(floorW);
   const lit = veins.add(seep).add(lavaJoint.mul(2.2)).add(fissure).mul(crest.mul(3).add(1)).add(crest.mul(0.06)).add(edge.mul(soul.mul(0.6).add(0.3)));
-  mat.emissiveNode = underworldGlow.mul(lit.mul(float(1).sub(sunkGlow)).add(runes).add(bowl).mul(breathe)).add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)));
+  mat.emissiveNode = underworldGlow
+    .mul(lit.mul(float(1).sub(sunkGlow)).add(runes).add(bowl).mul(breathe))
+    .add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)))
+    .mul(float(1).sub(dark.mul(0.97)))
+    .add(hazardGlow.mul(float(1).sub(sunkGlow)));
   return mat;
 }

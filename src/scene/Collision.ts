@@ -127,6 +127,14 @@ export class CollisionWorld {
     this.over = over ?? null;
   }
 
+  /** Holes that come and go in the walkable floor (positive inside one), for walkers only: what flies passes over them. */
+  private cuts: ((x: number, z: number) => number) | null = null;
+  private readonly cutWalkable = (x: number, z: number): number => Math.min(this.walkable!(x, z), -this.cuts!(x, z));
+
+  cut(field: ((x: number, z: number) => number) | null): void {
+    this.cuts = field;
+  }
+
   addSurface(s: GroundSurface): void {
     this.surfaces.push(s);
   }
@@ -198,7 +206,7 @@ export class CollisionWorld {
         }
       }
       if (this.walkable) {
-        const field = this.over && feetY + stepHeight >= this.over.above ? this.over.field : this.walkable;
+        const field = this.over && feetY + stepHeight >= this.over.above ? this.over.field : this.cuts ? this.cutWalkable : this.walkable;
         const f = field(x, z);
         if (f < radius) {
           // push out along the field's gradient

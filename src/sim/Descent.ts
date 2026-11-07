@@ -6,6 +6,7 @@ import type { GodDef, SkillDef, StatKey } from '../game/types';
 import type { CampKind } from '../map/ConquestLayout';
 import { navOf, Route } from '../map/ChamberNav';
 import { CHAMBERS, DEPTH_CHAMBERS, entranceSpot, exitSpot, obstaclesOf, type ChamberDef, type Palette } from '../map/UnderworldLayout';
+import { Hazards, type HazardsNet } from './DescentHazards';
 import { monsterName, monsterUnit, type MonsterType } from './factory';
 import { MonsterBrain, type BossSpecial, type CampState } from './Jungle';
 import { Relics, relicById, type Relic, type RelicNet } from './Relics';
@@ -702,6 +703,8 @@ export class Descent {
   private readonly reviving = new Map<Unit, number>();
   /** The relics each team has found, and what they do. */
   readonly relics: Relics;
+  /** The current chamber's own dangers: the forge's vents and slag, the Drowned Halls' tides, the Abyss's crumbling brink and creeping dark. */
+  readonly hazards: Hazards;
 
   constructor(
     private readonly sim: Sim,
@@ -712,6 +715,7 @@ export class Descent {
     readonly versus = false,
   ) {
     this.plan = plan ?? planRun(sim.rng);
+    this.hazards = new Hazards(sim);
     sim.listeners.push((e) => this.on(e));
     // after the run's own listener, so a kill is the run's before a relic pays out on it
     this.relics = new Relics(sim, this);
@@ -757,6 +761,9 @@ export class Descent {
     return this.bossAddsCalled;
   }
 
+  /** A beast the dangers barely touch: the boss, a champion, the Gilded Thornback. */
+  private readonly isMaster = (m: Unit): boolean => m === this.boss || m === this.champion || m === this.gilded;
+
   /** The chamber the team is in (or about to enter). */
   get current(): ChamberPlan {
     return this.plan[Math.max(0, this.chamber - 1)]!;
@@ -800,6 +807,7 @@ export class Descent {
     this.chamber = 1;
     this.phase = 'enter';
     this.timer = DESCENT.enterTime;
+    this.hazards.enter(this.layout);
     this.placeTeam();
   }
 
@@ -842,6 +850,7 @@ export class Descent {
     }
     if (u.kind !== 'monster') return;
     const ours = this.monsters.includes(u);
+    if (ours) this.hazards.onKill();
     // in co-op every kill is the team's; in a shared descent the team that made it
     const side = this.versus ? this.creditOf(u, e.killer, e.assists) : 'order';
     if (ours) {
@@ -935,6 +944,7 @@ export class Descent {
       this.stepEruptions(dt);
       this.stepKing(dt);
     }
+    this.hazards.step(dt, this.phase === 'fight' && this.introLeft <= 0 && this.fallLeft <= 0, this.gods, this.monsters, this.isMaster);
     this.relics.step();
     switch (this.phase) {
       case 'enter':
@@ -1360,6 +1370,7 @@ export class Descent {
     this.phase = 'enter';
     this.timer = DESCENT.enterTime;
     this.relics.reset();
+    this.hazards.enter(this.layout);
     this.placeTeam();
   }
 
@@ -1566,6 +1577,7 @@ export class Descent {
       dr: [...this.drafts].map(([u, d]) => [gi(u), d.slot, d.options.map((s) => s.id)]),
       dn: [...this.downed].map(([u, p]) => [gi(u), r2(p)]),
       e: this.eruptions.map((e) => [e.id, r2(e.x), r2(e.z), e.r, r2(e.left)]),
+      ...(this.chamber ? { hz: this.hazards.netState() ?? {} } : {}),
       b: this.boons.map((b) => b.id),
       ...(this.relics.held.length || this.relics.procs.length ? { rl: this.relics.netState(sideCode) } : {}),
       ...(this.introLeft > 0 ? { it: r2(this.introLeft) } : {}),
@@ -1658,6 +1670,7 @@ export class Descent {
     for (const e of this.eruptions) if (!now.has(e.id) && e.left < 0.4) this.landed.push(e);
     this.eruptions.length = 0;
     for (const [id, x, z, r, left] of s.e) this.eruptions.push({ id, x, z, r, left });
+    if (s.c > 0) this.hazards.applyNet(this.layout, s.hz);
     // boons give the team's gods the same perks on every end
     for (let i = this.boons.length; i < s.b.length; i++) {
       const b = DESCENT_BOONS.find((k) => k.id === s.b[i]);
@@ -1701,6 +1714,7 @@ export class Descent {
     this.introLeft = Math.max(0, this.introLeft - dt);
     this.fallLeft = Math.max(0, this.fallLeft - dt);
     for (const e of this.eruptions) e.left = Math.max(0, e.left - dt);
+    this.hazards.follow(dt);
   }
 }
 
@@ -1735,6 +1749,8 @@ export interface DescentNet {
   dr: [number, number, string[]][];
   dn: [number, number][];
   e: [number, number, number, number, number][];
+  /** The chamber's dangers (see Hazards.netState). */
+  hz?: HazardsNet;
   b: string[];
   /** Relics held and their recent procs (left out while there are none). */
   rl?: RelicNet;

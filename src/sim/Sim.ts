@@ -25,6 +25,8 @@ export interface SimTerrain {
   groundAt(x: number, z: number): number;
   /** Pushes a circle out of the obstacles. Writes into `out` and returns it, when given (so a hot loop allocates nothing). */
   resolve(x: number, z: number, radius: number, feetY: number, stepHeight?: number, out?: { x: number; z: number }): { x: number; z: number };
+  /** Cuts holes in the walkable floor that come and go (positive inside one): the Abyss's fallen ledges. */
+  cut?(field: ((x: number, z: number) => number) | null): void;
 }
 
 export interface BaseZone {

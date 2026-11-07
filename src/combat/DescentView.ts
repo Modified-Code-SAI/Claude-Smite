@@ -15,6 +15,7 @@ import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { ArcView } from './Arcs';
 import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
 import { GroundDecal } from './GroundDecal';
+import { HazardsView, type HazardCue } from './HazardsView';
 import { DEPTH_EYES, KEEPER_CORE, KEEPER_GLOW, setMonsterDepth, sinksAfter } from './MonsterViews';
 import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
@@ -83,7 +84,7 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}` | `hazard.${HazardCue}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -152,6 +153,8 @@ export class DescentView {
   private readonly leaps: { a: THREE.Vector3; mid: THREE.Vector3; b: THREE.Vector3; age: number }[] = [];
   private readonly knellRings: GroundDecal[] = [];
   private readonly knells: { x: number; z: number; age: number }[] = [];
+  /** The chamber's dangers: the vents, the slag, the flood, the brink and the dark. */
+  private readonly hazards: HazardsView;
 
   constructor(
     private readonly run: Descent,
@@ -171,6 +174,11 @@ export class DescentView {
     };
     const content = world.content as Partial<UnderworldMap>;
     this.map = typeof content.show === 'function' ? (content as UnderworldMap) : null;
+    this.hazards = new HazardsView(world.vfx, vfx, groundAt, {
+      ...(opts.me ? { me: opts.me } : {}),
+      ...(opts.shake ? { shake: opts.shake } : {}),
+      cue: (name, at, k) => opts.cue?.(`hazard.${name}`, at, k),
+    });
     for (let i = 0; i < ERUPTIONS; i++) {
       const d = new GroundDecal(groundAt);
       d.setStyle('telegraph');
@@ -310,6 +318,7 @@ export class DescentView {
       this.door.place({ type: 'ring', radius: DESCENT.exitRadius - 0.4, width: 0.5 }, door.x, door.z + 1.2, 0, 0.1);
     }
 
+    this.hazards.update(dt, r);
     // soul fire: a circle that fills until it erupts
     r.eruptions.forEach((e, i) => {
       const d = this.eruptions[i];

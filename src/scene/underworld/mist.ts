@@ -3,11 +3,14 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { smoothstep as sstep } from '../../core/random';
 import { caveField, CHAMBERS, chamberField, type ChamberDef, type Palette } from '../../map/UnderworldLayout';
 import {
-  attribute, cos, float, mix, mx_noise_float, positionWorld, sin, smoothstep, time, uniform, vec2, vec3, vec4,
+  attribute, cos, float, max, mix, mx_noise_float, positionWorld, sin, smoothstep, step, time, uniform, vec2, vec3, vec4,
 } from '../../render/tsl';
+import { darkReach } from './hazardLook';
 
 /** The two sheets the mist is drawn in (m above the floor): a denser one low down and a thinner one over it. */
 const SHEETS = [0.14, 0.5] as const;
+/** Where the floor runs on to no void (walls, deep in the floor): the creeping dark never gets there. */
+const NO_BRINK = 99;
 /** How far apart (m) the mist's grid points lie. */
 const STEP = 1.5;
 
@@ -79,8 +82,12 @@ export class Mist {
     const thick = smoothstep(mix(float(0.45), float(-0.35), cover), 0.65, banks.add(fray.mul(0.45)));
     const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
     mat.forceSinglePass = true;
-    mat.colorNode = vec4(vec3(this.tint).mul(thick.mul(0.35).add(0.85)), 1);
-    mat.opacityNode = thick.mul(inside).mul(density).mul(mix(float(1), float(0.6), sheet));
+    // the Abyss's creeping dark (src/sim/DescentHazards.ts) turns it black and thick as it comes in from the void
+    const brink = attribute('brink', 'float');
+    const dark = smoothstep(darkReach.add(0.3), darkReach.sub(0.9), brink.add(fray.mul(0.5))).mul(step(0.01, darkReach));
+    const pall = smoothstep(-0.7, 0.4, banks.add(fray.mul(0.45))).mul(0.8);
+    mat.colorNode = vec4(mix(vec3(this.tint).mul(thick.mul(0.35).add(0.85)), vec3(0.006, 0.01, 0.008), dark), 1);
+    mat.opacityNode = max(thick.mul(inside).mul(density).mul(mix(float(1), float(0.6), sheet)), dark.mul(pall));
 
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = 'ground-mist';
@@ -140,11 +147,16 @@ function mistSheets(c: ChamberDef): THREE.BufferGeometry {
     g.rotateX(-Math.PI / 2);
     const pos = g.attributes.position!;
     const inside = new Float32Array(pos.count);
+    const brink = new Float32Array(pos.count);
     for (let i = 0; i < pos.count; i++) {
-      inside[i] = mistInside(c, pos.getX(i), pos.getZ(i));
-      pos.setXYZ(i, pos.getX(i) + c.x, y, pos.getZ(i) + c.z);
+      const lx = pos.getX(i);
+      const lz = pos.getZ(i);
+      inside[i] = mistInside(c, lx, lz);
+      brink[i] = c.depth === 2 && chamberField(c, lx, lz) > -0.4 ? Math.max(0, c.brink(lx, lz)) : NO_BRINK;
+      pos.setXYZ(i, lx + c.x, y, lz + c.z);
     }
     g.setAttribute('inside', new THREE.Float32BufferAttribute(inside, 1));
+    g.setAttribute('brink', new THREE.Float32BufferAttribute(brink, 1));
     g.setAttribute('sheet', new THREE.Float32BufferAttribute(new Float32Array(pos.count).fill(k), 1));
     g.deleteAttribute('uv');
     g.deleteAttribute('normal');
