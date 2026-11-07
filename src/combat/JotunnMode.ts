@@ -344,6 +344,9 @@ export class JotunnMode {
     this.deathCam?.frame(dt, { me: this.deps.player, giant: this.mode.giant, cine: !!this.cine?.kind, off: this.piloting || this.mode.phase !== 'fight' });
     this.weather.frame(dt, this.mode);
     this.view.landings(this.mode.players, this.mode.giantPlayer.god);
+    // your god shows through the giant's body (not as the giant, nor while dead or in its shots)
+    const me = this.deps.player;
+    this.view.reveal(!this.piloting && !this.cine?.kind && me.alive && this.mode.phase !== 'done' ? me : null);
     this.view.update(dt, time);
     this.hud.frame(dt, this.cine?.kind ?? null);
     this.guide.frame(this.mode.phase, this.mode.timer);

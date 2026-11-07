@@ -476,6 +476,7 @@ const tmp2 = new THREE.Vector3();
 const tmp3 = new THREE.Vector3();
 const tmp4 = new THREE.Vector3();
 const cloudAt = new THREE.Vector3();
+const godChest = new THREE.Vector3();
 
 /** Powder snow in sun: blue-grey where a cloud shades itself, white where the sun catches it. */
 const POWDER = 0xdfe9f1;
@@ -761,6 +762,11 @@ export class JotunnView {
       this.host.billow?.('smoke', cloudAt.copy(at).setY(at.y + 1.2), 5.5, { duration: 3, delay: 0.15, tint: 0x5e5a58, rise: 1.1 });
       this.host.shake(0.35, at);
     }
+  }
+
+  /** The player's god, kept in view through the giant's body where it stands behind it; null when there's none to keep (see GiantModel.reveal). */
+  reveal(god: Unit | null): void {
+    this.model.reveal(god ? godChest.set(god.x, god.body.y + 1.2, god.z) : null);
   }
 
   /**

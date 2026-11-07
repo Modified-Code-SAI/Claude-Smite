@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GodModel } from './GodModel';
 import { JOTUNN } from '../sim/Jotunn';
-import { abs, attribute, color, float, mix, mx_noise_float, normalView, positionLocal, positionView, pow, saturate, sin, smoothstep, time, uniform } from '../render/tsl';
+import { abs, attribute, cameraPosition, clamp, color, dot, float, fract, length, max, min, mix, mx_noise_float, normalView, positionLocal, positionView, positionWorld, pow, saturate, screenCoordinate, sin, smoothstep, time, uniform, vec2 } from '../render/tsl';
 
 /** How much larger than its model (built at a god's height) the Jötunn is drawn. */
 export const GIANT_SCALE = 8;
@@ -187,6 +187,16 @@ const STAGGER: Pose = { 'spine2.y': 0.32, 'spine3.x': -0.15, 'armR.x': 0.9, 'arm
 const STRIDE: Pose = { 'spine3.x': 0.1, 'spine2.x': 0.04, 'head.x': -0.06 };
 
 const AXES = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+
+/**
+ * How the giant's body thins away for the camera (GiantModel.reveal): gone
+ * within `gone` m of the camera and solid from `solid` m (a follow camera
+ * that ends up inside a leg sees past it), and in a cone from the camera to
+ * the player's god, `radius` m across where the god stands, in which the
+ * body keeps `ghost` of its pixels (the god and the warnings at its feet
+ * show through, the leg still reads as a leg). Meters.
+ */
+export const SEE_THROUGH = { gone: 1.2, solid: 4, radius: 2.4, ghost: 0.3 } as const;
 
 /** The same pose on the other side: left and right swap, rotations about Y and Z flip. */
 export function mirror(p: Pose): Pose {
@@ -626,11 +636,25 @@ export class GiantModel {
   private readonly tilt = new THREE.Quaternion();
   /** Turns the head bone's frame into the model's (+Z forward) at rest, for `mouth`. */
   private readonly headRest = new THREE.Quaternion();
+  /** The player's god's chest (world): the body thins away in front of it (see SEE_THROUGH), by `seeOn` (0..1, eased toward `seeWant`). */
+  private readonly seeAt = uniform(new THREE.Vector3());
+  private readonly seeOn = uniform(0);
+  private seeWant = 0;
 
   constructor() {
     this.god = new GodModel('jotunn', undefined, { idle: 'Sword_Idle', fullStride: 0.12 });
     this.height = this.god.height * GIANT_SCALE * 0.92;
     this.god.root.scale.setScalar(GIANT_SCALE);
+    // its own body's materials thin away for the camera (the weak points added below stay solid)
+    const thin = new Map<THREE.Material, THREE.Material>();
+    this.god.root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || mesh.name === 'shadow') return;
+      const src = mesh.material as THREE.Material;
+      let m = thin.get(src);
+      if (!m) thin.set(src, (m = this.seeThrough(src)));
+      mesh.material = m;
+    });
     this.pivot.add(this.god.root);
     this.root.add(this.pivot);
     this.root.name = 'jotunn';
@@ -655,6 +679,36 @@ export class GiantModel {
       new THREE.Matrix4().copy(this.boneInverse('DEF-head')).invert().decompose(new THREE.Vector3(), q, new THREE.Vector3());
       this.headRest.copy(q).invert();
     }
+  }
+
+  /**
+   * A copy of a body material that drops pixels in an even screen dither
+   * (interleaved gradient noise, as the temple's near-faded stone) close to
+   * the camera, and in the cone between the camera and the player's god. It
+   * stays opaque (nothing sorted or blended), and its shadow, drawn by the
+   * model's stand-in, keeps its shape.
+   */
+  private seeThrough(src: THREE.Material): THREE.Material {
+    const m = src.clone() as THREE.MeshStandardNodeMaterial;
+    m.name = src.name;
+    const toP = positionWorld.sub(cameraPosition);
+    const near = smoothstep(SEE_THROUGH.gone, SEE_THROUGH.solid, length(toP));
+    // how far along the line to the god a pixel is (0 at the camera, 1 at the god), and how far off it
+    const toGod = this.seeAt.sub(cameraPosition);
+    const t = dot(toP, toGod).div(max(dot(toGod, toGod), 1e-4));
+    const along = clamp(t, 0, 1);
+    const off = length(toP.sub(toGod.mul(along)));
+    const r = along.mul(SEE_THROUGH.radius).add(0.05);
+    const inCone = float(1).sub(smoothstep(r.mul(0.6), r, off)).mul(float(1).sub(smoothstep(0.85, 0.97, t))).mul(this.seeOn);
+    m.opacityNode = min(near, float(1).sub(inCone.mul(1 - SEE_THROUGH.ghost)));
+    m.alphaTestNode = fract(float(52.9829189).mul(fract(dot(screenCoordinate.xy.floor(), vec2(0.06711056, 0.00583715)))));
+    return m;
+  }
+
+  /** The player's god to keep in view through the body (its chest, world), or null for none: as the giant, dead, or in a shot of it. */
+  reveal(at: THREE.Vector3 | null): void {
+    this.seeWant = at ? 1 : 0;
+    if (at) (this.seeAt.value as THREE.Vector3).copy(at);
   }
 
   private boneInverse(boneName: string): THREE.Matrix4 {
@@ -846,6 +900,8 @@ export class GiantModel {
   /** Poses the giant for this frame. Call after placing `root`. */
   update(dt: number, s: GiantState, parts: Record<GiantPart, GiantPartState>): void {
     this.clock += dt;
+    const on = this.seeOn.value as number;
+    if (on !== this.seeWant) this.seeOn.value = this.seeWant > on ? Math.min(this.seeWant, on + dt * 6) : Math.max(this.seeWant, on - dt * 6);
     this.state = s;
     this.root.updateMatrixWorld(true);
     this.track(dt, s);
