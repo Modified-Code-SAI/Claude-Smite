@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { fbm2, simplex2, smoothstep as sstep } from '../../core/random';
-import { hypot } from '../../core/math';
-import { CHAMBERS, chamberAt, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
+import { caveField, CHAMBERS, chamberAt, chamberField, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
 import {
   abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionWorld, pow, sin, smoothstep, step, texture, time, transformNormalToView, vec2, vec3,
 } from '../../render/tsl';
@@ -9,25 +8,15 @@ import { planar, triplanar, type TextureLibrary } from '../Materials';
 import type { Terrain, TerrainDef } from '../Terrain';
 import { CLEAR_WAVE, clearWave, depthLook, gateOpen, runeRings, underworldGlow } from './palettes';
 
-/** Rune rings carved in each chamber's floor (local center and radius), glowing in the depth's color. */
-const RUNES: readonly (readonly [number, number, number])[][] = [
-  [[0, 0, 8.4], [0, 0, 3.2]],
-  [[0, -12, 4.2], [0, 12, 4.2], [0, 0, 3]],
-  [[0, 0, 6.4], [0, 0, 2.6]],
-  [[0, 0, 10.6], [0, 0, 16.2]],
-  [[0, -10, 5.4], [0, 10, 5.4]],
-  [[0, 0, 12.5], [0, 0, 6.5], [0, -14, 3]],
-];
-
 /** Width (m) of one glyph's cell around a ring, and half the height of the band of glyphs. */
 const GLYPH = 1.1;
 const BAND = 0.62;
 
-/** Points the shown chamber's rune rings at its floor. */
+/** Points the shown chamber's rune rings (see ChamberDef.runes) at its floor. */
 export function showRunes(ci: number): void {
   const c = CHAMBERS[ci]!;
   runeRings.forEach((u, k) => {
-    const ring = RUNES[ci]?.[k];
+    const ring = c.runes[k];
     if (ring) u.value.set(c.x + ring[0], c.z + ring[1], ring[2], Math.max(8, Math.round((Math.PI * 2 * ring[2]) / GLYPH)));
     else u.value.set(1e4, 1e4, 0, 8);
   });
@@ -111,9 +100,27 @@ function ringDistance(xz: any, ring: any, seed: number): any {
 }
 
 /**
- * The underworld's ground: six flat basalt chamber floors sunk into a plateau
- * of black rock, walls rising steeply all round, and a bowl under the Burning
- * Pit's lava. The floors stay at height 0 so fights are on level ground.
+ * How deep (m) the ground lies `d` meters in past the floor's edge where
+ * the floor is cut, by depth: a bed of rock under the forge's lava (its
+ * surface at LAVA_Y), a sunken floor under the Drowned Halls' water (at
+ * WATER_Y), and in the Abyss a lip, then a sheer fall into the dark.
+ */
+function holeDepth(depth: number, d: number): number {
+  if (depth === 0) return -2.6 * sstep(0, 1.8, d);
+  if (depth === 1) return -2.8 * sstep(0, 1.6, d);
+  return -0.6 * sstep(0, 0.4, d) - VOID_DEPTH * sstep(0.35, 4.5, d);
+}
+
+/** Heights (m) of the lava's and the water's surface, and how far the Abyss's void falls. */
+export const LAVA_Y = -0.9;
+export const WATER_Y = -0.35;
+export const VOID_DEPTH = 30;
+
+/**
+ * The underworld's ground: eighteen chamber floors sunk into a plateau of
+ * black rock, walls rising steeply all round, and where a floor is cut, a
+ * bed of rock under lava, a drowned floor under water, or a fall into the
+ * void. The floors stay at height 0 so fights are on level ground.
  */
 export function underworldTerrain(): TerrainDef {
   const n1 = simplex2(301);
@@ -122,19 +129,22 @@ export function underworldTerrain(): TerrainDef {
   const H = UNDERWORLD.wallHeight;
   return {
     size: UNDERWORLD.size,
-    segments: 512,
+    // (about 0.55 m between vertices, fine enough for a bridge's edge)
+    segments: 616,
     maskSize: UNDERWORLD.size,
     maskRes: 1024,
     height(x, z) {
-      const f = underworldField(x, z);
-      if (f >= 0) return 0;
-      const c = CHAMBERS[chamberAt(x, z)]!;
-      if (c.pit) {
-        const r = hypot(x - c.x, z - c.z);
-        if (r < c.pit + 0.05) return -2.6 * sstep(0, 1.8, c.pit - r);
+      const i = chamberAt(x, z);
+      let cave = -40;
+      if (i >= 0) {
+        const c = CHAMBERS[i]!;
+        const f = chamberField(c, x - c.x, z - c.z);
+        if (f >= 0) return 0;
+        cave = caveField(c, x - c.x, z - c.z);
+        if (cave >= 0) return holeDepth(c.depth, -f);
       }
       // into the wall: a lip of scree, then a steep, ledged cliff
-      const d = -f + fbm2(n1, x * 0.11, z * 0.11, 3) * 0.9;
+      const d = -cave + fbm2(n1, x * 0.11, z * 0.11, 3) * 0.9;
       const rise = sstep(0.2, 7.5, d);
       const ridge = 1 - Math.abs(fbm2(n2, x * 0.05, z * 0.05, 4));
       const ledges = Math.round(rise * 5 + ridge * 0.5) / 5;
@@ -304,7 +314,8 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   rough = mix(rough, mix(rockRough, float(0.95), joints), rockW);
   col = col.mul(float(1).sub(scorch.mul(0.35)));
   // the runes are cut into the slabs: a dark groove around each glowing line
-  const floorW = float(1).sub(rockW);
+  // (only at the floor's own level: a ring broken off at the brink stays broken, not carried on down the drop)
+  const floorW = float(1).sub(rockW).mul(smoothstep(-0.45, -0.1, wy));
   // (the Abyss's script is light over the stone, not cut into it)
   const cut = groove.mul(floorW).mul(float(1).sub(abyss.mul(0.8)));
   col = col.mul(float(1).sub(cut.mul(0.6)));
@@ -365,7 +376,13 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const flare = gateOpen.mul(0.7).add(1);
   const runes = runeCore.mul(2.4).add(runeHalo).mul(depthTint(wave, wave.mul(crust).add(pour.mul(0.9)), wave.mul(shimmer))).add(runeRipple).mul(floorW).mul(flare);
   const molten = runeCore.mul(floorW).mul(ember).mul(crust).mul(pour.mul(1.6).add(0.3)).mul(flare);
-  const bowl = smoothstep(-0.15, -1.6, positionWorld.y).mul(2.2);
+  // the light of the lava, or the water's glow, from the stone under them; in
+  // the Abyss only a faint band of spirit light far down the drop
+  const bowl = mix(smoothstep(-0.15, -1.6, wy).mul(2.2), smoothstep(-5, -13, wy).mul(smoothstep(-31, -18, wy)).mul(0.55), abyss);
+  // and down the Abyss's drop the stone goes black
+  const sunk = smoothstep(-1.5, -11, wy);
+  // (its veins and seams die out within a few meters of the lip, so the drop reads as bottomless)
+  const sunkGlow = smoothstep(-0.7, -4, wy);
   // the Ashen Depths: lava seeping up through the joints between the slabs in
   // patches, and through the cracks in the crust along the walls
   // (in patches a few slabs across, where the runes' wear noise runs high)
@@ -417,7 +434,7 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   col = col.mul(float(1).sub(rim.mul(0.5)));
   rough = mix(rough, float(0.6), rim);
   const fissure = split.mul(2.3).add(rim.mul(0.1));
-  mat.colorNode = col;
+  mat.colorNode = col.mul(float(1).sub(sunk.mul(0.92)));
   mat.normalNode = transformNormalToView(nrm.normalize());
   mat.roughnessNode = rough;
   mat.metalnessNode = float(0);
@@ -430,6 +447,6 @@ function underworldMaterial(terrain: Terrain, textures: TextureLibrary): THREE.M
   const crest = exp(behind.mul(-0.35)).mul(fading);
   const edge = exp(behind.mul(-1.4)).mul(fading).mul(floorW);
   const lit = veins.add(seep).add(lavaJoint.mul(2.2)).add(fissure).mul(crest.mul(3).add(1)).add(crest.mul(0.06)).add(edge.mul(soul.mul(0.6).add(0.3)));
-  mat.emissiveNode = underworldGlow.mul(lit.add(runes).add(bowl).mul(breathe)).add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)));
+  mat.emissiveNode = underworldGlow.mul(lit.mul(float(1).sub(sunkGlow)).add(runes).add(bowl).mul(breathe)).add(vec3(1.0, 0.72, 0.42).mul(molten.mul(1.5)));
   return mat;
 }

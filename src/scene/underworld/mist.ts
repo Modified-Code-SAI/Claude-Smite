@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { smoothstep as sstep } from '../../core/random';
-import { CHAMBERS, chamberField, type ChamberDef, type Palette } from '../../map/UnderworldLayout';
+import { caveField, CHAMBERS, chamberField, type ChamberDef, type Palette } from '../../map/UnderworldLayout';
 import {
   attribute, cos, float, mix, mx_noise_float, positionWorld, sin, smoothstep, time, uniform, vec2, vec3, vec4,
 } from '../../render/tsl';
@@ -116,18 +116,27 @@ export class Mist {
   }
 }
 
-/** How far into the mist a point on the floor lies, 0 (none) to 1: it thins out over the last meters before the walls and the pit's rim. */
+/**
+ * How far into the mist a point lies, 0 (none) to 1: it thins out over the
+ * last meters before the walls. It lies over the Drowned Halls' water as
+ * well as their floor, but never over the forge's lava or the Abyss's void,
+ * which stay clear to their brink.
+ */
 export function mistInside(c: ChamberDef, lx: number, lz: number): number {
-  return sstep(0.6, 2.6, chamberField(c, lx, lz));
+  return sstep(0.6, 2.6, c.depth === 1 ? caveField(c, lx, lz) : chamberField(c, lx, lz));
 }
 
 /** One chamber's sheets of mist in world space: a grid over its floor at each height, each point carrying `sheet` and `inside`. */
 function mistSheets(c: ChamberDef): THREE.BufferGeometry {
   const half = c.extent + 1;
+  // (as wide as the chamber's cavern reaches)
+  let wide = 4;
+  for (let x = 0; x < 34; x += 0.5) for (let z = -half; z <= half; z += 1) if (caveField(c, x, z) > 0 || caveField(c, -x, z) > 0) wide = Math.max(wide, x + 1);
+  const nx = Math.ceil((wide * 2) / STEP);
   const n = Math.ceil((half * 2) / STEP);
   const sheets: THREE.BufferGeometry[] = [];
   SHEETS.forEach((y, k) => {
-    const g = new THREE.PlaneGeometry(half * 2, half * 2, n, n);
+    const g = new THREE.PlaneGeometry(wide * 2, half * 2, nx, n);
     g.rotateX(-Math.PI / 2);
     const pos = g.attributes.position!;
     const inside = new Float32Array(pos.count);

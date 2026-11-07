@@ -1,5 +1,6 @@
 import { hypot } from '../core/math';
-import { exitSpot, obstaclesOf, steer, type ChamberDef } from '../map/UnderworldLayout';
+import { Route } from '../map/ChamberNav';
+import { exitSpot, type ChamberDef } from '../map/UnderworldLayout';
 import { GodBot } from './Bot';
 import { DESCENT, type Descent } from './Descent';
 import type { Sim } from './Sim';
@@ -16,8 +17,8 @@ import type { Brain, Point, Unit } from './Unit';
 export class DescentBot implements Brain {
   readonly inner: GodBot;
   private readonly anchor: Point = { x: 0, z: 0 };
-  private obstacles: (readonly [number, number, number])[] = [];
-  private layoutOf = -1;
+  /** Its way round the chamber's lava, water or void. */
+  private readonly way = new Route();
 
   constructor(
     private readonly sim: Sim,
@@ -60,7 +61,7 @@ export class DescentBot implements Brain {
   }
 
   private route(goal: Point): Point {
-    return steer(this.obstacles, this.u.x, this.u.z, goal.x, goal.z, this.u.radius);
+    return this.way.next(this.run.layout, this.u, goal, this.sim.time);
   }
 
   update(dt: number): void {
@@ -72,18 +73,14 @@ export class DescentBot implements Brain {
       return;
     }
     const c = run.layout;
-    if (this.layoutOf !== run.current.layout) {
-      this.layoutOf = run.current.layout;
-      this.obstacles = obstaclesOf(c);
-    }
     const leaving = run.phase === 'exit' || run.phase === 'descend';
     const door = exitSpot(c);
     // between fights the team gathers toward the exit; during one the bot holds the chamber's middle
     // (in a shared descent, its own team's half: the rivals are met at the line, not everywhere)
     const side = u.team === 'chaos' ? 1 : -1;
-    const hold = run.versus ? holdX(c, side) : 0;
-    this.anchor.x = leaving ? door.x + (run.versus ? side * 4.5 : 0) : c.x + hold;
-    this.anchor.z = leaving ? door.z + (run.humans.size || run.versus ? 4 : 0) : c.z;
+    const [hx, hz] = run.versus ? holdSide(c, side) : c.hold;
+    this.anchor.x = leaving ? door.x + (run.versus ? side * 4.5 : 0) : c.x + hx;
+    this.anchor.z = leaving ? door.z + (run.humans.size || run.versus ? 4 : 0) : c.z + hz;
     this.inner.update(dt);
     if (!u.alive || u.forced) return;
 
@@ -150,11 +147,23 @@ export class DescentBot implements Brain {
   }
 }
 
-/** How far to one side of a chamber's middle a team holds in a shared descent: well inside the floor, clear of the pit. */
-function holdX(c: ChamberDef, side: 1 | -1): number {
-  for (let x = c.extent * 0.32; x > 2; x -= 0.5) {
-    if (c.pit && x < c.pit + 3) break;
-    if (c.sd(side * x, 0) > 3) return side * x;
+/** Where in a chamber a team holds in a shared descent: on broad floor its own side of the middle, about a third of the way out. */
+function holdSide(c: ChamberDef, side: 1 | -1): readonly [number, number] {
+  const key = `${c.name}:${side}`;
+  const known = holds.get(key);
+  if (known) return known;
+  let best: readonly [number, number] = [side * 4, 0];
+  let bs = Infinity;
+  const want = c.extent * 0.32;
+  for (let z = -8; z <= 8; z += 0.5) {
+    for (let x = 2; x <= c.extent * 0.7; x += 0.5) {
+      if (c.sd(side * x, z) <= 3) continue;
+      const score = Math.abs(x - want) + Math.abs(z) * 0.5;
+      if (score < bs) [bs, best] = [score, [side * x, z]];
+    }
   }
-  return side * (c.pit ? c.pit + 3 : 4);
+  holds.set(key, best);
+  return best;
 }
+
+const holds = new Map<string, readonly [number, number]>();

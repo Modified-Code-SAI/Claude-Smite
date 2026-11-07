@@ -4,7 +4,8 @@ import { SLOT_COUNT, ULTIMATE_SLOT } from '../game/loadout';
 import { FAVOR_THRESHOLDS, favorPoints, XP_TABLE } from '../game/progression';
 import type { GodDef, SkillDef, StatKey } from '../game/types';
 import type { CampKind } from '../map/ConquestLayout';
-import { BOSS_CHAMBER, CHAMBERS, entranceSpot, exitSpot, obstaclesOf, steer, type ChamberDef, type Palette } from '../map/UnderworldLayout';
+import { navOf, Route } from '../map/ChamberNav';
+import { CHAMBERS, DEPTH_CHAMBERS, entranceSpot, exitSpot, obstaclesOf, type ChamberDef, type Palette } from '../map/UnderworldLayout';
 import { monsterName, monsterUnit, type MonsterType } from './factory';
 import { MonsterBrain, type BossSpecial, type CampState } from './Jungle';
 import { Relics, relicById, type Relic, type RelicNet } from './Relics';
@@ -159,26 +160,22 @@ export const KIND_TEXT: Record<ChamberKind, string> = {
 };
 
 /**
- * The whole run's chambers, rolled up front: every depth visits four of the
- * five normal chambers in a random order, then the boss arena.
+ * The whole run's chambers, rolled up front: every depth visits four of its
+ * own five halls in a random order, then its master's arena.
  */
 export function planRun(rng: () => number): ChamberPlan[] {
   const out: ChamberPlan[] = [];
-  const normal = CHAMBERS.map((_, i) => i).filter((i) => i !== BOSS_CHAMBER);
-  let last = -1;
   for (let depth = 0; depth < DESCENT.chambers / DESCENT.bossEvery; depth++) {
-    const order = shuffle(normal, rng);
-    // never the same hall twice in a row across a depth's edge
-    if (order[0] === last) order.push(order.shift()!);
+    const own = DEPTH_CHAMBERS[depth]!;
+    const order = shuffle(own.halls, rng);
     let treasure = false;
     for (let k = 0; k < DESCENT.bossEvery; k++) {
       const n = depth * DESCENT.bossEvery + k + 1;
       if (k === DESCENT.bossEvery - 1) {
-        out.push({ n, layout: BOSS_CHAMBER, kind: 'boss' });
+        out.push({ n, layout: own.boss, kind: 'boss' });
         continue;
       }
       const layout = order[k]!;
-      last = layout;
       let kind: ChamberKind = 'pack';
       if (n > 1) {
         const r = rng();
@@ -376,19 +373,23 @@ export class DescentMonsterBrain extends MonsterBrain {
   private blinkIn: number = SHADE_BLINK.first;
   /** A Gravekeeper's next mend, in seconds. */
   private mendIn: number = KEEPER.first;
+  /** Its way to its foe round the chamber's lava, water or void. */
+  private readonly route = new Route();
+  /** The chamber's columns (world coordinates). */
+  private readonly obstacles: readonly (readonly [number, number, number])[];
 
   constructor(
     private readonly s: Sim,
     private readonly self: Unit,
     camp: CampState,
-    private readonly obstacles: readonly (readonly [number, number, number])[] = [],
-    /** The chamber it fights in: where a Shade may blink to. */
+    /** The chamber it fights in: the way round its lava, water or void, and where a Shade may blink to. */
     private readonly chamber: ChamberDef | null = null,
-    /** While true (a boss's entrance), it only turns to face its foe. */
+    /** While true (a boss's entrance, or its fall), it only turns to face its foe. */
     private readonly held: () => boolean = () => false,
   ) {
     super(s, self, camp);
     this.at = camp.camp.at as unknown as [number, number];
+    this.obstacles = chamber ? obstaclesOf(chamber) : [];
   }
 
   override get bossKey(): string | null {
@@ -429,9 +430,9 @@ export class DescentMonsterBrain extends MonsterBrain {
     this.at[0] = t ? t.x : u.x;
     this.at[1] = t ? t.z : u.z;
     super.update(dt);
-    if (t && u.move && this.obstacles.length) {
-      const p = steer(this.obstacles, u.x, u.z, t.x, t.z, u.radius);
-      if (p.x !== t.x || p.z !== t.z) {
+    if (t && u.move && this.chamber) {
+      const p = this.route.next(this.chamber, u, t, this.s.time);
+      if (this.route.turning) {
         const dx = p.x - u.x;
         const dz = p.z - u.z;
         const d = Math.max(0.01, hypot(dx, dz));
@@ -486,7 +487,7 @@ export class DescentMonsterBrain extends MonsterBrain {
       const side = -dz * (c.x - u.x) + dx * (c.z - u.z) >= 0 ? 1 : -1;
       [dx, dz] = [-dz * side, dx * side];
     }
-    const p = steer(this.obstacles, u.x, u.z, u.x + dx * 4, u.z + dz * 4, u.radius);
+    const p = navOf(c).next(u.x, u.z, u.x + dx * 4, u.z + dz * 4);
     const mx = p.x - u.x;
     const mz = p.z - u.z;
     const d = Math.max(0.01, hypot(mx, mz));
@@ -519,6 +520,8 @@ export class DescentMonsterBrain extends MonsterBrain {
       const z = near.z + Math.cos(a) * SHADE_BLINK.far;
       if (c.sd(x - c.x, z - c.z) < 2.5) continue;
       if (this.obstacles.some(([ox, oz, r]) => hypot(x - ox, z - oz) < r + u.radius + 0.6)) continue;
+      // (and never across a chasm from where it stood: a Shade slips away, it doesn't fly)
+      if (!navOf(c).clear(u.x, u.z, x, z) && navOf(c).path(u.x, u.z, x, z).length > 3) continue;
       this.s.teleport(u, x, z, Math.atan2(x - near.x, z - near.z));
       return true;
     }
@@ -529,15 +532,18 @@ export class DescentMonsterBrain extends MonsterBrain {
 /** The Gilded Thornback: never fights, runs from the gods around its chamber until caught or the chamber is cleared. */
 export class FleeBrain implements Brain {
   private dir = 1;
+  /** How far from the chamber's middle it circles: where its round stays on the floor the most. */
+  private readonly roam: number;
   constructor(
     private readonly s: Sim,
     private readonly u: Unit,
-    private readonly center: { x: number; z: number },
-    private readonly roam: number,
-  ) {}
+    private readonly c: ChamberDef,
+  ) {
+    this.roam = roamOf(c);
+  }
 
   update(): void {
-    const u = this.u;
+    const { u, c } = this;
     u.move = null;
     if (!u.alive) return;
     let nx = 0;
@@ -548,8 +554,8 @@ export class FleeBrain implements Brain {
       const d = hypot(t.x - u.x, t.z - u.z);
       if (d < near) [near, nx, nz] = [d, t.x, t.z];
     }
-    const rx = u.x - this.center.x;
-    const rz = u.z - this.center.z;
+    const rx = u.x - c.x;
+    const rz = u.z - c.z;
     const r = Math.max(0.01, hypot(rx, rz));
     let mx = (-rz / r) * this.dir + (rx / r) * (this.roam - r) * 0.15;
     let mz = (rx / r) * this.dir + (rz / r) * (this.roam - r) * 0.15;
@@ -562,9 +568,42 @@ export class FleeBrain implements Brain {
     }
     const m = hypot(mx, mz);
     if (m < 0.01) return;
-    u.move = { x: mx / m, z: mz / m };
-    u.body.yaw = Math.atan2(-mx, -mz);
+    // it never runs itself into a wall or over the brink: it turns along the edge, the way it was already going
+    let a = Math.atan2(mz, mx);
+    const nav = navOf(c);
+    const ahead = (t: number) => nav.room(u.x + Math.cos(t) * 2.5, u.z + Math.sin(t) * 2.5) > 1.2;
+    if (!ahead(a)) {
+      for (let k = 1; k <= 5; k++) {
+        const turn = (k * Math.PI) / 6;
+        if (ahead(a + turn * this.dir)) {
+          a += turn * this.dir;
+          break;
+        }
+        if (ahead(a - turn * this.dir)) {
+          a -= turn * this.dir;
+          this.dir = -this.dir;
+          break;
+        }
+      }
+    }
+    u.move = { x: Math.cos(a), z: Math.sin(a) };
+    u.body.yaw = Math.atan2(-u.move.x, -u.move.z);
   }
+}
+
+/** The radius round a chamber's middle with the most of its circle on broad floor. */
+function roamOf(c: ChamberDef): number {
+  let best = 8;
+  let bs = -1;
+  for (let r = 8; r <= c.extent * 0.75; r += 0.5) {
+    let on = 0;
+    for (let k = 0; k < 48; k++) {
+      const a = (k / 48) * Math.PI * 2;
+      if (c.sd(Math.cos(a) * r, Math.sin(a) * r) > 2) on++;
+    }
+    if (on > bs) [bs, best] = [on, r];
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,7 +1121,8 @@ export class Descent {
       u.home.x = x;
       u.home.z = z;
       const camp: CampState = { camp: { id: `descent:${n}:${label}:${i}`, kind: campKind, team: null, at: [x, z] }, members: [u], respawnAt: null, foe: null };
-      u.brain = new DescentMonsterBrain(this.sim, u, camp, obstaclesOf(c), c, () => this.introLeft > 0);
+      // (held through a boss's entrance, and as their master falls: they falter, and crumble where they stand)
+      u.brain = new DescentMonsterBrain(this.sim, u, camp, c, () => this.introLeft > 0 || this.fallLeft > 0);
       if (boss) this.boss = u;
       if (king) this.rainIn = KING.rain.first;
       u.origin = { f: 'mode', kind: 'descent', data: { type, min: minutes, title, role: boss ? 'boss' : champion ? 'champion' : '' } satisfies DescentSpawn };
@@ -1098,7 +1138,7 @@ export class Descent {
     u.combatant.refreshTimedMod('maxHealth', u.combatant.stats.maxHealth * (chamberScale(this.chamber) * teamScale(this.gods.length) - 1), 1e9);
     u.combatant.health = u.combatant.stats.maxHealth;
     u.tag = `descent-small-${this.chamber}.g:gildedThornback`;
-    u.brain = new FleeBrain(this.sim, u, { x: c.x, z: c.z }, Math.max(8, c.extent * 0.6));
+    u.brain = new FleeBrain(this.sim, u, c);
     u.origin = { f: 'mode', kind: 'descent', data: { type: 'gildedThornback', min: chamberMinutes(this.chamber), title: '', role: 'gilded' } satisfies DescentSpawn };
     this.gilded = u;
     this.monsters.push(u);

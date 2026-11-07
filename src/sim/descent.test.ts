@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ULTIMATE_SLOT } from '../game/loadout';
 import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
-import { BOSS_CHAMBER, CHAMBERS, chamberField, entranceSpot, exitSpot, steer, underworldField, obstaclesOf } from '../map/UnderworldLayout';
+import { CHAMBERS, chamberField, DEPTH_CHAMBERS, entranceSpot, exitSpot, underworldCave, underworldField, obstaclesOf } from '../map/UnderworldLayout';
+import { navOf } from '../map/ChamberNav';
 import { ALL_SLOTS, chamberWaves, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, KEEPER, KING, learnSkill, planRun, SHADE_BLINK } from './Descent';
 import { CURSES } from './Siege';
 import { DescentBot } from './DescentBot';
@@ -77,32 +78,72 @@ const walkOut = (sim: Sim, run: Descent, u: Unit) => {
 };
 
 describe('Underworld Descent: the map', () => {
-  it('lays out six chambers that never touch, each open at both gates', () => {
-    expect(CHAMBERS.length).toBe(6);
-    expect(CHAMBERS[BOSS_CHAMBER]!.boss).toBe(true);
+  it('lays out six chambers to each depth, none shared, that never touch, each open at both gates', () => {
+    expect(CHAMBERS.length).toBe(18);
+    expect(new Set(CHAMBERS.map((c) => c.name)).size).toBe(18);
+    for (let d = 0; d < 3; d++) {
+      const own = DEPTH_CHAMBERS[d]!;
+      expect(own.halls.length).toBe(5);
+      expect(CHAMBERS[own.boss]!.boss).toBe(true);
+      for (const i of [...own.halls, own.boss]) expect(CHAMBERS[i]!.depth).toBe(d);
+      // each depth's halls are each a different kind of hall, each dressed with its own landmark
+      expect(new Set(own.halls.map((i) => CHAMBERS[i]!.plan)).size).toBe(5);
+    }
     for (const c of CHAMBERS) {
       const e = entranceSpot(c);
       const x = exitSpot(c);
-      expect(underworldField(e.x, e.z)).toBeGreaterThan(1);
-      expect(underworldField(x.x, x.z)).toBeGreaterThan(0.6);
-      // the chamber's middle is floor unless it is the lava pit
-      expect(underworldField(c.x, c.z) > 0).toBe(!c.pit);
-      for (const s of c.spawns) expect(chamberField(c, s[0]!, s[1]!)).toBeGreaterThan(1.2);
+      expect(underworldField(e.x, e.z), c.name).toBeGreaterThan(1);
+      expect(underworldField(x.x, x.z), c.name).toBeGreaterThan(0.6);
+      // the team and its rivals all arrive on floor
+      for (let i = 0; i < 7; i++) {
+        const s = entranceSpot(c, i, 7, 2);
+        expect(underworldField(s.x, s.z), c.name).toBeGreaterThan(0.7);
+      }
+      for (const s of c.spawns) expect(chamberField(c, s[0]!, s[1]!), c.name).toBeGreaterThan(1.2);
+      expect(c.spawns.length, c.name).toBeGreaterThanOrEqual(6);
+      expect(c.fires.length, c.name).toBeGreaterThanOrEqual(c.boss ? 8 : 5);
+      expect(chamberField(c, c.hold[0], c.hold[1]), c.name).toBeGreaterThan(3.9);
+      // the boss rises on floor
+      if (c.boss) expect(chamberField(c, 0, -c.extent * 0.35), c.name).toBeGreaterThan(3);
+      // the floor is cut by its depth's lava, water or void (the Abyss's halls are mostly void)
+      let floor = 0;
+      let cut = 0;
+      for (let z = -c.extent; z <= c.extent; z += 1) {
+        for (let x = -c.extent; x <= c.extent; x += 1) {
+          if (c.sd(x, z) >= 0) floor++;
+          else if (c.cave(x, z) >= 0) cut++;
+        }
+      }
+      expect(cut / (floor + cut), c.name).toBeGreaterThan(c.depth === 2 ? 0.15 : 0.04);
     }
-    // halfway between two neighbours is solid rock
-    expect(underworldField(-47.5, -55)).toBeLessThan(-5);
-    expect(underworldField(0, 0)).toBeLessThan(-5);
+    // halfway between two neighbours is solid rock, and so is where no chamber is
+    for (let i = 1; i < CHAMBERS.length; i++) {
+      const a = CHAMBERS[i - 1]!;
+      const b = CHAMBERS[i]!;
+      if (Math.abs(a.z - b.z) > 1) continue;
+      expect(underworldCave((a.x + b.x) / 2, a.z), `${a.name} | ${b.name}`).toBeLessThan(-5);
+    }
+    expect(underworldField(300, 300)).toBeLessThan(-5);
   });
 
-  it('steers a walker around a column or the pit in its way', () => {
-    const pit = CHAMBERS.find((c) => c.pit)!;
-    const obs = obstaclesOf(pit);
-    const from = { x: pit.x, z: pit.z + 15 };
-    const to = { x: pit.x, z: pit.z - 15 };
-    const p = steer(obs, from.x, from.z, to.x, to.z, 0.6);
-    expect(Math.abs(p.x - pit.x)).toBeGreaterThan(pit.pit! + 0.6);
-    // a clear line goes straight
-    expect(steer(obs, pit.x + 18, pit.z, pit.x + 18, pit.z - 5, 0.6)).toEqual({ x: pit.x + 18, z: pit.z - 5 });
+  it('finds every way across a chamber over its bridges, never across the lava, water or void', () => {
+    for (const c of CHAMBERS) {
+      const nav = navOf(c);
+      const e = entranceSpot(c);
+      const goals = [exitSpot(c), { x: c.x + c.hold[0], z: c.z + c.hold[1] }, ...c.spawns.map(([x, z]) => ({ x: c.x + x, z: c.z + z }))];
+      for (const g of goals) {
+        const path = nav.path(e.x, e.z, g.x, g.z);
+        for (let i = 1; i < path.length; i++) expect(nav.clear(path[i - 1]!.x, path[i - 1]!.z, path[i]!.x, path[i]!.z), `${c.name} to ${g.x - c.x}, ${g.z - c.z}`).toBe(true);
+      }
+    }
+    // across the Slag Hall's channel by one of its bridges
+    const slag = CHAMBERS.find((c) => c.name === 'The Slag Hall')!;
+    const way = navOf(slag).path(slag.x, slag.z + 12, slag.x, slag.z - 12);
+    expect(way.length).toBeGreaterThan(2);
+    const crossing = way.find((p) => Math.abs(p.z - slag.z) < 3);
+    expect(Math.abs(Math.abs((crossing ?? way[1]!).x - slag.x) - 8)).toBeLessThan(2.6);
+    // and a clear line goes straight
+    expect(navOf(slag).next(slag.x - 4, slag.z + 12, slag.x + 4, slag.z + 8)).toEqual({ x: slag.x + 4, z: slag.z + 8 });
   });
 });
 
@@ -113,10 +154,12 @@ describe('Underworld Descent: the run', () => {
       expect(plan.length).toBe(DESCENT.chambers);
       expect(plan[0]!.kind).toBe('pack');
       for (const p of plan) expect(p.kind === 'boss').toBe(p.n % DESCENT.bossEvery === 0);
-      for (const p of plan) if (p.kind === 'boss') expect(p.layout).toBe(BOSS_CHAMBER);
       for (let d = 0; d < 3; d++) {
         const halls = plan.slice(d * 5, d * 5 + 4).map((p) => p.layout);
         expect(new Set(halls).size).toBe(4);
+        // only the depth's own halls, then its own master's arena
+        for (const h of halls) expect(DEPTH_CHAMBERS[d]!.halls).toContain(h);
+        expect(plan[d * 5 + 4]!.layout).toBe(DEPTH_CHAMBERS[d]!.boss);
         expect(plan.slice(d * 5, d * 5 + 5).filter((p) => p.kind === 'treasure').length).toBeLessThanOrEqual(1);
       }
       for (let i = 1; i < plan.length; i++) expect(plan[i]!.layout === plan[i - 1]!.layout && plan[i]!.kind !== 'boss').toBe(false);
@@ -127,9 +170,9 @@ describe('Underworld Descent: the run', () => {
     const size = (n: number) => chamberWaves({ n, layout: 0, kind: 'pack' }).flat().length;
     expect(size(1)).toBeLessThan(size(6));
     expect(size(6)).toBeLessThanOrEqual(size(13));
-    expect(chamberWaves({ n: 5, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('treasureWyrm');
-    expect(chamberWaves({ n: 10, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('moltenColossus');
-    expect(chamberWaves({ n: 15, layout: BOSS_CHAMBER, kind: 'boss' })[0]).toContain('ossuaryKing');
+    expect(chamberWaves({ n: 5, layout: DEPTH_CHAMBERS[0]!.boss, kind: 'boss' })[0]).toContain('treasureWyrm');
+    expect(chamberWaves({ n: 10, layout: DEPTH_CHAMBERS[1]!.boss, kind: 'boss' })[0]).toContain('moltenColossus');
+    expect(chamberWaves({ n: 15, layout: DEPTH_CHAMBERS[2]!.boss, kind: 'boss' })[0]).toContain('ossuaryKing');
     expect(chamberWaves({ n: 4, layout: 0, kind: 'elite' })[0]).toContain('warden');
   });
 
@@ -147,7 +190,7 @@ describe('Underworld Descent: the run', () => {
     const shade = sim.add(monsterUnit(zeus, 'shade', { x: c.x + sx, z: c.z + sz, yaw: 0 }, 0));
     shade.tag = 'descent-small-6.0.0:shade';
     const camp = { camp: { id: 'shade', kind: 'small' as const, team: null, at: [shade.x, shade.z] as [number, number] }, members: [shade], respawnAt: null, foe: null };
-    shade.brain = new DescentMonsterBrain(sim, shade, camp, obstaclesOf(c), c);
+    shade.brain = new DescentMonsterBrain(sim, shade, camp, c);
     const god = sim.add(godUnit(thor, 'order', { x: shade.x + 2, z: shade.z, yaw: 0 }));
     let hops = 0;
     sim.listeners.push((e) => {
@@ -194,7 +237,7 @@ describe('Underworld Descent: the run', () => {
       const m = sim.add(monsterUnit(zeus, type, { x, z, yaw: 0 }, 0));
       m.tag = `descent-small-11.0.${i}:${type}`;
       const camp = { camp: { id: `m${i}`, kind: 'small' as const, team: null, at: [x, z] as [number, number] }, members: [m], respawnAt: null, foe: null };
-      m.brain = new DescentMonsterBrain(sim, m, camp, obstaclesOf(c), c);
+      m.brain = new DescentMonsterBrain(sim, m, camp, c);
       return m;
     };
     const keeper = brained('gravekeeper', c.x + sx, c.z + sz, 0);
