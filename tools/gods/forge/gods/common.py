@@ -155,18 +155,31 @@ def add_hair_head(god, hair_len=0.25, beard_len=0.15, mustache=True, brows=True,
         meshes.append(hairmod.clumps(paths, norms, style))
     if brows:
         eye = lm['eye']
+        P, PN = b.verts[b.used], b.normals[b.used]
         roots, norms = [], []
-        for sgn in (-1, 1):
-            for t in np.linspace(0.0, 1.0, 6):
-                x = sgn * (0.012 + 0.05 * t)
-                roots.append(np.array([x, eye[1] + 0.03 + 0.008 * np.sin(t * np.pi), eye[2] + 0.012 - 0.03 * t * t]))
+        # two staggered rows of short locks overlap into one band over each eye
+        rows = [(sgn, row, t) for sgn in (-1, 1) for row in (0, 1) for t in np.linspace(0.04 * row, 1.0 - 0.1 * row, 9 - row)]
+        for sgn, row, t in rows:
+            x = sgn * (0.011 + 0.048 * t)
+            # just above the socket: an arch over the eye whose tail dips a little
+            guess = np.array([x, eye[1] + 0.017 + 0.0045 * row * (1 - 0.6 * t) + 0.007 * np.sin(t * np.pi) - 0.004 * t, eye[2] + 0.012 - 0.03 * t * t])
+            # root on the skin of the brow ridge: the front-most surface at this x and height
+            # (the guess sits about 2 cm inside a heroic brow, which buried the brows)
+            near = np.flatnonzero((np.abs(P[:, 0] - guess[0]) < 0.006) & (np.abs(P[:, 1] - guess[1]) < 0.006) & (P[:, 2] > eye[2] - 0.05))
+            if len(near):
+                i = near[np.argmax(P[near, 2])]
+                roots.append(P[i] + PN[i] * 0.001)
+                norms.append(normalize(PN[i] + np.array([sgn * 0.15 * t, 0.1, 0])))
+            else:
+                roots.append(guess)
                 norms.append(normalize(np.array([sgn * 0.3 * t, 0.25, 1.0])))
         roots, norms = np.array(roots), np.array(norms)
 
         def wflow(p):
             return normalize(np.stack([np.sign(p[:, 0]), np.full(len(p), 0.35), np.zeros(len(p))], axis=1))
-        style = hairmod.Style(length=0.03, width=0.013, flatness=0.5, segments=4, lift=0.3, gravity=0.0, flow=wflow,
-                           jitter=0.05, clearance=0.004, seed=seed + 3)
+        # short, flat, lying close and combed outward: brows, not tufts
+        style = hairmod.Style(length=0.021, width=0.0058, flatness=0.28, segments=4, lift=0.04, gravity=0.0, flow=wflow,
+                           jitter=0.04, clearance=0.002, taper=0.8, seed=seed + 3)
         paths = hairmod.grow(b, roots, norms, style)
         meshes.append(hairmod.clumps(paths, norms, style))
     from ..geo import merge
