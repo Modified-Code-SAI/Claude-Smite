@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { UNDERWORLD_LIFE } from '../audio/underworldAmbience';
 import type { Side } from '../game/combatant';
 import { exitSpot, obstaclesOf, underworldField } from '../map/UnderworldLayout';
 import type { CameraShot } from '../player/ThirdPersonCamera';
@@ -26,6 +27,10 @@ const CINDERS: GodPalette = { cloth: 0, trim: 0, glow: 0xff6a1a, vfx: 0xff6a1a, 
 const SPLASH: GodPalette = { cloth: 0, trim: 0, glow: 0x7ec8ff, vfx: 0x7ec8ff, core: 0xe8f8ff };
 const SPRAY = 0x4c6478;
 const GHOST_SMOKE = 0x3c8a66;
+/** The small things that stir near the team (DescentView.stir): steam off the forge's hot rock, and the pale ghost of a whisper in the Abyss. */
+const STEAM = 0x86807a;
+const VENT = 0x6a625c;
+const WHISPER = 0x9effc8;
 /** The white-hot middle of a beast's flares in each depth, around its eyes' color (DEPTH_EYES). */
 const BEAST_CORE: Record<keyof typeof DEPTH_COLORS, number> = { ember: 0xffd08a, soul: 0xeaf8ff, spirit: 0xe0ffe8 };
 /** Souls that are nobody's in particular, pale and ghostly in each depth's light (cyan against the Ashen Depths' fire). */
@@ -77,7 +82,7 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -127,6 +132,10 @@ export class DescentView {
   /** Where the big blows have struck the depth's floor, and the newest flash already marked. */
   private readonly scars: DepthScars;
   private lastFlash = 0;
+  /** Seconds until the next small thing stirs near the team (see `stir`). */
+  private stirIn = 3;
+  /** The shown chamber's columns and pit, for `room` (worked out once a chamber). */
+  private obstacles: { of: unknown; list: ReturnType<typeof obstaclesOf> } = { of: null, list: [] };
   /** The slain still to go down into the ground: where, when (on this view's clock), how big and whether a boss. */
   private readonly sinking: { x: number; z: number; at: number; r: number; boss: boolean }[] = [];
   /** The run of souls reaching the player: its length and when the last landed. */
@@ -244,6 +253,7 @@ export class DescentView {
     this.tracks.update(dt);
     this.scars.update(dt);
     this.markBlows();
+    this.stir(dt);
     for (let i = this.sinking.length - 1; i >= 0; i--) {
       const s = this.sinking[i]!;
       if (this.clock < s.at) continue;
@@ -415,6 +425,59 @@ export class DescentView {
     this.lastFlash = last;
   }
 
+  /** How far (x, z) is from the chamber's walls and the things standing on its floor: below 0, off the floor or inside one. */
+  private room(x: number, z: number): number {
+    const c = this.run.layout;
+    if (this.obstacles.of !== c) this.obstacles = { of: c, list: obstaclesOf(c) };
+    let r = underworldField(x, z);
+    for (const [ox, oz, or] of this.obstacles.list) r = Math.min(r, Math.hypot(x - ox, z - oz) - or);
+    return r;
+  }
+
+  /**
+   * Now and then something small stirs near the team, seen where it is heard
+   * (the sound is cued with it, from UNDERWORLD_LIFE's near stirs): a drop
+   * falling into the Drowned Halls' wet stone and ringing out, steam venting
+   * off the forge's hot rock, a whisper in the Abyss drifting up as a pale
+   * wisp. Mostly ahead of the player, where it can be seen.
+   */
+  private stir(dt: number): void {
+    this.stirIn -= dt;
+    if (this.stirIn > 0) return;
+    const palette = DEPTHS[this.run.depth]!.palette;
+    const near = UNDERWORLD_LIFE[palette].near;
+    this.stirIn = near.every[0] + Math.random() * (near.every[1] - near.every[0]);
+    const me = this.opts.me;
+    if (!me || this.run.phase === 'descend') return;
+    // (a god faces (-sin yaw, -cos yaw))
+    const ahead = Math.atan2(-Math.sin(me.body.yaw), -Math.cos(me.body.yaw));
+    for (let tries = 0; tries < 6; tries++) {
+      const a = Math.random() < 0.75 ? ahead + (Math.random() - 0.5) * 2.2 : Math.random() * Math.PI * 2;
+      const r = near.dist[0] + Math.random() * (near.dist[1] - near.dist[0]);
+      const x = me.x + Math.sin(a) * r;
+      const z = me.z + Math.cos(a) * r;
+      if (this.room(x, z) < 1) continue;
+      const gy = this.groundAt(x, z);
+      if (palette === 'soul') {
+        // a drop out of the dark overhead: a ring or two running out across the wet, and a fleck of spray
+        this.scars.mark(x, z, 0.55, true, false);
+        this.vfx.burst(SPLASH, x, gy + 0.05, z, 0.18);
+        this.opts.cue?.('stir', { x, y: gy + 0.3, z }, 0);
+      } else if (palette === 'ember') {
+        // steam venting off the hot rock in a hiss: a burst at the crack, and a column rising and thinning over it
+        this.vfx.billow('dust', x, gy + 0.4, z, 1.5, { tint: VENT, duration: 1.3, rise: 0.6 });
+        this.vfx.billow('smoke', x, gy + 1.2, z, 3, { tint: STEAM, duration: 3.4, rise: 2.4, delay: 0.1 });
+        this.opts.cue?.('stir', { x, y: gy + 0.5, z }, 0);
+      } else {
+        // a whisper: a pale wisp or two drifting up out of the dark, and a breath of ghost smoke
+        this.wisps.swarm.release(x, gy + 1.1, z, 2, null, WHISPER, 0.42, 0.22);
+        this.vfx.cloud(GHOST_SMOKE, x, gy + 0.9, z, 0.45, 1);
+        this.opts.cue?.('stir', { x, y: gy + 1.5, z }, 0);
+      }
+      return;
+    }
+  }
+
   /**
    * A body going down into the ground, the way each depth takes back its dead:
    * the forge's slumps into ash and cinders, the Drowned Halls' goes under the
@@ -536,12 +599,7 @@ export class DescentView {
     const subject = { x: boss.x, z: boss.z, ground, height };
     const me = this.opts.me;
     const toward = me ? { x: me.x, z: me.z } : exitSpot(this.run.layout);
-    const obstacles = obstaclesOf(this.run.layout);
-    const room = (x: number, z: number) => {
-      let r = underworldField(x, z);
-      for (const [ox, oz, or] of obstacles) r = Math.min(r, Math.hypot(x - ox, z - oz) - or);
-      return r;
-    };
+    const room = (x: number, z: number) => this.room(x, z);
     const spot = fall ? introSpot(subject, toward, room, fallDistance(height), BOSS_FALL.side) : introSpot(subject, toward, room, introDistance(height));
     const orbit = fall ? fallOrbit(subject, spot, room) : 0;
     this.intro = { fall, boss, t, subject, spot, orbit, shot: this.intro?.shot ?? { pos: { x: 0, y: 0, z: 0 }, look: { x: 0, y: 0, z: 0 }, weight: 0 } };

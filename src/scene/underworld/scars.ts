@@ -127,12 +127,13 @@ export class DepthScars {
     m.polygonOffset = true;
     m.polygonOffsetFactor = -2;
     m.polygonOffsetUnits = -3;
-    // each vertex's place on the mark in its radii, and the mark's birth, seed and radius (meters)
+    // each vertex's place on the mark in its radii, and the mark's birth, seed and radius (meters; negative for rings alone, a drip's)
     const p = attribute('sLocal', 'vec2');
     const info = attribute('sInfo', 'vec3');
     const age = this.now.sub(info.x);
     const seed = info.y;
-    const size = info.z;
+    const size = abs(info.z);
+    const body = step(0, info.z);
     const forge = depthLook.x;
     const drowned = depthLook.y;
     const abyss = depthLook.z;
@@ -204,20 +205,27 @@ export class DepthScars {
     m.roughnessNode = forge.mul(0.97).add(drowned.mul(0.07)).add(abyss.mul(0.6));
     m.emissiveNode = emberGlow
       .mul(forge)
-      .add(vec3(0.3, 0.62, 1).mul(sheen.mul(0.45).add(rings.mul(0.85)).mul(drowned)))
-      .add(vec3(0.25, 1, 0.55).mul(ghost.mul(abyss).mul(1.25)));
+      .mul(body)
+      .add(vec3(0.3, 0.62, 1).mul(sheen.mul(0.45).mul(body).add(rings.mul(0.85)).mul(drowned)))
+      .add(vec3(0.25, 1, 0.55).mul(ghost.mul(abyss).mul(body).mul(1.25)));
     m.opacityNode = ashA
       .mul(forge)
+      .add(wetA.mul(drowned))
+      .add(ghostA.mul(abyss))
       .mul(left)
-      .add(wetA.mul(left).add(rings.mul(0.4)).mul(drowned))
-      .add(ghostA.mul(left).mul(abyss))
+      .mul(body)
+      .add(rings.mul(0.4).mul(drowned))
       .mul(grow)
       .clamp(0, 1);
     return m;
   }
 
-  /** A blow struck the floor round (x, z), `r` meters across its middle; on wet stone (`rings`) it sends rings out across it. */
-  mark(x: number, z: number, r: number, rings = false): void {
+  /**
+   * A blow struck the floor round (x, z), `r` meters across its middle; on
+   * wet stone (`rings`) it sends rings out across it. Without its `body`, a
+   * mark is its rings alone: a drop of water falling into the wet.
+   */
+  mark(x: number, z: number, r: number, rings = false, body = true): void {
     const g = SCARS.grid;
     const extent = rings ? SCARS.ringsExtent : SCARS.extent;
     const s = this.next;
@@ -240,7 +248,7 @@ export class DepthScars {
         loc[o * 2 + 1] = v * extent;
         inf[o * 3] = this.clock;
         inf[o * 3 + 1] = seed;
-        inf[o * 3 + 2] = r;
+        inf[o * 3 + 2] = body ? r : -r;
       }
     }
     this.position.needsUpdate = true;

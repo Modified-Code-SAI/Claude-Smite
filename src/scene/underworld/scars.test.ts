@@ -46,6 +46,17 @@ describe("the big blows' marks in the Descent's floors", () => {
     }
   });
 
+  it('marks a drop of water as its rings alone, no splash under them', () => {
+    const s = new DepthScars(() => 0);
+    s.mark(0, 0, 2.5, true);
+    s.mark(5, 0, 0.34, true, false);
+    const info = s.mesh.geometry.getAttribute('sInfo').array as Float32Array;
+    const per = SCARS.grid * SCARS.grid;
+    // (the radius's sign tells the shader whether the mark has its body)
+    expect(info[2]).toBeCloseTo(2.5, 5);
+    expect(info[per * 3 + 2]).toBeCloseTo(-0.34, 5);
+  });
+
   it('makes room for new marks by reusing the oldest, and wipes them all for the next chamber', () => {
     const s = new DepthScars(() => 0);
     for (let i = 0; i <= SCARS.capacity; i++) s.mark(i * 20, 0, 2);
