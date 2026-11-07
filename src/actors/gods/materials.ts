@@ -445,7 +445,9 @@ function hairMaterial(root: number, tip: number): THREE.Material {
   const vaneShade = float(1).sub(smoothstep(0.35, 1, ax).mul(0.22).sub(0.06).mul(isFeather));
   const vane = shifted.mul(pattern.mul(mix(float(0.3), float(0.22), isFeather)).add(mix(float(0.62), float(0.7), isFeather))).mul(vaneShade).mul(occl).mul(tint).add(color(tip).mul(shine));
   m.colorNode = mix(vane, tone.mul(1.5).add(0.06).mul(tint), quill.mul(0.75));
-  m.roughnessNode = float(0.5).sub(pattern.mul(0.15)).sub(quill.mul(0.15));
+  // rough enough that the plain highlight stays soft: the shine comes from the strand bands below,
+  // and a tight round highlight on every lock made dark hair read as moulded plastic
+  m.roughnessNode = float(0.64).sub(pattern.mul(0.12)).sub(quill.mul(0.15));
   // each lock is a bundle of strands: smooth ridges along it catch the light. The bump
   // goes long before the color does: a ridge a few pixels across already flips the
   // normal from pixel to pixel and reads as a checkered dither on thin locks
