@@ -33,6 +33,7 @@ class Style:
     clearance: float = 0.012  # min distance from the skin
     tip_curl: float = 0.0  # curls tips upward/outward (beards)
     grooves: int = 0  # sculpted strand grooves across each clump's broad face
+    comb: float = 0.0  # 0..1: near the skin a lock turns to lie along it (a mane lies on the skull, then falls)
     seed: int = 1
 
 
@@ -79,6 +80,14 @@ def grow(body: Body, roots: np.ndarray, normals: np.ndarray, style: Style, colli
             t = (s + 1) / n_seg
             f = style.flow(p[None])[0] if style.flow else np.zeros(3)
             d = normalize(d + f * 0.35 + np.array([0, -1.0, 0]) * style.gravity * 0.25 * t)
+            if style.comb:
+                # while still close to the skin, lie along it: lose most of the climb off it
+                dist, i = tree.query(p)
+                qn = bn[i]
+                near = style.comb * np.clip(1 - (dist - style.clearance) / 0.05, 0, 1)
+                up = np.dot(d, qn)
+                if up > 0:
+                    d = normalize(d - qn * up * near)
             if style.curl:
                 side = normalize(np.cross(d, n0))
                 d = normalize(d + side * np.sin(phase + t * style.curl_freq * 2 * np.pi) * style.curl * 0.3)
