@@ -57,6 +57,8 @@ export interface RushDeps {
   camera: THREE.Camera;
   /** A burst of light and sparks (CombatVfx.burst). */
   burst: (p: GodPalette, x: number, y: number, z: number, power: number) => void;
+  /** Ends every effect still playing (CombatVfx.reset): a new point's kickoff, under the HUD's dip. */
+  clearEffects?: () => void;
   shake?: (amount: number) => void;
   /** Plays a carrier's throw ('throw': the off hand that held the relic up whips it on), or a scorer's cheer ('ult': chest up, a hand to the sky). */
   swing?: (u: Unit, kind?: 'throw' | 'ult') => void;
@@ -490,6 +492,8 @@ export class RushMode {
       const near = Math.max(0, 1 - Math.hypot(me.x - gate.x, me.z - gate.z) / 30);
       this.deps.shake?.(0.15 + near * 0.35);
     }
+    // a new point: the smoke, sparks and ribbons the last one left behind go with it, out of sight under the dip
+    if (r.phase === 'kickoff' && (seen.phase === 'goal' || seen.phase === 'play')) this.deps.clearEffects?.();
     if (r.phase === 'play' && seen.phase === 'kickoff' && at) burst(GOLD, at.x, at.y, at.z, 0.9);
     // a throw coming down loose kicks up a puff of gold where it lands
     if (seen.relic === 'flying' && r.relic.phase === 'loose') burst(GOLD, r.relic.x, this.deps.groundAt(r.relic.x, r.relic.z) + 0.2, r.relic.z, 0.3);

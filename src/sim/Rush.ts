@@ -1048,20 +1048,26 @@ export class Rush {
     for (const side of ['order', 'chaos'] as const) {
       this.team(side).forEach((g, i) => {
         const c = g.combatant;
+        // every point starts fresh: the beaten-up line up at full strength too (under the dip, so the bars refill unseen),
+        // with no buffs, debuffs or shields left over from the last one
         if (!c.alive) {
           // stood up here rather than at their gate (the sim's own respawn would move them there)
           c.respawnTimer = 0;
           c.respawn();
           g.wasAlive = true;
           this.sim.inject({ type: 'respawn', unit: g });
-        }
-        // every point starts fresh: the beaten-up line up at full strength too (under the dip, so the bars refill unseen)
-        c.health = c.stats.maxHealth;
-        c.mana = c.stats.maxMana;
+        } else c.respawn();
+        // nor a mark waiting to be set off: three Charges from the last run made the next carrier a stun at the pedestal
+        g.marks.clear();
         g.forced = null;
         c.cc.reset();
         this.place(g, i);
       });
+    }
+    // and no sandstorm or ooze still raging round the gate (gone under the dip; guests drop it with the host's next state)
+    for (const z of this.sim.zones) {
+      z.ticks = 0;
+      z.timer = Math.min(z.timer, -0.4);
     }
   }
 

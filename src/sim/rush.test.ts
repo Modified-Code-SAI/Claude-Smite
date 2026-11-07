@@ -637,6 +637,45 @@ describe('Relic Rush', () => {
     expect(moves.every((m) => m.quiet)).toBe(true);
   });
 
+  it('a new point leaves the last one behind: no marks waiting to go off, no buffs, debuffs or shields, no sandstorm still raging', () => {
+    const { sim, rush } = match();
+    const a = god(sim, zeus, 'order', 0);
+    const n = god(sim, anubis, 'chaos', 0);
+    rush.begin([a, n]);
+    run(sim, rush, RUSH.countdown + 0.1);
+    sim.teleport(a, 0, 1.6);
+    run(sim, rush, 0.2);
+    expect(rush.holder).toBe(a);
+    const armor = a.combatant.stats.physicalProtection;
+    // the run to the gate: Anubis throws his sandstorm over it, and the carrier comes out of the fight marked and battered
+    sim.teleport(a, 0, RUSH.gates.chaos.z + 3);
+    sim.teleport(n, 0, RUSH.gates.chaos.z - 2);
+    n.aim.x = 0;
+    n.aim.z = RUSH.gates.chaos.z;
+    expect(sim.cast(n, n.combatant.loadout.indexOf('anubis.sandstorm'))).toBeNull();
+    run(sim, rush, 0.05);
+    expect(sim.zones.length).toBe(1);
+    a.marks.set('charge', { stacks: 3, remaining: 60 });
+    a.combatant.addTimedMod('physicalProtection', -20, 60);
+    n.combatant.addShield(300, 60);
+    n.combatant.addTimedMod('bonusMoveSpeed', 0.3, 60);
+    sim.teleport(a, 0, RUSH.gates.chaos.z);
+    run(sim, rush, 0.05);
+    expect(rush.phase).toBe('goal');
+    run(sim, rush, RUSH.celebrate + 0.1);
+    expect(rush.phase).toBe('kickoff');
+    // three Charges carried over made the next carrier a Static Discharge stun at the pedestal
+    expect(a.marks.size).toBe(0);
+    expect(a.combatant.stats.physicalProtection).toBe(armor);
+    expect(n.combatant.shieldTotal).toBe(0);
+    expect(n.combatant.stats.bonusMoveSpeed).toBe(0);
+    expect(sim.zones.length).toBe(0);
+    // nor does it rage on over the marks during the countdown
+    const before = a.combatant.health;
+    run(sim, rush, RUSH.countdown - 0.3);
+    expect(a.combatant.health).toBe(before);
+  });
+
   it('a low throw through the gate scores; a lob over it does not', () => {
     const { sim, rush } = match();
     const a = god(sim, loki, 'order', 0);
