@@ -49,9 +49,10 @@ STYLE = ('Hand-painted stylized fantasy game texture, one uniform surface fillin
 MATERIALS = {
     'flagstone': dict(
         prompt='An old temple flagstone floor: about five large irregular worn sandstone paving slabs across, '
-               'warm beige, tan and honey tones varying slab to slab, chipped rounded slab edges, fine cracks and small pits, '
-               'narrow earthy joints with a little moss.',
-        init=0.9, steps=8, contrast=1.05, normal=1.0, rough=1.5, seed=1),
+               'warm beige, tan and honey tones varying slab to slab, each slab richly hand-painted with visible brushwork, '
+               'fine stone grain, soft speckles and subtle tonal variation, gently rounded worn edges with small chips, '
+               'a few faint hairline cracks, narrow earthy joints with a little moss.',
+        init=0.9, steps=8, contrast=1.05, normal=1.0, rough=1.5, seed=4),
     'marble': dict(
         prompt='A single large slab of polished white temple marble: soft cream and pale grey clouds, a few thin elegant '
                'grey veins and faint gold veins wandering across it, subtle weathering. Very light overall.',
