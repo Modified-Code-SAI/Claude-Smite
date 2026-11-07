@@ -361,6 +361,42 @@ export const SOUNDS: Record<string, Recipe> = {
     },
   },
   'sink.glass': { variants: 3, peak: 0.5, make: (r) => layer([whoosh(r, 1.4, 900, 340, { q: 1.1 }), 0.7], [choir(r, 1.6, r() < 0.5 ? 147 : 165, { vowelName: 'oo', env: (t) => ahr(t, 0.25, 0.3, 1) }), 0.3, 0.05], [chime(r, 0.9, 1200 + r() * 400), 0.12, 0.03]) },
+  // a cleared chamber exhaling, the whole room at once (DescentView.exhale): the forge's furnace drawing a long breath through its cracks, a deep swell through the Drowned Halls' water with the soul-light shimmering on it, the Abyss sighing in many far voices
+  'clear.basalt': {
+    variants: 2,
+    peak: 0.5,
+    make: (r) =>
+      layer(
+        [filter(whoosh(r, 2.6, 170, 640, { q: 0.8 }), 'lowpass', 1800), 0.85],
+        [filter(thump(r, 1, 110, 55, { noise: 0.5, gain: 0.8 }), 'lowpass', 700), 0.45, 0.02],
+        [crackles(r, 2.2, 18), 0.28, 0.35],
+        [choir(r, 2.6, 196, { vowelName: 'ah', env: (t) => ahr(t, 0.6, 0.6, 1.3) }), 0.16, 0.25],
+      ),
+  },
+  'clear.wet': {
+    variants: 2,
+    peak: 0.5,
+    make: (r) => {
+      const parts: [Float32Array, number, number][] = [
+        [filter(whoosh(r, 2.6, 240, 520, { q: 0.9 }), 'lowpass', 1300), 0.75, 0],
+        [choir(r, 2.8, 196, { vowelName: 'oo', env: (t) => ahr(t, 0.7, 0.6, 1.4) }), 0.2, 0.15],
+        [shimmer(r, 1.9, 880, { rise: 1.1, peak: 0.12 }), 0.45, 0.4],
+      ];
+      for (let k = 0; k < 4; k++) parts.push([bubble(r), 0.14 - k * 0.02, 0.5 + k * 0.3 + r() * 0.1]);
+      return layer(...parts);
+    },
+  },
+  'clear.glass': {
+    variants: 2,
+    peak: 0.5,
+    make: (r) =>
+      layer(
+        [whoosh(r, 2.4, 720, 300, { q: 1.1 }), 0.55],
+        [choir(r, 2.8, 147, { vowelName: 'oo', env: (t) => ahr(t, 0.6, 0.7, 1.4) }), 0.22, 0.05],
+        [choir(r, 2.6, 220, { vowelName: 'oo', env: (t) => ahr(t, 0.6, 0.6, 1.3) }), 0.18, 0.3],
+        [shimmer(r, 2, 1046.5, { rise: 1.2, peak: 0.12 }), 0.45, 0.35],
+      ),
+  },
   'soul.absorb': { variants: 3, peak: 0.35, make: (r) => layer([whoosh(r, 0.3, 700, 3400, { q: 1.4, peak: 0.85, gain: 0.7 }), 0.6], [shimmer(r, 0.55, 1046.5, { rise: 1.3, peak: 0.15 }), 1, 0.07], [choir(r, 0.6, 523.3, { vowelName: 'oo', env: (t) => ahr(t, 0.06, 0.08, 0.4) }), 0.35, 0.05]) },
 
   // -- the gods' own voices (voices.ts)

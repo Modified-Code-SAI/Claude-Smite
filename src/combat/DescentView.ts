@@ -7,7 +7,7 @@ import { DESCENT, DEPTHS, SOULS, type Descent } from '../sim/Descent';
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { Flash, SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
-import { DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
+import { CLEAR_WAVE, clearWave, DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
 import { DepthTracks } from '../scene/underworld/prints';
 import { DepthScars, scarsFor } from '../scene/underworld/scars';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
@@ -82,7 +82,7 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -134,6 +134,9 @@ export class DescentView {
   private lastFlash = 0;
   /** Seconds until the next small thing stirs near the team (see `stir`). */
   private stirIn = 3;
+  /** Where the latest foe fell this chamber, and how long since the chamber was cleared (the wave it sends out; below 0, none running). */
+  private readonly lastFall = { x: 0, z: 0, set: false };
+  private cleared = -1;
   /** The shown chamber's columns and pit, for `room` (worked out once a chamber). */
   private obstacles: { of: unknown; list: ReturnType<typeof obstaclesOf> } = { of: null, list: [] };
   /** The slain still to go down into the ground: where, when (on this view's clock), how big and whether a boss. */
@@ -223,6 +226,9 @@ export class DescentView {
       this.sinking.length = 0;
       this.tracks.clear();
       this.scars.clear();
+      this.lastFall.set = false;
+      this.cleared = -1;
+      clearWave.value.w = 0;
       this.callAt.age = -1;
       this.callRing.mesh.visible = false;
     }
@@ -264,7 +270,16 @@ export class DescentView {
     if (r.phase !== this.phase) {
       // the floor gives way beneath the team as it goes down
       if (r.phase === 'descend') this.opts.shake?.(0.4);
+      if (r.phase === 'reward' && this.phase === 'fight') this.exhale();
       this.phase = r.phase;
+    }
+    if (this.cleared >= 0) {
+      this.cleared += dt;
+      clearWave.value.z = this.cleared;
+      if (this.cleared > CLEAR_WAVE.time) {
+        this.cleared = -1;
+        clearWave.value.w = 0;
+      }
     }
 
     // the exit's veil glows up once the way down is open
@@ -398,6 +413,9 @@ export class DescentView {
     const worth = isGod ? (r.versus ? DESCENT.versus.god : 0) : type ? SOULS[type] : 1;
     const y = u.body.y + Math.min(3.2, 0.9 + u.radius * 0.5);
     if (!isGod) {
+      this.lastFall.x = u.x;
+      this.lastFall.z = u.z;
+      this.lastFall.set = true;
       const role = u.origin?.f === 'mode' ? (u.origin.data as { role?: string } | undefined)?.role : undefined;
       this.sinking.push({ x: u.x, z: u.z, at: this.clock + sinksAfter(u.tag), r: u.radius, boss: role === 'boss' });
     }
@@ -423,6 +441,21 @@ export class DescentView {
       for (const m of scarsFor(f.shape)) this.scars.mark(m.x, m.z, m.r, wet);
     }
     this.lastFlash = last;
+  }
+
+  /**
+   * The chamber is cleared, and exhales: a wave of the depth's light runs out
+   * across the floor from where the last foe fell (or the chamber's middle),
+   * swelling every vein, seam and crack as it passes (UnderworldTerrain), with
+   * the depth's own long breath of sound.
+   */
+  private exhale(): void {
+    const c = this.run.layout;
+    const x = this.lastFall.set ? this.lastFall.x : c.x;
+    const z = this.lastFall.set ? this.lastFall.z : c.z;
+    clearWave.value.set(x, z, 0, 1);
+    this.cleared = 0;
+    this.opts.cue?.('clear', { x, y: this.groundAt(x, z) + 1, z }, 0);
   }
 
   /** How far (x, z) is from the chamber's walls and the things standing on its floor: below 0, off the floor or inside one. */
