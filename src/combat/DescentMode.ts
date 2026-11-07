@@ -104,7 +104,7 @@ export class DescentMode {
     const board = new Scoreboard(sim);
     board.track(this.gods);
     this.hud = new DescentHud(run, player, (i) => this.pick(i), board);
-    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, { team: run.sideOf(player), me: player, shake: deps.shake, cue: deps.cue, cameraShot: deps.cameraShot, heightOf: deps.heightOf });
+    this.view = new DescentView(run, world, deps.vfx, deps.groundAt, { team: run.sideOf(player), me: player, shake: deps.shake, cue: deps.cue, cameraShot: deps.cameraShot, heightOf: deps.heightOf, flashes: () => sim.flashes });
   }
 
   /** Votes for a reward, or drafts a skill (from its key or a click on its card). */

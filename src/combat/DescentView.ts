@@ -4,10 +4,11 @@ import { exitSpot, obstaclesOf, underworldField } from '../map/UnderworldLayout'
 import type { CameraShot } from '../player/ThirdPersonCamera';
 import { DESCENT, DEPTHS, SOULS, type Descent } from '../sim/Descent';
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
-import type { SimEvent, Unit } from '../sim/Unit';
+import type { Flash, SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
 import { DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
 import { DepthTracks } from '../scene/underworld/prints';
+import { DepthScars, scarsFor } from '../scene/underworld/scars';
 import type { UnderworldMap } from '../scene/underworld/UnderworldMap';
 import { ArcView } from './Arcs';
 import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
@@ -72,6 +73,8 @@ export interface DescentViewOptions {
   cameraShot?: (shot: CameraShot | null) => void;
   /** A unit's height as drawn, for framing a boss. */
   heightOf?: (u: Unit) => number | null;
+  /** The areas struck this moment (the sim's flashes): the big blows mark the depth's floor. */
+  flashes?: () => readonly Flash[];
 }
 
 export type DescentCue = 'soul' | 'emerge' | 'sink' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}`;
@@ -121,6 +124,9 @@ export class DescentView {
   private clock = 0;
   /** Where the gods have walked, marked in the depth's floor (fed by `step`). */
   private readonly tracks: DepthTracks;
+  /** Where the big blows have struck the depth's floor, and the newest flash already marked. */
+  private readonly scars: DepthScars;
+  private lastFlash = 0;
   /** The slain still to go down into the ground: where, when (on this view's clock), how big and whether a boss. */
   private readonly sinking: { x: number; z: number; at: number; r: number; boss: boolean }[] = [];
   /** The run of souls reaching the player: its length and when the last landed. */
@@ -186,6 +192,8 @@ export class DescentView {
     world.vfx.add(this.chainArc.group);
     this.tracks = new DepthTracks(groundAt);
     world.vfx.add(this.tracks.mesh);
+    this.scars = new DepthScars(groundAt);
+    world.vfx.add(this.scars.mesh);
   }
 
   /** A god's foot came down (UnitViews.onFootfall): it marks the depth's floor. */
@@ -205,6 +213,7 @@ export class DescentView {
       this.raised.clear();
       this.sinking.length = 0;
       this.tracks.clear();
+      this.scars.clear();
       this.callAt.age = -1;
       this.callRing.mesh.visible = false;
     }
@@ -233,6 +242,8 @@ export class DescentView {
     }
     this.clock += dt;
     this.tracks.update(dt);
+    this.scars.update(dt);
+    this.markBlows();
     for (let i = this.sinking.length - 1; i >= 0; i--) {
       const s = this.sinking[i]!;
       if (this.clock < s.at) continue;
@@ -386,6 +397,22 @@ export class DescentView {
       return;
     }
     this.wisps.swarm.release(u.x, y, u.z, Math.min(12, 1 + worth), to, to ? this.colorFor(to) : this.soul, worth >= 10 ? 1.1 : 0.85, worth >= 10 ? 0.6 : 0.28);
+  }
+
+  /** The big blows struck since last frame (skills, monsters' slams and bosses' quakes, not their warnings) mark the depth's floor. */
+  private markBlows(): void {
+    const flashes = this.opts.flashes?.();
+    if (!flashes) return;
+    let last = this.lastFlash;
+    for (const f of flashes) {
+      if (f.id <= this.lastFlash) continue;
+      last = Math.max(last, f.id);
+      if (f.warn || f.skill?.endsWith(':passive') || this.run.phase === 'descend') continue;
+      // (on the Drowned Halls' wet stone a blow rings out)
+      const wet = DEPTHS[this.run.depth]!.palette === 'soul';
+      for (const m of scarsFor(f.shape)) this.scars.mark(m.x, m.z, m.r, wet);
+    }
+    this.lastFlash = last;
   }
 
   /**
