@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ClothSpec, GodMeta } from './assets';
+import { clothScale, writeClothScale } from './clothScale';
 
 /** One capsule collider in a bone's space (a == b makes a sphere). */
 interface Collider {
@@ -279,6 +280,11 @@ function sheetGeometry(spec: ClothSpec): THREE.BufferGeometry {
     }
   }
   geo.setIndex(index);
+  // a cloth sheet's embroidery is sized in meters (hair sheets use color for their locks)
+  if (spec.material.startsWith('cloth')) {
+    const s = clothScale(spec.points.flat(), uv, index, n);
+    if (s) writeClothScale(geo.getAttribute('color') as THREE.BufferAttribute, s);
+  }
   return geo;
 }
 

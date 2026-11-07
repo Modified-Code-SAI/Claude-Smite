@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeSkinned } from '../../scene/merge';
 import { buildLods } from '../../scene/lod';
+import { clothScale, writeClothScale } from './clothScale';
 
 /** Gods with a built model in public/models/gods (see tools/gods/build.py). */
 export const GOD_IDS = ['zeus', 'thor', 'odin', 'loki', 'anubis', 'thanatos', 'kukulkan', 'cthulhu'] as const;
@@ -68,6 +69,7 @@ async function loadOne(id: string, clips: { animations: THREE.AnimationClip[] })
     return false;
   }
   widenVertexFormats(gltf.scene);
+  measureCloth(gltf.scene);
   // coarser levels of each piece for distance (scene/lod.ts), carried through the merges
   await buildLods(gltf.scene);
   // one draw per material instead of one per armor piece
@@ -139,6 +141,26 @@ function widenVertexFormats(scene: THREE.Object3D): void {
       }
       geo.setAttribute(name, new THREE.BufferAttribute(out, attr.itemSize));
     }
+  });
+}
+
+/**
+ * Cloth panels (skirts, robes, kilts) learn their size in meters, so the embroidered
+ * border on every one is the same size (see clothMaterial). Shells cut from the body
+ * have no panel uv and keep their border from _edge.
+ */
+function measureCloth(scene: THREE.Object3D): void {
+  scene.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    const name = (mesh.material as THREE.Material | undefined)?.name ?? '';
+    if (!mesh.isMesh || !name.startsWith('cloth')) return;
+    const geo = mesh.geometry;
+    const pos = geo.getAttribute('position');
+    const uv = geo.getAttribute('uv');
+    const color = geo.getAttribute('color');
+    if (!pos || !uv || !color || color.itemSize !== 4) return;
+    const s = clothScale(pos.array, uv.array, geo.index?.array ?? null, pos.count);
+    if (s) writeClothScale(color as THREE.BufferAttribute, s);
   });
 }
 
