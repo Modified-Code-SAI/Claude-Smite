@@ -105,7 +105,8 @@ const DRESS: Record<PropKind, { base: number; metal: number; rough: number; burn
   dagger: { base: 0xc8d2c4, metal: 0.95, rough: 0.22, burn: 1.2 },
   spearhead: { base: 0xe0b45a, metal: 0.9, rough: 0.25, burn: 1.4 },
   claw: { base: 0xd8c8a0, metal: 0.1, rough: 0.7, burn: 1.3 },
-  raven: { base: 0x141418, metal: 0.2, rough: 0.55, burn: 0.7 },
+  // a faint rim only: the flat wings, seen at a slant from behind, are all rim, and glowed tan
+  raven: { base: 0x141418, metal: 0.2, rough: 0.55, burn: 0.12 },
   bomb: { base: 0x2b2f2a, metal: 0.4, rough: 0.5, burn: 0.9 },
 };
 
