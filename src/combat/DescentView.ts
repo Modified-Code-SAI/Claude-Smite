@@ -3,7 +3,7 @@ import { UNDERWORLD_LIFE } from '../audio/underworldAmbience';
 import type { Side } from '../game/combatant';
 import { exitSpot, obstaclesOf, underworldField } from '../map/UnderworldLayout';
 import type { CameraShot } from '../player/ThirdPersonCamera';
-import { DESCENT, DEPTHS, SOULS, type Descent } from '../sim/Descent';
+import { DESCENT, DescentMonsterBrain, DEPTHS, HOWL, SOULS, type Descent } from '../sim/Descent';
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { Flash, SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
@@ -16,7 +16,7 @@ import { ArcView } from './Arcs';
 import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
 import { GroundDecal } from './GroundDecal';
 import { HazardsView, type HazardCue } from './HazardsView';
-import { DEPTH_EYES, KEEPER_CORE, KEEPER_GLOW, setMonsterDepth, sinksAfter } from './MonsterViews';
+import { DEPTH_EYES, HOUND_CORE, HOUND_GLOW, KEEPER_CORE, KEEPER_GLOW, setMonsterDepth, sinksAfter } from './MonsterViews';
 import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
@@ -45,6 +45,7 @@ const FOE_SOUL = 0xff4060;
 /** The Gilded Thornback's burst of gold. */
 /** A Gravekeeper's lantern flaring as it mends. */
 const LANTERN: GodPalette = { cloth: 0, trim: 0, glow: KEEPER_GLOW, vfx: KEEPER_GLOW, core: KEEPER_CORE };
+const HOWL_FX: GodPalette = { cloth: 0, trim: 0, glow: HOUND_GLOW, vfx: HOUND_GLOW, core: HOUND_CORE };
 const GILDED: GodPalette = { cloth: 0, trim: 0, glow: 0xffc23a, vfx: 0xffb020, core: 0xfff0b0 };
 /** Seconds between the souls a god raising an ally pours into them. */
 const STREAM_EVERY = 0.09;
@@ -86,7 +87,7 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | `relic.${RelicId}` | `hazard.${HazardCue}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | 'pounce' | 'pounceLand' | 'howl' | `relic.${RelicId}` | `hazard.${HazardCue}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -282,6 +283,7 @@ export class DescentView {
     this.markBlows();
     this.stir(dt);
     this.lurkers(dt);
+    this.packs();
     for (let i = this.sinking.length - 1; i >= 0; i--) {
       const s = this.sinking[i]!;
       if (this.clock < s.at) continue;
@@ -551,6 +553,50 @@ export class DescentView {
 
   /** Tide Lurkers seen under the floor last frame, and when each last left a ripple. */
   private readonly lurkUnder = new Map<Unit, number>();
+  /** Each Gravehound's and Packleader's pounces and howls seen so far, and whether it was in the air. */
+  private readonly hounds = new Map<Unit, { acts: number; air: boolean }>();
+
+  /**
+   * The Abyss's hounds: a kick of grave dust as a Gravehound leaps and a
+   * thud of it where it comes down; a Packleader's howl bursting green off
+   * it, souls streaming from it into each hound it drives on.
+   */
+  private packs(): void {
+    for (const u of this.run.monsters) {
+      const leader = u.tag.endsWith(':packleader');
+      if (!leader && !u.tag.endsWith(':gravehound')) continue;
+      const brain = u.brain instanceof DescentMonsterBrain ? u.brain : null;
+      const gy = this.groundAt(u.x, u.z);
+      const seen = this.hounds.get(u) ?? { acts: brain?.loosed ?? 0, air: false };
+      const acts = brain?.loosed ?? seen.acts;
+      // (on a guest the brain isn't there: a hound off the ground is in the air)
+      const air = u.alive && (u.forced !== null || u.body.y - gy > 0.35);
+      if (u.alive && acts > seen.acts) {
+        if (leader) {
+          const h = this.opts.heightOf?.(u) ?? 2;
+          this.vfx.burst(HOWL_FX, u.x, gy + h * 0.75, u.z, 1.6);
+          this.vfx.billow('dust', u.x, gy + 0.3, u.z, 4.5, { tint: GHOST_SMOKE, duration: 1.3, rise: 0.25 });
+          for (const m of this.run.monsters) {
+            if (m === u || !m.alive || !m.tag.endsWith(':gravehound') || Math.hypot(m.x - u.x, m.z - u.z) > HOWL.range) continue;
+            for (let i = 0; i < 2; i++) this.wisps.swarm.send(u.x, gy + h * 0.8, u.z, m, HOUND_GLOW, 0.4, 0.9);
+          }
+          this.opts.cue?.('howl', { x: u.x, y: gy + h * 0.8, z: u.z }, 0);
+        } else {
+          this.vfx.billow('dust', u.x, gy + 0.2, u.z, 1.8, { tint: GHOST_SMOKE, duration: 0.8, rise: 0.15 });
+          this.opts.cue?.('pounce', { x: u.x, y: gy + 0.6, z: u.z }, 0);
+        }
+      }
+      if (!leader && seen.air && !air && u.alive) {
+        this.vfx.billow('dust', u.x, gy + 0.25, u.z, 2.6, { tint: GHOST_SMOKE, duration: 1, rise: 0.2 });
+        this.scars.mark(u.x, u.z, 1.2, true, false);
+        this.opts.cue?.('pounceLand', { x: u.x, y: gy + 0.3, z: u.z }, 0);
+      }
+      seen.acts = acts;
+      seen.air = air;
+      this.hounds.set(u, seen);
+    }
+    if (this.hounds.size) for (const u of this.hounds.keys()) if (!this.run.monsters.includes(u)) this.hounds.delete(u);
+  }
 
   /**
    * The Tide Lurkers' swims: a plunge into the floor in a burst of spray,

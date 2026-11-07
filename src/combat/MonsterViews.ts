@@ -57,7 +57,7 @@ export const KEEPER_CORE = 0xfff0c8;
  * Seconds after death each body starts going down into the ground (the rigs
  * below sink on these), so whatever marks the ground taking it lands as it goes.
  */
-const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5, drownedThrall: 1.5, lanternJelly: 1.2, tideLurker: 1.6 } as const;
+const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5, drownedThrall: 1.5, lanternJelly: 1.2, tideLurker: 1.6, gravehound: 1.3, packleader: 1.6 } as const;
 
 /** When a monster's body starts sinking into the ground, in seconds after it died. */
 export function sinksAfter(tag: string): number {
@@ -1336,6 +1336,192 @@ function tideLurker(): MonsterView {
 }
 
 // ---------------------------------------------------------------------------
+// Gravehound and Packleader
+
+/** The Abyss's soul fire, in a Gravehound's eyes and mane. */
+export const HOUND_GLOW = 0x5dffa0;
+export const HOUND_CORE = 0xdcffe8;
+
+let houndFlame: THREE.Material | null = null;
+
+/** Soul fire licking up off a cone (uv.y 0 at its base, 1 at its tip): pale at the root, green, guttering to nothing. */
+function houndFlameMaterial(): THREE.Material {
+  const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const h = uv().y;
+  const p = positionGeometry;
+  const lick = mx_noise_float(vec3(p.x.mul(11), p.y.mul(7).sub(time.mul(4.5)), p.z.mul(11))).mul(0.5).add(0.5);
+  const body = smoothstep(1, 0.15, h.add(lick.mul(0.45)));
+  m.colorNode = mix(vec3(0.12, 1, 0.5), vec3(0.75, 1, 0.85), smoothstep(0.5, 0, h)).mul(body.mul(1.9));
+  m.opacityNode = body;
+  return m;
+}
+
+/**
+ * Gravehounds, the Abyss's many, and the Packleader that runs them: gaunt
+ * hounds with grave-grey hide stretched over the chest and haunches and the
+ * ribs bare between, a long bone skull with soul fire in its sockets, and a
+ * mane of the same green fire down the neck. They lope in, crouch and
+ * pounce. The Packleader stands half as tall again under a crown of bone
+ * antlers, its mane a blaze and a soul burning in its ribs, and throws its
+ * head back to howl the pack into a frenzy.
+ */
+function gravehound(leader: boolean): MonsterView {
+  const m = mats();
+  const ivory = (wyrmMats ??= wyrmMaterials()).ivory;
+  const flame = (houndFlame ??= houndFlameMaterial());
+  const eye = glow(HOUND_GLOW, 6);
+  const root = new THREE.Group();
+  const s = leader ? 1.7 : 1.15;
+  const rig = pivot(root, 0, 0, 0);
+  rig.scale.setScalar(s);
+  const BODY = 0.78;
+  const body = pivot(rig, 0, BODY, 0);
+  // a deep keel of a chest under high shoulders, lean haunches set lower, grave-grey hide hanging off both in
+  // tatters; between them only the ribs
+  mesh(body, geo('gh-chest', () => new THREE.SphereGeometry(0.25, 20, 14).scale(0.56, 0.82, 1)), m.fur, 0, 0.01, 0.32);
+  mesh(body, geo('gh-withers', () => new THREE.SphereGeometry(0.18, 16, 12).scale(0.74, 0.62, 1.05)), m.fur, 0, 0.15, 0.3);
+  mesh(body, geo('gh-haunch', () => new THREE.SphereGeometry(0.18, 16, 12).scale(0.72, 0.78, 1.05)), m.fur, 0, 0.04, -0.38);
+  mesh(body, geo('gh-chest-rags', () => tattered([[0.2, -0.24], [0.21, -0.1], [0.19, 0.04], [0.14, 0.16], [0.05, 0.24]], 7, 0.1, 3.3, 24).scale(0.64, 1, 1.22)), m.fur, 0, 0.03, 0.3);
+  mesh(body, geo('gh-haunch-rags', () => tattered([[0.16, -0.18], [0.17, -0.06], [0.15, 0.06], [0.1, 0.16], [0.04, 0.2]], 6, 0.08, 5.1, 22).scale(0.78, 1, 1.25)), m.fur, 0, 0.03, -0.38);
+  const vert = geo('gh-vert', () => new THREE.SphereGeometry(0.042, 8, 6).scale(1, 0.75, 1.35));
+  for (let i = 0; i < 10; i++) {
+    const k = i / 9;
+    // (the spine runs down from the shoulders to the haunches)
+    mesh(body, vert, ivory, 0, 0.27 - k * 0.07 + Math.sin(k * Math.PI) * 0.015, 0.3 - k * 0.68);
+  }
+  // shoulder blades standing out of the hide
+  for (const sx of [-1, 1]) mesh(body, geo('gh-scapula', () => new THREE.SphereGeometry(0.08, 10, 8).scale(0.3, 1.1, 0.8)), ivory, sx * 0.095, 0.16, 0.32, -0.35, 0, sx * 0.25);
+  ([[0.12, 0.17], [0.04, 0.165], [-0.04, 0.155], [-0.12, 0.14], [-0.19, 0.12]] as const).forEach(([z, r]) => {
+    // (each rib an open hoop round the chest, the gap underneath)
+    const g = geo(`gh-rib-${r}`, () => new THREE.TorusGeometry(r, 0.013, 6, 18, Math.PI * 1.45).rotateZ(-Math.PI * 0.225).scale(0.7, 0.8, 1));
+    mesh(body, g, ivory, 0, 0.1 - (0.12 - z) * 0.2, z);
+  });
+  // a soul guttering in the ribcage (the Packleader's a blaze)
+  const soul = geo('gh-soul', () => new THREE.ConeGeometry(0.09, 0.3, 7, 1, true).translate(0, 0.15, 0));
+  mesh(body, soul, flame, 0, -0.07, -0.03, 0, 0, 0, false).scale.setScalar(leader ? 1.5 : 1);
+  // neck and mane
+  const neck = pivot(body, 0, 0.12, 0.5);
+  mesh(neck, geo('gh-neck', () => new THREE.CapsuleGeometry(0.085, 0.2, 4, 10).rotateX(-0.9)), m.fur, 0, 0.08, 0.06);
+  const mane = pivot(neck, 0, 0.1, -0.02);
+  const lick = geo('gh-flame', () => new THREE.ConeGeometry(0.055, 0.34, 6, 1, true).translate(0, 0.17, 0));
+  const tufts = leader ? 9 : 6;
+  for (let i = 0; i < tufts; i++) {
+    const k = i / (tufts - 1);
+    const o = mesh(mane, lick, flame, Math.sin(i * 2.3) * 0.03, 0.08 - k * 0.1, 0.12 - k * 0.42, -0.9 - k * 0.3, 0, Math.sin(i * 1.7) * 0.2, false);
+    o.scale.setScalar((leader ? 1.4 : 1) * (0.75 + Math.sin(k * Math.PI) * 0.45));
+  }
+  // a long bone skull: sockets lit, a snout of fangs, the lower jaw on its own hinge
+  const head = pivot(neck, 0, 0.2, 0.16);
+  mesh(head, geo('gh-skull', () => new THREE.SphereGeometry(0.13, 16, 12).scale(0.9, 0.78, 1.25)), ivory, 0, 0, 0.02);
+  mesh(head, geo('gh-snout', () => new THREE.CylinderGeometry(0.038, 0.08, 0.32, 10).rotateX(Math.PI / 2).scale(1, 0.72, 1)), ivory, 0, -0.03, 0.23);
+  mesh(head, geo('gh-brow', () => new THREE.SphereGeometry(0.05, 10, 8).scale(2.3, 0.6, 1.3)), m.fur, 0, 0.07, 0.03);
+  // grave-hide still clinging over the back of the skull, torn off the muzzle
+  mesh(head, geo('gh-scalp', () => new THREE.SphereGeometry(0.125, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.42).scale(0.95, 0.85, 1.1)), m.fur, 0, 0.012, -0.04, -0.5, 0, 0);
+  const fang = geo('gh-fang', () => new THREE.ConeGeometry(0.012, 0.065, 5).rotateX(Math.PI));
+  for (const sx of [-1, 1]) {
+    mesh(head, geo('gh-eye', () => new THREE.SphereGeometry(0.026, 10, 8)), eye, sx * 0.058, 0.025, 0.11, 0, 0, 0, false);
+    mesh(head, geo('gh-cheek', () => new THREE.SphereGeometry(0.035, 8, 6).scale(0.7, 0.8, 1.6)), ivory, sx * 0.085, -0.035, 0.08);
+    mesh(head, geo('gh-ear', () => new THREE.ConeGeometry(0.045, 0.18, 5).translate(0, 0.09, 0)), m.fur, sx * 0.065, 0.075, -0.06, -1.05, 0, -sx * 0.3);
+    for (let i = 0; i < 3; i++) mesh(head, fang, ivory, sx * 0.03, -0.07, 0.15 + i * 0.075, 0, 0, 0, false);
+  }
+  const jaw = pivot(head, 0, -0.06, 0.04);
+  mesh(jaw, geo('gh-jaw', () => new THREE.CylinderGeometry(0.03, 0.055, 0.3, 10).rotateX(Math.PI / 2).scale(1, 0.5, 1)), ivory, 0, -0.02, 0.17);
+  const lower = geo('gh-lower', () => new THREE.ConeGeometry(0.01, 0.05, 5));
+  for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) mesh(jaw, lower, ivory, sx * 0.025, 0.01, 0.09 + i * 0.08, 0, 0, 0, false);
+  if (leader) {
+    // a crown of bone antlers, branching back over the neck
+    const beam = geo('pl-beam', () => new THREE.ConeGeometry(0.03, 0.5, 7).translate(0, 0.25, 0));
+    const tine = geo('pl-tine', () => new THREE.ConeGeometry(0.018, 0.2, 6).translate(0, 0.1, 0));
+    for (const sx of [-1, 1]) {
+      const a = pivot(head, sx * 0.06, 0.08, -0.04);
+      a.rotation.set(-0.7, 0, -sx * 0.55);
+      mesh(a, beam, ivory, 0, 0, 0);
+      mesh(a, tine, ivory, 0, 0.16, 0, 0.9, 0, sx * 0.3);
+      mesh(a, tine, ivory, 0, 0.3, 0, 0.7, 0, -sx * 0.5);
+      mesh(a, tine, ivory, 0, 0.4, 0, -0.5, 0, sx * 0.6);
+    }
+  }
+  // four long legs: hide-wrapped muscle above, bare bone below, a splay of claws; the hind legs bent back at the hock
+  const legs: THREE.Group[] = [];
+  const knees: THREE.Group[] = [];
+  const claw = geo('gh-claw', () => new THREE.ConeGeometry(0.014, 0.07, 5).rotateX(Math.PI / 2));
+  for (const [x, z, hind] of [[-0.11, 0.36, false], [0.11, 0.36, false], [-0.12, -0.4, true], [0.12, -0.4, true]] as const) {
+    const leg = pivot(body, x, hind ? -0.09 : -0.06, z);
+    if (hind) mesh(leg, geo('gh-thigh-h', () => new THREE.SphereGeometry(0.095, 12, 10).scale(0.7, 1.6, 1)), m.fur, 0, -0.12, 0.01);
+    else mesh(leg, geo('gh-thigh', () => new THREE.CapsuleGeometry(0.058, 0.2, 4, 8)), m.fur, 0, -0.14, 0);
+    const knee = pivot(leg, 0, hind ? -0.3 : -0.32, 0);
+    mesh(knee, geo('gh-joint', () => new THREE.SphereGeometry(0.035, 8, 6)), ivory, 0, 0, 0);
+    mesh(knee, geo('gh-shin', () => new THREE.CylinderGeometry(0.02, 0.028, 0.36, 7).translate(0, -0.18, 0)), ivory, 0, 0, 0);
+    mesh(knee, geo('gh-paw', () => new THREE.SphereGeometry(0.04, 10, 8).scale(1, 0.55, 1.4)), ivory, 0, -0.38, 0.02);
+    for (let i = -1; i <= 1; i++) mesh(knee, claw, ivory, i * 0.022, -0.39, 0.07, 0, 0, 0, false);
+    legs.push(leg);
+    knees.push(knee);
+  }
+  // a whip of bare vertebrae for a tail, a lick of fire off its tip
+  const tail = pivot(body, 0, 0.14, -0.56);
+  for (let i = 0; i < 6; i++) mesh(tail, vert, ivory, 0, -0.03 - i * 0.035, -0.04 - i * 0.06).scale.setScalar(1 - i * 0.1);
+  mesh(tail, lick, flame, 0, -0.2, -0.4, -2.1, 0, 0, false).scale.setScalar(0.8);
+  skinRigid(root, leader ? 'packleader' : 'gravehound', rig, [], bounds((leader ? 1.25 : 0.95) * s));
+
+  let phase = Math.random() * 10;
+  let breath = Math.random() * 10;
+  let crouch = 0;
+  let howl = 0;
+  return {
+    root,
+    height: (leader ? 1.25 : 0.95) * s,
+    animate(u, dt, deathTime, wobble) {
+      const brain = u.brain instanceof DescentMonsterBrain ? u.brain : null;
+      const gather = brain?.gathering ?? 0;
+      const air = u.forced !== null;
+      // ease in and out of the crouch and the howl rather than snapping
+      crouch += ((!leader && gather > 0 ? 1 : 0) - crouch) * Math.min(1, dt * 14);
+      howl += ((leader && gather > 0 ? 1 : 0) - howl) * Math.min(1, dt * (gather > 0 ? 6 : 3));
+      const speed = hypot(u.vx, u.vz);
+      phase += dt * (4.5 + speed * 2.4);
+      breath += dt * 2.6;
+      const gait = air ? 0 : Math.min(1, speed / 2.5);
+      // a bounding lope: the forelegs reach together, then the hind legs drive
+      const fore = Math.sin(phase) * 0.75 * gait;
+      const hind = Math.sin(phase + 2.2) * 0.75 * gait;
+      const leap = air ? 1 : 0;
+      for (const i of [0, 1]) {
+        legs[i]!.rotation.x = fore - leap * 0.9 + crouch * 0.35;
+        knees[i]!.rotation.x = Math.max(0, -fore) * 0.6 - crouch * 0.6 + leap * 0.3;
+      }
+      for (const i of [2, 3]) {
+        // (at rest the thigh reaches forward and the shin slants back to the hock)
+        legs[i]!.rotation.x = -0.3 + hind + leap * 1.1 - crouch * 0.6;
+        knees[i]!.rotation.x = 0.55 - Math.max(0, hind) * 0.5 + crouch * 1.0 - leap * 0.4;
+      }
+      body.position.y = BODY + Math.abs(Math.cos(phase)) * 0.05 * gait - crouch * 0.2 + Math.sin(breath) * 0.008;
+      // it pitches with the lope, crouches nose down and rump up, flies flat out, and rears to howl
+      body.rotation.x = Math.sin(phase + 1) * 0.07 * gait + crouch * 0.12 - howl * 0.22 + wobble * 0.05;
+      body.rotation.z = wobble * 0.08;
+      // the bite: head driven forward, jaws snapping; the howl: head thrown back, jaws wide
+      const a = u.sinceAction;
+      const bite = a < 0.35 && !air ? Math.sin((a / 0.35) * Math.PI) : 0;
+      neck.rotation.x = bite * 0.35 + crouch * 0.45 - howl * 0.95 - leap * 0.25 + Math.sin(breath * 0.5) * 0.04;
+      head.rotation.x = -bite * 0.15 - howl * 0.35 + crouch * 0.1;
+      jaw.rotation.x = bite * 0.75 + howl * 0.9 + leap * 0.55 + crouch * 0.2 + Math.max(0, Math.sin(breath * 1.3)) * 0.06;
+      mane.scale.setScalar(1 + howl * 0.45 + crouch * 0.15);
+      tail.rotation.x = -0.35 + Math.sin(phase * 0.5) * 0.15 * gait + leap * 0.5 - crouch * 0.3;
+      tail.rotation.y = Math.sin(breath * 0.9) * 0.25 + Math.sin(phase) * 0.2 * gait;
+      if (deathTime >= 0) {
+        // the legs give and it falls on its side, the fire going out of it as it sinks
+        const t = Math.min(1, deathTime / 0.45);
+        body.rotation.z = t * t * 1.45;
+        body.position.y = BODY - t * 0.42 - Math.max(0, deathTime - SINKS.gravehound) * 0.5;
+        neck.rotation.x = t * 0.5;
+        jaw.rotation.x = t * 0.4;
+        mane.scale.setScalar(Math.max(0.01, 1 - deathTime * 0.8));
+        for (const l of legs) l.rotation.x *= 1 - t;
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Treasure Wyrm
 
 const WYRM_SEGMENTS = 36;
@@ -2047,6 +2233,8 @@ export function monsterWarmup(): THREE.Object3D[] {
     drownedThrall(),
     lanternJelly(),
     tideLurker(),
+    gravehound(false),
+    gravehound(true),
   ].map((v) => v.root);
 }
 
@@ -2085,5 +2273,6 @@ function createView(u: Pick<Unit, 'tag'>): MonsterView {
   if (type === 'drownedThrall') return drownedThrall();
   if (type === 'lanternJelly') return lanternJelly();
   if (type === 'tideLurker') return tideLurker();
+  if (type === 'gravehound' || type === 'packleader') return gravehound(type === 'packleader');
   return thornback(type === 'thornbackAlpha', type === 'thornSpitter', type === 'gildedThornback');
 }

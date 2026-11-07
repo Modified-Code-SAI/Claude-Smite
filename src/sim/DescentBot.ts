@@ -32,13 +32,19 @@ export class DescentBot implements Brain {
       aggression: 0.6,
       retreat: false,
       route: (g) => this.route(g),
-      ...(run.versus ? { choose: () => this.choose() } : {}),
+      choose: () => this.choose(),
     });
   }
 
-  /** A shared descent's target: the nearest monster, unless a rival god is close, nearly down, or hitting this bot. */
+  /**
+   * Its target: the nearest monster, though a Gravekeeper in reach comes
+   * first (left to mend, it outlasts the gods). In a shared descent, only
+   * monsters on its own side, unless a rival god is close, nearly down, or
+   * hitting this bot.
+   */
   private choose(): Unit | null {
     const u = this.u;
+    const versus = this.run.versus;
     let best: Unit | null = null;
     let bs = Infinity;
     // a beast out between the halves (a Shade blinked off to the middle) that no rival is nearer to either: anyone's
@@ -47,12 +53,14 @@ export class DescentBot implements Brain {
     for (const t of this.sim.enemiesOf(u)) {
       if (t.kind === 'dummy' || t.stealth > 0 || !t.alive) continue;
       const d = hypot(t.x - u.x, t.z - u.z);
+      if (!versus && (d > 60 || hypot(t.x - this.anchor.x, t.z - this.anchor.z) > 80)) continue;
       // monsters on the rivals' side are theirs to fight, unless they come close
-      if (d > 6 && hypot(t.x - this.anchor.x, t.z - this.anchor.z) > 15) {
+      if (versus && d > 6 && hypot(t.x - this.anchor.x, t.z - this.anchor.z) > 15) {
         if (t.kind === 'monster' && d < ss && !this.run.gods.some((g) => g.team !== u.team && g.alive && hypot(g.x - t.x, g.z - t.z) < d)) [ss, spare] = [d, t];
         continue;
       }
       let score = d;
+      if (t.kind === 'monster' && d < KEEPER_FIRST && t.tag.endsWith(':gravekeeper')) score = d - KEEPER_FIRST;
       if (t.kind === 'god') {
         // a rival worth turning on: one in our face, one nearly down, or one hitting us right now
         const low = t.combatant.health / t.combatant.stats.maxHealth < 0.3;
@@ -190,3 +198,6 @@ function holdSide(c: ChamberDef, side: 1 | -1): readonly [number, number] {
 }
 
 const holds = new Map<string, readonly [number, number]>();
+
+/** How near a Gravekeeper must be for a bot to make it its target before the nearer beasts (it backs off from gods, so not across the chamber). */
+const KEEPER_FIRST = 14;

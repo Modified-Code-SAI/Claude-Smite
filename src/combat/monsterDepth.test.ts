@@ -37,14 +37,14 @@ describe("the Descent's beasts take on their depth", () => {
     // a Cinderling's husk only goes once it has burst
     expect(sinksAfter('descent-small-1.w1.0:cinderling')).toBeGreaterThan(CINDER.warn);
     // every one inside the time its body stays
-    for (const t of ['thornback', 'warden', 'treasureWyrm', 'shade', 'gravekeeper', 'ossuaryKing', 'cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker']) {
+    for (const t of ['thornback', 'warden', 'treasureWyrm', 'shade', 'gravekeeper', 'ossuaryKing', 'cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker', 'gravehound', 'packleader']) {
       const v = createMonsterView({ tag: `descent-small-1.w1.0:${t}`, name: t });
       expect(sinksAfter(`descent-small-1.w1.0:${t}`), t).toBeLessThan((v.linger ?? 3) - 0.5);
     }
   });
 
-  it("poses the forge's and the Drowned Halls' beasts through a run, a blow and a death without coming apart", () => {
-    for (const t of ['cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker'] as const) {
+  it("poses each depth's own beasts through a run, a blow and a death without coming apart", () => {
+    for (const t of ['cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker', 'gravehound', 'packleader'] as const) {
       const u = monsterUnit(zeus, t, { x: 0, z: 0, yaw: 0 }, 1);
       u.tag = `descent-small-4.w1.0:${t}`;
       const v = createMonsterView(u);

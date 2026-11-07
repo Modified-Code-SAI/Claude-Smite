@@ -126,6 +126,23 @@ export const SOUNDS: Record<string, Recipe> = {
     peak: 0.85,
     make: (r) => layer([splash(r, 1), 1], [splash(r, 0.8), 0.7, 0.07], [thump(r, 0.6, 120, 50, { noise: 0.9, click: 0.3 }), 0.7], [roar(r, 0.8, 78, { open: 0.9 }), 0.6, 0.08], [filter(whoosh(r, 1.4, 300, 1100, { q: 0.7 }), 'lowpass', 2600), 0.5, 0.05]),
   },
+  // the Abyss's hounds: a Gravehound's snapping snarl and the clack of its fangs, the snarl as it springs and the thud
+  // where it lands; the Packleader's deeper snap, and its howl rising and falling away, a ghostly shimmer under it
+  'basic.hound': { variants: 3, peak: 0.6, make: (r) => layer([vowel(r, 0.28, (t) => glide(290 + r() * 40, 190, t, 0.28), VOWELS.ah, { breath: 0.9, growl: 0.55, gain: 0.5, env: (t) => ahr(t, 0.02, 0.08, 0.18) }), 0.9], [knock(r, 0.05, 1300 + r() * 300), 0.7, 0.12], [whoosh(r, 0.2, 500, 1400, { q: 1 }), 0.5]) },
+  'hit.hound': { variants: 3, peak: 0.6, make: (r) => layer([hitFlesh(r, 0.75), 0.8], [knock(r, 0.04, 1500), 0.5, 0.005]) },
+  'basic.packleader': { variants: 3, peak: 0.75, make: (r) => layer([vowel(r, 0.4, (t) => glide(170 + r() * 20, 115, t, 0.4), VOWELS.ah, { breath: 0.9, growl: 0.65, gain: 0.6, env: (t) => ahr(t, 0.03, 0.1, 0.27) }), 0.9], [knock(r, 0.06, 900), 0.7, 0.16], [whoosh(r, 0.32, 240, 700, { q: 0.9, peak: 0.6 }), 0.7]) },
+  'hound.pounce': { variants: 3, peak: 0.6, make: (r) => layer([vowel(r, 0.35, (t) => glide(210, 360 + r() * 40, t, 0.35), VOWELS.ah, { breath: 1.1, growl: 0.5, gain: 0.5, env: (t) => ahr(t, 0.04, 0.1, 0.2) }), 0.9], [whoosh(r, 0.45, 450, 1700, { q: 1.1 }), 0.6, 0.05]) },
+  'hound.land': { variants: 3, peak: 0.6, make: (r) => layer([thump(r, 0.3, 150, 72, { noise: 0.7, click: 0.4 }), 0.9], [debris(r, 0.4, { density: 10, gain: 0.25, tone: 1200 }), 0.4, 0.02]) },
+  'pack.howl': {
+    variants: 2,
+    peak: 0.7,
+    make: (r) =>
+      layer(
+        [vowel(r, 1.5, (t) => (t < 0.4 ? glide(270, 430 + r() * 30, t, 0.4) : glide(430, 300, t - 0.4, 1.1)), VOWELS.oo, { breath: 1.2, growl: 0.12, voices: 2, detune: 0.012, gain: 0.55, env: (t) => ahr(t, 0.18, 0.7, 0.62) }), 1],
+        [vowel(r, 1.3, (t) => (t < 0.4 ? glide(180, 290, t, 0.4) : glide(290, 200, t - 0.4, 0.9)), VOWELS.oh, { breath: 1.5, growl: 0.3, gain: 0.3, env: (t) => ahr(t, 0.2, 0.55, 0.55) }), 0.6, 0.05],
+        [shimmer(r, 1.4, 880, { rise: 0.6, peak: 0.25 }), 0.3, 0.15],
+      ),
+  },
   'basic.brute': { variants: 3, peak: 0.8, make: (r) => layer([whoosh(r, 0.42, 150, 460, { q: 0.8, peak: 0.7, gain: 1.3 }), 1], [roar(r, 0.45, 82 + r() * 10, { open: 0.6 }), 0.45], [crackles(r, 0.35, 12), 0.25, 0.05]) },
   'brute.windup': { variants: 2, peak: 0.75, make: (r) => layer([roar(r, 1, 70, { open: 0.85 }), 1], [rumble(r, 1.1, { tone: 150, attack: 0.5 }), 0.6], [fire(r, 1, { gain: 0.5, roar: 0.6 }), 0.35, 0.15]) },
   'brute.slam': {
