@@ -96,13 +96,17 @@ def add_hair_head(god, hair_len=0.25, beard_len=0.15, mustache=True, brows=True,
         if cap_y is not None:  # under a helmet: only the hair that falls out below its rim
             scalp = np.minimum(scalp, smooth(cap_y - y, 0, 0.01))
         crown = lm['crown'] - np.array([0, 0.03, 0.02])
+        skull_back = v[headw > 0.5, 2].min()
 
         def flow(p):
-            # combed back from the hairline, sides sweep back and down
+            # combed back from the hairline, sides sweep back and down; past the back of the
+            # skull the mane falls down the back (it used to stream straight out behind the
+            # head, as if in a gale)
             out = p - crown
             side = np.zeros_like(out)
             side[:, 0] = out[:, 0] * 4
-            return normalize(side * 0.4 + np.array([0, -0.25, -1.0]))
+            fall = smooth(skull_back - p[:, 2], -0.03, 0.04)[:, None]
+            return normalize(side * 0.4 * (1 - 0.5 * fall) + np.array([0, -0.25, -1.0]) * (1 - fall) + np.array([0, -1.0, -0.12]) * fall)
 
         def length(P, N):
             back = smooth(-(P[:, 2] - lm['head'][2]), -0.06, 0.08)
