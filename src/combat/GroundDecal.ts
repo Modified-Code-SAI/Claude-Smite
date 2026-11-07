@@ -47,7 +47,8 @@ function makeDecalMaterial(): THREE.MeshBasicNodeMaterial {
   const n1 = mx_noise_float(vec3(wp.x.mul(0.45), wp.y.mul(0.45), t.mul(0.7))).mul(0.5).add(0.5);
   const n2 = mx_noise_float(vec3(wp.x.mul(1.3).add(t.mul(0.6)), wp.y.mul(1.3).sub(t.mul(0.4)), t.mul(0.3))).mul(0.5).add(0.5);
   const veins = smoothstep(0.42, 0.5, n1).mul(smoothstep(0.58, 0.5, n1)).mul(2.5);
-  const swirl = n1.mul(0.45).add(n2.mul(0.35)).add(veins);
+  const churn = n1.mul(0.45).add(n2.mul(0.35));
+  const swirl = churn.add(veins);
   // Telegraphs: faint fill, a crisp rim, and a pulse sweeping outward.
   const pulse = smoothstep(0.08, 0.0, abs(edge.sub(fract(t.mul(0.9))))).mul(0.6);
   const telegraphFill = float(0.16).add(pulse.mul(edge));
@@ -84,11 +85,17 @@ function makeDecalMaterial(): THREE.MeshBasicNodeMaterial {
   const body = isTele.mul(telegraphFill.add(charged)).add(isZone.mul(swirl.mul(1.25))).add(isFlash.mul(flashBody));
   const rimStrength = isTele.mul(2.2).add(isZone.mul(3.0)).add(isFlash.mul(2.0));
   const glyphBody = runes.mul(mix(float(1), behind, isFlash));
-  const intensity = glyphBody.add(body).add(rim.mul(rimStrength).mul(float(1).sub(isFlash).add(isFlash.mul(flashRim))));
+  const rimPart = rim.mul(rimStrength).mul(float(1).sub(isFlash).add(isFlash.mul(flashRim)));
+  const intensity = glyphBody.add(body).add(rimPart);
   // Alpha-blended, not additive: additive light vanishes on the white marble.
-  // HDR color (above 1) still feeds bloom so rims and veins glow.
-  const hot = mix(color, core, smoothstep(1.2, 2.6, intensity));
-  mat.colorNode = vec4(hot.mul(float(0.9).add(intensity.mul(1.4))), 1);
+  // HDR color (above 1) still feeds bloom so rims and veins glow. A zone's
+  // body is kept just under bloom, though: a wide area under the camera (a
+  // god standing in it) would otherwise flood the screen and the HUD with
+  // glare; its rim and veins still glow, and its fill keeps its full cover.
+  const zoneBody = churn.mul(0.45).add(veins.mul(0.5));
+  const bright = intensity.sub(isZone.mul(swirl.mul(1.25).sub(zoneBody)));
+  const hot = mix(color, core, smoothstep(1.2, 2.6, bright));
+  mat.colorNode = vec4(hot.mul(float(0.9).add(bright.mul(1.4))), 1);
   mat.opacityNode = intensity.mul(0.75).clamp(0, 0.95).mul(opacity);
   return mat;
 }
