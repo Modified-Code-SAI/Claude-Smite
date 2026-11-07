@@ -53,6 +53,8 @@ const BOSSES = ['Treasure Wyrm', 'Molten Colossus', 'Ossuary King'];
 
 /** Seconds after a hat trick's call that its scorer boasts (the herald's line goes first). */
 const HAT_BOAST = 2.3;
+/** Underworld Descent: strides a god may run without a foot seen coming down before one is played anyway. */
+const FEET_MISSED = 1.7;
 
 export class GameAudio {
   private readonly projectiles = new Map<Projectile, Tracked>();
@@ -122,6 +124,14 @@ export class GameAudio {
       if (sound === 'wheel') this.engine.play('ping.wheel', { bus: 'ui', gain: 0.45 }, 2);
       else if (sound === 'tick') this.engine.play('ping.tick', { bus: 'ui', gain: 0.5 }, 1, 0.03);
       else this.engine.play(`ping.${sound}`, { bus: 'ui', gain: mine ? 0.55 : 0.85, vary: 0.02 }, 3, 0.08);
+    };
+    // in the Descent a god's steps are heard as its feet come down (CombatGame.onFootfall), the stride only standing in for feet that were missed
+    game.onFootfall = (u) => {
+      const s = this.strides.get(u);
+      if (s) s.acc = 0;
+      const l = this.engine.listenerPos;
+      const hidden = u.stealth > 0 && u.team !== this.me.team;
+      if (this.engine.ready && u.alive && !hidden && (u === this.me || hypot(u.x - l.x, u.z - l.z) < 38)) this.step(u);
     };
     game.onCue = (name, at, k) => {
       if (!this.engine.ready) return;
@@ -609,14 +619,11 @@ export class GameAudio {
       }
       s.acc += moved;
       const stride = u.kind === 'minion' ? 1.4 : u.radius > 2 ? 4.2 : u.kind === 'monster' ? 1.8 : 2.3;
-      if (s.acc < stride) continue;
+      // (the Descent's gods step with their feet, see onFootfall, which starts the stride over: it only fills in for a foot missed, at a frame rate too low to see it land)
+      if (s.acc < (u.kind === 'god' && this.game.descent ? stride * FEET_MISSED : stride)) continue;
       s.acc -= stride;
       s.foot ^= 1;
-      const heavy = u.radius > 2 || u.tag.endsWith('warden') || u.tag.endsWith('brute');
-      const name = heavy ? 'step.heavy' : u.kind === 'minion' ? 'step.minion' : `step.${this.surface(u.x, u.z)}`;
-      const mine = u === this.me;
-      const gain = (mine ? 0.55 : u.kind === 'minion' ? 0.22 : heavy ? (u.radius > 2 ? 0.9 : 0.5) : 0.4) * (mine ? 1 : this.crowd);
-      this.engine.play(name, { at: { x: u.x, y: u.body.y + 0.1, z: u.z }, gain, vary: 0.07, ref: heavy ? 10 : 4, rate: heavy && u.radius > 2 ? 0.8 : 1 }, mine ? 3 : 0, u.kind === 'minion' ? 0.05 : 0);
+      this.step(u);
     }
     if (this.strides.size > 400) for (const u of this.strides.keys()) if (!this.game.sim.units.includes(u)) this.strides.delete(u);
   }
@@ -635,6 +642,15 @@ export class GameAudio {
   }
 
   /** A landing on this floor: in the Descent, on the depth's own. */
+  /** One footstep of `u`'s, on whatever it walks on. */
+  private step(u: Unit): void {
+    const mine = u === this.me;
+    const heavy = u.radius > 2 || u.tag.endsWith('warden') || u.tag.endsWith('brute');
+    const name = heavy ? 'step.heavy' : u.kind === 'minion' ? 'step.minion' : `step.${this.surface(u.x, u.z)}`;
+    const gain = (mine ? 0.55 : u.kind === 'minion' ? 0.22 : heavy ? (u.radius > 2 ? 0.9 : 0.5) : 0.4) * (mine ? 1 : this.crowd);
+    this.engine.play(name, { at: { x: u.x, y: u.body.y + 0.1, z: u.z }, gain, vary: 0.07, ref: heavy ? 10 : 4, rate: heavy && u.radius > 2 ? 0.8 : 1 }, mine ? 3 : 0, u.kind === 'minion' ? 0.05 : 0);
+  }
+
   private landing(): string {
     const run = this.game.descent;
     return run ? `land.${DEPTH_GROUND[DEPTHS[run.depth]!.palette]}` : 'land';

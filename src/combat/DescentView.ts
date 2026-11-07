@@ -190,7 +190,9 @@ export class DescentView {
 
   /** A god's foot came down (UnitViews.onFootfall): it marks the depth's floor. */
   step(x: number, z: number, dx: number, dz: number, right: boolean, size: number): void {
-    if (this.run.phase !== 'descend') this.tracks.step(x, z, dx, dz, right, size);
+    if (this.run.phase === 'descend') return;
+    // (on the Drowned Halls' wet stone each step rings out)
+    this.tracks.step(x, z, dx, dz, right, size, DEPTHS[this.run.depth]!.palette === 'soul');
   }
 
   frame(dt: number, time: number): void {
