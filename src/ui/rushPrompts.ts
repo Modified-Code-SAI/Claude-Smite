@@ -28,6 +28,26 @@ export const Pressing = (label: string): string => {
   return p.charAt(0).toUpperCase() + p.slice(1);
 };
 
+/** What a carrier's keys do, as bound: 'Left click passes it, Space jukes' ('' with neither bound). */
+export function carryKeys(): string {
+  const pass = keyFor('attack');
+  const juke = keyFor('jump');
+  return [pass && `${pass} passes it`, juke && `${juke} jukes`].filter(Boolean).join(', ');
+}
+
+/** The match's opening line, with the keys as bound (a controller's buttons while one is in use). */
+export function rushIntro(): string {
+  const keys = carryKeys();
+  const call = keyFor('callPass');
+  return `Carry the Sun Relic through their gate. ${keys ? `${keys}; stun` : 'Stun'} the carrier to knock it loose.${call ? ` ${call} calls for the pass.` : ''}`;
+}
+
+/** The warning when the carrier presses a skill. */
+export function carryNoSkills(): string {
+  const keys = carryKeys();
+  return `Carrying the relic: no skills.${keys ? ` ${keys}.` : ''}`;
+}
+
 /** The slots on a bar whose skills knock the relic loose, regular skills first. */
 export function tackleSlots(c: Combatant): number[] {
   const slots: number[] = [];
