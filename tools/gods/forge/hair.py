@@ -12,7 +12,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from .body import Body
-from .geo import Mesh, merge, sweep
+from .geo import Mesh, grid_faces, merge, sweep
 from .mathx import normalize
 
 
@@ -96,6 +96,24 @@ def grow(body: Body, roots: np.ndarray, normals: np.ndarray, style: Style, colli
     return paths
 
 
+def open_seam(m: Mesh, rows: int, cols: int) -> Mesh:
+    """Gives a closed, uncapped sweep a last column of its own (u = 1) where the section closes.
+
+    A closed sweep wraps its last face from u = (cols-1)/cols back to u = 0, so on that one face
+    around every lock the shader's strands (u x 7) ran backwards through six ridges squeezed into
+    a sliver: fine stripes down one side of each clump. The duplicate column keeps the shared
+    normals, so the seam doesn't shade as a crease."""
+    v = m.v.reshape(rows, cols, 3)
+    n = m.normals().reshape(rows, cols, 3)
+    uv = m.uv.reshape(rows, cols, 2)
+    end = uv[:, :1].copy()
+    end[:, :, 0] = 1.0
+    f = grid_faces(rows, cols + 1)[:, ::-1].copy()
+    return Mesh(np.concatenate([v, v[:, :1]], axis=1).reshape(-1, 3), f,
+                np.concatenate([uv, end], axis=1).reshape(-1, 2), None,
+                np.concatenate([n, n[:, :1]], axis=1).reshape(-1, 3))
+
+
 def clumps(paths: list[np.ndarray], normals: np.ndarray, style: Style, widths=None) -> Mesh:
     """Flattened tapered tubes along the paths. The flat side faces away from the skin."""
     rng = np.random.default_rng(style.seed + 7)
@@ -117,9 +135,9 @@ def clumps(paths: list[np.ndarray], normals: np.ndarray, style: Style, widths=No
             # dents across the broad face: the clump reads as several locks sculpted together
             g = style.grooves + (k % 2)
             section[:, 0] *= 1 - 0.45 * (0.5 - 0.5 * np.cos(np.sin(a) * np.pi * g))
-        m = sweep(path, section, prof_w, up=normals[k], cap=False)
+        m = open_seam(sweep(path, section, prof_w, up=normals[k], cap=False), K, sides)
         col = np.zeros((len(m.v), 4))
-        col[:, 0] = np.repeat(t, sides)
+        col[:, 0] = np.repeat(t, sides + 1)
         col[:, 1] = rng.uniform()  # per-clump random for tint variation
         # how freely the lock swings (the hair shader's sway): a long mane fully, a beard
         # half, a brow or a mustache hardly at all
