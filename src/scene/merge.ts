@@ -95,7 +95,8 @@ let standIn: THREE.MeshBasicNodeMaterial | null = null;
 /** True when a material's shadow is just its mesh's shape: nothing in it moves vertices or cuts holes. */
 function plainShadow(m: THREE.Material): boolean {
   const n = m as THREE.NodeMaterial;
-  return !m.transparent && m.alphaTest === 0 && !n.alphaTestNode && !n.maskNode && !n.maskShadowNode && !n.positionNode && !n.castShadowNode && !n.castShadowPositionNode;
+  // (an alpha test node only thins the view when the material says so: the shadow pass never reads it)
+  return !m.transparent && m.alphaTest === 0 && (!n.alphaTestNode || m.userData.solidShadow === true) && !n.maskNode && !n.maskShadowNode && !n.positionNode && !n.castShadowNode && !n.castShadowPositionNode;
 }
 
 /**
