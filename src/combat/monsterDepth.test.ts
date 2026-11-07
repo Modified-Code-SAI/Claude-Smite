@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { zeus } from '../game/gods';
 import { CINDER } from '../sim/Descent';
 import { monsterUnit } from '../sim/factory';
-import { createMonsterView, monsterDepth, setMonsterDepth, sinksAfter } from './MonsterViews';
+import { createMonsterView, graveBell, monsterDepth, setMonsterDepth, sinksAfter } from './MonsterViews';
 
 describe("the Descent's beasts take on their depth", () => {
   it('dresses them for each depth and back in the jungle look, eyes and all', () => {
@@ -37,14 +37,14 @@ describe("the Descent's beasts take on their depth", () => {
     // a Cinderling's husk only goes once it has burst
     expect(sinksAfter('descent-small-1.w1.0:cinderling')).toBeGreaterThan(CINDER.warn);
     // every one inside the time its body stays
-    for (const t of ['thornback', 'warden', 'treasureWyrm', 'shade', 'gravekeeper', 'ossuaryKing', 'cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker', 'gravehound', 'packleader']) {
+    for (const t of ['thornback', 'warden', 'treasureWyrm', 'shade', 'gravekeeper', 'ossuaryKing', 'cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker', 'gravehound', 'packleader', 'soulForge']) {
       const v = createMonsterView({ tag: `descent-small-1.w1.0:${t}`, name: t });
       expect(sinksAfter(`descent-small-1.w1.0:${t}`), t).toBeLessThan((v.linger ?? 3) - 0.5);
     }
   });
 
   it("poses each depth's own beasts through a run, a blow and a death without coming apart", () => {
-    for (const t of ['cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker', 'gravehound', 'packleader'] as const) {
+    for (const t of ['cinderling', 'slagBrute', 'drownedThrall', 'lanternJelly', 'tideLurker', 'gravehound', 'packleader', 'soulForge'] as const) {
       const u = monsterUnit(zeus, t, { x: 0, z: 0, yaw: 0 }, 1);
       u.tag = `descent-small-4.w1.0:${t}`;
       const v = createMonsterView(u);
@@ -65,6 +65,15 @@ describe("the Descent's beasts take on their depth", () => {
         for (const x of o.matrixWorld.elements) expect(Number.isFinite(x), `${t} ${o.name}`).toBe(true);
       });
     }
+  });
+
+  it('rings a grave bell up to its toll and lets it swing down again without coming apart', () => {
+    const b = graveBell();
+    for (let i = 0; i < 240; i++) b.ring(1 / 60, Math.min(1, i / 120), i < 120 ? -1 : (i - 120) / 60);
+    b.root.updateMatrixWorld(true);
+    b.root.traverse((o) => {
+      for (const x of o.matrixWorld.elements) expect(Number.isFinite(x), o.name).toBe(true);
+    });
   });
 });
 

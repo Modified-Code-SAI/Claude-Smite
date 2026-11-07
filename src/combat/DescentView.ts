@@ -3,7 +3,7 @@ import { UNDERWORLD_LIFE } from '../audio/underworldAmbience';
 import type { Side } from '../game/combatant';
 import { exitSpot, obstaclesOf, underworldField } from '../map/UnderworldLayout';
 import type { CameraShot } from '../player/ThirdPersonCamera';
-import { DESCENT, DescentMonsterBrain, DEPTHS, HOWL, SOULS, type Descent } from '../sim/Descent';
+import { bellsOf, CHALLENGE, CINDER, DESCENT, DescentMonsterBrain, DEPTHS, HOWL, SOULS, type Descent } from '../sim/Descent';
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { Flash, SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
@@ -16,7 +16,7 @@ import { ArcView } from './Arcs';
 import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
 import { GroundDecal } from './GroundDecal';
 import { HazardsView, type HazardCue } from './HazardsView';
-import { DEPTH_EYES, HOUND_CORE, HOUND_GLOW, KEEPER_CORE, KEEPER_GLOW, setMonsterDepth, sinksAfter } from './MonsterViews';
+import { DEPTH_EYES, graveBell, HOUND_CORE, HOUND_GLOW, KEEPER_CORE, KEEPER_GLOW, setMonsterDepth, sinksAfter, type GraveBell } from './MonsterViews';
 import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
@@ -46,6 +46,11 @@ const FOE_SOUL = 0xff4060;
 /** A Gravekeeper's lantern flaring as it mends. */
 const LANTERN: GodPalette = { cloth: 0, trim: 0, glow: KEEPER_GLOW, vfx: KEEPER_GLOW, core: KEEPER_CORE };
 const HOWL_FX: GodPalette = { cloth: 0, trim: 0, glow: HOUND_GLOW, vfx: HOUND_GLOW, core: HOUND_CORE };
+/** A soul forge's breath of fire out of its mouth, and the smoke off its chimney. */
+const FORGE_FIRE: GodPalette = { cloth: 0, trim: 0, glow: 0xff5a14, vfx: 0xff7a1e, core: 0xffd890 };
+const FORGE_SMOKE = 0x3e342e;
+/** How long a grave bell's toll takes to run out across the floor. */
+const TOLL_RING = 0.7;
 const GILDED: GodPalette = { cloth: 0, trim: 0, glow: 0xffc23a, vfx: 0xffb020, core: 0xfff0b0 };
 /** Seconds between the souls a god raising an ally pours into them. */
 const STREAM_EVERY = 0.09;
@@ -87,7 +92,7 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | 'pounce' | 'pounceLand' | 'howl' | `relic.${RelicId}` | `hazard.${HazardCue}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | 'pounce' | 'pounceLand' | 'howl' | 'forgeBreath' | 'toll' | 'drain' | `relic.${RelicId}` | `hazard.${HazardCue}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -158,6 +163,21 @@ export class DescentView {
   private readonly knells: { x: number; z: number; age: number }[] = [];
   /** The chamber's dangers: the vents, the slag, the flood, the brink and the dark. */
   private readonly hazards: HazardsView;
+  /** A bell chamber's grave bells, the ring under each that fills as it is rung, and when each tolled (the view's clock). */
+  private readonly bellViews: GraveBell[] = [];
+  private readonly bellRings: GroundDecal[] = [];
+  private readonly bellRung: number[] = [];
+  private readonly bellTolled: number[] = [];
+  /** The chamber the bells hang in, and where (local to nothing: world x, z). */
+  private bellChamber = 0;
+  private bellSpots: { x: number; z: number }[] = [];
+  /** A toll's ring running out across the floor. */
+  private readonly tollRing: GroundDecal;
+  private readonly tollAt = { x: 0, z: 0, age: -1 };
+  /** Each soul forge's last breath seen, and when its chimney last smoked. */
+  private readonly forgeSeen = new Map<Unit, { since: number; smoke: number }>();
+  /** Whether the flood was still rising last frame. */
+  private flooding = false;
 
   constructor(
     private readonly run: Descent,
@@ -213,6 +233,25 @@ export class DescentView {
     this.callRing.setStyle('telegraph');
     this.callRing.mesh.visible = false;
     world.vfx.add(this.callRing.mesh);
+    for (let i = 0; i < CHALLENGE.bells.count; i++) {
+      const b = graveBell();
+      b.root.visible = false;
+      world.vfx.add(b.root);
+      this.bellViews.push(b);
+      const d = new GroundDecal(groundAt);
+      d.setStyle('telegraph');
+      d.setColors(HOUND_GLOW, 0xffffff);
+      d.mesh.visible = false;
+      world.vfx.add(d.mesh);
+      this.bellRings.push(d);
+      this.bellRung.push(0);
+      this.bellTolled.push(-1);
+    }
+    this.tollRing = new GroundDecal(groundAt);
+    this.tollRing.setStyle('telegraph');
+    this.tollRing.setColors(HOUND_GLOW, 0xffffff);
+    this.tollRing.mesh.visible = false;
+    world.vfx.add(this.tollRing.mesh);
     this.chainArc.setColors(RELIC_FX.chain.vfx, RELIC_FX.chain.core);
     this.chainArc.group.visible = false;
     world.vfx.add(this.chainArc.group);
@@ -284,6 +323,9 @@ export class DescentView {
     this.stir(dt);
     this.lurkers(dt);
     this.packs();
+    this.forges();
+    this.bells(dt, time);
+    this.flood();
     for (let i = this.sinking.length - 1; i >= 0; i--) {
       const s = this.sinking[i]!;
       if (this.clock < s.at) continue;
@@ -340,9 +382,11 @@ export class DescentView {
     for (const e of r.landed.splice(0)) {
       if (e.r < DESCENT.eruption.radius) {
         // a fallen Cinderling's last flare: a squat burst of flame and cinders, no souls in it
+        // (a smashed soul forge's, bigger)
         const gy = this.groundAt(e.x, e.z);
-        this.vfx.burst(this.burst, e.x, gy + 0.35, e.z, 1.1);
-        this.vfx.billow('blast', e.x, gy + 0.7, e.z, 2.3, { tint: CINDER_SMOKE, duration: 1.0, rise: 0.9, flame: [0xff5a14, 0xffd890] });
+        const k = e.r / CINDER.radius;
+        this.vfx.burst(this.burst, e.x, gy + 0.35 * k, e.z, 1.1 * k);
+        this.vfx.billow('blast', e.x, gy + 0.7 * k, e.z, 2.3 * k, { tint: CINDER_SMOKE, duration: 1.0 * k, rise: 0.9 * k, flame: [0xff5a14, 0xffd890] });
         if (me && this.opts.shake) {
           const d = Math.hypot(me.x - e.x, me.z - e.z);
           if (d < 7) this.opts.shake(0.12 * (1 - d / 7));
@@ -596,6 +640,128 @@ export class DescentView {
       this.hounds.set(u, seen);
     }
     if (this.hounds.size) for (const u of this.hounds.keys()) if (!this.run.monsters.includes(u)) this.hounds.delete(u);
+  }
+
+  /**
+   * The soul forges: smoke rolling up off each chimney, and a breath of fire
+   * out of its mouth each time it breathes out a Cinderling.
+   */
+  private forges(): void {
+    const r = this.run;
+    for (const f of r.forges) {
+      if (!f.alive) continue;
+      const seen = this.forgeSeen.get(f) ?? { since: f.sinceAction, smoke: this.clock + Math.random() };
+      const gy = this.groundAt(f.x, f.z);
+      if (f.sinceAction < seen.since - 0.05) {
+        const fx = f.forward;
+        const k = f.radius + 0.4;
+        this.vfx.burst(FORGE_FIRE, f.x + fx.x * k, gy + 0.6, f.z + fx.z * k, 1.3);
+        this.vfx.billow('blast', f.x + fx.x * k, gy + 0.7, f.z + fx.z * k, 2, { tint: FORGE_SMOKE, duration: 0.9, rise: 0.8, flame: [0xff5a14, 0xffd890] });
+        this.vfx.billow('smoke', f.x, gy + 3.1, f.z, 2.2, { tint: FORGE_SMOKE, duration: 2.4, rise: 2, opacity: 0.7 });
+        this.opts.cue?.('forgeBreath', { x: f.x, y: gy + 1, z: f.z }, 0);
+      }
+      seen.since = f.sinceAction;
+      if (this.clock > seen.smoke) {
+        seen.smoke = this.clock + 1.1 + Math.random() * 0.6;
+        this.vfx.billow('smoke', f.x, gy + 2.9, f.z, 1.5, { tint: FORGE_SMOKE, duration: 2.6, rise: 1.6, opacity: 0.5 });
+      }
+      this.forgeSeen.set(f, seen);
+    }
+    if (this.forgeSeen.size) for (const f of this.forgeSeen.keys()) if (!f.alive || !r.forges.includes(f)) this.forgeSeen.delete(f);
+  }
+
+  /**
+   * A bell chamber's grave bells: hung as the team walks in, a ring under each
+   * that fills as it is rung, and each toll a burst of green soul fire, a ring
+   * running out across the floor and souls pouring from it into the gods.
+   */
+  private bells(dt: number, time: number): void {
+    const r = this.run;
+    const here = r.current.kind === 'bells';
+    if (!here) {
+      if (this.bellChamber) {
+        this.bellChamber = 0;
+        for (const b of this.bellViews) b.root.visible = false;
+        for (const d of this.bellRings) d.mesh.visible = false;
+      }
+    } else {
+      if (this.bellChamber !== r.chamber) {
+        this.bellChamber = r.chamber;
+        this.bellSpots = bellsOf(r.layout);
+        this.bellSpots.forEach((at, i) => {
+          const v = this.bellViews[i];
+          if (!v) return;
+          v.root.position.set(at.x, this.groundAt(at.x, at.z), at.z);
+          // the beam across the way the team comes in, so the bell shows under it
+          v.root.rotation.y = 0;
+          v.root.visible = true;
+          this.bellRung[i] = 0;
+          this.bellTolled[i] = -1;
+        });
+      }
+      this.bellSpots.forEach((at, i) => {
+        const v = this.bellViews[i];
+        const d = this.bellRings[i];
+        if (!v || !d) return;
+        const rung = r.bells[i]?.rung ?? 0;
+        if (rung >= 1 && this.bellRung[i]! < 1) this.toll(at.x, at.z, i);
+        this.bellRung[i] = rung;
+        const since = this.bellTolled[i]! >= 0 ? this.clock - this.bellTolled[i]! : -1;
+        v.ring(dt, rung, since);
+        // the ring under it fills as it is rung, and fades once it has tolled
+        const fade = since < 0 ? 1 : Math.max(0, 1 - since * 1.5);
+        d.mesh.visible = r.phase === 'fight' && fade > 0.01;
+        if (!d.mesh.visible) return;
+        d.values.fill = rung;
+        d.values.opacity = (0.45 + Math.sin(time * 4 + i) * 0.12 + rung * 0.4) * fade;
+        d.place({ type: 'circle', radius: CHALLENGE.bells.radius }, at.x, at.z, 0, 0.08);
+      });
+    }
+    // a toll's ring running out across the floor, thinning as it goes
+    const t = this.tollAt;
+    if (t.age < 0) return;
+    t.age += dt;
+    const k = t.age / TOLL_RING;
+    if (k >= 1) {
+      t.age = -1;
+      this.tollRing.mesh.visible = false;
+      return;
+    }
+    this.tollRing.mesh.visible = true;
+    this.tollRing.values.fill = 0;
+    this.tollRing.values.opacity = 1 - k * k;
+    this.tollRing.place({ type: 'ring', radius: 0.8 + (CHALLENGE.bells.stagger - 0.8) * Math.sqrt(k), width: 0.4 + 0.8 * (1 - k) }, t.x, t.z, 0, 0.1);
+  }
+
+  private toll(x: number, z: number, i: number): void {
+    this.bellTolled[i] = this.clock;
+    const gy = this.groundAt(x, z);
+    this.vfx.burst(HOWL_FX, x, gy + 1.9, z, 2.2);
+    this.vfx.pillar(HOWL_FX, x, z, 0.5, 1.6);
+    this.vfx.billow('dust', x, gy + 0.3, z, 6, { tint: GHOST_SMOKE, duration: 1.6, rise: 0.3 });
+    for (const g of this.run.gods) {
+      if (!g.alive) continue;
+      for (let k = 0; k < 3; k++) this.wisps.swarm.send(x, gy + 1.9, z, g, HOUND_GLOW, 0.45, 1.3);
+    }
+    [this.tollAt.x, this.tollAt.z, this.tollAt.age] = [x, z, 0];
+    const me = this.opts.me;
+    if (me && this.opts.shake) {
+      const d = Math.hypot(me.x - x, me.z - z);
+      if (d < 14) this.opts.shake(0.25 * (1 - d / 14));
+    }
+    this.opts.cue?.('toll', { x, y: gy + 2, z }, this.run.rung);
+  }
+
+  /** The flood draining away at last (its beasts go down with it: their own sinking shows that). */
+  private flood(): void {
+    const r = this.run;
+    const rising = r.current.kind === 'flood' && r.phase === 'fight' && r.floodLeft > 0;
+    if (this.flooding && !rising && r.current.kind === 'flood' && r.phase === 'fight') {
+      const c = r.layout;
+      this.opts.cue?.('drain', { x: c.x, y: this.groundAt(c.x, c.z), z: c.z }, 0);
+      this.opts.shake?.(0.2);
+    }
+    this.flooding = rising;
   }
 
   /**
@@ -932,7 +1098,9 @@ export class DescentView {
 
   /** Shows every decal and the souls for the loading frames that prepare shaders; returns the undo. */
   prime(): () => void {
-    const all = [...this.eruptions, ...this.revives, this.door, ...this.knellRings];
+    const all = [...this.eruptions, ...this.revives, this.door, ...this.knellRings, ...this.bellRings, this.tollRing];
+    const bells = this.bellViews.map((b) => b.root.visible);
+    for (const b of this.bellViews) b.root.visible = true;
     for (const d of all) d.mesh.visible = true;
     const wisps = this.wisps.prime();
     const kicks = this.kicks.prime();
@@ -941,6 +1109,7 @@ export class DescentView {
     this.chainArc.bolt(new THREE.Vector3(0, 1, 0), new THREE.Vector3(2, 1, 0), 0.1);
     return () => {
       for (const d of all) d.mesh.visible = false;
+      this.bellViews.forEach((b, i) => (b.root.visible = bells[i]!));
       wisps();
       kicks();
       this.chainArc.clear();

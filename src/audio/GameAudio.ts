@@ -175,6 +175,10 @@ export class GameAudio {
       else if (name === 'pounce') this.engine.play('hound.pounce', { at, gain: 0.7, vary: 0.08, ref: 10 }, 3, 0.08);
       else if (name === 'pounceLand') this.engine.play('hound.land', { at, gain: 0.7, vary: 0.08, ref: 10 }, 3, 0.08);
       else if (name === 'howl') this.engine.play('pack.howl', { at, gain: 0.9, vary: 0.05, ref: 22 }, 2, 0.4);
+      // the depths' challenges: a forge's breath, a grave bell tolling (heard across the chamber, a little higher each time), the flood draining
+      else if (name === 'forgeBreath') this.engine.play('forge.breath', { at, gain: 0.7, vary: 0.08, ref: 12 }, 2, 0.15);
+      else if (name === 'toll') this.engine.play('bell.toll', { at, gain: 1, rate: 1 + Math.max(0, k - 1) * 0.06, ref: 34 }, 4, 0.3);
+      else if (name === 'drain') this.engine.play('flood.drain', { bus: 'ambience', gain: 0.9 }, 3);
     };
   }
 
@@ -460,6 +464,7 @@ export class GameAudio {
             this.herald.say(ours ? `Our team claims ${what}.` : `The enemy claims ${what}.`, ours ? 'good' : 'bad', 3);
           }
         } else if (u.tag.endsWith(':cinderling')) this.at('cinder.death', u, { gain: 0.6, vary: 0.08, ref: 7 }, 3, 0.06);
+        else if (u.tag.endsWith(':soulForge')) this.at('forge.fall', u, { gain: 1, vary: 0.05, ref: 16 }, 4);
         else this.at('monster.death', u, { gain: 0.8, vary: 0.08, ref: u.radius > 1 ? 9 : 6, rate: u.tag.endsWith(':slagBrute') ? 0.7 : 1 }, 3);
         break;
       case 'tower':
@@ -1348,7 +1353,7 @@ export class GameAudio {
   private lava: LoopHandle | null = null;
 
   /** Last seen Underworld Descent state, so each beat is called once. */
-  private descentSeen = { chamber: 0, phase: '', depth: -1, curses: 0, obols: -1, downed: 0, erupting: false, song: 'abyss' as SongName, lead: 0, routed: 0, routs: 0, relics: 0 };
+  private descentSeen = { chamber: 0, phase: '', depth: -1, curses: 0, obols: -1, downed: 0, erupting: false, song: 'abyss' as SongName, lead: 0, routed: 0, routs: 0, relics: 0, forges: 0, flooding: false, rung: 0 };
 
   /** Underworld Descent: each chamber's arrival, the clear, the open gate, curses, revives, the obol and the end. */
   private watchDescent(): void {
@@ -1366,6 +1371,9 @@ export class GameAudio {
         this.engine.play('wave.horn', { gain: 0.5, rate: 0.75 }, 3);
       } else if (plan.kind === 'boss') this.herald.say(r.chamber === DESCENT.chambers ? 'The lord of the underworld awaits. End this.' : `The master of ${depth} awaits.`, 'epic', 4);
       else if (plan.kind === 'trap') this.herald.say('Soul fire burns beneath this chamber. Watch the ground.', 'neutral', 2);
+      else if (plan.kind === 'forges') this.herald.say('The forges breathe fire and Cinderlings. Smash them!', 'neutral', 2);
+      else if (plan.kind === 'flood') this.herald.say('The halls are flooding, and the drowned come with the water. Hold out!', 'neutral', 2);
+      else if (plan.kind === 'bells') this.herald.say('Ring the grave bells, and the dark falls back.', 'neutral', 2);
       else if (plan.kind === 'champion') this.herald.say('A champion of the dead stands in your way.', 'neutral', 2);
       else if (plan.kind === 'treasure') this.herald.say('Gold glints in the dark. Catch the thief!', 'neutral', 2);
       else if (plan.kind === 'elite') this.herald.say('Elite guardians bar the way.', 'neutral', 2);
@@ -1412,6 +1420,17 @@ export class GameAudio {
     if (r.versus) this.watchSouls(r);
     if (r.erupting && !seen.erupting) this.herald.say('Soul fire rises!', 'bad', 1);
     seen.erupting = r.erupting;
+    // the challenge chambers' turns: the last forge smashed, the flood draining, a bell tolling
+    const fight = r.phase === 'fight';
+    const forges = fight ? r.forges.filter((f) => f.alive).length : 0;
+    if (fight && r.forges.length && !forges && seen.forges) this.herald.say('The forges go cold. Finish the rest!', 'good', 2);
+    seen.forges = forges;
+    const flooding = fight && r.floodLeft > 0;
+    if (fight && seen.flooding && !flooding && r.current.kind === 'flood') this.herald.say('The water drains, and the drowned with it.', 'good', 2);
+    seen.flooding = flooding;
+    const rung = fight ? r.rung : 0;
+    if (rung > seen.rung) this.herald.say(rung >= r.bells.length ? 'The last bell tolls!' : rung === 1 ? 'A bell tolls. Two more!' : 'One bell left!', 'good', 2);
+    seen.rung = rung;
   }
 
   /** A shared descent: the lead changing hands, and routs on either side. */

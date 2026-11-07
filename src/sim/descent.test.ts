@@ -4,7 +4,7 @@ import { GODS, odin, thor, zeus } from '../game/gods';
 import { skillById } from '../game/loadout';
 import { CHAMBERS, chamberField, DEPTH_CHAMBERS, entranceSpot, exitSpot, underworldCave, underworldField, obstaclesOf } from '../map/UnderworldLayout';
 import { navOf } from '../map/ChamberNav';
-import { ALL_SLOTS, BRUTE, chamberWaves, CINDER, CURSE_AT, Descent, DESCENT, DescentMonsterBrain, draftFor, GRIP, HOWL, KEEPER, KING, learnSkill, LURK, planRun, POUNCE, SHADE_BLINK, type ChamberKind } from './Descent';
+import { ALL_SLOTS, BRUTE, CHALLENGE, challengeSpots, chamberWaves, CINDER, CURSE_AT, DEPTH_CHALLENGE, Descent, DESCENT, DescentMonsterBrain, draftFor, GRIP, HOWL, KEEPER, KING, learnSkill, LURK, planRun, POUNCE, SHADE_BLINK, type ChamberKind } from './Descent';
 import { CURSES } from './Siege';
 import { DescentBot } from './DescentBot';
 import { godUnit, monsterUnit } from './factory';
@@ -51,6 +51,9 @@ const step = (sim: Sim, run: Descent, seconds: number) => {
 const clear = (sim: Sim, run: Descent, by: Unit) => {
   for (let guard = 0; guard < 20 && run.phase === 'fight'; guard++) {
     for (const m of [...run.monsters]) if (m.alive) sim.strike(by, m, 1e7, 'true');
+    // (and a challenge chamber's own task done: the bells rung, the flood waited out)
+    for (const b of run.bells) b.rung = 1;
+    if (run.floodLeft > 0) run.floodLeft = 0.01;
     step(sim, run, 0.2);
   }
 };
@@ -817,6 +820,184 @@ describe('Underworld Descent: the run', () => {
     expect(u.combatant.health).toBeLessThan(before);
   });
 
+  /** A run whose first chamber is the given challenge, in the given hall, with Zeus at its gate and the fight begun. */
+  const challenge = (kind: ChamberKind, layout: number) => {
+    const sim = new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(9));
+    const plan = planRun(seeded(9));
+    plan[0] = { n: 1, layout, kind };
+    const run = new Descent(sim, zeus, plan);
+    const god = sim.add(godUnit(zeus, 'order', { x: 0, z: 0, yaw: 0 }));
+    run.addGod(god, true);
+    run.begin();
+    step(sim, run, DESCENT.enterTime + 0.1);
+    expect(run.phase).toBe('fight');
+    return { sim, run, god };
+  };
+  /** Strikes down every beast but the forges, as if the team were mopping them up. */
+  const mop = (sim: Sim, run: Descent, by: Unit) => {
+    for (const m of [...run.monsters]) if (m.alive && !run.forges.includes(m)) sim.strike(by, m, 1e7, 'true');
+  };
+
+  it("plans each depth's own challenge chamber: soul forges in the Ashen Depths, the flood in the Drowned Halls, grave bells in the Abyss", () => {
+    const byDepth = [new Set<ChamberKind>(), new Set<ChamberKind>(), new Set<ChamberKind>()];
+    for (let seed = 1; seed < 60; seed++) for (const c of planRun(seeded(seed))) byDepth[Math.floor((c.n - 1) / DESCENT.bossEvery)]!.add(c.kind);
+    expect(DEPTH_CHALLENGE).toEqual(['forges', 'flood', 'bells']);
+    byDepth.forEach((kinds, d) => {
+      expect(kinds.has(DEPTH_CHALLENGE[d]!), `depth ${d}`).toBe(true);
+      for (const other of [...DEPTH_CHALLENGE.filter((k) => k !== DEPTH_CHALLENGE[d]), 'trap' as const]) expect(kinds.has(other), `depth ${d} ${other}`).toBe(false);
+    });
+  });
+
+  it('stands every challenge on broad open floor in every hall, spread across it', () => {
+    for (const c of CHAMBERS.filter((k) => !k.boss)) {
+      const spots = challengeSpots(c);
+      expect(spots, c.name).toHaveLength(3);
+      for (const [x, z] of spots) {
+        expect(c.sd(x, z), c.name).toBeGreaterThan(1.9);
+        expect(c.brink(x, z), c.name).toBeGreaterThan(2.4);
+        for (const [px, pz, r] of c.pillars) expect(Math.hypot(x - px, z - pz), c.name).toBeGreaterThan(r + 2);
+      }
+      for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) expect(Math.hypot(spots[i]![0] - spots[j]![0], spots[i]![1] - spots[j]![1]), c.name).toBeGreaterThan(6);
+      expect(challengeSpots(c)).toBe(spots);
+    }
+  });
+
+  it('builds three soul forges that stand their ground and breathe out Cinderlings until each is smashed, bursting as it goes', () => {
+    const { sim, run, god } = challenge('forges', DEPTH_CHAMBERS[0]!.halls[0]!);
+    const c = run.layout;
+    expect(run.forges).toHaveLength(CHALLENGE.forges.count);
+    const at = run.forges.map((f) => [f.x, f.z]);
+    for (const f of run.forges) {
+      expect(f.blocks).toBe(true);
+      expect(f.combatant.ccImmune).toBe(true);
+      // its mouth toward where the team holds
+      const face = Math.atan2(-(c.x + c.hold[0] - f.x), -(c.z + c.hold[1] - f.z));
+      expect(Math.abs(Math.atan2(Math.sin(f.body.yaw - face), Math.cos(f.body.yaw - face)))).toBeLessThan(0.01);
+    }
+    const born = new Set<Unit>();
+    for (let i = 0; i < 40; i++) {
+      step(sim, run, 0.5);
+      for (const m of run.monsters) if (m.tag.includes('.b.')) born.add(m);
+      mop(sim, run, god);
+      god.combatant.health = god.combatant.stats.maxHealth;
+    }
+    // every forge breathed some out, each out of its own mouth, and none moved
+    expect(born.size).toBeGreaterThanOrEqual(CHALLENGE.forges.count * 2);
+    for (const m of born) expect(run.forges.some((f) => Math.hypot(m.home.x - f.x, m.home.z - f.z) < f.radius + 1)).toBe(true);
+    run.forges.forEach((f, i) => expect(Math.hypot(f.x - at[i]![0]!, f.z - at[i]![1]!)).toBeLessThan(0.01));
+    expect(run.phase).toBe('fight');
+    // smashed, each bursts into flame where it stood, and breathes no more
+    for (const f of run.forges) sim.strike(god, f, 1e7, 'true');
+    for (const f of run.forges) expect(run.eruptions.some((e) => Math.hypot(e.x - f.x, e.z - f.z) < 0.01 && e.r === CHALLENGE.burst.radius)).toBe(true);
+    mop(sim, run, god);
+    const before = born.size;
+    step(sim, run, CHALLENGE.forges.every * 2);
+    for (const m of run.monsters) if (m.tag.includes('.b.')) born.add(m);
+    expect(born.size).toBe(before);
+    clear(sim, run, god);
+    expect(run.phase).toBe('reward');
+  });
+
+  it('holds a flood chamber until its time runs out, the drowned rising all along, then drains it and everything in it', () => {
+    const { sim, run, god } = challenge('flood', DEPTH_CHAMBERS[1]!.halls[0]!);
+    expect(run.floodLeft).toBeCloseTo(CHALLENGE.flood.time - 0.1, 1);
+    expect(run.challengeDone).toBe(false);
+    let risen = 0;
+    const seen = new Set<Unit>();
+    // the water comes in for the second half, and stays at the full
+    let low = 1;
+    for (let t = 0; t < CHALLENGE.flood.time - 6; t += 0.5) {
+      step(sim, run, 0.5);
+      if (run.floodLeft < CHALLENGE.flood.surge - 4) low = Math.min(low, run.hazards.flood);
+      for (const m of run.monsters) {
+        if (!m.tag.includes('.c.') || seen.has(m)) continue;
+        seen.add(m);
+        risen++;
+      }
+      mop(sim, run, god);
+      god.combatant.health = god.combatant.stats.maxHealth;
+    }
+    // cleared out over and over, the chamber still isn't done: the water keeps bringing them
+    expect(risen).toBeGreaterThanOrEqual(8);
+    expect(low).toBe(1);
+    expect(run.phase).toBe('fight');
+    // left standing at the end, they go down with the water, to the god for the kill
+    step(sim, run, 4);
+    const standing = run.monsters.filter((m) => m.alive);
+    expect(standing.length).toBeGreaterThan(0);
+    const kills = run.kills;
+    god.combatant.health = god.combatant.stats.maxHealth;
+    step(sim, run, run.floodLeft + 0.2);
+    expect(run.floodLeft).toBe(0);
+    expect(standing.every((m) => !m.alive)).toBe(true);
+    expect(run.kills).toBeGreaterThanOrEqual(kills + standing.length);
+    step(sim, run, 0.2);
+    expect(run.phase).toBe('reward');
+    // and the water goes out with them
+    step(sim, run, 6);
+    expect(run.hazards.flood).toBe(0);
+  });
+
+  it('rings a grave bell under a god who stands by it (slower with a beast beside it too), and tolls it: the dark falls back, the beasts round it reel, the gods are mended', () => {
+    const { sim, run, god } = challenge('bells', DEPTH_CHAMBERS[2]!.halls[0]!);
+    expect(run.bells).toHaveLength(CHALLENGE.bells.count);
+    const [b0, b1, b2] = run.bells;
+    // nobody near: nothing rings
+    for (const m of run.monsters) [m.brain, m.move] = [null, null];
+    const far = (b: { x: number; z: number }) => run.monsters.every((m) => !m.alive || Math.hypot(m.x - b.x, m.z - b.z) > CHALLENGE.bells.radius + 1);
+    step(sim, run, 1);
+    expect(run.bells.every((b) => b.rung === 0)).toBe(true);
+    // a beast at the bell holds it back
+    const beast = run.monsters[0]!;
+    [beast.body.x, beast.body.z] = [b0!.x + 1, b0!.z];
+    [god.body.x, god.body.z] = [b0!.x - 0.5, b0!.z];
+    god.move = null;
+    step(sim, run, 1);
+    expect(b0!.rung).toBeCloseTo(CHALLENGE.bells.held / CHALLENGE.bells.ring, 1);
+    // the beast gone, it rings at full pace and tolls: the dark creeping in is pushed back, the beasts near it stunned
+    mop(sim, run, god);
+    const near = sim.add(monsterUnit(zeus, 'gravehound', { x: b0!.x + CHALLENGE.bells.stagger - 1.5, z: b0!.z, yaw: 0 }, 0));
+    run.monsters.push(near);
+    run.hazards.dark = 3;
+    god.combatant.health = god.combatant.stats.maxHealth * 0.5;
+    const tolls = run.tolls;
+    // (held there: the Abyss's crumbling floor would throw the god off it)
+    const left = CHALLENGE.bells.ring * (1 - b0!.rung) + 0.1;
+    let mended = 0;
+    for (let t = 0; t < left; t += 0.1) {
+      [god.body.x, god.body.z, god.forced] = [b0!.x - 0.5, b0!.z, null];
+      const [was, rang] = [god.combatant.health, run.tolls];
+      step(sim, run, 0.1);
+      if (run.tolls > rang) mended = god.combatant.health - was;
+      for (const m of run.monsters) if (m !== near && m.alive) sim.strike(god, m, 1e7, 'true');
+    }
+    expect(b0!.rung).toBe(1);
+    expect(run.tolls).toBe(tolls + 1);
+    expect(run.rung).toBe(1);
+    expect(run.hazards.dark).toBeLessThan(0.5);
+    expect(near.combatant.cc.locks().move).toBe(true);
+    // and its soul fire mends the gods
+    expect(mended).toBeGreaterThan(god.combatant.stats.maxHealth * CHALLENGE.bells.heal * 0.8);
+    // the others too, then the rest cleared: the chamber is won, and nothing more rises once all three have tolled
+    for (const b of [b1!, b2!]) {
+      for (let t = 0; t < CHALLENGE.bells.ring + 0.1; t += 0.1) {
+        [god.body.x, god.body.z, god.forced] = [b.x, b.z, null];
+        mop(sim, run, god);
+        expect(far(b)).toBe(true);
+        step(sim, run, 0.1);
+      }
+      expect(b.rung).toBe(1);
+    }
+    expect(run.challengeDone).toBe(true);
+    // a guest hangs the same bells, rung as far
+    const guest = new Descent(new Sim(flat, { order: { ...BASES.order }, chaos: { ...BASES.chaos } }, seeded(1)), zeus);
+    guest.applyNet(run.netState());
+    expect(guest.bells.map((b) => [b.x, b.z, b.rung])).toEqual(run.bells.map((b) => [b.x, b.z, b.rung]));
+    expect(guest.tolls).toBe(run.tolls);
+    clear(sim, run, god);
+    expect(run.phase).toBe('reward');
+  });
+
   it('stacks a new curse at each of its chambers', () => {
     const { sim, run, team } = setup([zeus], 1);
     let seen = 0;
@@ -996,8 +1177,11 @@ describe('Underworld Descent: monster models built ahead', () => {
   const raised = (sim: Sim, run: Descent, by: Unit): string[] => {
     const seen = new Set<Unit>();
     step(sim, run, DESCENT.enterTime + 0.1);
-    for (let guard = 0; guard < 80 && run.phase === 'fight'; guard++) {
+    for (let guard = 0; guard < 160 && run.phase === 'fight'; guard++) {
       for (const m of run.monsters) seen.add(m);
+      // a bell chamber: the god goes to stand by each bell in turn (the flood is waited out)
+      const bell = run.bells.find((b) => b.rung < 1);
+      if (bell) [by.body.x, by.body.z] = [bell.x, bell.z];
       for (const m of [...run.monsters]) {
         if (!m.alive) continue;
         const boss = run.boss === m;
@@ -1021,10 +1205,20 @@ describe('Underworld Descent: monster models built ahead', () => {
         if (seed === 11 && n === 7 && !run.curses.some((c) => c.swarm)) run.curses.push(CURSES.find((c) => c.swarm)!);
         for (const g of team) g.combatant.health = g.combatant.stats.maxHealth;
         const coming = run.upcoming().map((m) => `${m.tag} ${m.name}`).sort();
-        expect(raised(sim, run, team[0]!)).toEqual(coming);
+        const got = raised(sim, run, team[0]!);
+        // a challenge chamber's forges, flood or bells keep raising more as long as it lasts: a chamber's worth is stocked,
+        // and every one that rose is among them; anywhere else, exactly what rose
+        if (!DEPTH_CHALLENGE.includes(run.current.kind)) expect(got).toEqual(coming);
+        else {
+          const left = [...coming];
+          for (const m of got) {
+            expect(left, m).toContain(m);
+            left.splice(left.indexOf(m), 1);
+          }
+        }
         kinds.add(run.current.kind);
       }
     }
-    expect([...kinds].sort()).toEqual(['boss', 'champion', 'elite', 'pack', 'trap', 'treasure']);
+    expect([...kinds].sort()).toEqual(['bells', 'boss', 'champion', 'elite', 'flood', 'forges', 'pack', 'treasure']);
   });
 });
