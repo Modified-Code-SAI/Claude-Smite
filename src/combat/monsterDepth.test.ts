@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { zeus } from '../game/gods';
+import { CINDER } from '../sim/Descent';
+import { monsterUnit } from '../sim/factory';
 import { createMonsterView, monsterDepth, setMonsterDepth, sinksAfter } from './MonsterViews';
 
 describe("the Descent's beasts take on their depth", () => {
@@ -31,10 +34,37 @@ describe("the Descent's beasts take on their depth", () => {
     expect(sinksAfter('descent-small-1.w1.0:shade')).toBe(1.3);
     expect(sinksAfter('descent-small-1.w1.0:moltenColossus')).toBe(sinksAfter('jungle-might:warden'));
     expect(sinksAfter('descent-boss-1:ossuaryKing')).toBe(2.4);
+    // a Cinderling's husk only goes once it has burst
+    expect(sinksAfter('descent-small-1.w1.0:cinderling')).toBeGreaterThan(CINDER.warn);
     // every one inside the time its body stays
-    for (const t of ['thornback', 'warden', 'treasureWyrm', 'shade', 'gravekeeper', 'ossuaryKing']) {
+    for (const t of ['thornback', 'warden', 'treasureWyrm', 'shade', 'gravekeeper', 'ossuaryKing', 'cinderling', 'slagBrute']) {
       const v = createMonsterView({ tag: `descent-small-1.w1.0:${t}`, name: t });
       expect(sinksAfter(`descent-small-1.w1.0:${t}`), t).toBeLessThan((v.linger ?? 3) - 0.5);
     }
   });
+
+  it("poses the forge's beasts through a run, a blow and a death without coming apart", () => {
+    for (const t of ['cinderling', 'slagBrute'] as const) {
+      const u = monsterUnit(zeus, t, { x: 0, z: 0, yaw: 0 }, 1);
+      u.tag = `descent-small-4.w1.0:${t}`;
+      const v = createMonsterView(u);
+      const pose = (seconds: number, death: (k: number) => number) => {
+        for (let i = 0; i < seconds * 60; i++) v.animate(u, 1 / 60, death(i / 60), Math.sin(i) * 0.5);
+      };
+      u.vx = 3;
+      pose(1, () => -1);
+      u.vx = 0;
+      u.windup = 0.4;
+      pose(0.3, () => -1);
+      u.windup = 0;
+      u.sinceAction = 0;
+      pose(0.6, () => -1);
+      pose(3, (k) => k);
+      v.root.updateMatrixWorld(true);
+      v.root.traverse((o) => {
+        for (const x of o.matrixWorld.elements) expect(Number.isFinite(x), `${t} ${o.name}`).toBe(true);
+      });
+    }
+  });
 });
+

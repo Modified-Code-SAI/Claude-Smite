@@ -870,6 +870,15 @@ export class Sim {
     });
   }
 
+  /**
+   * A beast's own area attack winding up outside skills (a Slag Brute's slam):
+   * the shape it will strike shows on the ground for `time` seconds, filling
+   * as the blow comes. It goes if the beast dies first.
+   */
+  warnAt(owner: Unit, shape: FlashShape, time: number): void {
+    this.flashes.push({ id: nextEntityId(), shape, owner, age: 0, life: time, warn: true, act: 'special' });
+  }
+
   /** A flash for effects outside skills (passive procs). */
   /** `look`: the look it plays (a passive's, `<god>:passive`), if any. */
   flashAt(owner: Unit, shape: FlashShape, look?: string): void {
@@ -976,7 +985,7 @@ export class Sim {
       this.stepAuras();
     }
     for (const f of this.flashes) f.age += dt;
-    removeWhere(this.flashes, (f) => f.age >= f.life);
+    removeWhere(this.flashes, (f) => f.age >= f.life || (f.warn === true && !f.owner.alive));
   }
 
   private auraTimer = 0;

@@ -36,6 +36,10 @@ export interface BossSpecial {
   windup: number;
   radius: number;
   scale: number;
+  /** Only wound up once a foe god is this close (edge to edge); any time when unset. */
+  near?: number;
+  /** The circle it will strike shows on the ground as it winds up. */
+  warn?: boolean;
 }
 export const BOSS_SPECIAL: Record<BossKind, BossSpecial> = {
   treasureWyrm: { every: 9, windup: 1.0, radius: 7, scale: 1.4 },
@@ -280,9 +284,10 @@ export class MonsterBrain implements Brain {
     this.engaged = true;
     if (spec) {
       this.specialIn -= dt;
-      if (this.specialIn <= 0) {
+      if (this.specialIn <= 0 && (spec.near === undefined || this.foeWithin(spec.near))) {
         this.specialIn = spec.every;
         this.special = spec.windup;
+        if (spec.warn) sim.warnAt(u, { type: 'circle', x: u.x, z: u.z, radius: spec.radius }, spec.windup);
         return;
       }
     }
@@ -311,6 +316,12 @@ export class MonsterBrain implements Brain {
   protected get specialSpec(): BossSpecial | null {
     const kind = this.camp.camp.kind;
     return isBoss(kind) ? BOSS_SPECIAL[kind] : null;
+  }
+
+  /** A god it can strike is within `reach` of it, edge to edge. */
+  private foeWithin(reach: number): boolean {
+    const u = this.u;
+    return this.sim.enemiesOf(u).some((t) => t.kind === 'god' && t.alive && t.targetable && hypot(t.x - u.x, t.z - u.z) - t.radius - u.radius <= reach);
   }
 
   /** The boss's area attack lands: everything around it is hit, with a shockwave on the ground. */

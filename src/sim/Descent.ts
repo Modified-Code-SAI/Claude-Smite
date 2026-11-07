@@ -91,6 +91,20 @@ export const DESCENT = {
 /** The Shade's blink: how close (edge to edge) a god gets before it goes, how often, and how far from them it reappears. */
 export const SHADE_BLINK = { near: 4.5, every: 5.5, first: 1.5, far: 9 } as const;
 
+/** A Cinderling falling: it bursts into flame where it lies after `warn` seconds, burning every god within `radius` for a share of their health. */
+export const CINDER = { warn: 1.25, radius: 2.2, damage: 0.07 } as const;
+
+/** The Slag Brute's slam: both fists into the floor, every god within `radius` hit for `scale` times its power, wound up (its circle on the ground) only once one is within `near` of it. */
+export const BRUTE: BossSpecial = { every: 8, windup: 1.1, radius: 3.4, scale: 1.5, near: 4.5, warn: true };
+
+/** Each depth's own beasts: the many that rush in, the ones that hang back and shoot, and the heavy that anchors a pack. */
+export const DEPTH_BEASTS: readonly { body: MonsterType; ranged: MonsterType; heavy: MonsterType }[] = [
+  // the Ashen Depths: Cinderlings swarm, Slag Brutes slam
+  { body: 'cinderling', ranged: 'thornSpitter', heavy: 'slagBrute' },
+  { body: 'thornback', ranged: 'thornSpitter', heavy: 'thornbackAlpha' },
+  { body: 'thornback', ranged: 'thornSpitter', heavy: 'thornbackAlpha' },
+];
+
 /** The Ossuary King, lord of the Abyss and the run's last boss. */
 export const KING = {
   /** Grave Toll: it drives its blade into the floor and a ring of soul fire bursts out around it. */
@@ -114,6 +128,8 @@ export const SOULS: Record<MonsterType, number> = {
   thornSpitter: 1,
   shade: 2,
   gravekeeper: 3,
+  cinderling: 1,
+  slagBrute: 2,
   thornbackAlpha: 2,
   warden: 4,
   gildedThornback: 5,
@@ -254,6 +270,7 @@ const isBossType = (t: string): boolean => t === 'treasureWyrm' || t === 'molten
 /** The monsters of one chamber, wave by wave. */
 export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
   const { n, kind } = plan;
+  const beasts = DEPTH_BEASTS[depthOf(n)]!;
   const many = DESCENT_TUNING.count * teamCount(gods);
   const pack = (k: number): MonsterType[] => {
     const out: MonsterType[] = [];
@@ -264,9 +281,9 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
     // past the second, each in place of two (a healer in a pack is worth more than a body)
     const shades = n > DESCENT.bossEvery ? Math.min(3, 1 + Math.floor((n - DESCENT.bossEvery - 1) / 3)) : 0;
     const keepers = n > 2 * DESCENT.bossEvery ? Math.min(2, 1 + Math.floor((n - 2 * DESCENT.bossEvery - 1) / 2)) : 0;
-    add('thornback', Math.min(9, 3 + Math.floor(n * 0.6)) - shades - 2 * keepers);
-    add('thornSpitter', n >= 2 ? Math.min(4, Math.floor(n / 2)) : 0);
-    add('thornbackAlpha', Math.min(4, Math.floor((n - 1) / 3)));
+    add(beasts.body, Math.min(9, 3 + Math.floor(n * 0.6)) - shades - 2 * keepers);
+    add(beasts.ranged, n >= 2 ? Math.min(4, Math.floor(n / 2)) : 0);
+    add(beasts.heavy, Math.min(4, Math.floor((n - 1) / 3)));
     add('shade', shades);
     add('gravekeeper', keepers);
     return out;
@@ -293,20 +310,21 @@ export function chamberWaves(plan: ChamberPlan, gods = 3): MonsterType[][] {
       return [[...wardens, ...pack(0.45)], pack(0.3)].filter((w) => w.length);
     }
     case 'champion':
-      return [[(n >= 6 ? 'warden' : 'thornbackAlpha') as MonsterType, ...pack(0.5)], pack(0.3)].filter((w) => w.length);
+      return [[n >= 6 ? 'warden' : beasts.heavy, ...pack(0.5)], pack(0.3)].filter((w) => w.length);
     case 'treasure':
       return split(pack(0.7));
     case 'boss':
-      return [[n >= DESCENT.chambers ? 'ossuaryKing' : n % 10 === 5 ? 'treasureWyrm' : 'moltenColossus', ...(n >= 10 ? (['thornSpitter', 'thornSpitter'] as MonsterType[]) : [])]];
+      return [[n >= DESCENT.chambers ? 'ossuaryKing' : n % 10 === 5 ? 'treasureWyrm' : 'moltenColossus', ...(n >= 10 ? [beasts.ranged, beasts.ranged] : [])]];
   }
 }
 
 /** The adds a boss calls as it weakens. */
 function bossAdds(n: number): MonsterType[] {
-  const out: MonsterType[] = ['thornback', 'thornback', 'thornback', 'thornSpitter'];
-  if (n >= 10) out.push('thornbackAlpha', 'thornSpitter');
+  const { body, ranged, heavy } = DEPTH_BEASTS[depthOf(n)]!;
+  const out: MonsterType[] = [body, body, body, ranged];
+  if (n >= 10) out.push(heavy, ranged);
   // the Ossuary King calls up Shades of its court (never a Gravekeeper: a healer on a boss drags the fight out)
-  if (n >= DESCENT.chambers) out.push('shade', 'thornbackAlpha');
+  if (n >= DESCENT.chambers) out.push('shade', heavy);
   return out;
 }
 
@@ -397,9 +415,10 @@ export class DescentMonsterBrain extends MonsterBrain {
     return this.self.tag.endsWith(':ossuaryKing') ? 'ossuaryKing' : super.bossKey;
   }
 
-  /** The Ossuary King's Grave Toll in place of a jungle boss's slam. */
+  /** The Ossuary King's Grave Toll and the Slag Brute's slam, in place of a jungle boss's. */
   protected override get specialSpec(): BossSpecial | null {
-    return this.self.tag.endsWith(':ossuaryKing') ? KING.toll : super.specialSpec;
+    const t = this.self.tag;
+    return t.endsWith(':ossuaryKing') ? KING.toll : t.endsWith(':slagBrute') ? BRUTE : super.specialSpec;
   }
 
   override update(dt: number): void {
@@ -619,6 +638,8 @@ export interface Eruption {
   z: number;
   r: number;
   left: number;
+  /** Share of a god's health it burns (soul fire's own when unset). */
+  share?: number;
 }
 
 /** A god's personal skill draft: which slot it fills and the three skills on offer. */
@@ -851,6 +872,8 @@ export class Descent {
     if (u.kind !== 'monster') return;
     const ours = this.monsters.includes(u);
     if (ours) this.hazards.onKill();
+    // a Cinderling bursts into flame where it fell
+    if (ours && u.tag.endsWith(':cinderling')) this.eruptions.push({ id: this.nextEruption++, x: u.x, z: u.z, r: CINDER.radius, left: CINDER.warn, share: CINDER.damage });
     // in co-op every kill is the team's; in a shared descent the team that made it
     const side = this.versus ? this.creditOf(u, e.killer, e.assists) : 'order';
     if (ours) {
@@ -1531,7 +1554,7 @@ export class Descent {
     for (const g of this.gods) {
       if (!g.alive || g.untargetable > 0 || hypot(g.x - e.x, g.z - e.z) > e.r + g.radius) continue;
       const c = g.combatant;
-      const amount = c.stats.maxHealth * DESCENT.eruption.damage * (1 - Math.min(0.9, c.stats.damageReduction));
+      const amount = c.stats.maxHealth * (e.share ?? DESCENT.eruption.damage) * (1 - Math.min(0.9, c.stats.damageReduction));
       c.takeDamage(amount);
       this.sim.inject({ type: 'damage', target: g, source: null, amount, crit: false, ability: true });
     }

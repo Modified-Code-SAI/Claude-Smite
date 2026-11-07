@@ -21,7 +21,9 @@ import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
 
-const ERUPTIONS = 10;
+const ERUPTIONS = 16;
+/** The smoke over a fallen Cinderling's burst. */
+const CINDER_SMOKE = 0x4a3a32;
 /** The slain going into each depth's ground (DescentView.sink): forge ash and its cinders, the Drowned Halls' spray, the Abyss's ghost smoke. */
 const ASH = 0x8a7a6c;
 const ASH_SMOKE = 0x564840;
@@ -84,7 +86,7 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | `relic.${RelicId}` | `hazard.${HazardCue}`;
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | `relic.${RelicId}` | `hazard.${HazardCue}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -333,6 +335,18 @@ export class DescentView {
     // each landing: a column of soul fire bursting from the ground, spitting loose souls
     const me = this.opts.me;
     for (const e of r.landed.splice(0)) {
+      if (e.r < DESCENT.eruption.radius) {
+        // a fallen Cinderling's last flare: a squat burst of flame and cinders, no souls in it
+        const gy = this.groundAt(e.x, e.z);
+        this.vfx.burst(this.burst, e.x, gy + 0.35, e.z, 1.1);
+        this.vfx.billow('blast', e.x, gy + 0.7, e.z, 2.3, { tint: CINDER_SMOKE, duration: 1.0, rise: 0.9, flame: [0xff5a14, 0xffd890] });
+        if (me && this.opts.shake) {
+          const d = Math.hypot(me.x - e.x, me.z - e.z);
+          if (d < 7) this.opts.shake(0.12 * (1 - d / 7));
+        }
+        this.opts.cue?.('cinder', { x: e.x, y: gy + 0.5, z: e.z }, 0);
+        continue;
+      }
       this.vfx.pillar(this.burst, e.x, e.z, 0.3, 1.3);
       this.vfx.burst(this.burst, e.x, 0.4, e.z, 1.3);
       this.wisps.swarm.release(e.x, this.groundAt(e.x, e.z) + 0.6, e.z, 4, null, this.soul, 0.6, 0.15);

@@ -96,7 +96,7 @@ export class DescentBot implements Brain {
     if (run.phase === 'exit' && !run.humans.size && !this.enemyClose(20)) this.walk(door, true);
   }
 
-  /** Steps out of an eruption that is about to land under the bot, or out of the depth's dangers (see Hazards.threat). */
+  /** Steps out of an eruption or a beast's slam that is about to land under the bot, or out of the depth's dangers (see Hazards.threat). */
   private dodge(): boolean {
     const u = this.u;
     const out = this.run.hazards.threat(u.x, u.z, u.radius);
@@ -111,6 +111,17 @@ export class DescentBot implements Brain {
       const dz = u.z - e.z;
       const d = hypot(dx, dz);
       if (d > e.r + u.radius + 0.3) continue;
+      const k = d > 0.05 ? 1 / d : 1;
+      u.move = { x: d > 0.05 ? dx * k : 1, z: d > 0.05 ? dz * k : 0 };
+      return true;
+    }
+    // a beast's slam winding up (its circle on the ground): out of it once the bot has seen it
+    for (const f of this.sim.flashes) {
+      if (!f.warn || f.act !== 'special' || f.shape.type !== 'circle' || f.owner.team === u.team || f.age < f.life * 0.3) continue;
+      const dx = u.x - f.shape.x;
+      const dz = u.z - f.shape.z;
+      const d = hypot(dx, dz);
+      if (d > f.shape.radius + u.radius + 0.4) continue;
       const k = d > 0.05 ? 1 / d : 1;
       u.move = { x: d > 0.05 ? dx * k : 1, z: d > 0.05 ? dz * k : 0 };
       return true;

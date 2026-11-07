@@ -5,6 +5,7 @@ import { spriteQuads } from '../render/shared';
 import type { CampKind } from '../map/ConquestLayout';
 import { skinRigid } from '../scene/merge';
 import { BUFF_COLOR } from '../scene/conquest/Props';
+import { CINDER } from '../sim/Descent';
 import { MonsterBrain } from '../sim/Jungle';
 import type { Unit } from '../sim/Unit';
 import { hypot } from '../core/math';
@@ -26,6 +27,9 @@ import { hypot } from '../core/math';
  *    the Abyss with a crooked staff and a lantern of amber soul fire. They
  *    hang back, lift the lantern and pour souls into the most hurt monster
  *    near them, an ember of their own soul glowing in their open ribs.
+ *  - Cinderlings and Slag Brutes, the Ashen Depths' own: imps of cinder
+ *    that burst into flame when they fall, and knuckle-walking heaps of
+ *    cooled slag with a furnace in their chests that slam the floor.
  * Each monster is a small hierarchy of rigid parts posed every frame, drawn
  * as one skinned mesh per material (`skinRigid`): the pivots are its bones.
  * Materials read `positionGeometry`, the part's unposed position, so patterns
@@ -50,7 +54,7 @@ export const KEEPER_CORE = 0xfff0c8;
  * Seconds after death each body starts going down into the ground (the rigs
  * below sink on these), so whatever marks the ground taking it lands as it goes.
  */
-const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4 } as const;
+const SINKS = { thornback: 1.6, warden: 1.4, treasureWyrm: 1.8, shade: 1.3, gravekeeper: 1.6, ossuaryKing: 2.4, cinderling: 1.4, slagBrute: 1.5 } as const;
 
 /** When a monster's body starts sinking into the ground, in seconds after it died. */
 export function sinksAfter(tag: string): number {
@@ -600,6 +604,339 @@ function lavaStone(): THREE.Material {
   m.emissiveNode = mix(vec3(1, 0.22, 0.02), vec3(1, 0.7, 0.25), crack.pow(3)).mul(crack.mul(throb).mul(4));
   m.roughnessNode = float(0.92).sub(crack.mul(0.4));
   return (lava = m);
+}
+
+// ---------------------------------------------------------------------------
+// Cinderling
+
+/** A Cinderling's fire: its eyes, mouth, the tuft on its head and the flare it bursts in. */
+export const CINDER_GLOW = 0xff7a1e;
+let cinderSkin: THREE.Material | null = null;
+
+/**
+ * A Cinderling's hide: charred crust flaking over a body still burning
+ * inside, the fire showing through a web of cracks that flickers, hottest
+ * underneath. In the rig's space, so the cracks stay put as it scurries.
+ */
+function cinderSkinMaterial(): THREE.Material {
+  const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.95 });
+  const p = positionGeometry;
+  const flake = n(9, p).mul(0.6).add(n(23, p).mul(0.4));
+  m.colorNode = mix(vec3(0.025, 0.02, 0.02), vec3(0.13, 0.09, 0.075), flake);
+  // the web of cracks: noise zero crossings, a coarse set and a fine one
+  const wide = smoothstep(0.045, 0.0, abs(mx_noise_float(p.mul(3.4))));
+  const fine = smoothstep(0.025, 0.0, abs(mx_noise_float(p.mul(8).add(5)))).mul(0.5);
+  const crack = wide.add(fine).clamp(0, 1);
+  // hotter underneath (the belly, the insides of the limbs) than on the crust that faces up
+  const under = smoothstep(0.3, -0.6, normalWorld.y);
+  const flicker = mx_noise_float(vec3(p.x.mul(4), p.y.mul(4).sub(time.mul(2.4)), p.z.mul(4))).mul(0.35).add(0.85);
+  const heat = crack.mul(flicker).mul(under.mul(0.6).add(0.5));
+  m.emissiveNode = mix(vec3(1, 0.2, 0.02), vec3(1, 0.5, 0.14), crack.pow(3)).mul(heat.mul(2.4));
+  m.roughnessNode = float(0.95).sub(crack.mul(0.35));
+  return m;
+}
+
+let cinderFlame: THREE.Material | null = null;
+
+/**
+ * Living flame for a Cinderling's hair and tail: white-gold at the root,
+ * orange licking up to nothing at the tip, flickering. Added over what's
+ * behind it, never hiding it.
+ */
+function cinderFlameMaterial(): THREE.Material {
+  const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  // (a cone's uv.y runs from 0 at its base to 1 at its tip)
+  const h = uv().y;
+  const p = positionGeometry;
+  const lick = mx_noise_float(vec3(p.x.mul(14), p.y.mul(9).sub(time.mul(6)), p.z.mul(14))).mul(0.5).add(0.5);
+  const body = smoothstep(1, 0.2, h.add(lick.mul(0.4)));
+  m.colorNode = mix(vec3(1, 0.28, 0.04), vec3(1, 0.75, 0.35), smoothstep(0.55, 0, h)).mul(body.mul(2.4));
+  m.opacityNode = body;
+  return m;
+}
+
+/**
+ * Cinderlings: knee-high imps of cinder that swarm the Ashen Depths. A
+ * charred crust cracked over the fire inside, long raking arms, hot horns,
+ * a tuft of flame for hair. They skitter low and fast, rake with one claw
+ * then the other, and when one falls it curls up round its swelling fire
+ * and bursts.
+ */
+function cinderling(): MonsterView {
+  const skin = (cinderSkin ??= cinderSkinMaterial());
+  const horn = mats().bone;
+  const fire = glow(CINDER_GLOW, 4.5);
+  const flameMat = (cinderFlame ??= cinderFlameMaterial());
+  const root = new THREE.Group();
+  const s = 1.15;
+  const rig = pivot(root, 0, 0, 0);
+  rig.scale.setScalar(s);
+  const hips = pivot(rig, 0, 0.5, 0);
+  mesh(hips, geo('cl-pelvis', () => new THREE.SphereGeometry(0.15, 16, 12).scale(1.1, 0.8, 0.9)), skin);
+  // a whip of a tail, a flame at its tip
+  const tail = pivot(hips, 0, 0.02, -0.11);
+  mesh(tail, geo('cl-tail', () => new THREE.ConeGeometry(0.05, 0.4, 8).rotateX(-Math.PI / 2).translate(0, 0, -0.2)), skin);
+  const tailFlame = mesh(tail, geo('cl-tail-flame', () => new THREE.ConeGeometry(0.05, 0.24, 8, 1, true).translate(0, 0.12, 0)), flameMat, 0, 0.01, -0.38, -0.6, 0, 0, false);
+  // crouched digitigrade legs on splayed, clawed feet
+  const toe = geo('cl-toe', () => new THREE.ConeGeometry(0.018, 0.09, 6).rotateX(Math.PI / 2).translate(0, 0, 0.045));
+  const legs: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const leg = pivot(hips, sx * 0.1, -0.02, 0);
+    mesh(leg, geo('cl-thigh', () => new THREE.CapsuleGeometry(0.06, 0.16, 4, 10)), skin, 0, -0.11, 0.06, -0.5);
+    mesh(leg, geo('cl-shin', () => new THREE.CapsuleGeometry(0.045, 0.14, 4, 8)), skin, 0, -0.315, 0.075, 0.57);
+    mesh(leg, geo('cl-foot', () => new THREE.SphereGeometry(0.06, 10, 8).scale(0.9, 0.5, 1.6)), skin, 0, -0.45, 0.08);
+    for (let i = -1; i <= 1; i++) mesh(leg, toe, horn, i * 0.035, -0.465, 0.15, 0, i * 0.3, 0, false);
+    legs.push(leg);
+  }
+  // a hunched body pitched forward over the hips
+  const torso = pivot(hips, 0, 0.06, 0);
+  mesh(torso, geo('cl-chest', () => new THREE.SphereGeometry(0.2, 18, 14).scale(1.05, 1.15, 0.85)), skin, 0, 0.2, 0);
+  mesh(torso, geo('cl-belly', () => new THREE.SphereGeometry(0.14, 14, 10)), skin, 0, 0.05, 0.05);
+  // knobs of hot horn down its spine
+  const knob = geo('cl-knob', () => new THREE.ConeGeometry(0.035, 0.12, 6).translate(0, 0.06, 0));
+  for (let i = 0; i < 4; i++) mesh(torso, knob, horn, 0, 0.36 - i * 0.09, -0.15 + i * 0.012, -1.1 - i * 0.12, 0, 0).scale.setScalar(1 - i * 0.15);
+  // the fire inside, hidden in its chest until it falls and the fire swells out of it
+  const core = mesh(torso, geo('cl-core', () => new THREE.SphereGeometry(0.1, 16, 12)), fire, 0, 0.16, 0.04, 0, 0, 0, false);
+  const head = pivot(torso, 0, 0.4, 0.1);
+  mesh(head, geo('cl-skull', () => new THREE.SphereGeometry(0.13, 16, 12).scale(1, 0.85, 1.15)), skin, 0, 0.02, 0.04);
+  // a hinged jaw over a mouthful of fire
+  const jaw = pivot(head, 0, -0.03, 0);
+  mesh(jaw, geo('cl-jaw', () => new THREE.SphereGeometry(0.1, 14, 10).scale(1.1, 0.5, 1.2)), skin, 0, -0.05, 0.08);
+  mesh(head, geo('cl-mouth', () => new THREE.SphereGeometry(0.07, 12, 8).scale(1.2, 0.4, 1)), fire, 0, -0.05, 0.12, 0, 0, 0, false);
+  for (const sx of [-1, 1]) {
+    mesh(head, geo('cl-eye', () => new THREE.SphereGeometry(0.026, 10, 8).scale(1.4, 0.7, 0.7)), fire, sx * 0.055, 0.035, 0.155, 0, 0, sx * 0.3, false);
+    mesh(head, geo('cl-horn', () => new THREE.ConeGeometry(0.03, 0.2, 7).translate(0, 0.1, 0)), horn, sx * 0.08, 0.08, 0, -0.9, 0, -sx * 0.45);
+  }
+  // a tuft of flame for hair, licking back off the skull
+  const flames: THREE.Mesh[] = [];
+  const flame = geo('cl-flame', () => new THREE.ConeGeometry(0.07, 0.3, 10, 1, true).translate(0, 0.15, 0));
+  for (let i = 0; i < 3; i++) flames.push(mesh(head, flame, flameMat, (i - 1) * 0.04, 0.08, -0.02 - i * 0.04, -0.5 - i * 0.25, 0, (i - 1) * 0.35, false));
+  // long thin arms ending in raking claws
+  const claw = geo('cl-claw', () => new THREE.ConeGeometry(0.016, 0.12, 6).rotateX(Math.PI).translate(0, -0.06, 0));
+  const arms: THREE.Group[] = [];
+  const elbows: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const arm = pivot(torso, sx * 0.21, 0.3, 0.02);
+    mesh(arm, geo('cl-upper', () => new THREE.CapsuleGeometry(0.045, 0.2, 4, 8)), skin, 0, -0.14, 0);
+    const elbow = pivot(arm, 0, -0.27, 0);
+    mesh(elbow, geo('cl-fore', () => new THREE.CapsuleGeometry(0.04, 0.2, 4, 8)), skin, 0, -0.13, 0);
+    mesh(elbow, geo('cl-hand', () => new THREE.SphereGeometry(0.05, 10, 8).scale(1, 0.8, 1.1)), skin, 0, -0.28, 0.01);
+    for (let i = -1; i <= 1; i++) mesh(elbow, claw, horn, i * 0.026, -0.31, 0.03, 0.3, 0, i * 0.25, false);
+    arms.push(arm);
+    elbows.push(elbow);
+  }
+  skinRigid(root, 'cinderling', rig, [core, tailFlame, ...flames], bounds(1.1 * s));
+  const flameTilt = flames.map((f) => f.rotation.x);
+
+  let phase = Math.random() * 10;
+  let clock = Math.random() * 10;
+  let lean = 0;
+  let look = 0;
+  let glance = 0;
+  let glanceIn = 0;
+  let side = 1;
+  let last = 9;
+  return {
+    root,
+    height: 1.05 * s,
+    linger: 2.6,
+    animate(u, dt, deathTime, wobble) {
+      clock += dt;
+      const speed = hypot(u.vx, u.vz);
+      const gait = Math.min(1, speed / 2.5);
+      phase += dt * (4 + speed * 3.2);
+      lean += (gait - lean) * Math.min(1, dt * 6);
+      // a skittering run: quick short strides, body low and pitched forward, arms swept back
+      const sw = Math.sin(phase);
+      legs[0]!.rotation.x = sw * 0.85 * gait;
+      legs[1]!.rotation.x = -sw * 0.85 * gait;
+      hips.position.y = 0.5 - lean * 0.05 + Math.abs(Math.cos(phase)) * 0.05 * gait + Math.sin(clock * 3.1) * 0.008;
+      torso.rotation.set(0.55 + lean * 0.35 + wobble * 0.12, -sw * 0.14 * gait, sw * 0.06 * gait + wobble * 0.08);
+      tail.rotation.set(0.15 + Math.sin(clock * 3.3) * 0.15 - lean * 0.2, Math.sin(clock * 5 + lean) * 0.45, 0);
+      // a head that snaps about between still moments, like a bird's
+      if ((glanceIn -= dt) <= 0) {
+        glanceIn = 0.35 + Math.random() * 0.9;
+        glance = (Math.random() - 0.5) * 1.1;
+      }
+      look += (glance * (1 - gait) - look) * Math.min(1, dt * 18);
+      head.rotation.set(-0.45 - lean * 0.3, look, 0);
+      // the rake: one arm whips down across its foe, the other the next time
+      const a = u.sinceAction;
+      if (a < last) side = -side;
+      last = a;
+      const rake = a < 0.16 ? -1.7 + (a / 0.16) * 2.3 : a < 0.5 ? 0.6 * (1 - (a - 0.16) / 0.34) : 0;
+      jaw.rotation.x = (a < 0.4 ? Math.sin((a / 0.4) * Math.PI) * 0.55 : 0) + 0.06 + Math.sin(clock * 2.6) * 0.04;
+      arms.forEach((arm, i) => {
+        const sx = i ? 1 : -1;
+        const striking = sx === side;
+        arm.rotation.x = -0.75 + lean * 0.9 + sw * 0.3 * gait * sx + (striking ? rake : 0);
+        arm.rotation.z = sx * (0.25 + (striking && a < 0.3 ? 0.25 : 0));
+        elbows[i]!.rotation.x = -0.5 - lean * 0.3 + (striking && a < 0.16 ? -0.6 : 0);
+      });
+      // the fire on its head and tail licks and gutters
+      flames.forEach((f, i) => {
+        f.rotation.x = flameTilt[i]! - lean * 0.6;
+        f.scale.set(1, 0.75 + 0.35 * Math.sin(clock * (11 + i * 3) + i * 2) + lean * 0.35, 1);
+      });
+      tailFlame.scale.set(1, 0.8 + 0.3 * Math.sin(clock * 13), 1);
+      core.scale.setScalar(0.01);
+      if (deathTime >= 0) {
+        // it drops to its knees and curls up round the fire swelling out of it, bursts, and is ash
+        const t = Math.min(1, deathTime / 0.35);
+        const burnt = Math.max(0, Math.min(1, (deathTime - CINDER.warn) / 0.5));
+        hips.position.y = 0.5 - t * 0.24 - Math.max(0, deathTime - SINKS.cinderling) * 0.4;
+        torso.rotation.x = 0.55 + t * 0.55;
+        for (const l of legs) l.rotation.x = -t * 0.9;
+        arms.forEach((arm, i) => {
+          arm.rotation.x = -0.75 - t * 0.6;
+          arm.rotation.z = (i ? 1 : -1) * (0.25 - t * 0.4);
+          elbows[i]!.rotation.x = -0.5 - t * 1.2;
+        });
+        head.rotation.x = -0.45 + t * 0.4;
+        const swell = Math.min(1, deathTime / CINDER.warn);
+        core.scale.setScalar(
+          deathTime < CINDER.warn ? (0.6 + swell * swell * 3) * (1 + Math.sin(deathTime * 38) * 0.1 * swell) : Math.max(0.01, 3.6 * (1 - (deathTime - CINDER.warn) / 0.1)),
+        );
+        // what's left: a cooling husk, crumbling, the fire in it gone out
+        rig.scale.set(s, s * (1 - burnt * 0.45), s);
+        const out = Math.max(0.01, 1 - burnt * 2);
+        for (const f of flames) f.scale.setScalar(out);
+        tailFlame.scale.setScalar(out);
+      } else rig.scale.setScalar(s);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Slag Brute
+
+/**
+ * Slag Brutes: the Ashen Depths' heavies. A hunched ape of a thing, as wide
+ * as it is tall, poured from the forge's slag and cooled to a cracked black
+ * crust that still runs molten in the seams, ash-grey plates of basalt on
+ * its shoulders, and a split down its chest where the furnace inside it
+ * shows. It walks on its knuckles, hauls one fist back over its shoulder to
+ * punch, and with a god close raises both over its head and slams the floor.
+ */
+function slagBrute(): MonsterView {
+  const crust = lavaStone();
+  const plate = mats().stone;
+  const lit = glow(0xff6a1a, 4);
+  const root = new THREE.Group();
+  const rig = pivot(root, 0, 0, 0);
+  const hips = pivot(rig, 0, 0.9, 0);
+  mesh(hips, geo('sb-pelvis', () => rock(0.45, 31).scale(1.2, 0.8, 1)), crust);
+  const legs: THREE.Group[] = [];
+  for (const sx of [-1, 1]) {
+    const leg = pivot(hips, sx * 0.42, -0.05, 0);
+    mesh(leg, geo('sb-thigh', () => rock(0.3, 32).scale(1, 1.3, 1)), crust, 0, -0.32, 0);
+    mesh(leg, geo('sb-foot', () => rock(0.33, 33).scale(1.15, 0.55, 1.35)), crust, 0, -0.68, 0.1);
+    legs.push(leg);
+  }
+  // a gut and a great hump of a back, pitched forward over the hips
+  const torso = pivot(hips, 0, 0.15, 0);
+  mesh(torso, geo('sb-gut', () => rock(0.62, 34).scale(1.2, 1, 0.95)), crust, 0, 0.55, 0.05);
+  mesh(torso, geo('sb-hump', () => rock(0.7, 35).scale(1.35, 0.95, 1.05)), crust, 0, 1.0, -0.25);
+  // the split down its chest, crust ribs either side, and the furnace showing through it
+  const core = mesh(torso, geo('sb-core', () => new THREE.SphereGeometry(0.22, 18, 12).scale(0.5, 1.45, 0.55)), lit, 0, 0.6, 0.5, 0, 0, 0, false);
+  for (const sx of [-1, 1]) mesh(torso, geo('sb-rib', () => rock(0.24, 46).scale(0.85, 1.5, 0.7)), crust, sx * 0.25, 0.6, 0.5, 0, 0, sx * 0.12);
+  // cooled basalt plates over the shoulders and down the back
+  for (const sx of [-1, 1]) mesh(torso, geo('sb-pauldron', () => rock(0.38, 36).scale(1.3, 0.45, 1.1)), plate, sx * 0.78, 1.28, -0.05, 0, 0, sx * 0.45);
+  mesh(torso, geo('sb-back', () => rock(0.45, 37).scale(1.4, 0.4, 1.2)), plate, 0, 1.45, -0.42, -0.3, 0, 0);
+  mesh(torso, geo('sb-spine', () => rock(0.3, 44).scale(1.2, 0.4, 1)), plate, 0, 1.15, -0.85, -0.9, 0, 0);
+  // a small head sunk low between the shoulders
+  const head = pivot(torso, 0, 1.0, 0.62);
+  mesh(head, geo('sb-skull', () => rock(0.26, 38).scale(1.05, 0.9, 1.1)), crust, 0, 0, 0);
+  mesh(head, geo('sb-brow', () => rock(0.18, 45).scale(1.7, 0.45, 0.8)), plate, 0, 0.12, 0.12, 0.2, 0, 0);
+  const jaw = pivot(head, 0, -0.1, 0);
+  mesh(jaw, geo('sb-jaw', () => rock(0.2, 39).scale(1.25, 0.6, 1)), crust, 0, -0.07, 0.1);
+  mesh(head, geo('sb-maw', () => new THREE.SphereGeometry(0.11, 12, 8).scale(1.3, 0.45, 0.8)), lit, 0, -0.12, 0.18, 0, 0, 0, false);
+  for (const sx of [-1, 1]) mesh(head, geo('sb-eye', () => new THREE.BoxGeometry(0.08, 0.035, 0.03)), lit, sx * 0.1, 0.04, 0.24, 0, 0, -sx * 0.25, false);
+  // arms like pillars to the ground, fists with molten knuckles
+  const arms: THREE.Group[] = [];
+  const elbows: THREE.Group[] = [];
+  const knuckle = geo('sb-knuckle', () => new THREE.SphereGeometry(0.085, 10, 8).scale(1, 0.7, 0.8));
+  for (const sx of [-1, 1]) {
+    mesh(torso, geo('sb-shoulder', () => rock(0.42, 40)), crust, sx * 0.92, 1.05, 0.05);
+    const arm = pivot(torso, sx * 1.0, 0.95, 0.1);
+    mesh(arm, geo('sb-upper', () => rock(0.27, 41).scale(1, 1.6, 1)), crust, 0, -0.36, 0);
+    const elbow = pivot(arm, 0, -0.7, 0);
+    mesh(elbow, geo('sb-fore', () => rock(0.31, 42).scale(1, 1.5, 1)), crust, 0, -0.3, 0.03);
+    mesh(elbow, geo('sb-fist', () => rock(0.42, 43).scale(1.1, 0.95, 1.15)), crust, 0, -0.75, 0.06);
+    for (let i = -1; i <= 1; i++) mesh(elbow, knuckle, lit, i * 0.15, -0.8, 0.42, 0, 0, 0, false);
+    arms.push(arm);
+    elbows.push(elbow);
+  }
+  const embers = makeEmbers(rig);
+  skinRigid(root, 'slag-brute', rig, [core], bounds(2.6));
+
+  let phase = Math.random() * 10;
+  let t = Math.random() * 10;
+  /** How far each fist is hauled back for a punch, and both up for the slam. */
+  let haul = 0;
+  let raise = 0;
+  let side = 1;
+  let winding = false;
+  let slammed = false;
+  return {
+    root,
+    height: 2.6,
+    animate(u, dt, deathTime, wobble) {
+      t += dt;
+      const special = u.brain instanceof MonsterBrain ? u.brain.specialProgress : 0;
+      const speed = hypot(u.vx, u.vz);
+      const gait = Math.min(1, speed / 1.8);
+      phase += dt * (2 + speed * 1.6);
+      const sw = Math.sin(phase);
+      // a rolling knuckle walk: the legs and the opposite fists swing together, the hump sways
+      legs[0]!.rotation.x = sw * 0.5 * gait;
+      legs[1]!.rotation.x = -sw * 0.5 * gait;
+      hips.position.y = 0.9 + Math.abs(Math.cos(phase)) * 0.06 * gait + Math.sin(t * 1.2) * 0.02;
+      // a punch winding up: a new one swaps fists
+      if (u.windup > 0 && !winding) {
+        side = -side;
+        slammed = false;
+      }
+      winding = u.windup > 0;
+      if (special > 0) slammed = true;
+      haul += ((winding ? 1 : 0) - haul) * (1 - Math.exp(-dt * (winding ? 8 : 24)));
+      raise += ((special > 0 ? 1 : 0) - raise) * (1 - Math.exp(-dt * (special > 0 ? 7 : 24)));
+      const a = u.sinceAction;
+      const blow = a < 0.32 ? Math.sin((a / 0.32) * Math.PI) : 0;
+      arms.forEach((arm, i) => {
+        const sx = i ? 1 : -1;
+        const punch = sx === side && !slammed;
+        let x = -0.9 - sw * 0.35 * gait * sx;
+        if (punch) x += -haul * 1.9 + blow * 0.55;
+        x += -raise * (2.3 + special * 0.35) + (slammed ? blow * 0.95 : 0);
+        arm.rotation.x = x;
+        arm.rotation.z = sx * (0.12 + raise * 0.35 + (punch ? haul * 0.25 : 0));
+        elbows[i]!.rotation.x = -0.25 - (punch ? haul * 0.7 : 0) - raise * 0.4;
+      });
+      torso.rotation.set(
+        0.6 - raise * 0.5 - special * 0.1 + (slammed ? blow * 0.45 : blow * 0.15) + wobble * 0.04,
+        sw * 0.1 * gait + (slammed ? 0 : side * haul * 0.3),
+        sw * 0.07 * gait + wobble * 0.04,
+      );
+      hips.position.y -= raise * 0.12 + (slammed ? blow * 0.2 : 0);
+      head.rotation.x = -0.5 + raise * 0.4;
+      jaw.rotation.x = 0.08 + raise * 0.45 + haul * 0.2;
+      core.scale.setScalar(1 + Math.sin(t * 2.5) * 0.06 + raise * 0.4 + haul * 0.15);
+      embers.step(dt, deathTime >= 0 ? 0 : 0.6 + raise * 2.4);
+      if (deathTime >= 0) {
+        // it slumps forward onto its fists and knees, the furnace dying, and crumbles into the ground
+        const k = Math.min(1, deathTime / 1.0);
+        hips.position.y = 0.9 - k * k * 0.5 - Math.max(0, deathTime - SINKS.slagBrute) * 0.6;
+        torso.rotation.x = 0.6 + k * 0.5;
+        for (const l of legs) l.rotation.x = -k * 0.7;
+        for (const [i, arm] of arms.entries()) {
+          arm.rotation.x = -0.9 * (1 - k) - k * 0.2;
+          elbows[i]!.rotation.x = -0.25 - k * 0.4;
+        }
+        core.scale.setScalar(Math.max(0.01, 1 - k));
+      }
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1309,6 +1646,8 @@ export function monsterWarmup(): THREE.Object3D[] {
     shade(),
     gravekeeper(),
     ossuaryKing(),
+    cinderling(),
+    slagBrute(),
   ].map((v) => v.root);
 }
 
@@ -1342,5 +1681,7 @@ function createView(u: Pick<Unit, 'tag'>): MonsterView {
   if (type === 'shade') return shade();
   if (type === 'gravekeeper') return gravekeeper();
   if (type === 'ossuaryKing') return ossuaryKing();
+  if (type === 'cinderling') return cinderling();
+  if (type === 'slagBrute') return slagBrute();
   return thornback(type === 'thornbackAlpha', type === 'thornSpitter', type === 'gildedThornback');
 }
