@@ -62,6 +62,8 @@ class Puffs {
   private readonly tint: THREE.InstancedBufferAttribute;
   private readonly live: Particle[] = [];
   private readonly free: Particle[] = [];
+  /** Copies drawn last frame (the rest of the buffer is already zero). */
+  private drawn = 0;
 
   constructor(max: number, glow: boolean) {
     const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: glow ? THREE.AdditiveBlending : THREE.NormalBlending });
@@ -139,16 +141,29 @@ class Puffs {
       q.v.y += q.rise * dt;
       q.p.addScaledVector(q.v, dt);
     }
+    // (written in place: this runs every frame, and a little array per puff adds up to megabytes of garbage a minute)
     for (const q of this.live) {
       const u = q.age / q.life;
       const size = q.size0 + (q.size1 - q.size0) * (1 - (1 - u) ** 2);
       // in quickly, out slowly
       const a = q.alpha * Math.min(1, u / 0.08) * (1 - u) ** 1.4;
-      at.set([q.p.x, q.p.y, q.p.z, size], n * 4);
-      tint.set([q.c.r, q.c.g, q.c.b, a], n * 4);
+      const o = n * 4;
+      at[o] = q.p.x;
+      at[o + 1] = q.p.y;
+      at[o + 2] = q.p.z;
+      at[o + 3] = size;
+      tint[o] = q.c.r;
+      tint[o + 1] = q.c.g;
+      tint[o + 2] = q.c.b;
+      tint[o + 3] = a;
       n++;
     }
-    at.fill(0, n * 4);
+    if (n === 0 && this.drawn === 0) {
+      this.sprite.visible = false;
+      return;
+    }
+    if (n < this.drawn) at.fill(0, n * 4, this.drawn * 4);
+    this.drawn = n;
     this.at.needsUpdate = true;
     this.tint.needsUpdate = true;
     this.sprite.visible = n > 0;
@@ -186,6 +201,8 @@ class IceCopies {
   private readonly spot: THREE.InstancedBufferAttribute;
   private readonly turn: THREE.InstancedBufferAttribute;
   private readonly live: Placed[] = [];
+  /** Copies drawn last frame (the rest of the buffer is already zero). */
+  private drawn = 0;
   onLand: ((p: Placed) => void) | null = null;
 
   constructor(
@@ -240,11 +257,21 @@ class IceCopies {
         k = 1 - u * 0.3;
         sink = u * u * 1.1;
       }
-      spot.set([p.at.x, p.at.y - sink * p.size, p.at.z, k * p.size], n * 4);
-      turn.set([Math.cos(p.yaw), Math.sin(p.yaw)], n * 2);
+      const o = n * 4;
+      spot[o] = p.at.x;
+      spot[o + 1] = p.at.y - sink * p.size;
+      spot[o + 2] = p.at.z;
+      spot[o + 3] = k * p.size;
+      turn[n * 2] = Math.cos(p.yaw);
+      turn[n * 2 + 1] = Math.sin(p.yaw);
       n++;
     }
-    spot.fill(0, n * 4);
+    if (n === 0 && this.drawn === 0) {
+      this.mesh.visible = false;
+      return;
+    }
+    if (n < this.drawn) spot.fill(0, n * 4, this.drawn * 4);
+    this.drawn = n;
     this.spot.needsUpdate = true;
     this.turn.needsUpdate = true;
     this.mesh.visible = n > 0;
@@ -503,6 +530,9 @@ export class JotunnView {
   /** How high each god's arc goes while it is in the air (0 on the ground), for the snow where it comes down. */
   private readonly aloft = new Map<Unit, number>();
   private readonly state: GiantState = { speed: 0, localDir: new THREE.Vector2(), windup: null, kneel: false, plant: null, silenced: false, staggered: null, dead: false };
+  /** What `state.windup` and `state.plant` point at when set, refilled each frame. */
+  private readonly windupState: NonNullable<GiantState['windup']> = { act: 'club', left: 0, at: new THREE.Vector3() };
+  private readonly plantState: NonNullable<GiantState['plant']> = { hand: 'R', at: new THREE.Vector3() };
 
   constructor(private readonly host: JotunnViewHost) {
     this.group.name = 'jotunn-view';
@@ -618,38 +648,58 @@ export class JotunnView {
     this.yaw = u.body.yaw;
 
     // the attack it winds up, from its warning
-    const warn = this.host.flashes().find((f) => f.warn && f.owner === u && f.act && GIANT_ACTS[f.act]);
-    if (warn) this.windup = { act: GIANT_ACTS[warn.act!]!, flash: warn };
-    else if (this.windup) {
+    // (this runs every frame: the state's objects are kept and refilled, not rebuilt)
+    let warn: Flash | null = null;
+    for (const f of this.host.flashes()) {
+      if (f.warn && f.owner === u && f.act && GIANT_ACTS[f.act]) {
+        warn = f;
+        break;
+      }
+    }
+    if (warn) {
+      if (this.windup?.flash !== warn) this.windup = { act: GIANT_ACTS[warn.act!]!, flash: warn };
+    } else if (this.windup) {
       this.landed = this.windup;
       this.windup = null;
     }
-    s.windup = warn ? { act: GIANT_ACTS[warn.act!]!, left: Math.max(0, warn.life - warn.age), at: this.aimOf(warn, u) } : null;
+    const wind = this.windupState;
+    s.windup = null;
+    if (warn) {
+      wind.act = GIANT_ACTS[warn.act!]!;
+      wind.left = Math.max(0, warn.life - warn.age);
+      this.aimOf(warn, u, wind.at);
+      s.windup = wind;
+    }
     // a roar for the camera, wound up and landed like the real one
     if (this.cheer >= 0) {
       if (warn || !u.alive) this.cheer = -1;
       else {
-        s.windup = { act: 'roar', left: this.cheer, at: new THREE.Vector3(u.x, this.host.ground(u.x, u.z), u.z) };
+        wind.act = 'roar';
+        wind.left = this.cheer;
+        wind.at.set(u.x, this.host.ground(u.x, u.z), u.z);
+        s.windup = wind;
         this.cheer = this.cheer > 0 ? Math.max(0, this.cheer - dt) : -1;
       }
     }
 
     // states the weak points show
-    const part = (id: PartId) => this.parts.get(id);
-    const kneeL = part('kneeL');
-    const kneeR = part('kneeR');
+    const kneeL = this.parts.get('kneeL');
+    const kneeR = this.parts.get('kneeR');
     s.kneel = u.alive && !!kneeL && !!kneeR && !kneeL.alive && !kneeR.alive;
     s.plant = null;
-    for (const [id, hand] of [['wristL', 'L'], ['wristR', 'R']] as const) {
-      const w = part(id);
-      if (w && w.alive && w.untargetable <= 0) s.plant = { hand, at: new THREE.Vector3(w.x, this.host.ground(w.x, w.z), w.z) };
+    for (let i = 0; i < 2; i++) {
+      const w = this.parts.get(i ? 'wristR' : 'wristL');
+      if (!w || !w.alive || w.untargetable > 0) continue;
+      const plant = this.plantState;
+      plant.hand = i ? 'R' : 'L';
+      plant.at.set(w.x, this.host.ground(w.x, w.z), w.z);
+      s.plant = plant;
     }
-    const since = (id: PartId) => this.clock - (this.brokeAt.get(id) ?? -1e9);
-    s.silenced = u.alive && since('rune') < JOTUNN.runeSilence;
-    s.staggered = !u.alive ? null : since('wristR') < JOTUNN.wristStagger ? 'R' : since('wristL') < JOTUNN.wristStagger ? 'L' : null;
+    s.silenced = u.alive && this.since('rune') < JOTUNN.runeSilence;
+    s.staggered = !u.alive ? null : this.since('wristR') < JOTUNN.wristStagger ? 'R' : this.since('wristL') < JOTUNN.wristStagger ? 'L' : null;
 
     for (const id of PART_IDS) {
-      const p = part(id);
+      const p = this.parts.get(id);
       const st = this.partState[id];
       st.alive = p ? p.alive : true;
       st.exposed = !!p && p.alive && p.untargetable <= 0 && u.alive;
@@ -658,10 +708,14 @@ export class JotunnView {
     this.model.update(dt, s, this.partState);
   }
 
+  /** Seconds since a weak point last broke. */
+  private since(id: PartId): number {
+    return this.clock - (this.brokeAt.get(id) ?? -1e9);
+  }
+
   /** Where a warning's blow lands. */
-  private aimOf(f: Flash, u: Unit): THREE.Vector3 {
+  private aimOf(f: Flash, u: Unit, out: THREE.Vector3): THREE.Vector3 {
     const sh = f.shape;
-    const out = new THREE.Vector3();
     if (sh.type === 'circle') out.set(sh.x, 0, sh.z);
     else if (sh.type === 'cone') out.set(sh.x - Math.sin(sh.yaw) * sh.range * 0.6, 0, sh.z - Math.cos(sh.yaw) * sh.range * 0.6);
     else out.set(sh.x - Math.sin(sh.yaw) * sh.length * 0.5, 0, sh.z - Math.cos(sh.yaw) * sh.length * 0.5);

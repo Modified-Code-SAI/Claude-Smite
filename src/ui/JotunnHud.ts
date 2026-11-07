@@ -22,6 +22,9 @@ const AWARD_ICON: Record<JotunnAwardKey, string> = {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
 /** Seconds the braziers' count stays on the state line once it changes (the bar keeps it), before the line clears off the giant's chest. */
 const QUIET_AFTER = 6;
+const SHRINE_STATES = ['ready', 'claiming', 'held', 'spent'] as const;
+/** The state line's brazier count, for each number still burning. */
+const BURNING = Array.from({ length: JOTUNN.braziers.length + 1 }, (_, n) => `${n} of ${JOTUNN.braziers.length} braziers burn · the giant needs ${JOTUNN.braziersToWin}`);
 
 /**
  * The Jötunn readout: the giant's Might with its weak points beneath it (lit
@@ -64,7 +67,18 @@ export class JotunnHud {
   /** The braziers' count last said on the state line, and for how long. */
   private idleLine = '';
   private idleFor = 0;
+  private stateText: string | null = null;
+  private stateTone = '';
+  private stateQuiet = false;
   private readonly last: Record<string, string> = {};
+  /** The numbers last shown (so a frame that changes nothing writes nothing, and builds no strings to check). */
+  private readonly lastN: Record<string, number> = {};
+  private readonly partEls: HTMLElement[];
+  private readonly partShown = PART_IDS.map(() => ({ s: '', hp: -1, regrow: -1 }));
+  private readonly brazierEls: HTMLElement[];
+  private readonly brazierShown: number[];
+  private readonly shrineEls: HTMLElement[];
+  private readonly shrineShown: number[];
   private shownEnd = false;
   /** The round whose fight came to its last stand (held once it does, as the music is). */
   private standRound = 0;
@@ -111,6 +125,11 @@ export class JotunnHud {
     this.parts.innerHTML = PART_IDS.map((id) => `<i class="jt-part ${PART_GROUP[id]}" data-id="${id}" title="${PARTS[id].name}"><b>${PART_GLYPH[id]}</b></i>`).join('');
     this.braziers.innerHTML = JOTUNN.braziers.map(() => '<i class="jt-brazier"></i>').join('');
     this.shrines.innerHTML = mode.shrines.map((s) => `<span class="jt-shrine" data-id="${s.def.id}" title="${s.def.name}: ${SHRINE_ULT[s.def.id] ?? ''}"><i></i><em></em></span>`).join('');
+    this.partEls = [...this.parts.children] as HTMLElement[];
+    this.brazierEls = [...this.braziers.children] as HTMLElement[];
+    this.brazierShown = this.brazierEls.map(() => NaN);
+    this.shrineEls = [...this.shrines.children] as HTMLElement[];
+    this.shrineShown = this.shrineEls.map(() => NaN);
     q('.clash-again').addEventListener('click', () => location.reload());
   }
 
@@ -154,10 +173,18 @@ export class JotunnHud {
     this.bannerTime = 3;
   }
 
-  private set(key: string, value: string, apply: (v: string) => void): void {
-    if (this.last[key] === value) return;
+  /** Whether `value` differs from what `key` last showed, remembering it. */
+  private changed(key: string, value: string): boolean {
+    if (this.last[key] === value) return false;
     this.last[key] = value;
-    apply(value);
+    return true;
+  }
+
+  /** Whether `n` differs from what `key` last showed, remembering it. */
+  private moved(key: string, n: number): boolean {
+    if (this.lastN[key] === n) return false;
+    this.lastN[key] = n;
+    return true;
   }
 
   /** A dip to dark lasting `seconds`, darkest halfway (it hides a shot's cut back to play). */
@@ -174,23 +201,26 @@ export class JotunnHud {
     const m = this.mode;
     const g = m.giant;
     const mine = this.giantIsMe;
-    this.set('cine', cine ?? '', (v) => {
-      this.root.dataset.cine = v;
-      document.body.classList.toggle('jotunn-cine', !!v);
-    });
+    const shot = cine ?? '';
+    if (this.changed('cine', shot)) {
+      this.root.dataset.cine = shot;
+      document.body.classList.toggle('jotunn-cine', !!shot);
+    }
     // the countdown, while everyone holds their mark (its number and "Click to play" would print over each other)
-    this.set('count', m.phase === 'countdown' ? '1' : '', (v) => document.body.classList.toggle('jotunn-countdown', !!v));
+    const counting = m.phase === 'countdown';
+    if (this.moved('count', counting ? 1 : 0)) document.body.classList.toggle('jotunn-countdown', counting);
     // the waking: who the giant is this round
-    const card = cine === 'wake' ? `${m.round}|${mine}|${m.giantPlayer.name}` : '';
-    this.set('card', card, () => {
-      this.card.classList.toggle('show', !!card);
-      if (!card) return;
-      const last = m.round === m.rounds && m.rounds > 1;
-      this.card.querySelector('small')!.textContent = last ? 'Final round' : `Round ${m.round} of ${m.rounds}`;
-      this.card.querySelector('b')!.textContent = mine ? 'You' : m.giantPlayer.name;
-      this.card.querySelector('span')!.textContent = mine ? 'are the Jötunn' : 'is the Jötunn';
-      this.card.querySelector('em')!.textContent = objective(mine);
-    });
+    const card = cine === 'wake' ? m.round * 2 + (mine ? 1 : 0) : -1;
+    if (this.moved('card', card)) {
+      this.card.classList.toggle('show', card >= 0);
+      if (card >= 0) {
+        const last = m.round === m.rounds && m.rounds > 1;
+        this.card.querySelector('small')!.textContent = last ? 'Final round' : `Round ${m.round} of ${m.rounds}`;
+        this.card.querySelector('b')!.textContent = mine ? 'You' : m.giantPlayer.name;
+        this.card.querySelector('span')!.textContent = mine ? 'are the Jötunn' : 'is the Jötunn';
+        this.card.querySelector('em')!.textContent = objective(mine);
+      }
+    }
     if (this.bannerTime > 0) {
       this.bannerTime -= dt;
       // the round's end takes the screen
@@ -199,51 +229,62 @@ export class JotunnHud {
         this.banner.classList.remove('show');
       }
     }
-    this.set('round', `${m.round}/${m.rounds}`, () => (this.round.textContent = `ROUND ${m.round} / ${m.rounds}`));
-    this.set('who', `${mine}:${m.giantPlayer.name}`, () => (this.who.textContent = mine ? 'You are the Jötunn' : `${m.giantPlayer.name} is the Jötunn`));
-    this.root.classList.toggle('as-giant', mine);
+    if (this.moved('round', m.round * 1000 + m.rounds)) this.round.textContent = `ROUND ${m.round} / ${m.rounds}`;
+    if (this.moved('who', m.players.indexOf(m.giantPlayer) * 2 + (mine ? 1 : 0))) this.who.textContent = mine ? 'You are the Jötunn' : `${m.giantPlayer.name} is the Jötunn`;
+    if (this.moved('mine', mine ? 1 : 0)) this.root.classList.toggle('as-giant', mine);
     this.radar.frame(dt);
     // the last stand: the Might bar pulses with a cold light for the rest of the round
     if (lastStand(m)) this.standRound = m.round;
     const stand = this.standRound === m.round && m.phase === 'fight';
-    this.root.classList.toggle('jt-stand', stand);
+    if (this.moved('stand', stand ? 1 : 0)) this.root.classList.toggle('jt-stand', stand);
 
-    // Might: the bar falls at once, the pale lag behind it follows
+    // Might: the bar falls at once, the pale lag behind it follows (to a tenth of a percent, a quarter of a pixel)
     const hp = g.alive ? g.combatant.health / g.combatant.stats.maxHealth : 0;
     this.lag01 = hp > this.lag01 ? hp : Math.max(hp, this.lag01 - dt * 0.25);
-    this.might.style.width = `${(hp * 100).toFixed(2)}%`;
-    this.lag.style.width = `${(this.lag01 * 100).toFixed(2)}%`;
-    this.set('pct', `${Math.ceil(hp * 100)}`, (v) => (this.pct.textContent = `MIGHT ${v}%`));
+    const fill = Math.round(hp * 1000);
+    if (this.moved('fill', fill)) this.might.style.width = `${fill / 10}%`;
+    const lag = Math.round(this.lag01 * 1000);
+    if (this.moved('lag', lag)) this.lag.style.width = `${lag / 10}%`;
+    const pct = Math.ceil(hp * 100);
+    if (this.moved('pct', pct)) this.pct.textContent = `MIGHT ${pct}%`;
 
     // weak points: lit while open to blows, dark while broken
-    for (const el of this.parts.children as HTMLCollectionOf<HTMLElement>) {
-      const id = el.dataset.id as PartId;
+    for (let i = 0; i < PART_IDS.length; i++) {
+      const id = PART_IDS[i]!;
+      const el = this.partEls[i]!;
+      const shown = this.partShown[i]!;
       const u = m.parts.get(id)!;
-      const regrow = m.regrow.get(id);
       const s = !u.alive ? 'broken' : u.untargetable <= 0 && m.phase === 'fight' ? 'open' : 'shut';
-      this.set(`part-${id}`, s, (v) => (el.dataset.s = v));
-      const health = u.alive ? u.combatant.health / u.combatant.stats.maxHealth : 0;
-      el.style.setProperty('--hp', health.toFixed(2));
-      el.title = `${PARTS[id].name}${regrow ? `: grows back in ${Math.ceil(regrow)} s` : ''}`;
+      if (shown.s !== s) el.dataset.s = shown.s = s;
+      const health = u.alive ? Math.round((u.combatant.health / u.combatant.stats.maxHealth) * 100) : 0;
+      if (shown.hp !== health) el.style.setProperty('--hp', String((shown.hp = health) / 100));
+      const regrow = Math.ceil(m.regrow.get(id) ?? 0);
+      if (shown.regrow !== regrow) el.title = (shown.regrow = regrow) > 0 ? `${PARTS[id].name}: grows back in ${regrow} s` : PARTS[id].name;
     }
 
-    m.braziers.forEach((b, i) => {
-      const el = this.braziers.children[i] as HTMLElement;
-      this.set(`brazier-${i}`, b.alive ? `lit:${Math.round((b.combatant.health / b.combatant.stats.maxHealth) * 10)}` : 'out', (v) => {
-        el.dataset.s = v.startsWith('lit') ? 'lit' : 'out';
-        el.style.setProperty('--hp', v.startsWith('lit') ? String(Number(v.slice(4)) / 10) : '0');
-      });
-    });
+    for (let i = 0; i < m.braziers.length; i++) {
+      const b = m.braziers[i]!;
+      const el = this.brazierEls[i];
+      // lit, in tenths of its health, or out (-1)
+      const lit = b.alive ? Math.round((b.combatant.health / b.combatant.stats.maxHealth) * 10) : -1;
+      if (!el || this.brazierShown[i] === lit) continue;
+      this.brazierShown[i] = lit;
+      el.dataset.s = lit >= 0 ? 'lit' : 'out';
+      el.style.setProperty('--hp', lit >= 0 ? String(lit / 10) : '0');
+    }
 
-    m.shrines.forEach((s, i) => {
-      const el = this.shrines.children[i] as HTMLElement;
+    for (let i = 0; i < m.shrines.length; i++) {
+      const s = m.shrines[i]!;
+      const el = this.shrineEls[i];
       const st = s.dormant > 0 ? 'spent' : s.contested && s.progress > 0 ? 'held' : s.progress > 0 ? 'claiming' : 'ready';
-      this.set(`shrine-${i}`, `${st}:${Math.round(s.progress * 20)}`, () => {
-        el.dataset.s = st;
-        el.style.setProperty('--claim', s.progress.toFixed(2));
-        el.querySelector('em')!.textContent = st === 'spent' ? `${Math.ceil(s.dormant)} s` : SHRINE_ULT[s.def.id] ?? '';
-      });
-    });
+      // a spent shrine counts its seconds down; the others show their claim, in twentieths
+      const code = st === 'spent' ? 10000 + Math.ceil(s.dormant) : SHRINE_STATES.indexOf(st) * 100 + Math.round(s.progress * 20);
+      if (!el || this.shrineShown[i] === code) continue;
+      this.shrineShown[i] = code;
+      el.dataset.s = st;
+      el.style.setProperty('--claim', s.progress.toFixed(2));
+      el.querySelector('em')!.textContent = st === 'spent' ? `${Math.ceil(s.dormant)} s` : SHRINE_ULT[s.def.id] ?? '';
+    }
 
     // the round's state line and the big countdown
     let text = '';
@@ -271,7 +312,7 @@ export class JotunnHud {
         tone = 'chaos';
       } else {
         const left = m.braziersLeft;
-        text = `${left} of ${JOTUNN.braziers.length} braziers burn · the giant needs ${JOTUNN.braziersToWin}`;
+        text = BURNING[left]!;
         if (text !== this.idleLine) {
           this.idleLine = text;
           this.idleFor = 0;
@@ -286,24 +327,28 @@ export class JotunnHud {
       text = giantWon ? `${mine ? 'You' : m.giantPlayer.name} smashed the braziers` : 'The Jötunn has fallen';
       tone = won ? 'order' : 'chaos';
     }
-    this.set('state', `${tone}|${text}|${quiet}`, () => {
+    if (text !== this.stateText || tone !== this.stateTone || quiet !== this.stateQuiet) {
+      this.stateText = text;
+      this.stateTone = tone;
+      this.stateQuiet = quiet;
       this.state.textContent = text;
       this.state.dataset.state = tone;
       this.state.style.display = text ? '' : 'none';
       this.state.classList.toggle('quiet', quiet);
-    });
-    this.set('big', big, () => {
+    }
+    if (this.changed('big', big)) {
       this.big.textContent = big;
       this.big.classList.toggle('show', !!big);
-    });
+    }
 
-    // everyone's wins, the giant's player marked
-    const wins = m.players.map((p) => `${p.god === this.me ? 'You' : p.name}:${p.wins}:${p === m.giantPlayer}`).join('|');
-    this.set('wins', wins, () => {
+    // everyone's wins, the giant's player marked (the names don't change during a match)
+    let wins = m.players.indexOf(m.giantPlayer);
+    for (const p of m.players) wins = wins * 31 + p.wins;
+    if (this.moved('wins', wins)) {
       this.wins.innerHTML = m.players
         .map((p) => `<span class="${p.god === this.me ? 'me' : ''} ${p === m.giantPlayer ? 'giant' : ''}">${this.nameOf(p)}<b>${p.wins}</b></span>`)
         .join('');
-    });
+    }
 
     if (m.phase === 'done' && !this.shownEnd) {
       this.shownEnd = true;

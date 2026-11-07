@@ -69,6 +69,8 @@ const BONES: Record<string, string> = {
 };
 /** Parents before children, so each rotation sees its parent's. */
 const ORDER = ['hips', 'spine1', 'spine2', 'spine3', 'neck', 'head', 'armL', 'armR', 'foreL', 'foreR', 'handL', 'handR', 'thighL', 'thighR', 'shinL', 'shinR', 'footL', 'footR'];
+/** Each bone's pose channels, about x, y and z (built once, not every frame). */
+const CHANNELS = ORDER.map((b) => [`${b}.x`, `${b}.y`, `${b}.z`] as const);
 
 type Pose = Record<string, number>;
 type Ease = 'in' | 'out' | 'io';
@@ -201,6 +203,9 @@ export function mirror(p: Pose): Pose {
   return out;
 }
 
+/** The stagger with the left wrist broken. */
+const STAGGER_L = mirror(STAGGER);
+
 /**
  * Left-handed versions. The stance is not symmetric (the club leg is back),
  * so a mirrored pose twists it wrong: the left slam keeps the same lunge and
@@ -233,15 +238,17 @@ function sample(m: Motion, t: number, out: Pose, weight: number): void {
   const b = keys[i + 1]!;
   const u = THREE.MathUtils.clamp((t - a.t) / (b.t - a.t), 0, 1);
   const k = ease(u, b.e);
-  for (const ch of new Set([...Object.keys(a.p), ...Object.keys(b.p)])) {
-    const v = (a.p[ch] ?? 0) + ((b.p[ch] ?? 0) - (a.p[ch] ?? 0)) * k;
-    out[ch] = (out[ch] ?? 0) + v * weight;
+  // every channel either key names, each once (runs every frame: no arrays or sets)
+  for (const ch in a.p) {
+    const v0 = a.p[ch]!;
+    out[ch] = (out[ch] ?? 0) + (v0 + ((b.p[ch] ?? 0) - v0) * k) * weight;
   }
+  for (const ch in b.p) if (!(ch in a.p)) out[ch] = (out[ch] ?? 0) + b.p[ch]! * k * weight;
 }
 
 function addPose(out: Pose, p: Pose, w: number): void {
   if (w <= 1e-3) return;
-  for (const [ch, a] of Object.entries(p)) out[ch] = (out[ch] ?? 0) + a * w;
+  for (const ch in p) out[ch] = (out[ch] ?? 0) + p[ch]! * w;
 }
 
 interface Action {
@@ -449,25 +456,32 @@ class Trail {
   }
 
   push(tip: THREE.Vector3, base: THREE.Vector3): void {
-    this.tips.unshift(tip.clone());
-    this.bases.unshift(base.clone());
-    if (this.tips.length > this.n) {
-      this.tips.pop();
-      this.bases.pop();
-    }
+    // (every frame: the oldest point's vectors become the newest, so nothing is allocated)
+    const full = this.tips.length >= this.n;
+    this.tips.unshift((full ? this.tips.pop()! : new THREE.Vector3()).copy(tip));
+    this.bases.unshift((full ? this.bases.pop()! : new THREE.Vector3()).copy(base));
+    const shown = this.strength > 0.01;
+    // the history is kept while it is hidden, but nothing needs drawing
+    if (!shown && !this.mesh.visible) return;
     const n = this.tips.length;
+    const pos = this.pos;
     for (let i = 0; i < this.n; i++) {
       const t = this.tips[Math.min(i, n - 1)]!;
       const b = this.bases[Math.min(i, n - 1)]!;
-      this.pos.set([t.x, t.y, t.z], i * 6);
-      this.pos.set([b.x, b.y, b.z], i * 6 + 3);
+      const o = i * 6;
+      pos[o] = t.x;
+      pos[o + 1] = t.y;
+      pos[o + 2] = t.z;
+      pos[o + 3] = b.x;
+      pos[o + 4] = b.y;
+      pos[o + 5] = b.z;
       const k = (1 - i / (this.n - 1)) ** 1.5 * this.strength;
       this.alpha[i * 2] = k;
       this.alpha[i * 2 + 1] = 0;
     }
     (this.geo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     (this.geo.attributes.trail as THREE.BufferAttribute).needsUpdate = true;
-    this.mesh.visible = this.strength > 0.01;
+    this.mesh.visible = shown;
   }
 }
 
@@ -548,6 +562,12 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const tmpQ2 = new THREE.Quaternion();
+/** The arm IK's scratch (GiantModel.reach), reused every frame. */
+const ik = {
+  S: new THREE.Vector3(), E: new THREE.Vector3(), W: new THREE.Vector3(), T: new THREE.Vector3(), dir: new THREE.Vector3(), pole: new THREE.Vector3(),
+  E2: new THREE.Vector3(), E3: new THREE.Vector3(), W3: new THREE.Vector3(), T2: new THREE.Vector3(), u: new THREE.Vector3(), v: new THREE.Vector3(),
+  p: new THREE.Quaternion(), pi: new THREE.Quaternion(),
+};
 
 /**
  * The Jötunn's body: its forged model drawn GIANT_SCALE times larger, with
@@ -820,6 +840,9 @@ export class GiantModel {
 
   // ------------------------------------------------------------------ frame
 
+  /** Its stride for the body's walk cycle, refilled every frame. */
+  private readonly walk: Parameters<GodModel['animate']>[1] = { speed: 0, localDir: new THREE.Vector2(), grounded: true, verticalSpeed: 0 };
+
   /** Poses the giant for this frame. Call after placing `root`. */
   update(dt: number, s: GiantState, parts: Record<GiantPart, GiantPartState>): void {
     this.clock += dt;
@@ -827,12 +850,10 @@ export class GiantModel {
     this.root.updateMatrixWorld(true);
     this.track(dt, s);
     const ground = this.root.position.y;
-    this.god.animate(dt, {
-      speed: s.dead || this.kneel > 0.5 ? 0 : s.speed / GIANT_SCALE,
-      localDir: s.localDir,
-      grounded: true,
-      verticalSpeed: 0,
-    });
+    const walk = this.walk;
+    walk.speed = s.dead || this.kneel > 0.5 ? 0 : s.speed / GIANT_SCALE;
+    walk.localDir = s.localDir;
+    this.god.animate(dt, walk);
     this.updateParts(dt, parts);
     this.footfalls(s);
     // club trail during the swings that use it
@@ -936,7 +957,8 @@ export class GiantModel {
   /** The pose layers, run inside GodModel.animate after the clips. */
   private layer(_dt: number): void {
     const pose = this.pose;
-    for (const k of Object.keys(pose)) delete pose[k];
+    // zeroed, not emptied: the channels stay the same object's fields frame to frame
+    for (const k in pose) pose[k] = 0;
     addPose(pose, STRIDE, this.stride * (1 - this.kneel));
     for (const a of this.actions) {
       const t = a.t;
@@ -944,15 +966,18 @@ export class GiantModel {
     }
     addPose(pose, KNEEL, this.kneel);
     addPose(pose, SILENCED, this.silenced * (1 - this.kneel));
-    addPose(pose, this.staggerHand === 'R' ? STAGGER : mirror(STAGGER), this.stagger * (1 - this.kneel));
+    addPose(pose, this.staggerHand === 'R' ? STAGGER : STAGGER_L, this.stagger * (1 - this.kneel));
     // apply, parents first
-    for (const b of ORDER) {
-      const bone = this.bones.get(b);
+    for (let i = 0; i < ORDER.length; i++) {
+      const bone = this.bones.get(ORDER[i]!);
       if (!bone) continue;
-      for (const ax of ['x', 'y', 'z'] as const) {
-        const a = pose[`${b}.${ax}`];
-        if (a) this.god.rotateBone(bone, AXES[ax], a);
-      }
+      const ch = CHANNELS[i]!;
+      const x = pose[ch[0]];
+      const y = pose[ch[1]];
+      const z = pose[ch[2]];
+      if (x) this.god.rotateBone(bone, AXES.x, x);
+      if (y) this.god.rotateBone(bone, AXES.y, y);
+      if (z) this.god.rotateBone(bone, AXES.z, z);
     }
     this.god.root.position.y = -(pose.drop ?? 0) * GIANT_SCALE;
     // the fall: from its knees, forward onto its face
@@ -986,32 +1011,33 @@ export class GiantModel {
 
   /** Two-bone IK: bends the arm so the fist meets `target` (world), blended by `w`. */
   private reach(hand: 'L' | 'R', target: THREE.Vector3, w: number): void {
-    const upper = this.bones.get(`arm${hand}`);
-    const fore = this.bones.get(`fore${hand}`);
-    const wrist = this.bones.get(`hand${hand}`);
+    // (every frame while a fist is planted: module temporaries, nothing allocated)
+    const upper = this.bones.get(hand === 'L' ? 'armL' : 'armR');
+    const fore = this.bones.get(hand === 'L' ? 'foreL' : 'foreR');
+    const wrist = this.bones.get(hand === 'L' ? 'handL' : 'handR');
     if (!upper || !fore || !wrist) return;
-    const S = upper.getWorldPosition(new THREE.Vector3());
-    const E = fore.getWorldPosition(new THREE.Vector3());
-    const W = wrist.getWorldPosition(new THREE.Vector3());
+    const S = upper.getWorldPosition(ik.S);
+    const E = fore.getWorldPosition(ik.E);
+    const W = wrist.getWorldPosition(ik.W);
     // aim the wrist a little above the ground, so the fist sits on it
-    const T = target.clone();
+    const T = ik.T.copy(target);
     T.y = this.root.position.y + 0.12 * GIANT_SCALE;
     const a = S.distanceTo(E);
     const b = E.distanceTo(W);
-    const toT = T.clone().sub(S);
+    const toT = ik.dir.copy(T).sub(S);
     const d = THREE.MathUtils.clamp(toT.length(), Math.abs(a - b) + 1e-3, a + b - 1e-3);
     const dir = toT.normalize();
     // the elbow bends out and back, in the plane of the current bend
-    const pole = E.clone().sub(S);
+    const pole = ik.pole.copy(E).sub(S);
     pole.addScaledVector(dir, -pole.dot(dir));
     if (pole.lengthSq() < 1e-6) pole.set(hand === 'R' ? -1 : 1, 0, 0);
     pole.normalize();
     const cosA = THREE.MathUtils.clamp((a * a + d * d - b * b) / (2 * a * d), -1, 1);
-    const E2 = S.clone().addScaledVector(dir, a * cosA).addScaledVector(pole, a * Math.sqrt(1 - cosA * cosA));
-    this.rotateWorld(upper, tmpQ.setFromUnitVectors(E.clone().sub(S).normalize(), E2.clone().sub(S).normalize()), w);
-    const E3 = fore.getWorldPosition(new THREE.Vector3());
-    const W3 = wrist.getWorldPosition(new THREE.Vector3());
-    const T2 = S.clone().addScaledVector(dir, d);
+    const E2 = ik.E2.copy(S).addScaledVector(dir, a * cosA).addScaledVector(pole, a * Math.sqrt(1 - cosA * cosA));
+    this.rotateWorld(upper, tmpQ.setFromUnitVectors(ik.u.copy(E).sub(S).normalize(), ik.v.copy(E2).sub(S).normalize()), w);
+    const E3 = fore.getWorldPosition(ik.E3);
+    const W3 = wrist.getWorldPosition(ik.W3);
+    const T2 = ik.T2.copy(S).addScaledVector(dir, d);
     this.rotateWorld(fore, tmpQ.setFromUnitVectors(W3.sub(E3).normalize(), T2.sub(E3).normalize()), w);
   }
 
@@ -1019,8 +1045,8 @@ export class GiantModel {
   private rotateWorld(bone: THREE.Object3D, q: THREE.Quaternion, w: number): void {
     tmpQ2.identity().slerp(q, w);
     const parent = bone.parent!;
-    const p = parent.getWorldQuaternion(new THREE.Quaternion());
-    bone.quaternion.premultiply(p.clone().invert().multiply(tmpQ2).multiply(p));
+    const p = parent.getWorldQuaternion(ik.p);
+    bone.quaternion.premultiply(ik.pi.copy(p).invert().multiply(tmpQ2).multiply(p));
     bone.updateMatrixWorld(true);
   }
 
