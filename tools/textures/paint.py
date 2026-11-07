@@ -64,9 +64,11 @@ MATERIALS = {
                'chips, a few rain streaks, narrow earthy mortar joints.',
         init=0.9, steps=8, contrast=1.25, normal=1.1, rough=1.5, seed=4),
     'rock': dict(
-        prompt='The surface of a stylized cliff, rock everywhere: big chunky angular faceted stone planes and horizontal strata, '
-               'cool grey and slate rock with warm grey patches, dark crevices between the facets, faint lichen.',
-        contrast=1.25, normal=1.0, rough=1.5, seed=1),
+        prompt='The surface of a stylized cliff, rock everywhere: big chunky angular faceted stone planes stepped in rough '
+               'horizontal strata, each facet painted with soft visible brushwork and a lit top edge, cool grey and slate '
+               'blue-grey rock with subtle warm grey tones, fine mineral grain, soft shadowed seams between the ledges, '
+               'faint green lichen.',
+        steps=8, contrast=1.25, normal=1.0, rough=1.5, seed=7),
     'grass_ground': dict(
         prompt='Lush meadow ground seen from above, grass everywhere: dense short grass painted as clumps of vivid green and '
                'yellow-green strokes, a few small sunlit dry patches and tiny clover leaves.',
