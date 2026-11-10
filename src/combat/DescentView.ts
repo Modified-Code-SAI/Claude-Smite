@@ -7,7 +7,8 @@ import { ASHSMITH, bellsOf, CHALLENGE, CINDER, DESCENT, DescentMonsterBrain, DEP
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
 import type { Flash, SimEvent, Unit } from '../sim/Unit';
 import type { World } from '../scene/World';
-import { CLEAR_WAVE, clearFlare, clearWave, DEPTH_COLORS, gateOpen } from '../scene/underworld/palettes';
+import { CLEAR_WAVE, clearFlare, clearWave, DEPTH_COLORS, gateOpen, GLOOM, TORCH } from '../scene/underworld/palettes';
+import { grading } from '../render/PostFX';
 import { DepthKicks } from '../scene/underworld/kicks';
 import { DepthTracks } from '../scene/underworld/prints';
 import { DepthScars, scarsFor } from '../scene/underworld/scars';
@@ -199,6 +200,9 @@ export class DescentView {
     };
     const content = world.content as Partial<UnderworldMap>;
     this.map = typeof content.show === 'function' ? (content as UnderworldMap) : null;
+    // a dungeon's dark: the player's own torch, and the frame's edges falling away
+    world.torch = { color: new THREE.Color(TORCH.color), intensity: TORCH.intensity, distance: TORCH.distance, lift: TORCH.lift };
+    grading.vignette.value = GLOOM.vignette;
     this.hazards = new HazardsView(world.vfx, vfx, groundAt, {
       ...(opts.me ? { me: opts.me } : {}),
       ...(opts.shake ? { shake: opts.shake } : {}),

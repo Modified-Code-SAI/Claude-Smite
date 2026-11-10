@@ -74,6 +74,9 @@ export class ThirdPersonCamera {
     this.initialized = false;
   }
 
+  /** The lowest its god is followed down to (Underworld Descent: a god gone over the Abyss's edge drops out from under the camera). */
+  floor = -Infinity;
+
   zoom(steps: number): void {
     this.distance = THREE.MathUtils.clamp(this.distance + steps * 0.6, 4.5, 11);
   }
@@ -102,7 +105,7 @@ export class ThirdPersonCamera {
     const yaw = p.yaw;
     const pitch = p.pitch;
     const k = this.scale;
-    focus.set(target.x, target.y + this.height * this.lift, target.z);
+    focus.set(target.x, Math.max(target.y, this.floor) + this.height * this.lift, target.z);
     // a giant sits left of center so the way ahead stays in view
     focus.x += Math.cos(yaw) * this.side;
     focus.z -= Math.sin(yaw) * this.side;

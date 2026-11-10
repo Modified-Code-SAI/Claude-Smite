@@ -252,8 +252,9 @@ export class CombatGame implements Updatable {
     const walls = rush ? terrain : world.collision;
     player.resolve = (x, z, r, y, from) => {
       const f = this.player?.forced;
-      return f && !f.collide ? walls.resolve(x, z, r, y) : this.sim.solid(x, z, r, y + (this.player?.stepOver ?? 0), from, walls, this.player);
+      return f && !f.collide ? walls.resolve(x, z, r, y, undefined, undefined, !!this.player?.wades) : this.sim.solid(x, z, r, y + (this.player?.stepOver ?? 0), from, walls, this.player);
     };
+    if (descent) player.footing = (x, z) => (this.player ? this.sim.footing(this.player, x, z) : world.collision.groundAt(x, z));
     this.sim.summonFactory = (owner, kind, at, i) => {
       const s = summonUnit(owner, kind, at, i);
       if (kind === 'einherjar') s.brain = new SummonBrain(this.sim, s);

@@ -1,6 +1,8 @@
 import type * as THREE from 'three/webgpu';
+import { hypot } from '../core/math';
+import { PITS } from '../map/UnderworldLayout';
 import { DEPTHS, type Descent } from '../sim/Descent';
-import { Hazards, HAZARDS } from '../sim/DescentHazards';
+import { Hazards, HAZARDS, pitAt } from '../sim/DescentHazards';
 import type { Unit } from '../sim/Unit';
 import { clearHazardLook, darkReach, floodReach, gapLook, slagLook, ventLook } from '../scene/underworld/hazardLook';
 import { DEPTH_COLORS } from '../scene/underworld/palettes';
@@ -18,7 +20,13 @@ const RUBBLE_DUST = 0x3a4440;
 /** The Abyss's creeping dark, smoking up along its edge. */
 const DARK_WISP = 0x040706;
 
-export type HazardCue = 'ventWarn' | 'vent' | 'slag' | 'tide' | 'crumble' | 'dark';
+/** Black water thrown up round a god wading in, and the frost that comes off them once the cold bites. */
+const SPRAY: GodPalette = { cloth: 0, trim: 0, glow: 0x4aa0ff, vfx: 0x7ac4ff, core: 0xe8f8ff };
+const SPRAY_MIST = 0x8fb4cc;
+const FROST_MIST = 0xcfe8ff;
+const SEAR_SMOKE = 0x2a2220;
+
+export type HazardCue = 'ventWarn' | 'vent' | 'slag' | 'tide' | 'crumble' | 'dark' | 'sear' | 'wade' | 'plunge';
 
 export interface HazardsViewOptions {
   me?: Unit;
@@ -53,6 +61,9 @@ export class HazardsView {
   private floodWas = 0;
   private darkWas = 0;
   private wispLeft = 0;
+  /** The gods standing in a pit, and how long until each one's next puff of smoke or spray. */
+  private readonly waders = new Map<Unit, number>();
+  private plunges = 0;
 
   constructor(
     group: THREE.Object3D,
@@ -81,6 +92,8 @@ export class HazardsView {
       this.floodWas = 0;
       this.darkWas = 0;
       this.wispLeft = 0;
+      this.waders.clear();
+      this.plunges = h.plunges;
       const c = DEPTH_COLORS[DEPTHS[run.depth]!.palette];
       for (const d of this.warnings) d.setColors(c.glow, c.fire.high);
     }
@@ -89,6 +102,7 @@ export class HazardsView {
     w = this.slag(h, w);
     w = this.gaps(h, w);
     for (; w < this.warnings.length; w++) this.warnings[w]!.mesh.visible = false;
+    this.pits(dt, run);
     // the flood and the dark are the ground's alone
     const flood = h.floodReach;
     floodReach.value = flood;
@@ -100,6 +114,71 @@ export class HazardsView {
     if (h.dark > 0.3 && (this.wispLeft -= dt) <= 0) {
       this.wispLeft = 0.4;
       this.wisp(run, h.dark);
+    }
+  }
+
+  /**
+   * The gods who have walked down into a pit: lava flares and smokes round
+   * their legs for as long as they stand in it, the black water is thrown up
+   * as they wade in and frost comes off them once the cold bites, and a god
+   * gone over the Abyss's edge takes a piece of the dark down with them.
+   */
+  private pits(dt: number, run: Descent): void {
+    const h = run.hazards;
+    const c = run.layout;
+    const me = this.opts.me;
+    for (const g of run.gods) {
+      const pit = g.alive && !g.forced?.arc ? pitAt(c, g.x, g.z) : null;
+      if (!pit || pit.kind === 'void') {
+        this.waders.delete(g);
+        continue;
+      }
+      const first = !this.waders.has(g);
+      let left = (this.waders.get(g) ?? 0) - dt;
+      const y = g.body.y;
+      const moving = hypot(g.vx, g.vz) > 0.6 || g === me;
+      if (pit.kind === 'lava') {
+        const top = -PITS.lava.surface;
+        if (first) {
+          this.vfx.burst(MAGMA, g.x, top + 0.3, g.z, 1.1);
+          this.vfx.billow('blast', g.x, top + 0.7, g.z, 2, { tint: BLAST_SMOKE, duration: 0.9, rise: 1, flame: [0xff5a14, 0xffd890] });
+          this.cue('sear', g.x, g.z, 1);
+          if (g === me) this.opts.shake?.(0.18);
+        }
+        if (left <= 0) {
+          left = 0.22;
+          const a = Math.random() * Math.PI * 2;
+          const r = 0.25 + Math.random() * 0.35;
+          this.vfx.billow('smoke', g.x + Math.cos(a) * r, y + 1 + Math.random() * 0.5, g.z + Math.sin(a) * r, 1.1 + Math.random() * 0.5, { tint: SEAR_SMOKE, duration: 1.3, rise: 1.6, opacity: 0.55, flame: [0xff5a14, 0xffd890] });
+          if (Math.random() < 0.45) this.vfx.burst(MAGMA, g.x, top + 0.15, g.z, 0.35);
+        }
+      } else {
+        const top = -PITS.water.surface;
+        if (first) {
+          this.vfx.burst(SPRAY, g.x, top + 0.2, g.z, 0.9);
+          this.vfx.billow('dust', g.x, top + 0.4, g.z, 2.2, { tint: SPRAY_MIST, duration: 0.9, rise: 0.9, opacity: 0.6 });
+          this.cue('wade', g.x, g.z, 1);
+        }
+        if (left <= 0) {
+          const bitten = (h.chill.get(g) ?? 0) > HAZARDS.water.bite;
+          left = bitten ? 0.3 : 0.45;
+          if (moving) this.vfx.billow('dust', g.x, top + 0.15, g.z, 1.1, { tint: SPRAY_MIST, duration: 0.7, rise: 0.3, opacity: 0.4 });
+          // their breath, and the frost coming off their shoulders
+          if (bitten) this.vfx.billow('smoke', g.x, y + 1.7, g.z, 0.8, { tint: FROST_MIST, duration: 1.4, rise: 0.5, opacity: 0.45, bright: 1.6 });
+        }
+      }
+      this.waders.set(g, left);
+    }
+    for (const g of this.waders.keys()) if (!g.alive) this.waders.delete(g);
+    if (h.plunges !== this.plunges) {
+      const { x, z } = h.plungeAt;
+      if (h.plunges > this.plunges) {
+        this.vfx.burst(RUBBLE, x, -0.6, z, 1.4);
+        this.vfx.billow('smoke', x, 0.4, z, 3, { tint: DARK_WISP, duration: 2.2, rise: 1.4, opacity: 0.85, bright: 0.4 });
+        this.near(x, z, 0.4, 6);
+        this.cue('plunge', x, z, 1);
+      }
+      this.plunges = h.plunges;
     }
   }
 

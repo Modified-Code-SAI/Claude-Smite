@@ -52,6 +52,9 @@ const HAZARD_SOUND: Record<string, { gain: number; ref: number; say?: string }> 
   'hazard.tide': { gain: 0.65, ref: 0, say: 'The water is rising!' },
   'hazard.crumble': { gain: 0.8, ref: 16, say: 'The ground is giving way!' },
   'hazard.dark': { gain: 0.6, ref: 0, say: 'The dark is creeping in!' },
+  'hazard.sear': { gain: 0.75, ref: 10, say: 'The lava burns. Get out of it!' },
+  'hazard.wade': { gain: 0.6, ref: 9, say: 'That water is freezing. Do not linger!' },
+  'hazard.plunge': { gain: 0.8, ref: 14, say: 'Mind the edge. The dark throws back what falls!' },
 };
 const RELIC_GAIN: Record<string, number> = { 'relic.knell': 0.75, 'relic.chain': 0.45, 'relic.echo': 0.5, 'relic.aegis': 0.45, 'relic.harvest': 0.35, 'relic.spite': 0.7 };
 
