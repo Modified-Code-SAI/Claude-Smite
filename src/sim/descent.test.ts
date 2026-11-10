@@ -1298,8 +1298,8 @@ describe('Underworld Descent: the run', () => {
         sim.step(1 / 30);
         sim.drainEvents();
         fighting = run.phase === 'fight' ? fighting + 1 / 30 : 0;
-        // a chamber falls to bots in well under four minutes; the Ossuary King, the last and biggest boss, takes them two to four
-        expect(fighting).toBeLessThan(run.chamber === DESCENT.chambers ? 360 : 240);
+        // a chamber falls to bots in well under four minutes; a depth's master (the Tidemaw dives out of reach, the Ossuary King is the biggest) takes them two to four or a little more
+        expect(fighting).toBeLessThan(run.current.kind === 'boss' ? 360 : 240);
       }
       expect(run.over).toBe(true);
       expect(run.cleared).toBeGreaterThanOrEqual(3);
