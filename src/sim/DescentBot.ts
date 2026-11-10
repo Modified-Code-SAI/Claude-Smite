@@ -150,7 +150,7 @@ export class DescentBot implements Brain {
   /** Steps out of an eruption or a beast's slam that is about to land under the bot, or out of the depth's dangers (see Hazards.threat). */
   private dodge(): boolean {
     const u = this.u;
-    const out = this.run.hazards.threat(u.x, u.z, u.radius);
+    const out: (Point & { soft?: boolean }) | null = this.run.hazards.threat(u.x, u.z, u.radius) ?? this.run.loot.threat(u.x, u.z, u.radius);
     // (the flood or the dark is braved to finish off a foe within reach, unless the bot is badly hurt)
     if (out && !(out.soft && u.combatant.health > u.combatant.stats.maxHealth * 0.45 && this.enemyClose(7))) {
       u.move = { x: out.x, z: out.z };

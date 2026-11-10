@@ -5,8 +5,9 @@ import { FAVOR_THRESHOLDS, favorPoints, XP_TABLE } from '../game/progression';
 import type { GodDef, SkillDef, StatKey } from '../game/types';
 import type { CampKind } from '../map/ConquestLayout';
 import { navOf, Route } from '../map/ChamberNav';
-import { CHAMBERS, DEPTH_CHAMBERS, entranceSpot, exitSpot, obstaclesOf, type ChamberDef, type Palette } from '../map/UnderworldLayout';
+import { CHAMBERS, DEPTH_CHAMBERS, entranceSpot, escapeSpot, exitSpot, obstaclesOf, type ChamberDef, type Palette } from '../map/UnderworldLayout';
 import { HAZARDS, Hazards, type HazardsNet } from './DescentHazards';
+import { LOOT, Loot, type LootNet } from './DescentLoot';
 import { monsterName, monsterUnit, type MonsterType } from './factory';
 import { MonsterBrain, type BossSpecial, type CampState } from './Jungle';
 import { Relics, relicById, type Relic, type RelicNet } from './Relics';
@@ -49,6 +50,8 @@ export const DESCENT = {
   draftTime: 20,
   /** After the reward the exit gate opens; nobody walking in pulls the team down after this long. */
   exitPull: 30,
+  /** Out of a master's chamber the way back up stands open too (see `escape`): longer to loot its hoard and choose. */
+  escapePull: 75,
   exitRadius: 2.8,
   /** The next wave of a chamber rises once this share of the last is left, or after this long. */
   nextWave: { left: 0.3, after: 22 },
@@ -1147,6 +1150,13 @@ export class Descent {
   readonly relics: Relics;
   /** The current chamber's own dangers: the forge's vents and slag, the Drowned Halls' tides, the Abyss's crumbling brink and creeping dark. */
   readonly hazards: Hazards;
+  /**
+   * The run's treasure: the chests and traps of the current chamber and the
+   * haul the team carries (co-op only: a shared descent is scored in souls).
+   */
+  readonly loot: Loot;
+  /** Set once the team has climbed out with its haul rather than gone on down (the run is won, short of the bottom). */
+  escaped = false;
   /** A forge chamber's soul forges, standing or smashed. */
   readonly forges: Unit[] = [];
   /** Seconds until each standing forge breathes out its next Cinderling. */
@@ -1171,6 +1181,7 @@ export class Descent {
   ) {
     this.plan = plan ?? planRun(sim.rng);
     this.hazards = new Hazards(sim);
+    this.loot = new Loot(sim);
     sim.listeners.push((e) => this.on(e));
     // after the run's own listener, so a kill is the run's before a relic pays out on it
     this.relics = new Relics(sim, this);
@@ -1265,7 +1276,22 @@ export class Descent {
     this.phase = 'enter';
     this.timer = DESCENT.enterTime;
     this.hazards.enter(this.layout);
+    this.layLoot();
     this.placeTeam();
+  }
+
+  /** The chamber's chests and traps (none in a shared descent). */
+  private layLoot(): void {
+    if (!this.versus) this.loot.enter(this.layout, this.depth, this.current.kind === 'boss');
+  }
+
+  /**
+   * Whether the way back up stands open: in a master's chamber short of the
+   * last, once its reward is taken. A human who walks into it takes the team
+   * out of the underworld with the haul (see `escaped`).
+   */
+  get escape(): boolean {
+    return !this.versus && this.phase === 'exit' && this.plunging;
   }
 
   /** A smaller team fights harder for each god it is short (lasting perks, the same on every end); rival gods hit each other softer. */
@@ -1325,6 +1351,11 @@ export class Descent {
     const side = this.versus ? this.creditOf(u, e.killer, e.assists) : 'order';
     if (ours) {
       this.kills++;
+      if (!this.versus && !this.forges.includes(u)) {
+        const kind = u.origin?.f === 'mode' ? (u.origin.data as DescentSpawn | undefined)?.type : undefined;
+        if (u === this.boss) this.loot.hoard(u);
+        else this.loot.find(u === this.champion ? LOOT.kill.champion : kind && SOULS[kind] > 1 ? LOOT.kill.heavy : LOOT.kill.body, u);
+      }
       if (side) {
         this.teamKills[side]++;
         const type = u.origin?.f === 'mode' ? (u.origin.data as DescentSpawn | undefined)?.type : undefined;
@@ -1415,6 +1446,7 @@ export class Descent {
       this.stepKing(dt);
     }
     this.hazards.step(dt, this.phase === 'fight' && this.introLeft <= 0 && this.fallLeft <= 0, this.gods, this.monsters, this.isMaster);
+    if (!this.versus && this.introLeft <= 0) this.loot.step(dt, this.gods, this.humans.size ? [...this.humans] : this.gods, this.monsters, this.isMaster);
     this.relics.step();
     switch (this.phase) {
       case 'enter':
@@ -1437,6 +1469,16 @@ export class Descent {
         this.timer -= dt;
         const door = exitSpot(this.layout);
         const walkers = this.humans.size ? [...this.humans] : this.gods;
+        // the way back up: out of the underworld with the haul
+        if (this.escape && this.humans.size) {
+          const up = escapeSpot(this.layout);
+          if (walkers.some((g) => g.alive && hypot(g.x - up.x, g.z - up.z) < DESCENT.exitRadius)) {
+            this.escaped = true;
+            this.loot.bank();
+            this.phase = 'won';
+            break;
+          }
+        }
         const through = walkers.some((g) => g.alive && hypot(g.x - door.x, g.z - door.z) < DESCENT.exitRadius);
         if (through || this.timer <= 0) {
           this.phase = 'descend';
@@ -1795,6 +1837,7 @@ export class Descent {
     }
     if (n >= DESCENT.chambers) {
       this.phase = 'won';
+      if (!this.versus) this.loot.bank(true);
       if (this.versus) this.winner = this.decide();
       return;
     }
@@ -1972,7 +2015,7 @@ export class Descent {
       return;
     }
     this.phase = 'exit';
-    this.timer = DESCENT.exitPull;
+    this.timer = this.plunging && !this.versus && this.humans.size ? DESCENT.escapePull : DESCENT.exitPull;
   }
 
   // -------------------------------------------------------------------------
@@ -1986,6 +2029,7 @@ export class Descent {
     this.timer = DESCENT.enterTime;
     this.relics.reset();
     this.hazards.enter(this.layout);
+    this.layLoot();
     this.placeTeam();
   }
 
@@ -2063,6 +2107,7 @@ export class Descent {
       return false;
     }
     this.phase = 'lost';
+    this.loot.lose();
     this.offer = null;
     this.drafts.clear();
     return true;
@@ -2219,6 +2264,7 @@ export class Descent {
       dn: [...this.downed].map(([u, p]) => [gi(u), r2(p)]),
       e: this.eruptions.map((e) => [e.id, r2(e.x), r2(e.z), e.r, r2(e.left)]),
       ...(this.chamber ? { hz: this.hazards.netState() ?? {} } : {}),
+      ...(this.chamber && !this.versus ? { lt: this.loot.netState(), ...(this.escaped ? { es: 1 } : {}) } : {}),
       b: this.boons.map((b) => b.id),
       ...(this.relics.held.length || this.relics.procs.length ? { rl: this.relics.netState(sideCode) } : {}),
       ...(this.introLeft > 0 ? { it: r2(this.introLeft) } : {}),
@@ -2328,6 +2374,8 @@ export class Descent {
     this.eruptions.length = 0;
     for (const [id, x, z, r, left] of s.e) this.eruptions.push({ id, x, z, r, left });
     if (s.c > 0) this.hazards.applyNet(this.layout, s.hz);
+    if (s.c > 0) this.loot.applyNet(this.layout, this.depth, s.lt);
+    this.escaped = !!s.es;
     // boons give the team's gods the same perks on every end
     for (let i = this.boons.length; i < s.b.length; i++) {
       const b = DESCENT_BOONS.find((k) => k.id === s.b[i]);
@@ -2378,6 +2426,7 @@ export class Descent {
     if (this.floodLeft > 0) this.floodLeft = Math.max(0.01, this.floodLeft - dt);
     for (const e of this.eruptions) e.left = Math.max(0, e.left - dt);
     this.hazards.follow(dt);
+    this.loot.follow(dt);
   }
 }
 
@@ -2414,6 +2463,9 @@ export interface DescentNet {
   e: [number, number, number, number, number][];
   /** The chamber's dangers (see Hazards.netState). */
   hz?: HazardsNet;
+  /** The chamber's chests and traps and the team's haul (see Loot.netState), and whether the team climbed out. */
+  lt?: LootNet;
+  es?: number;
   b: string[];
   /** Relics held and their recent procs (left out while there are none). */
   rl?: RelicNet;

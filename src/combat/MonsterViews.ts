@@ -1708,6 +1708,128 @@ export function graveBell(): GraveBell {
 }
 
 // ---------------------------------------------------------------------------
+// The dungeon's own furniture: treasure chests and floor traps (see src/sim/DescentLoot.ts)
+
+export interface TreasureChest {
+  root: THREE.Group;
+  /**
+   * Poses it for this frame: how far its lid is forced (0..1, as a god works
+   * at it), whether it stands open, whether it is cursed (a sickly light in
+   * its lock, for a keen eye) and the glow off the gold inside (0..1).
+   */
+  pose(dt: number, forced: number, opened: boolean, cursed: boolean, shine: number): void;
+}
+
+/**
+ * An iron-bound chest of dark hide on a stone footing: a barrel lid on a
+ * hinge at the back, a heavy lock plate, and gold heaped inside that lights
+ * the faces over it once the lid is thrown back. A master's hoard is the
+ * same chest built bigger, with gold on its bands (`hoard`).
+ */
+export function treasureChest(hoard = false): TreasureChest {
+  const { hoof: iron, gold } = mats();
+  // dark ironwood bound in gold, so the torch finds it in the dark
+  const hide = iron;
+  const band = gold;
+  const root = new THREE.Group();
+  const rig = pivot(root, 0, 0, 0);
+  const W = 1.2;
+  const D = 0.74;
+  const H = 0.52;
+  mesh(rig, geo('tc-foot', () => rock(0.9, 71).scale(1.05, 0.1, 0.72)), iron, 0, 0.03, 0);
+  const body = pivot(rig, 0, 0.1, 0);
+  mesh(body, geo('tc-box', () => new THREE.BoxGeometry(W, H, D).translate(0, H / 2, 0)), hide);
+  // iron straps round it, corner plates, and the lock plate on its face
+  for (const sx of [-0.4, 0, 0.4]) mesh(body, geo('tc-strap', () => new THREE.BoxGeometry(0.1, H + 0.02, D + 0.05).translate(0, H / 2, 0)), band, sx, 0, 0);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) mesh(body, geo('tc-corner', () => new THREE.BoxGeometry(0.14, H + 0.03, 0.14).translate(0, H / 2, 0)), iron, sx * (W / 2 - 0.05), 0, sz * (D / 2 - 0.05));
+  mesh(body, geo('tc-rim', () => new THREE.BoxGeometry(W + 0.06, 0.07, D + 0.06)), band, 0, H - 0.02, 0);
+  mesh(body, geo('tc-lock', () => new THREE.BoxGeometry(0.24, 0.3, 0.06)), gold, 0, H - 0.2, D / 2 + 0.03);
+  for (const sx of [-1, 1]) mesh(body, geo('tc-handle', () => new THREE.TorusGeometry(0.11, 0.025, 6, 14).rotateY(Math.PI / 2)), iron, sx * (W / 2 + 0.03), H * 0.55, 0);
+  // the gold inside, heaped over the rim
+  mesh(body, geo('tc-heap', () => new THREE.SphereGeometry(0.5, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1.05, 0.42, 0.62)), gold, 0, H - 0.1, 0);
+  for (const [cx, cz, cr] of [[-0.3, 0.12, 0.2], [0.28, -0.08, 0.24], [0.05, 0.16, 0.17]] as const) mesh(body, geo(`tc-pile${cr}`, () => new THREE.SphereGeometry(cr, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2)), gold, cx, H + 0.02, cz);
+  // the lid: a half barrel on a hinge along the back edge
+  const lid = pivot(body, 0, H + 0.015, -D / 2);
+  mesh(lid, geo('tc-lid', () => new THREE.CylinderGeometry(D / 2, D / 2, W, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateX(-Math.PI / 2).rotateY(Math.PI).translate(0, 0, D / 2)), hide);
+  for (const sx of [-0.4, 0, 0.4]) mesh(lid, geo('tc-lidstrap', () => new THREE.TorusGeometry(D / 2 + 0.012, 0.035, 6, 14, Math.PI).rotateY(Math.PI / 2).translate(0, 0, D / 2)), band, sx, 0, 0);
+  for (const sx of [-1, 1]) mesh(lid, geo('tc-lidend', () => new THREE.CircleGeometry(D / 2, 14, 0, Math.PI).rotateY(Math.PI / 2).translate(0, 0, D / 2)), hide, sx * (W / 2), 0, 0, 0, sx > 0 ? 0 : Math.PI, 0);
+  mesh(lid, geo('tc-hasp', () => new THREE.BoxGeometry(0.14, 0.2, 0.05)), gold, 0, -0.04, D + 0.035);
+  // the light off the gold, and the lock's eye (lit only on a cursed chest)
+  if (hoard) rig.scale.setScalar(1.45);
+  skinRigid(root, hoard ? 'treasure-hoard' : 'treasure-chest', rig, [], bounds(hoard ? 2.4 : 1.7));
+  // (plain meshes of their own, not part of the skin: drawn only while they are lit)
+  const k = hoard ? 1.45 : 1;
+  const shineMesh = mesh(root, geo('tc-shine', () => new THREE.SphereGeometry(0.42, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1.1, 0.5, 0.66)), glow(GILDED_GLOW, 2.2), 0, (0.1 + H - 0.04) * k, 0, 0, 0, 0, false);
+  const eye = mesh(root, geo('tc-eye', () => new THREE.SphereGeometry(0.035, 8, 6)), glow(0x8cff5a, 3), 0, (0.1 + H - 0.2) * k, (D / 2 + 0.07) * k, 0, 0, 0, false);
+
+  let t = Math.random() * 10;
+  let angle = 0;
+  let vel = 0;
+  return {
+    root,
+    pose(dt, forced, opened, cursed, shine) {
+      t += dt;
+      // worked at, the lid lifts a crack and rattles; open, it is thrown back on a spring
+      const target = opened ? -1.85 : -forced * 0.28 + (forced > 0.02 ? Math.sin(t * 34) * 0.025 : 0);
+      vel += ((target - angle) * 90 - vel * (opened ? 9 : 22)) * dt;
+      angle += vel * dt;
+      lid.rotation.x = Math.min(0, angle);
+      const lit = Math.max(0, Math.min(1, opened ? shine : forced * 0.25));
+      shineMesh.visible = lit > 0.01;
+      shineMesh.scale.setScalar(k * lit * (0.92 + Math.sin(t * 5.3) * 0.08));
+      eye.visible = cursed && !opened;
+      eye.scale.setScalar(k * (0.7 + Math.sin(t * 2.1) * 0.3));
+    },
+  };
+}
+
+export interface FloorTrap {
+  root: THREE.Group;
+  /** Poses it for this frame: how far its fuse has run (0 set, to 1 as it goes off), and the seconds since it last went off (negative if it has not). */
+  pose(dt: number, fuse: number, since: number): void;
+}
+
+/**
+ * A pressure plate set flush in the floor: a round slab of stone in an iron
+ * collar, a rune cut in its middle that lights as it is trodden on, and a
+ * ring of iron spikes under it that come up when it goes off.
+ */
+export function floorTrap(): FloorTrap {
+  // (all of one stone, and casting no shadow: a plate flush in the floor is two draws)
+  const { hide } = mats();
+  const iron = hide;
+  const root = new THREE.Group();
+  const rig = pivot(root, 0, 0, 0);
+  const R = 0.95;
+  mesh(rig, geo('ft-collar', () => new THREE.TorusGeometry(R + 0.04, 0.05, 6, 28).rotateX(Math.PI / 2)), iron, 0, 0.02, 0, 0, 0, 0, false);
+  const plate = pivot(rig, 0, 0, 0);
+  mesh(plate, geo('ft-plate', () => new THREE.CylinderGeometry(R, R, 0.1, 28)), hide, 0, 0.005, 0, 0, 0, 0, false);
+  mesh(plate, geo('ft-ring', () => new THREE.TorusGeometry(R * 0.55, 0.022, 5, 24).rotateX(Math.PI / 2)), iron, 0, 0.06, 0, 0, 0, 0, false);
+  for (let i = 0; i < 4; i++) mesh(plate, geo('ft-stud', () => new THREE.SphereGeometry(0.06, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2)), iron, Math.cos((i * Math.PI) / 2 + 0.78) * R * 0.8, 0.055, Math.sin((i * Math.PI) / 2 + 0.78) * R * 0.8, 0, 0, 0, false);
+  const spikes = pivot(rig, 0, -1.2, 0);
+  const cone = geo('ft-spike', () => new THREE.ConeGeometry(0.085, 1.25, 6).translate(0, 0.62, 0));
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    mesh(spikes, cone, iron, Math.cos(a) * R * 0.62, 0, Math.sin(a) * R * 0.62, Math.sin(a) * 0.14, 0, -Math.cos(a) * 0.14, false);
+  }
+  mesh(spikes, cone, iron, 0, 0.12, 0, 0, 0, 0, false);
+  skinRigid(root, 'floor-trap', rig, [], bounds(1.6));
+  const rune = mesh(root, geo('ft-rune', () => new THREE.RingGeometry(0.16, 0.24, 6).rotateX(-Math.PI / 2)), glow(0xff5a2a, 3), 0, 0.07, 0, 0, 0, 0, false);
+  let t = Math.random() * 10;
+  return {
+    root,
+    pose(dt, fuse, since) {
+      t += dt;
+      const up = since >= 0 && since < 1.6 ? Math.min(1, since / 0.07) * (1 - Math.max(0, (since - 1) / 0.6)) : 0;
+      // trodden on, the plate sinks with a click; the spikes come up through the gaps round it
+      plate.position.y = -0.045 * Math.min(1, fuse * 6) * (1 - up);
+      spikes.position.y = -1.3 + up * 1.3;
+      rune.scale.setScalar(Math.max(0.001, fuse > 0 ? 1 + fuse * 0.8 : up > 0 ? 1.6 : 0.55 + Math.sin(t * 1.7) * 0.12));
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Treasure Wyrm
 
 const WYRM_SEGMENTS = 36;
@@ -2833,6 +2955,9 @@ export function monsterWarmup(): THREE.Object3D[] {
     gravehound(true),
     soulForge(),
     graveBell(),
+    treasureChest(),
+    treasureChest(true),
+    floorTrap(),
   ].map((v) => v.root);
 }
 

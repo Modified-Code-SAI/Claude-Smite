@@ -56,6 +56,8 @@ const HAZARD_SOUND: Record<string, { gain: number; ref: number; say?: string }> 
   'hazard.wade': { gain: 0.6, ref: 9, say: 'That water is freezing. Do not linger!' },
   'hazard.plunge': { gain: 0.8, ref: 14, say: 'Mind the edge. The dark throws back what falls!' },
 };
+/** The sound of each depth's floor trap going off (DescentLoot's DEPTH_TRAP order). */
+const TRAP_SOUND = ['flame', 'frost', 'spikes'];
 const RELIC_GAIN: Record<string, number> = { 'relic.knell': 0.75, 'relic.chain': 0.45, 'relic.echo': 0.5, 'relic.aegis': 0.45, 'relic.harvest': 0.35, 'relic.spite': 0.7 };
 
 /** Which god basic-hit sound each god makes. */
@@ -193,6 +195,15 @@ export class GameAudio {
       else if (name === 'forgeBreath') this.engine.play('forge.breath', { at, gain: 0.7, vary: 0.08, ref: 12 }, 2, 0.15);
       else if (name === 'toll') this.engine.play('bell.toll', { at, gain: 1, rate: 1 + Math.max(0, k - 1) * 0.06, ref: 34 }, 4, 0.3);
       else if (name === 'drain') this.engine.play('flood.drain', { bus: 'ambience', gain: 0.9 }, 3);
+      // the run's treasure: a lid thrown back (a master's hoard bigger and lower), coin off the fallen (thinned in a pack's fall),
+      // a cursed chest bursting, a plate sinking underfoot and going off its depth's way, and the way back up opening
+      else if (name === 'chest') this.loot(k ? 'loot.hoardOpen' : 'loot.chest', { at, gain: k ? 0.95 : 0.8, ref: k ? 22 : 14 }, 3);
+      else if (name === 'hoard') this.loot('loot.hoard', { at, gain: 0.85, ref: 24 }, 3, 'The master\'s hoard! Break it open.');
+      else if (name === 'coins') this.engine.play('loot.coins', { gain: 0.3 + Math.min(k, 25) * 0.012, vary: 0.08 }, 1, 0.09);
+      else if (name === 'curse') this.loot('loot.curse', { at, gain: 0.95, ref: 18 }, 4, 'That chest was cursed! Stand back when the lid smokes.', 'bad');
+      else if (name === 'trapClick') this.loot('trap.click', { at, gain: 0.8, ref: 9 }, 3, 'A plate in the floor! Move!', 'bad');
+      else if (name === 'trap') this.engine.play(`trap.${TRAP_SOUND[k] ?? 'flame'}`, { at, gain: 0.9, vary: 0.06, ref: 16 }, 4, 0.08);
+      else if (name === 'escape') this.loot('loot.escape', { bus: 'ui', gain: 0.7 }, 3, 'The way back up is open. Climb out with your haul, or risk it deeper.', 'good');
     };
   }
 
@@ -204,21 +215,31 @@ export class GameAudio {
   private warned = new Set<string>();
   private warnedRun: unknown = null;
 
+  /** Whether the herald has yet to speak of this (by name) in this run. */
+  private firstThisRun(name: string): boolean {
+    const run = this.game.descent;
+    if (run !== this.warnedRun) {
+      this.warnedRun = run;
+      this.warned.clear();
+    }
+    if (this.warned.has(name)) return false;
+    this.warned.add(name);
+    return true;
+  }
+
+  /** One of the run's treasure sounds, with the herald's word the first time it comes in a run. */
+  private loot(name: string, opts: Parameters<AudioEngine['play']>[1], priority: number, say?: string, tone: 'good' | 'bad' = 'good'): void {
+    this.engine.play(name, opts, priority);
+    if (say && this.firstThisRun(name)) this.herald.say(say, tone, 1);
+  }
+
   /** A Descent danger going off: where it is, or (the flood, the dark) through the whole room. */
   private hazard(name: string, at: { x: number; y: number; z: number }): void {
     const s = HAZARD_SOUND[name];
     if (!s) return;
     if (s.ref) this.engine.play(name, { at, gain: s.gain, vary: 0.06, ref: s.ref }, 2, 0.1);
     else this.engine.play(name, { bus: 'ambience', gain: s.gain }, 2);
-    const run = this.game.descent;
-    if (run !== this.warnedRun) {
-      this.warnedRun = run;
-      this.warned.clear();
-    }
-    if (s.say && !this.warned.has(name)) {
-      this.warned.add(name);
-      this.herald.say(s.say, 'bad', 1);
-    }
+    if (s.say && this.firstThisRun(name)) this.herald.say(s.say, 'bad', 1);
   }
 
   // -------------------------------------------------------------------------

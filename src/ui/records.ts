@@ -45,11 +45,38 @@ export function addResult(mode: RecordMode, result: { won?: boolean; best?: numb
   return { ...before, award: awardXp(gameXp(mode, result), !!result.won) };
 }
 
+const VAULT = 'ascendant.vault';
+
+/** Treasure brought out of Underworld Descent, kept in this browser: every run's added up, and the richest single haul. */
+export function getVault(): { total: number; best: number } {
+  try {
+    const v = JSON.parse(localStorage.getItem(VAULT) ?? '{}') as { total?: number; best?: number };
+    return { total: Number(v.total) || 0, best: Number(v.best) || 0 };
+  } catch {
+    return { total: 0, best: 0 };
+  }
+}
+
+/** Banks a run's haul. Returns the vault's new total, and the richest haul before this one (so a screen can say "richest yet"). */
+export function addHaul(amount: number): { total: number; best: number } {
+  const before = getVault();
+  const total = before.total + Math.max(0, Math.round(amount));
+  try {
+    localStorage.setItem(VAULT, JSON.stringify({ total, best: Math.max(before.best, amount) }));
+  } catch {
+    /* storage unavailable */
+  }
+  return { total, best: before.best };
+}
+
 /** One line for the mode's card on the start screen, or '' before the first game. */
 export function recordLine(mode: string): string {
   if (mode !== 'conquest' && mode !== 'clash' && mode !== 'siege' && mode !== 'duel' && mode !== 'rush' && mode !== 'descent' && mode !== 'jotunn') return '';
   const r = getRecord(mode);
   if (mode === 'siege') return r.best ? `Best: ${r.best} ${r.best === 1 ? 'wave' : 'waves'}` : '';
-  if (mode === 'descent') return r.best ? `Deepest: chamber ${r.best}${r.won ? ` · ${r.won} ${r.won === 1 ? 'escape' : 'escapes'}` : ''}` : '';
+  if (mode === 'descent') {
+    const vault = getVault().total;
+    return r.best ? `Deepest: chamber ${r.best}${r.won ? ` · ${r.won} ${r.won === 1 ? 'escape' : 'escapes'}` : ''}${vault ? ` · Vault ${vault}` : ''}` : '';
+  }
   return r.played ? `${r.won} ${r.won === 1 ? 'win' : 'wins'} in ${r.played} ${r.played === 1 ? 'game' : 'games'}` : '';
 }

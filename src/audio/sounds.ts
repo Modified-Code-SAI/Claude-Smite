@@ -580,6 +580,102 @@ export const SOUNDS: Record<string, Recipe> = {
         [impact(r, 0.9, { tone: 90, room: 0.6 }), 0.55, 1.05],
       ),
   },
+  // the run's treasure (DescentLoot): a chest's lid thrown back on its gold, a master's hoard heaving up out of the floor and broken open,
+  // coin off the fallen, a cursed chest bursting, a plate sinking underfoot, each depth's trap going off, and the way back up opening
+  'loot.chest': {
+    variants: 3,
+    peak: 0.6,
+    make: (r) => {
+      const parts: [Float32Array, number, number][] = [
+        [thump(r, 0.22, 190 + r() * 30, 80, { click: 0.6, noise: 0.6 }), 0.9, 0],
+        [knock(r, 0.07, 620 + r() * 120), 0.6, 0.02],
+        [twang(r, 0.3, 240 + r() * 40), 0.25, 0.03],
+        [shimmer(r, 0.9, 1318.5, { rise: 1.2, peak: 0.2 }), 0.5, 0.12],
+      ];
+      for (let k = 0; k < 7; k++) parts.push([chime(r, 0.22, 2100 + r() * 1900), 0.2 + r() * 0.12, 0.14 + k * 0.045 + r() * 0.03]);
+      return layer(...parts);
+    },
+  },
+  'loot.hoardOpen': {
+    variants: 2,
+    peak: 0.7,
+    make: (r) => {
+      const parts: [Float32Array, number, number][] = [
+        [impact(r, 0.6, { tone: 110, crunch: 0.7 }), 1, 0],
+        [clang(r, 1.4, 196, { decay: 0.9, bright: 0.4, gain: 0.4 }), 0.5, 0.02],
+        [shimmer(r, 1.5, 1046.5, { rise: 1.3, peak: 0.25, voices: 3 }), 0.6, 0.12],
+        [choir(r, 1.4, 523.3, { vowelName: 'oo', env: (t) => ahr(t, 0.2, 0.4, 0.8) }), 0.3, 0.1],
+      ];
+      for (let k = 0; k < 14; k++) parts.push([chime(r, 0.24, 1800 + r() * 2200), 0.18 + r() * 0.12, 0.14 + k * 0.05 + r() * 0.04]);
+      return layer(...parts);
+    },
+  },
+  'loot.hoard': {
+    variants: 2,
+    peak: 0.6,
+    make: (r) => layer([rumble(r, 1.3, { tone: 120 }), 0.7], [debris(r, 1.1, { density: 30, gain: 0.5, tone: 800 }), 0.8, 0.05], [clang(r, 1.3, 261.6, { decay: 0.8, bright: 0.45, gain: 0.35 }), 0.5, 0.5], [shimmer(r, 1.1, 1568, { rise: 1.2, peak: 0.3 }), 0.5, 0.55]),
+  },
+  'loot.coins': {
+    variants: 5,
+    peak: 0.4,
+    make: (r) => layer([chime(r, 0.2, 2400 + r() * 900), 0.7], [chime(r, 0.22, 3100 + r() * 1100), 0.6, 0.05 + r() * 0.02], [chime(r, 0.2, 2700 + r() * 900), 0.45, 0.11 + r() * 0.02], [knock(r, 0.03, 3600), 0.25]),
+  },
+  'loot.curse': {
+    variants: 2,
+    peak: 0.75,
+    make: (r) =>
+      layer(
+        [impact(r, 0.9, { tone: 95, crunch: 0.9, sub: 0.6 }), 1],
+        [vowel(r, 1.1, (t) => glide(520, 170, t, 1.1), VOWELS.oo, { breath: 2.2, voices: 3, detune: 0.04, gain: 0.4, env: (t) => ahr(t, 0.03, 0.3, 0.7) }), 0.7, 0.02],
+        [fire(r, 1, { gain: 0.7, roar: 1.2 }), 0.5, 0.03],
+        [filter(whoosh(r, 0.9, 2600, 300, { q: 1.1 }), 'lowpass', 3000), 0.5, 0.05],
+      ),
+  },
+  'trap.click': {
+    variants: 3,
+    peak: 0.55,
+    make: (r) => layer([knock(r, 0.05, 1500 + r() * 300), 1], [thump(r, 0.16, 120, 60, { click: 0.8, noise: 0.4 }), 0.8, 0.01], [twang(r, 0.3, 180 + r() * 30), 0.35, 0.04], [debris(r, 0.25, { density: 40, gain: 0.3, tone: 1400 }), 0.4, 0.05]),
+  },
+  'trap.flame': {
+    variants: 3,
+    peak: 0.7,
+    make: (r) => layer([vent(r), 1], [fire(r, 1.1, { gain: 0.9, roar: 1.8 }), 0.8, 0.02], [thump(r, 0.4, 80, 34, { click: 0.3, noise: 0.6, drive: 2 }), 0.7]),
+  },
+  'trap.frost': {
+    variants: 3,
+    peak: 0.65,
+    make: (r) => {
+      const parts: [Float32Array, number, number][] = [
+        [filter(whoosh(r, 0.7, 3800, 900, { q: 0.8 }), 'highpass', 700), 0.8, 0],
+        [thump(r, 0.3, 130, 55, { click: 0.4, noise: 0.5 }), 0.6, 0],
+        [debris(r, 0.7, { density: 70, gain: 0.5, tone: 3000 }), 0.8, 0.04],
+      ];
+      for (let k = 0; k < 6; k++) parts.push([chime(r, 0.3, 1500 + r() * 1700), 0.3, 0.02 + k * 0.035 + r() * 0.02]);
+      return layer(...parts);
+    },
+  },
+  'trap.spikes': {
+    variants: 3,
+    peak: 0.7,
+    make: (r) =>
+      layer(
+        [whoosh(r, 0.14, 900, 4200, { q: 1.3, peak: 0.8 }), 0.8],
+        [impact(r, 0.5, { tone: 170, crunch: 1 }), 1, 0.05],
+        [knock(r, 0.06, 820 + r() * 200), 0.7, 0.05],
+        [knock(r, 0.06, 1150 + r() * 200), 0.6, 0.08],
+        [debris(r, 0.6, { density: 46, gain: 0.5, tone: 1700 }), 0.7, 0.08],
+      ),
+  },
+  'loot.escape': {
+    peak: 0.6,
+    make: (r) =>
+      layer(
+        [clang(r, 2.2, 392, { decay: 1.2, bright: 0.5, gain: 0.4 }), 0.7],
+        [clang(r, 2, 587.3, { decay: 1.1, bright: 0.5, gain: 0.35 }), 0.55, 0.22],
+        [choir(r, 2.2, 392, { vowelName: 'ah', env: (t) => ahr(t, 0.4, 0.6, 1.1) }), 0.4, 0.1],
+        [shimmer(r, 1.6, 1174.7, { rise: 1.2, peak: 0.3, voices: 3 }), 0.5, 0.3],
+      ),
+  },
   'soul.absorb': { variants: 3, peak: 0.35, make: (r) => layer([whoosh(r, 0.3, 700, 3400, { q: 1.4, peak: 0.85, gain: 0.7 }), 0.6], [shimmer(r, 0.55, 1046.5, { rise: 1.3, peak: 0.15 }), 1, 0.07], [choir(r, 0.6, 523.3, { vowelName: 'oo', env: (t) => ahr(t, 0.06, 0.08, 0.4) }), 0.35, 0.05]) },
 
   // -- the gods' own voices (voices.ts)

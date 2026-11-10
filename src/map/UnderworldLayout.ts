@@ -589,6 +589,11 @@ export function exitSpot(c: ChamberDef): { x: number; z: number } {
   return { x: c.x, z: c.z - c.extent - GATE.depth + 1.4 };
 }
 
+/** The entrance gate's doorway, which after a depth's master falls is the way back up out of the underworld. */
+export function escapeSpot(c: ChamberDef): { x: number; z: number } {
+  return { x: c.x, z: c.z + c.extent + GATE.depth - 1.4 };
+}
+
 /** The point a world position would be at in a chamber's local frame. */
 export function toLocal(c: ChamberDef, x: number, z: number): [number, number] {
   return [x - c.x, z - c.z];

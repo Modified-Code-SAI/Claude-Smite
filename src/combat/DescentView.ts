@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { UNDERWORLD_LIFE } from '../audio/underworldAmbience';
 import type { Side } from '../game/combatant';
-import { exitSpot, obstaclesOf, underworldField } from '../map/UnderworldLayout';
+import { escapeSpot, exitSpot, obstaclesOf, underworldField } from '../map/UnderworldLayout';
+import { LOOT, type Chest, type Trap } from '../sim/DescentLoot';
 import type { CameraShot } from '../player/ThirdPersonCamera';
 import { ASHSMITH, bellsOf, CHALLENGE, CINDER, DESCENT, DescentMonsterBrain, DEPTHS, HOWL, SOULS, type Descent } from '../sim/Descent';
 import { RELIC, type RelicId, type RelicProc } from '../sim/Relics';
@@ -17,7 +18,7 @@ import { ArcView } from './Arcs';
 import { fallDistance, fallOrbit, fallShot, introDistance, introShot, introSpot, BOSS_FALL, type IntroSubject } from './bossIntro';
 import { GroundDecal } from './GroundDecal';
 import { HazardsView, type HazardCue } from './HazardsView';
-import { DEPTH_EYES, graveBell, HOUND_CORE, HOUND_GLOW, KEEPER_CORE, KEEPER_GLOW, setMonsterDepth, sinksAfter, type GraveBell } from './MonsterViews';
+import { DEPTH_EYES, floorTrap, graveBell, treasureChest, type FloorTrap, type TreasureChest, HOUND_CORE, HOUND_GLOW, KEEPER_CORE, KEEPER_GLOW, setMonsterDepth, sinksAfter, type GraveBell } from './MonsterViews';
 import type { GodPalette } from './palette';
 import { SoulWisps } from './SoulWisps';
 import type { CombatVfx } from './Vfx';
@@ -93,7 +94,19 @@ export interface DescentViewOptions {
   flashes?: () => readonly Flash[];
 }
 
-export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | 'pounce' | 'pounceLand' | 'howl' | 'forgeBreath' | 'toll' | 'drain' | 'fissure' | `relic.${RelicId}` | `hazard.${HazardCue}`;
+/** The most traps a chamber lays (one by each chest and LOOT.trap.count more). */
+/** How far off a floor plate can be made out (m): about the torch's reach. */
+const TRAP_SIGHT = 20;
+const LOOT_TRAPS = 5;
+/** Gold out of a chest, a cursed chest's sickly burst, and each depth's trap. */
+const GOLD_FX: GodPalette = { cloth: 0, trim: 0, glow: 0xffc24a, vfx: 0xffc24a, core: 0xfff3c8 };
+const CURSE_FX: GodPalette = { cloth: 0, trim: 0, glow: 0x4cff3a, vfx: 0x5aff4a, core: 0xe4ffc8 };
+const TRAP_FLAME: GodPalette = { cloth: 0, trim: 0, glow: 0xff5a14, vfx: 0xff6a1a, core: 0xffd890 };
+const TRAP_FROST: GodPalette = { cloth: 0, trim: 0, glow: 0x4aa0ff, vfx: 0x8acfff, core: 0xf0fbff };
+const TRAP_BONE: GodPalette = { cloth: 0, trim: 0, glow: 0x3c8a66, vfx: 0xa8b8a0, core: 0xf4f0e0 };
+const DEPTH_TRAP_INDEX = { flame: 0, frost: 1, spikes: 2 } as const;
+
+export type DescentCue = 'soul' | 'emerge' | 'sink' | 'stir' | 'clear' | 'boss' | 'bossCall' | 'bossFall' | 'cinder' | 'lurkDive' | 'lurkBurst' | 'pounce' | 'pounceLand' | 'howl' | 'forgeBreath' | 'toll' | 'drain' | 'fissure' | 'chest' | 'hoard' | 'curse' | 'coins' | 'trapClick' | 'trap' | 'escape' | `relic.${RelicId}` | `hazard.${HazardCue}`;
 
 /**
  * What Underworld Descent shows in the world: the chamber the team is in (and
@@ -164,6 +177,17 @@ export class DescentView {
   private readonly knells: { x: number; z: number; age: number }[] = [];
   /** The chamber's dangers: the vents, the slag, the flood, the brink and the dark. */
   private readonly hazards: HazardsView;
+  /** The chamber's chests (two plain ones and a master's hoard), its traps, and what each showed last frame. */
+  private readonly chestViews: TreasureChest[] = [];
+  private hoardView!: TreasureChest;
+  private readonly trapViews: FloorTrap[] = [];
+  private readonly chestSeen = new Map<number, { opened: boolean; burst: number; at: number }>();
+  private readonly trapSeen = new Map<number, { fuse: number; fired: number; at: number }>();
+  private readonly curseRings: GroundDecal[] = [];
+  private escapeRing!: GroundDecal;
+  private escapeOpen = false;
+  private gains = 0;
+  private lootChamber = 0;
   /** A bell chamber's grave bells, the ring under each that fills as it is rung, and when each tolled (the view's clock). */
   private readonly bellViews: GraveBell[] = [];
   private readonly bellRings: GroundDecal[] = [];
@@ -253,6 +277,26 @@ export class DescentView {
       this.bellRung.push(0);
       this.bellTolled.push(-1);
     }
+    for (let i = 0; i < 2; i++) this.chestViews.push(treasureChest());
+    this.hoardView = treasureChest(true);
+    for (let i = 0; i < LOOT_TRAPS; i++) this.trapViews.push(floorTrap());
+    for (const v of [...this.chestViews, this.hoardView, ...this.trapViews]) {
+      v.root.visible = false;
+      world.vfx.add(v.root);
+    }
+    for (let i = 0; i < 2; i++) {
+      const d = new GroundDecal(groundAt);
+      d.setStyle('telegraph');
+      d.setColors(CURSE_FX.vfx, CURSE_FX.core);
+      d.mesh.visible = false;
+      this.curseRings.push(d);
+      world.vfx.add(d.mesh);
+    }
+    this.escapeRing = new GroundDecal(groundAt);
+    this.escapeRing.setStyle('zone');
+    this.escapeRing.setColors(GOLD_FX.vfx, GOLD_FX.core);
+    this.escapeRing.mesh.visible = false;
+    world.vfx.add(this.escapeRing.mesh);
     this.tollRing = new GroundDecal(groundAt);
     this.tollRing.setStyle('telegraph');
     this.tollRing.setColors(HOUND_GLOW, 0xffffff);
@@ -333,6 +377,7 @@ export class DescentView {
     this.fissures();
     this.bells(dt, time);
     this.flood();
+    this.loot(dt, time);
     for (let i = this.sinking.length - 1; i >= 0; i--) {
       const s = this.sinking[i]!;
       if (this.clock < s.at) continue;
@@ -742,6 +787,157 @@ export class DescentView {
     this.tollRing.place({ type: 'ring', radius: 0.8 + (CHALLENGE.bells.stagger - 0.8) * Math.sqrt(k), width: 0.4 + 0.8 * (1 - k) }, t.x, t.z, 0, 0.1);
   }
 
+  /**
+   * The run's treasure (src/sim/DescentLoot.ts): the chamber's chests, lids
+   * rattling as a god works at them and thrown back in a burst of gold; the
+   * sickly ring round a cursed one about to burst; the plates in the floor
+   * sinking with a click and going off; coin off the fallen; and the way back
+   * up, ringed in gold once a master has fallen.
+   */
+  private loot(dt: number, time: number): void {
+    const r = this.run;
+    const L = r.loot;
+    if (this.lootChamber !== r.chamber) {
+      this.lootChamber = r.chamber;
+      this.chestSeen.clear();
+      this.trapSeen.clear();
+      this.gains = L.gain.n;
+    }
+    let plain = 0;
+    let hoard = false;
+    let rings = 0;
+    for (const ch of L.chests) {
+      const v = ch.hoard ? this.hoardView : this.chestViews[plain++];
+      if (!v) continue;
+      if (ch.hoard) hoard = true;
+      const gy = this.groundAt(ch.x, ch.z);
+      let seen = this.chestSeen.get(ch.id);
+      if (!seen) {
+        this.chestSeen.set(ch.id, (seen = { opened: ch.opened, burst: ch.burst, at: ch.opened ? -10 : -1 }));
+        v.root.position.set(ch.x, gy, ch.z);
+        v.root.rotation.y = ch.yaw;
+        // a master's hoard comes up out of the floor where it fell
+        if (ch.hoard) {
+          this.vfx.burst(GOLD_FX, ch.x, gy + 0.6, ch.z, 2);
+          this.vfx.billow('dust', ch.x, gy + 0.3, ch.z, 3.4, { tint: 0x6a5a40, duration: 1.4, rise: 0.4 });
+          this.opts.cue?.('hoard', { x: ch.x, y: gy + 0.6, z: ch.z }, 1);
+        }
+      }
+      v.root.visible = true;
+      if (ch.opened && !seen.opened) this.openChest(ch, gy);
+      if (seen.burst >= 0 && ch.burst < 0) this.curseBurst(ch, gy);
+      if (ch.opened && !seen.opened) seen.at = this.clock;
+      seen.opened = ch.opened;
+      seen.burst = ch.burst;
+      const since = seen.at < -5 ? 99 : seen.at >= 0 ? this.clock - seen.at : -1;
+      // the gold flares as the lid goes back, then settles to a steady shine
+      v.pose(dt, ch.open, ch.opened, ch.cursed, since < 0 ? 0 : 0.55 + 0.45 * Math.exp(-since * 2));
+      if (ch.burst >= 0) {
+        const d = this.curseRings[rings++];
+        if (d) {
+          const B = LOOT.chest.burst;
+          d.mesh.visible = true;
+          d.values.fill = 1 - ch.burst / B.warn;
+          d.values.opacity = 0.6 + d.values.fill * 0.35;
+          d.place({ type: 'circle', radius: B.radius }, ch.x, ch.z, 0, 0.09);
+        }
+      }
+    }
+    for (; plain < this.chestViews.length; plain++) this.chestViews[plain]!.root.visible = false;
+    if (!hoard) this.hoardView.root.visible = false;
+    for (; rings < this.curseRings.length; rings++) this.curseRings[rings]!.mesh.visible = false;
+    this.trapViews.forEach((v, i) => {
+      const t = L.traps[i];
+      // a plate shows only by torchlight: out past it, the floor keeps its secrets (and its draws)
+      const me = this.opts.me;
+      v.root.visible = !!t && (!me || Math.hypot(me.x - t.x, me.z - t.z) < TRAP_SIGHT);
+      if (!t) return;
+      let seen = this.trapSeen.get(t.id);
+      if (!seen) {
+        this.trapSeen.set(t.id, (seen = { fuse: t.fuse, fired: t.fired, at: -1 }));
+        v.root.position.set(t.x, this.groundAt(t.x, t.z), t.z);
+        v.root.rotation.y = (t.id * 2.4) % (Math.PI * 2);
+      }
+      if (t.fuse >= 0 && seen.fuse < 0) this.opts.cue?.('trapClick', { x: t.x, y: 0.2, z: t.z }, 0);
+      if (t.fired > seen.fired) {
+        seen.at = this.clock;
+        this.trapFires(t);
+      }
+      seen.fuse = t.fuse;
+      seen.fired = t.fired;
+      v.pose(dt, t.fuse >= 0 ? 1 - t.fuse / LOOT.trap.delay : 0, seen.at >= 0 ? this.clock - seen.at : -1);
+    });
+    // coin off a fallen beast: a glint where it lay, and a wisp of gold to the player
+    if (L.gain.n !== this.gains) {
+      if (L.gain.n > this.gains && !L.gain.chest) {
+        const { x, z } = L.gain;
+        const gy = this.groundAt(x, z);
+        this.vfx.burst(GOLD_FX, x, gy + 0.5, z, 0.45);
+        const me = this.opts.me;
+        if (me?.alive) this.wisps.swarm.send(x, gy + 0.5, z, me, 0xffd25a, 0.35, 1.1);
+        this.opts.cue?.('coins', { x, y: gy + 0.5, z }, L.gain.amount);
+      }
+      this.gains = L.gain.n;
+    }
+    // the way back up
+    const open = r.escape;
+    if (open && !this.escapeOpen) {
+      const up = escapeSpot(r.layout);
+      this.vfx.pillar(GOLD_FX, up.x, up.z - 1.2, 0.8, 1.6);
+      this.opts.cue?.('escape', { x: up.x, y: 1.5, z: up.z }, 1);
+    }
+    this.escapeOpen = open;
+    this.escapeRing.mesh.visible = open;
+    if (open) {
+      const up = escapeSpot(r.layout);
+      this.escapeRing.values.opacity = 0.75 + Math.sin(time * 3) * 0.25;
+      this.escapeRing.place({ type: 'ring', radius: DESCENT.exitRadius - 0.4, width: 0.5 }, up.x, up.z - 1.2, 0, 0.1);
+    }
+  }
+
+  private openChest(ch: Chest, gy: number): void {
+    const big = ch.hoard ? 1.6 : 1;
+    this.vfx.burst(GOLD_FX, ch.x, gy + 0.8 * big, ch.z, 1.5 * big);
+    this.vfx.pillar(GOLD_FX, ch.x, ch.z, 0.35 * big, 0.9 * big, 1.6);
+    for (const g of this.run.gods) {
+      if (!g.alive) continue;
+      for (let k = 0; k < (ch.hoard ? 5 : 3); k++) this.wisps.swarm.send(ch.x, gy + 0.9, ch.z, g, 0xffd25a, 0.5, 1.2);
+    }
+    this.opts.cue?.('chest', { x: ch.x, y: gy + 0.8, z: ch.z }, ch.hoard ? 1 : 0);
+  }
+
+  private curseBurst(ch: Chest, gy: number): void {
+    this.vfx.burst(CURSE_FX, ch.x, gy + 0.8, ch.z, 2.2);
+    this.vfx.billow('blast', ch.x, gy + 1, ch.z, 4.2, { tint: 0x2c3a24, duration: 1.2, rise: 1, flame: [0x4cff3a, 0xd8ffb0] });
+    this.vfx.billow('smoke', ch.x, gy + 1.8, ch.z, 3.4, { tint: 0x1c2418, duration: 2.4, rise: 1.8, delay: 0.4, opacity: 0.7 });
+    this.nearShake(ch.x, ch.z, 0.35, 10);
+    this.opts.cue?.('curse', { x: ch.x, y: gy + 0.8, z: ch.z }, 1);
+  }
+
+  private trapFires(t: Trap): void {
+    const gy = this.groundAt(t.x, t.z);
+    if (t.kind === 'flame') {
+      this.vfx.pillar(TRAP_FLAME, t.x, t.z, 0.7, 1, 1.5);
+      this.vfx.burst(TRAP_FLAME, t.x, gy + 0.5, t.z, 1.2);
+      this.vfx.billow('blast', t.x, gy + 1, t.z, 2.8, { tint: 0x5a4a40, duration: 1.1, rise: 1.3, flame: [0xff5a14, 0xffd890] });
+    } else if (t.kind === 'frost') {
+      this.vfx.burst(TRAP_FROST, t.x, gy + 0.6, t.z, 1.3);
+      this.vfx.billow('dust', t.x, gy + 0.5, t.z, 3.2, { tint: 0xcfe8ff, duration: 1.5, rise: 0.5, opacity: 0.7, bright: 1.5 });
+    } else {
+      this.vfx.burst(TRAP_BONE, t.x, gy + 0.6, t.z, 1.1);
+      this.vfx.billow('dust', t.x, gy + 0.3, t.z, 2.6, { tint: 0x4a5448, duration: 1.2, rise: 0.4 });
+    }
+    this.nearShake(t.x, t.z, 0.22, 8);
+    this.opts.cue?.('trap', { x: t.x, y: gy + 0.5, z: t.z }, DEPTH_TRAP_INDEX[t.kind]);
+  }
+
+  private nearShake(x: number, z: number, amount: number, reach: number): void {
+    const me = this.opts.me;
+    if (!me || !this.opts.shake) return;
+    const d = Math.hypot(me.x - x, me.z - z);
+    if (d < reach) this.opts.shake(amount * (1 - d / reach));
+  }
+
   private toll(x: number, z: number, i: number): void {
     this.bellTolled[i] = this.clock;
     const gy = this.groundAt(x, z);
@@ -1134,7 +1330,10 @@ export class DescentView {
 
   /** Shows every decal and the souls for the loading frames that prepare shaders; returns the undo. */
   prime(): () => void {
-    const all = [...this.eruptions, ...this.revives, this.door, ...this.knellRings, ...this.bellRings, this.tollRing];
+    const all = [...this.eruptions, ...this.revives, this.door, ...this.knellRings, ...this.bellRings, this.tollRing, ...this.curseRings, this.escapeRing];
+    const props = [...this.chestViews, this.hoardView, ...this.trapViews].map((v) => v.root);
+    const shown = props.map((o) => o.visible);
+    for (const o of props) o.visible = true;
     const bells = this.bellViews.map((b) => b.root.visible);
     for (const b of this.bellViews) b.root.visible = true;
     for (const d of all) d.mesh.visible = true;
@@ -1145,6 +1344,7 @@ export class DescentView {
     this.chainArc.bolt(new THREE.Vector3(0, 1, 0), new THREE.Vector3(2, 1, 0), 0.1);
     return () => {
       for (const d of all) d.mesh.visible = false;
+      props.forEach((o, i) => (o.visible = shown[i]!));
       this.bellViews.forEach((b, i) => (b.root.visible = bells[i]!));
       wisps();
       kicks();

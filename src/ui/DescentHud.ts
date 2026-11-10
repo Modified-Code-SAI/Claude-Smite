@@ -3,7 +3,7 @@ import { DESCENT, DEPTHS, KIND_NAMES, KIND_TEXT, type Descent } from '../sim/Des
 import { scoreTable, type Scoreboard } from '../sim/Scoreboard';
 import type { Unit } from '../sim/Unit';
 import { CHAMBERS } from '../map/UnderworldLayout';
-import { addResult } from './records';
+import { addHaul, addResult } from './records';
 import { awardLine } from './ascension';
 import { relicById, type RelicId } from '../sim/Relics';
 import { relicIcon, skillIcon } from './icons';
@@ -65,6 +65,7 @@ export class DescentHud {
   private readonly soulGain = new Map<Side, HTMLElement>();
   private readonly soulBox = new Map<Side, HTMLElement>();
   private readonly shownSouls: Record<Side, number> = { order: 0, chaos: 0 };
+  private shownWorth = '';
   /** A shared descent's takedown banners (co-op gods only fall to monsters). */
   private readonly tally: KillTally | null;
   private readonly banner: HTMLElement;
@@ -95,7 +96,7 @@ export class DescentHud {
     const souls = (cls: string, label: string) => `<div class="descent-souls ${cls}"><b>0</b><span>${label}</span><i></i></div>`;
     this.root.className = 'clash descent';
     this.root.innerHTML = `
-      <div class="clash-bar">${run.versus ? souls('ally', 'Your souls') : ''}<div class="descent-where"></div>${run.versus ? souls('foe', 'Rival souls') : ''}</div>
+      <div class="clash-bar">${run.versus ? souls('ally', 'Your souls') : souls('ally haul', 'Treasure')}<div class="descent-where"></div>${run.versus ? souls('foe', 'Rival souls') : ''}</div>
       <div class="clash-state"></div>
       <div class="descent-curses"></div>
       <div class="descent-hint"></div>
@@ -181,7 +182,7 @@ export class DescentHud {
   /** Both teams' souls, with a pop for each gain and a glow on the leader. */
   private souls(): void {
     const r = this.run;
-    if (!r.versus) return;
+    if (!r.versus) return this.haul();
     for (const side of [this.mine, this.foe]) {
       const now = Math.floor(r.souls[side]);
       const was = this.shownSouls[side];
@@ -200,6 +201,27 @@ export class DescentHud {
     const lead = this.shownSouls[this.mine] - this.shownSouls[this.foe];
     this.soulBox.get(this.mine)!.classList.toggle('lead', lead > 0);
     this.soulBox.get(this.foe)!.classList.toggle('lead', lead < 0);
+  }
+
+  /** The treasure the team carries (co-op), with a pop for each find, and what it is worth this deep. */
+  private haul(): void {
+    const L = this.run.loot;
+    const now = L.haul;
+    const was = this.shownSouls[this.mine];
+    const label = `Treasure${L.worth > 1 ? ` ×${L.worth}` : ''}`;
+    if (label !== this.shownWorth) {
+      this.shownWorth = label;
+      this.soulBox.get(this.mine)!.querySelector('span')!.textContent = label;
+    }
+    if (now === was) return;
+    this.shownSouls[this.mine] = now;
+    this.soulNum.get(this.mine)!.textContent = String(now);
+    if (now <= was) return;
+    const gain = this.soulGain.get(this.mine)!;
+    gain.textContent = `+${now - was}`;
+    gain.classList.remove('pop');
+    void gain.offsetWidth;
+    gain.classList.add('pop');
   }
 
   frame(): void {
@@ -363,6 +385,7 @@ export class DescentHud {
       case 'draft':
         return r.drafts.has(me) ? `Learn a skill · ${Math.ceil(r.timer)}` : r.versus ? 'The gods are choosing their skills…' : 'Your allies are choosing their skills…';
       case 'exit':
+        if (r.escape) return `<b class="challenge">Climb out by the south gate</b> and keep your ${r.loot.haul} treasure, or go deeper by the north gate · ${Math.ceil(r.timer)}`;
         return `The way down is open: walk into the north gate · ${Math.ceil(r.timer)}`;
       case 'descend':
         return 'Descending…';
@@ -414,13 +437,24 @@ export class DescentHud {
     const cleared = r.cleared;
     const { best, award } = addResult('descent', { won, best: cleared });
     const record = cleared > best;
+    const banked = r.loot.banked;
+    const vault = addHaul(banked);
     this.end.classList.add(won ? 'won' : 'lost');
-    this.end.querySelector('.clash-end-title')!.textContent = won ? 'You rise again' : 'Lost in the dark';
+    this.end.querySelector('.clash-end-title')!.textContent = r.escaped ? 'You climbed out alive' : won ? 'You rise again' : 'Lost in the dark';
     const mins = Math.floor(r.time / 60);
     const secs = String(Math.floor(r.time % 60)).padStart(2, '0');
     this.end.querySelector('.clash-end-score')!.textContent =
-      `${won ? 'All fifteen chambers cleared' : `${cleared} ${cleared === 1 ? 'chamber' : 'chambers'} cleared`} in ${mins}:${secs} · ${r.kills} monsters slain · ${r.boons.length} boons${relics(r.relics.ofSide('order').length)} · ${record ? 'new best!' : `best ${best}`}`;
-    this.end.querySelector('.clash-end-score')!.insertAdjacentHTML('afterend', awardLine(award));
+      `${won && !r.escaped ? 'All fifteen chambers cleared' : `${cleared} ${cleared === 1 ? 'chamber' : 'chambers'} cleared`} in ${mins}:${secs} · ${r.kills} monsters slain · ${r.boons.length} boons${relics(r.relics.ofSide('order').length)} · ${record ? 'new best!' : `best ${best}`}`;
+    // the haul: brought out, crowned at the bottom, or lost down there but for a keepsake
+    const haulLine = r.escaped
+      ? `You brought out <b>${banked}</b> treasure`
+      : won
+        ? `The Ossuary King's crown doubles half again: <b>${banked}</b> treasure brought out`
+        : banked
+          ? `Your haul is lost to the dark. A keepsake of <b>${banked}</b> came back with you`
+          : 'You brought nothing out';
+    const vaultLine = `${vault.best < banked ? 'Your richest haul yet' : `Richest haul ${Math.max(vault.best, banked)}`} · Vault ${vault.total}`;
+    this.end.querySelector('.clash-end-score')!.insertAdjacentHTML('afterend', `<div class="descent-end-haul ${won ? 'won' : 'lost'}"><span>${haulLine}</span><small>${vaultLine}</small></div>` + awardLine(award));
     if (this.board) this.end.querySelector('.clash-end-table')!.innerHTML = scoreTable(this.board, this.me, 'monsters');
     this.end.classList.add('show');
     document.exitPointerLock?.();
