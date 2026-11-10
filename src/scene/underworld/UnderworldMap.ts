@@ -16,7 +16,7 @@ import { triplanar, type MaterialLibrary } from '../Materials';
 import { mergeStatic } from '../merge';
 import type { MapContent } from '../World';
 import { abyssKit, drownedKit, FLAME_Y, forgeKit, LINTEL_Y, PYLON_H, type Kit } from './kits';
-import { DEPTH_COLORS, depthLook, depthWeights, flameHot, gateOpen, underworldGlow } from './palettes';
+import { DEPTH_COLORS, depthLook, depthWeights, flameHot, gateOpen, GLOOM, underworldGlow } from './palettes';
 import { Mist } from './mist';
 import { Shafts } from './shafts';
 import { Spirits } from './spirits';
@@ -88,7 +88,7 @@ export class UnderworldMap implements MapContent {
     if (p === this.palette) return false;
     this.palette = p;
     const c = DEPTH_COLORS[p];
-    underworldGlow.value.setHex(c.glow);
+    underworldGlow.value.setHex(c.glow).multiplyScalar(GLOOM.glow);
     flameHot.value.setHex(c.fire.high);
     for (const l of this.lakeLights) l.color.setHex(c.glow);
     depthLook.value.set(...depthWeights(p));

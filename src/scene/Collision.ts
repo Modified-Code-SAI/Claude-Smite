@@ -135,6 +135,19 @@ export class CollisionWorld {
     this.cuts = field;
   }
 
+  /** How far below the ground a wader stands (the bed of a lava channel or a pool the ground's cover hides). */
+  private wade: ((x: number, z: number) => number) | null = null;
+
+  setWade(depth: (x: number, z: number) => number): void {
+    this.wade = depth;
+  }
+
+  /** The height a wader stands at: the ground, or the bed of the pit it has walked down into. */
+  wadeAt(x: number, z: number): number {
+    const g = this.groundAt(x, z);
+    return this.wade ? g - this.wade(x, z) : g;
+  }
+
   addSurface(s: GroundSurface): void {
     this.surfaces.push(s);
   }
@@ -151,9 +164,10 @@ export class CollisionWorld {
 
   /**
    * Pushes a circle of `radius` at (x, z) out of every collider taller than
-   * `feetY + stepHeight`. Returns the corrected position.
+   * `feetY + stepHeight`. Returns the corrected position. A `deep` mover is
+   * one that may leave the floor for the pits (confined by the `over` field).
    */
-  resolve(x: number, z: number, radius: number, feetY: number, stepHeight = 0.55, out?: { x: number; z: number }): { x: number; z: number } {
+  resolve(x: number, z: number, radius: number, feetY: number, stepHeight = 0.55, out?: { x: number; z: number }, deep = false): { x: number; z: number } {
     const near = this.near;
     for (let iter = 0; iter < 3; iter++) {
       let moved = false;
@@ -206,7 +220,7 @@ export class CollisionWorld {
         }
       }
       if (this.walkable) {
-        const field = this.over && feetY + stepHeight >= this.over.above ? this.over.field : this.cuts ? this.cutWalkable : this.walkable;
+        const field = this.over && (deep || feetY + stepHeight >= this.over.above) ? this.over.field : this.cuts ? this.cutWalkable : this.walkable;
         const f = field(x, z);
         if (f < radius) {
           // push out along the field's gradient

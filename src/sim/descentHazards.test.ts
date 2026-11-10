@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { zeus } from '../game/gods';
-import { addUnderworldColliders, BRINK_FAR, CHAMBERS, entranceSpot, type ChamberDef } from '../map/UnderworldLayout';
+import { addUnderworldColliders, BRINK_FAR, CHAMBERS, entranceSpot, PITS, type ChamberDef } from '../map/UnderworldLayout';
 import { CollisionWorld } from '../scene/Collision';
-import { Hazards, HAZARDS } from './DescentHazards';
+import { Hazards, HAZARDS, pitAt } from './DescentHazards';
 import { godUnit, monsterUnit } from './factory';
 import { Sim, type SimTerrain } from './Sim';
 import type { Unit } from './Unit';
@@ -273,5 +273,155 @@ describe("each depth's dangers", () => {
     const copy = setup(chamber('The Isles'));
     copy.h.applyNet(chamber('The Slag Hall'), forge.h.netState()!);
     expect(copy.h.vents.map((v) => v.t)).toEqual(forge.h.vents.map((v) => Math.round(v.t * 100) / 100));
+  });
+});
+
+/** A spot `d` meters out past the floor's edge over the chamber's lava, water or void, nearest its middle. */
+function pitSpot(c: ChamberDef, d: number): [number, number] {
+  let best: [number, number] = [0, 0];
+  let bd = Infinity;
+  for (let x = -c.extent; x <= c.extent; x += 0.25) {
+    for (let z = -c.extent * 0.6; z <= c.extent * 0.6; z += 0.25) {
+      if (c.cave(x, z) < 1.5) continue;
+      const e = Math.abs(-c.sd(x, z) - d) * 10 + Math.hypot(x, z) * 0.01;
+      if (e < bd) [bd, best] = [e, [x, z]];
+    }
+  }
+  return [c.x + best[0], c.z + best[1]];
+}
+
+function world(): CollisionWorld {
+  const w = new CollisionWorld(() => 0);
+  addUnderworldColliders(w);
+  return w;
+}
+
+describe('the pits a god can walk into', () => {
+  it('lets a wader walk down off the floor into the lava and the water, and keeps everyone else on the floor', () => {
+    const w = world();
+    for (const name of ['The Slag Hall', 'The Sunken Cloister']) {
+      const c = chamber(name);
+      const [x, z] = pitSpot(c, 1.6);
+      const kept = w.resolve(x, z, 0.55, 0);
+      expect(c.sd(kept.x - c.x, kept.z - c.z), name).toBeGreaterThan(0.4);
+      const waded = w.resolve(x, z, 0.55, 0, undefined, undefined, true);
+      expect([waded.x, waded.z], name).toEqual([x, z]);
+      // down the bank to the bed, the lava or the water standing over their feet
+      const P = c.depth === 0 ? PITS.lava : PITS.water;
+      expect(w.wadeAt(x, z), name).toBeLessThan(-P.surface - 0.3);
+      expect(w.wadeAt(x, z), name).toBeGreaterThanOrEqual(-P.bed - 1e-6);
+      expect(w.groundAt(x, z), name).toBe(0);
+      const [fx, fz] = brinkSpot(c, 3);
+      expect(w.wadeAt(fx, fz), name).toBe(0);
+    }
+  });
+
+  it('walks only the gods humans play into a pit: a bot stops at the brink', () => {
+    const c = chamber('The Slag Hall');
+    const { sim } = setup(c, world());
+    const [x, z] = pitSpot(c, 1.6);
+    const human = god(sim, x, z);
+    human.wades = true;
+    const bot = god(sim, x, z);
+    const a = sim.solid(x, z, human.radius, 0, { x, z }, sim.terrain, human);
+    const b = sim.solid(x, z, bot.radius, 0, { x, z }, sim.terrain, bot);
+    expect(pitAt(c, a.x, a.z)?.kind).toBe('lava');
+    expect(pitAt(c, b.x, b.z)).toBeNull();
+    expect(sim.footing(human, x, z)).toBeLessThan(-1);
+    expect(sim.footing(bot, x, z)).toBe(0);
+  });
+
+  it('sears a god stepping into the lava and burns and slows them for as long as they stand in it; out of it they are let be', () => {
+    const c = chamber('The Slag Hall');
+    const { sim, h } = setup(c);
+    const [x, z] = pitSpot(c, 1.6);
+    const inLava = god(sim, x, z);
+    const [fx, fz] = brinkSpot(c, 6);
+    const onFloor = god(sim, fx, fz);
+    h.step(1 / 60, false, [inLava, onFloor], [], noMaster);
+    expect(share(inLava)).toBeCloseTo(1 - HAZARDS.lava.sear, 2);
+    for (let i = 0; i < 120; i++) h.step(1 / 60, false, [inLava, onFloor], [], noMaster);
+    expect(share(inLava)).toBeLessThan(1 - HAZARDS.lava.sear - HAZARDS.lava.burn * 1.5);
+    expect(inLava.combatant.moveSpeed).toBeLessThan(onFloor.combatant.moveSpeed);
+    expect(share(onFloor)).toBe(1);
+  });
+
+  it('kills in the lava during a fight, but never takes the last of a god between fights', () => {
+    const c = chamber('The Slag Hall');
+    const [x, z] = pitSpot(c, 1.6);
+    const calm = setup(c);
+    const idle = god(calm.sim, x, z);
+    for (let i = 0; i < 60 * 30; i++) calm.h.step(1 / 60, false, [idle], [], noMaster);
+    expect(idle.alive).toBe(true);
+    expect(share(idle)).toBeCloseTo(HAZARDS.lava.spare, 2);
+    const fight = setup(c);
+    const doomed = god(fight.sim, x, z);
+    for (let i = 0; i < 60 * 30 && doomed.alive; i++) {
+      fight.h.step(1 / 60, true, [doomed], [], noMaster);
+      fight.sim.step(1 / 60);
+      doomed.body.x = x;
+      doomed.body.z = z;
+    }
+    expect(doomed.combatant.health).toBeLessThanOrEqual(0);
+  });
+
+  it('freezes a god in the Drowned Halls\' water: slowed at once, slower the longer they stay, then the cold bites; it thaws once they climb out', () => {
+    const c = chamber('The Sunken Cloister');
+    const { sim, h } = setup(c);
+    const [x, z] = pitSpot(c, 1.6);
+    const g = god(sim, x, z);
+    const W = HAZARDS.water;
+    h.step(1 / 60, false, [g], [], noMaster);
+    expect(h.cold(g)).toBeCloseTo(W.slow, 1);
+    expect(share(g)).toBe(1);
+    for (let i = 0; i < 60 * 2; i++) h.step(1 / 60, false, [g], [], noMaster);
+    expect(share(g)).toBe(1);
+    for (let i = 0; i < 60 * 3; i++) h.step(1 / 60, false, [g], [], noMaster);
+    expect(h.cold(g)).toBeCloseTo(W.frozen, 2);
+    expect(share(g)).toBeLessThan(1);
+    const [fx, fz] = brinkSpot(c, 6);
+    g.body.x = fx;
+    g.body.z = fz;
+    const left = share(g);
+    h.step(1 / 60, false, [g], [], noMaster);
+    expect(h.cold(g)).toBeLessThan(0);
+    for (let i = 0; i < 60 * 4; i++) h.step(1 / 60, false, [g], [], noMaster);
+    expect(h.cold(g)).toBe(0);
+    expect(share(g)).toBe(left);
+  });
+
+  it('drops a god who steps off the Abyss\'s edge and throws them back onto solid floor, hurt and dazed', () => {
+    const c = chamber('The Isles');
+    const { sim, h } = setup(c);
+    const [x, z] = pitSpot(c, 1.5);
+    const g = god(sim, x, z);
+    h.step(1 / 60, true, [g], [], noMaster);
+    expect(share(g)).toBeCloseTo(1 - HAZARDS.abyss.damage, 2);
+    expect(g.forced?.arc).toBeLessThan(0);
+    expect(g.combatant.cc.has('stun')).toBe(true);
+    expect(h.plunges).toBe(1);
+    let lowest = 0;
+    for (let i = 0; i < 60 * 2; i++) {
+      sim.step(1 / 60);
+      h.step(1 / 60, true, [g], [], noMaster);
+      lowest = Math.min(lowest, g.body.y);
+    }
+    expect(lowest).toBeLessThan(-HAZARDS.abyss.drop * 0.9);
+    expect(g.forced).toBeNull();
+    expect(c.sd(g.x - c.x, g.z - c.z)).toBeGreaterThan(1);
+    expect(h.plunges).toBe(1);
+    // right at the edge is still the floor's
+    expect(pitAt(c, ...pitSpot(c, 0.2))).toBeNull();
+  });
+
+  it('sends a guest the falls', () => {
+    const c = chamber('The Isles');
+    const { sim, h } = setup(c);
+    const [x, z] = pitSpot(c, 1.5);
+    h.step(1 / 60, true, [god(sim, x, z)], [], noMaster);
+    const copy = setup(c);
+    copy.h.applyNet(c, h.netState()!);
+    expect(copy.h.plunges).toBe(1);
+    expect(copy.h.plungeAt.x).toBeCloseTo(x, 1);
   });
 });

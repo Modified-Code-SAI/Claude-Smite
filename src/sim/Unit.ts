@@ -122,6 +122,8 @@ export class Unit {
   blocks = false;
   /** Meters of rubble and low wall it strides over without being stopped (the Jötunn). */
   stepOver = 0;
+  /** Walks off the floor's edge where the map lets a wader (Underworld Descent's pits): the gods humans play. */
+  wades = false;
   /** Set by the factory functions. */
   origin: SpawnOrigin | null = null;
 

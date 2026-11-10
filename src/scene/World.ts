@@ -168,6 +168,13 @@ export class World {
   private readonly near: LightSpot[] = [];
   private fireLights: THREE.PointLight[] | null = null;
 
+  /**
+   * The light the player carries (Underworld Descent's torch): where it
+   * hangs from the focus, its color, reach and strength. It takes the pool's
+   * first light, so it costs no light of its own and builds no shader.
+   */
+  torch: { color: THREE.Color; intensity: number; distance: number; lift: number } | null = null;
+
   private setLightPool(n: number): void {
     while (this.pool.length > n) this.pool.pop()!.removeFromParent();
     while (this.pool.length < n) {
@@ -237,9 +244,20 @@ export class World {
       near.push(s);
     }
     near.sort(closest);
-    for (let i = 0; i < this.pool.length; i++) {
+    const torch = this.torch && this.pool.length ? this.torch : null;
+    if (torch) {
+      const light = this.pool[0]!;
+      // a flame's unsteady light: two slow wavers and a quick flutter
+      const flicker = 0.9 + 0.06 * Math.sin(t * 7.3) + 0.04 * Math.sin(t * 13.1 + 1.7) + 0.03 * Math.sin(t * 23.7);
+      light.intensity = torch.intensity * flicker;
+      light.position.set(focus.x + Math.sin(t * 5.1) * 0.05, focus.y + torch.lift, focus.z + Math.cos(t * 4.3) * 0.05);
+      light.color.copy(torch.color);
+      light.distance = torch.distance;
+      light.decay = 2;
+    }
+    for (let i = torch ? 1 : 0; i < this.pool.length; i++) {
       const light = this.pool[i]!;
-      const s = near[i];
+      const s = near[torch ? i - 1 : i];
       light.intensity = s ? s.l.intensity : 0;
       if (!s) continue;
       light.position.copy(s.p);

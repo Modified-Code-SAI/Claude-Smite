@@ -604,19 +604,56 @@ export interface ColliderSink {
   addCircle(x: number, z: number, r: number, top?: number): void;
   addBox(x: number, z: number, hx: number, hz: number, yaw: number, top?: number): void;
   setWalkable(field: (x: number, z: number) => number, over?: { field: (x: number, z: number) => number; above: number }): void;
+  /** How far below the ground a wader stands at a point (see CollisionWorld.wadeAt). */
+  setWade?(depth: (x: number, z: number) => number): void;
   addSurface(s: (x: number, z: number) => number | null): void;
 }
 
 /**
  * How high over the floor something has to be to pass over lava, water or
  * void rather than stop at its edge: a shot, or a god in the air at the top
- * of a leap. Walkers never set foot off the floor.
+ * of a leap. Beasts and bots never set foot off the floor; a god a human
+ * plays may (see Unit.wades), down into the lava or the water, or off the
+ * Abyss's edge.
  */
 export const HOLE_LIP = 1;
+
+/**
+ * The pits a god can walk down into: how far below the floor the bed of the
+ * forge's lava lies (it stands LAVA_DEEP over the bed) and the bed of the
+ * Drowned Halls' black water (WATER_DEEP over it), and how far out from the
+ * floor's edge each bed levels off. The Abyss has no bed: its floor ends.
+ */
+export const PITS = {
+  lava: { bed: 1.4, run: 1.8, surface: 0.9 },
+  water: { bed: 1.25, run: 1.6, surface: 0.35 },
+} as const;
+
+const smoothRamp = (t: number): number => {
+  const k = Math.max(0, Math.min(1, t));
+  return k * k * (3 - 2 * k);
+};
+
+/** How far below the floor (m, positive) a pit's bed lies `d` meters out past the floor's edge, by depth; 0 in the Abyss. */
+export function pitDepth(depth: number, d: number): number {
+  const p = depth === 0 ? PITS.lava : depth === 1 ? PITS.water : null;
+  return p ? p.bed * smoothRamp(d / p.run) : 0;
+}
+
+/** How far below the floor a god wading at a point of the underworld stands: 0 on the floor, over the void and in the rock. */
+export function underworldWade(x: number, z: number): number {
+  const i = chamberAt(x, z);
+  if (i < 0) return 0;
+  const c = CHAMBERS[i]!;
+  if (c.depth === 2) return 0;
+  const f = chamberField(c, x - c.x, z - c.z);
+  return f >= 0 ? 0 : pitDepth(c.depth, -f);
+}
 
 /** The walls, columns, braziers and gate pylons that stop movement, for the scene and the sim alike. */
 export function addUnderworldColliders(sink: ColliderSink): void {
   sink.setWalkable(underworldField, { field: underworldCave, above: HOLE_LIP });
+  sink.setWade?.(underworldWade);
   // over the lava, water and void the ground is the floor's height, for what flies over them
   sink.addSurface((x, z) => (underworldCave(x, z) > -0.5 ? 0 : null));
   for (const c of CHAMBERS) {

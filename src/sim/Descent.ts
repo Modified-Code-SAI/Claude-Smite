@@ -1249,6 +1249,8 @@ export class Descent {
   addGod(u: Unit, human: boolean): void {
     this.gods.push(u);
     if (human) this.humans.add(u);
+    // a human may walk down into the pits; bots keep to the floor
+    u.wades = human;
     const c = u.combatant;
     c.gainXp(Math.max(0, XP_TABLE[DESCENT.startLevel - 1]! - c.xp));
     for (const s of Descent.SEALED) c.sealed.add(s);
@@ -2345,6 +2347,7 @@ export class Descent {
     }
     this.humans.clear();
     for (const i of s.h) if (god(i)) this.humans.add(god(i)!);
+    for (const g of this.gods) g.wades = this.humans.has(g);
   }
 
   /** On a guest: one of the host's monsters, built the same way (its health and buffs arrive with its state). */

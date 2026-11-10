@@ -6,6 +6,7 @@ import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { Layers } from '../render/Layers';
 import type { QualitySettings } from '../render/Quality';
+import { GLOOM } from './underworld/palettes';
 
 /** Cascades from this one on are far: drawn every fourth frame, without `Layers.NEAR_SHADOW`. */
 const FAR_CASCADE = 2;
@@ -181,8 +182,8 @@ export class Environment {
     this.elevation = 74;
     this.azimuth = -150;
     this.updateSunDirection();
-    this.sun.intensity = 1.5;
-    this.fill.intensity = 0.55;
+    this.sun.intensity = 1.5 * GLOOM.key;
+    this.fill.intensity = GLOOM.fill;
     this.fill.color.setRGB(1.0, 0.72, 0.6);
     this.bounce = new THREE.HemisphereLight(0x000000, c.bounce.color, c.bounce.intensity);
     this.scene.add(this.bounce);
@@ -259,7 +260,7 @@ export class Environment {
     this.envTarget?.dispose();
     this.envTarget = pmrem.fromScene(envScene, 0.0, 0.1, 400);
     this.scene.environment = this.envTarget.texture;
-    this.scene.environmentIntensity = this.ambient;
+    this.scene.environmentIntensity = this.ambient * GLOOM.ambient;
     pmrem.dispose();
     dome.geometry.dispose();
     ground.geometry.dispose();

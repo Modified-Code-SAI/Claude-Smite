@@ -45,6 +45,8 @@ export class PlayerController implements Updatable {
   readonly radius = 0.55;
   /** Replaces plain terrain collision while walking; the combat sim adds its structures. */
   resolve: ((x: number, z: number, radius: number, feetY: number, from: { x: number; z: number }) => { x: number; z: number }) | null = null;
+  /** Replaces the terrain's ground height under the player (Underworld Descent's pits lie below it). */
+  footing: ((x: number, z: number) => number) | null = null;
   private readonly prevPosition = new THREE.Vector3();
   private readonly localDir = new THREE.Vector2();
   private verticalSpeed = 0;
@@ -59,7 +61,7 @@ export class PlayerController implements Updatable {
   ) {}
 
   spawn(x: number, z: number, yaw: number): void {
-    this.position.set(x, this.collision.groundAt(x, z), z);
+    this.position.set(x, this.footing ? this.footing(x, z) : this.collision.groundAt(x, z), z);
     this.prevPosition.copy(this.position);
     this.yaw = yaw;
   }
@@ -123,7 +125,7 @@ export class PlayerController implements Updatable {
       : this.collision.resolve(nx, nz, this.radius, this.position.y);
     nx = resolved.x;
     nz = resolved.z;
-    const ground = this.collision.groundAt(nx, nz);
+    const ground = this.footing ? this.footing(nx, nz) : this.collision.groundAt(nx, nz);
     let ny = this.position.y + this.verticalSpeed * dt;
     if (ny <= ground) {
       // snap up steps / slopes, land from jumps

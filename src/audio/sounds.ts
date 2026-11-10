@@ -552,6 +552,34 @@ export const SOUNDS: Record<string, Recipe> = {
         [whoosh(r, 3, 340, 160, { q: 1 }), 0.4],
       ),
   },
+  // the pits a god walks into: flesh hissing in the lava, the plunge into black water, and the long drop off the Abyss's edge
+  'hazard.sear': {
+    variants: 3,
+    peak: 0.6,
+    make: (r) => layer([vent(r), 0.9], [fire(r, 0.9, { roar: 0.5 }), 0.5], [crackles(r, 1.1, 36), 0.6, 0.02], [thump(r, 0.2, 170, 80, { noise: 0.5, gain: 0.6 }), 0.4]),
+  },
+  'hazard.wade': {
+    variants: 3,
+    peak: 0.5,
+    make: (r) => {
+      const parts: [Float32Array, number, number][] = [
+        [filter(thump(r, 0.5, 150, 60, { noise: 0.7, gain: 0.7 }), 'lowpass', 1100), 0.7, 0],
+        [filter(whoosh(r, 0.9, 1400, 420, { q: 0.7 }), 'lowpass', 3200), 0.55, 0.02],
+      ];
+      for (let k = 0; k < 5; k++) parts.push([bubble(r), 0.16, 0.12 + k * 0.11 + r() * 0.05]);
+      return layer(...parts);
+    },
+  },
+  'hazard.plunge': {
+    variants: 2,
+    peak: 0.6,
+    make: (r) =>
+      layer(
+        [filter(whoosh(r, 1.5, 900, 140, { q: 0.9 }), 'lowpass', 2000), 0.8],
+        [choir(r, 1.8, 110, { vowelName: 'oo', env: (t) => ahr(t, 0.3, 0.5, 0.9) }), 0.45, 0.1],
+        [impact(r, 0.9, { tone: 90, room: 0.6 }), 0.55, 1.05],
+      ),
+  },
   'soul.absorb': { variants: 3, peak: 0.35, make: (r) => layer([whoosh(r, 0.3, 700, 3400, { q: 1.4, peak: 0.85, gain: 0.7 }), 0.6], [shimmer(r, 0.55, 1046.5, { rise: 1.3, peak: 0.15 }), 1, 0.07], [choir(r, 0.6, 523.3, { vowelName: 'oo', env: (t) => ahr(t, 0.06, 0.08, 0.4) }), 0.35, 0.05]) },
 
   // -- the gods' own voices (voices.ts)

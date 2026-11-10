@@ -351,6 +351,7 @@ async function main(): Promise<void> {
     if (!fixedCamera) follow.kickFov(fov * settings().shake);
   }, cameraShot: (s) => (follow.shot = s), role: parseRole(params.get('role') ?? choice.role), cameraScale: (k, lift, side, ahead) => follow.setScale(k, lift, side, ahead) });
   loop.addFixed(combat);
+  if (choice.mode === 'descent') follow.floor = -1.5;
   void baked;
   // `?stage`: the trailer's film set (tools/trailer)
   const stage = params.has('stage') ? new (await import('./dev/Stage')).Stage(combat, camera, () => (player.model.root.visible = false)) : null;

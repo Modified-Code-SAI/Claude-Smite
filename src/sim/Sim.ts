@@ -24,7 +24,9 @@ import {
 export interface SimTerrain {
   groundAt(x: number, z: number): number;
   /** Pushes a circle out of the obstacles. Writes into `out` and returns it, when given (so a hot loop allocates nothing). */
-  resolve(x: number, z: number, radius: number, feetY: number, stepHeight?: number, out?: { x: number; z: number }): { x: number; z: number };
+  resolve(x: number, z: number, radius: number, feetY: number, stepHeight?: number, out?: { x: number; z: number }, deep?: boolean): { x: number; z: number };
+  /** The height a wader stands at (see Unit.wades): the ground, or the bed of a pit below it. */
+  wadeAt?(x: number, z: number): number;
   /** Cuts holes in the walkable floor that come and go (positive inside one): the Abyss's fallen ledges. */
   cut?(field: ((x: number, z: number) => number) | null): void;
 }
@@ -913,7 +915,7 @@ export class Sim {
       u.body.z = z;
       if (yaw !== undefined) u.body.yaw = yaw;
     }
-    u.body.y = this.terrain.groundAt(x, z);
+    u.body.y = this.footing(u, x, z);
     this.emit(quiet ? { type: 'teleport', unit: u, fromX, fromZ, quiet } : { type: 'teleport', unit: u, fromX, fromZ });
   }
 
@@ -1074,7 +1076,8 @@ export class Sim {
    * against it.
    */
   solid(x: number, z: number, radius: number, feetY: number, from: Point = { x, z }, terrain: SimTerrain = this.terrain, mover: Unit | null = null): Point {
-    let r = terrain.resolve(x, z, radius, feetY);
+    const deep = !!mover?.wades;
+    let r = terrain.resolve(x, z, radius, feetY, undefined, undefined, deep);
     for (const s of this.units) {
       // (a unit's own parts, the Jötunn's legs, don't block it)
       if (!s.alive || !(isStructure(s) || s.blocks || this.bodyBlocks(s, mover, feetY)) || s === mover || (mover && s.owner === mover)) continue;
@@ -1101,7 +1104,7 @@ export class Sim {
       const px = s.x + nx * min - nz * slide;
       const pz = s.z + nz * min + nx * slide;
       const pd = hypot(px - s.x, pz - s.z) || 1;
-      r = terrain.resolve(s.x + ((px - s.x) / pd) * min, s.z + ((pz - s.z) / pd) * min, radius, feetY);
+      r = terrain.resolve(s.x + ((px - s.x) / pd) * min, s.z + ((pz - s.z) / pd) * min, radius, feetY, undefined, undefined, deep);
     }
     return r;
   }
@@ -1113,6 +1116,11 @@ export class Sim {
     return feetY < s.body.y + GOD_HEIGHT && feetY + GOD_HEIGHT > s.body.y;
   }
 
+  /** The height a unit's feet rest at: the ground, or for a wader the bed of the pit it stands in. */
+  footing(u: Unit, x: number, z: number): number {
+    return u.wades && this.terrain.wadeAt ? this.terrain.wadeAt(x, z) : this.terrain.groundAt(x, z);
+  }
+
   private walk(u: Unit, dx: number, dz: number, dist: number): void {
     const len = hypot(dx, dz);
     if (len < 1e-6) return;
@@ -1121,7 +1129,7 @@ export class Sim {
     const r = this.solid(nx, nz, u.radius, u.body.y + u.stepOver, u, this.terrain, u);
     u.body.x = r.x;
     u.body.z = r.z;
-    u.body.y = this.terrain.groundAt(r.x, r.z);
+    u.body.y = this.footing(u, r.x, r.z);
   }
 
   private stepForced(u: Unit, dt: number): void {
@@ -1141,7 +1149,7 @@ export class Sim {
     u.body.x = nx;
     u.body.z = nz;
     const p = 1 - f.remaining / f.total;
-    u.body.y = this.terrain.groundAt(nx, nz) + Math.sin(Math.PI * p) * f.arc;
+    u.body.y = this.footing(u, nx, nz) + Math.sin(Math.PI * p) * f.arc;
     if (f.sweep) {
       for (const t of this.enemiesOf(u)) {
         if (f.sweep.hit.has(t)) continue;
@@ -1152,7 +1160,7 @@ export class Sim {
     }
     if (f.remaining <= 0) {
       u.forced = null;
-      u.body.y = this.terrain.groundAt(nx, nz);
+      u.body.y = this.footing(u, nx, nz);
       if (u.body.teleport && !f.collide) u.body.teleport(nx, nz);
       f.land?.();
     }

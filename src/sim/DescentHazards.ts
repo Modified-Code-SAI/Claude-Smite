@@ -27,7 +27,34 @@ export const HAZARDS = {
   tide: { calm: 13, rise: 2.5, high: 6, ebb: 2.5, first: 7, reach: 3.6, slow: -0.3, pull: 1, deep: 1.1, drown: 0.03 },
   crumble: { every: 6, first: 4, warn: 1.3, radius: 2.3, down: 8, rise: 1.4, near: 4, damage: 0.12, stun: 0.4, max: 3 },
   dark: { after: 18, creep: 0.15, keep: 0.5, burn: 0.025, kill: 0.8, recede: 2.5 },
+  /**
+   * The pits themselves, which a god may walk down into (see Unit.wades).
+   * Lava sears on the first step (`sear`) and burns for as long as a god
+   * stands in it, more the deeper they wade. The Drowned Halls' black water
+   * is freezing: it slows at once, the cold builds over `numb` seconds to
+   * the full `frozen` slow and then starts to bite. The Abyss has no bed:
+   * a god `edge` meters past its brink falls, and the dark throws them back.
+   * Between fights a pit never takes a god's last `spare` of health.
+   */
+  lava: { in: 0.25, sear: 0.04, burn: 0.11, slow: -0.2, spare: 0.1 },
+  water: { in: 0.25, slow: -0.3, frozen: -0.55, numb: 4, bite: 2.5, cold: 0.025, thaw: 2, spare: 0.1 },
+  abyss: { edge: 0.55, damage: 0.18, time: 1.25, drop: 11, stun: 0.5 },
 } as const;
+
+/** What a god standing at a spot of a chamber is in: nothing, the lava, the water, or thin air over the void; and how deep (0 at the brink to 1). */
+export function pitAt(c: ChamberDef, x: number, z: number): { kind: 'lava' | 'water' | 'void'; k: number } | null {
+  const lx = x - c.x;
+  const lz = z - c.z;
+  // (the gates' corridors run into the wall, never over a pit)
+  if (Math.abs(lz) > c.extent - 0.5) return null;
+  const f = c.sd(lx, lz);
+  if (f >= 0 || c.cave(lx, lz) < 0) return null;
+  const d = -f;
+  if (c.depth === 2) return d > HAZARDS.abyss.edge ? { kind: 'void', k: 1 } : null;
+  const P = c.depth === 0 ? HAZARDS.lava : HAZARDS.water;
+  if (d < P.in) return null;
+  return { kind: c.depth === 0 ? 'lava' : 'water', k: Math.min(1, (d - P.in) / 1.2) };
+}
 
 /** One of the forge's magma vents: `t` seconds until it blows (it glows for the last `HAZARDS.vent.warn` of them). */
 export interface Vent {
@@ -63,6 +90,8 @@ export interface HazardsNet {
   g?: [number, number, number, number, number][];
   td?: number;
   dk?: number;
+  /** Gods gone over the Abyss's edge so far, and where the latest went. */
+  pl?: [number, number, number];
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -83,6 +112,14 @@ export class Hazards {
   private spitIn = 0;
   private crumbleIn = 0;
   private nextId = 1;
+  /** How long (s) each god has stood in the Drowned Halls' freezing water: the cold in them, which thaws once they are out. */
+  readonly chill = new Map<Unit, number>();
+  /** The gods standing in a pit this step (lava or water), for the first step's sear. */
+  private readonly wading = new Set<Unit>();
+  /** Counts the gods that have gone over the Abyss's edge, for the view's cue (and sent to guests). */
+  plunges = 0;
+  /** Where the latest of them went over. */
+  plungeAt: Point = { x: 0, z: 0 };
   /** Damage dealt a little at a time, shown as one number every half second. */
   private readonly owed = new Map<Unit, number>();
   private owedFor = 0;
@@ -106,6 +143,8 @@ export class Hazards {
     this.dark = 0;
     this.fought = 0;
     this.owed.clear();
+    this.chill.clear();
+    this.wading.clear();
     this.tide = HAZARDS.tide.calm - HAZARDS.tide.first;
     this.surge = false;
     this.spitIn = HAZARDS.slag.first;
@@ -174,12 +213,76 @@ export class Hazards {
     if (c.depth === 0) this.stepForge(dt, active, gods, monsters, master);
     else if (c.depth === 1) this.stepTide(dt, active, gods);
     else this.stepAbyss(dt, active, gods, monsters, master);
+    this.stepPits(dt, active, gods);
     this.owedFor += dt;
     if (this.owedFor >= 0.5) {
       this.owedFor = 0;
       for (const [g, amount] of this.owed) if (amount > 0) this.sim.inject({ type: 'damage', target: g, source: null, amount, crit: false, ability: true });
       this.owed.clear();
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // The pits
+
+  /** How slow the cold has made a god (their move-speed change, 0 when warm). */
+  cold(g: Unit): number {
+    const t = this.chill.get(g) ?? 0;
+    return t <= 0 ? 0 : HAZARDS.water.slow + (HAZARDS.water.frozen - HAZARDS.water.slow) * Math.min(1, t / HAZARDS.water.numb);
+  }
+
+  /** The gods who have walked (or been knocked) off the floor: burned in the lava, frozen in the water, dropped by the void. */
+  private stepPits(dt: number, active: boolean, gods: readonly Unit[]): void {
+    const c = this.c!;
+    const W = HAZARDS.water;
+    for (const g of gods) {
+      const pit = g.alive && !g.forced?.arc ? pitAt(c, g.x, g.z) : null;
+      if (!pit || pit.kind !== 'water') {
+        const t = this.chill.get(g);
+        if (t !== undefined) {
+          const left = g.alive ? t - dt * W.thaw : 0;
+          if (left > 0) this.chill.set(g, left);
+          else this.chill.delete(g);
+        }
+      }
+      if (!pit) {
+        this.wading.delete(g);
+        continue;
+      }
+      if (pit.kind === 'void') {
+        this.plunge(g);
+        continue;
+      }
+      const first = !this.wading.has(g);
+      this.wading.add(g);
+      if (g.untargetable > 0) continue;
+      if (pit.kind === 'lava') {
+        const L = HAZARDS.lava;
+        if (first) this.hurt(g, L.sear, active ? 0 : L.spare);
+        this.burn(g, L.burn * (0.35 + 0.65 * pit.k) * dt, active ? 0 : L.spare);
+        g.combatant.refreshTimedMod('bonusMoveSpeed', L.slow, 0.25);
+      } else {
+        const t = Math.min(W.numb + W.bite, (this.chill.get(g) ?? 0) + dt);
+        this.chill.set(g, t);
+        g.combatant.refreshTimedMod('bonusMoveSpeed', this.cold(g), 0.25);
+        if (t > W.bite) this.burn(g, W.cold * dt, active ? 0 : W.spare);
+      }
+    }
+    // the cold stays in a god a while after they climb out
+    for (const [g] of this.chill) if (!this.wading.has(g) && g.alive) g.combatant.refreshTimedMod('bonusMoveSpeed', this.cold(g) * 0.6, 0.25);
+  }
+
+  /** A god steps off the Abyss's edge: they drop into the dark, and it throws them back onto the nearest floor, hurt and dazed. */
+  private plunge(g: Unit): void {
+    const A = HAZARDS.abyss;
+    const from = { x: g.x, z: g.z };
+    if (g.untargetable <= 0) this.hurt(g, A.damage, HAZARDS.lava.spare);
+    this.plunges++;
+    this.plungeAt = from;
+    if (!g.alive) return;
+    const to = this.safeSpot({ id: 0, x: g.x, z: g.z, r: 0, t: 0 }, g);
+    g.forced = { vx: (to.x - g.x) / A.time, vz: (to.z - g.z) / A.time, remaining: A.time, total: A.time, arc: -A.drop, collide: false };
+    g.combatant.cc.apply('stun', A.time + A.stun, 0, 0, false, 'descent:fall');
   }
 
   // -------------------------------------------------------------------------
@@ -432,16 +535,19 @@ export class Hazards {
     return null;
   }
 
-  private hurt(g: Unit, share: number): void {
+  /** `spare`: the share of its most health this may not take a god below (a pit between fights never kills). */
+  private hurt(g: Unit, share: number, spare = 0): void {
     const c = g.combatant;
-    const amount = c.stats.maxHealth * share * (1 - Math.min(0.9, c.stats.damageReduction));
+    const amount = Math.min(c.stats.maxHealth * share * (1 - Math.min(0.9, c.stats.damageReduction)), Math.max(0, c.health - c.stats.maxHealth * spare));
+    if (amount <= 0) return;
     c.takeDamage(amount);
     this.sim.inject({ type: 'damage', target: g, source: null, amount, crit: false, ability: true });
   }
 
-  private burn(g: Unit, share: number): void {
+  private burn(g: Unit, share: number, spare = 0): void {
     const c = g.combatant;
-    const amount = c.stats.maxHealth * share * (1 - Math.min(0.9, c.stats.damageReduction));
+    const amount = Math.min(c.stats.maxHealth * share * (1 - Math.min(0.9, c.stats.damageReduction)), Math.max(0, c.health - c.stats.maxHealth * spare));
+    if (amount <= 0) return;
     c.takeDamage(amount);
     this.owed.set(g, (this.owed.get(g) ?? 0) + amount);
   }
@@ -471,6 +577,7 @@ export class Hazards {
     if (this.gaps.length) out.g = this.gaps.map((g) => [g.id, r2(g.x), r2(g.z), g.r, r2(g.t)]);
     if (this.c.depth === 1) out.td = r2(this.tide);
     if (this.dark > 0) out.dk = r2(this.dark);
+    if (this.plunges) out.pl = [this.plunges, r2(this.plungeAt.x), r2(this.plungeAt.z)];
     return out;
   }
 
@@ -488,6 +595,7 @@ export class Hazards {
     for (const [id, x, z, r, t] of s.g ?? []) this.gaps.push({ id, x, z, r, t });
     this.tide = s.td ?? this.tide;
     this.dark = s.dk ?? 0;
+    if (s.pl) [this.plunges, this.plungeAt] = [s.pl[0], { x: s.pl[1], z: s.pl[2] }];
   }
 
   /** On a guest, between snapshots: the clocks run on so the glow and the falls stay smooth. */

@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { fbm2, simplex2, smoothstep as sstep } from '../../core/random';
-import { caveField, CHAMBERS, chamberAt, chamberField, underworldBrink, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
+import { caveField, CHAMBERS, chamberAt, chamberField, pitDepth, underworldBrink, underworldField, UNDERWORLD } from '../../map/UnderworldLayout';
 import {
   abs, atan, dFdx, dFdy, dot, exp, float, floor, fract, hash, length, max, min, mix, mx_noise_float, select, normalWorld, positionLocal, positionWorld, pow, sin, smoothstep, step, texture, time, transformNormalToView, vec2, vec3,
 } from '../../render/tsl';
@@ -107,8 +107,8 @@ function ringDistance(xz: any, ring: any, seed: number): any {
  * WATER_Y), and in the Abyss a lip, then a sheer fall into the dark.
  */
 function holeDepth(depth: number, d: number): number {
-  if (depth === 0) return -2.6 * sstep(0, 1.8, d);
-  if (depth === 1) return -2.8 * sstep(0, 1.6, d);
+  // (the lava's and the water's beds are shallow enough to wade: the sim walks gods down the same slope)
+  if (depth < 2) return -pitDepth(depth, d);
   return -0.6 * sstep(0, 0.4, d) - VOID_DEPTH * sstep(0.35, 4.5, d);
 }
 
